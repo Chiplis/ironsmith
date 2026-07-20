@@ -3734,27 +3734,28 @@ pub(super) fn describe_inline_pt_modifier_choice(
         || choose_mode.allow_repeated_modes
         || choose_mode.random
         || choose_mode.chooser.is_some()
-        || choose_mode.modes.iter().any(|mode| !mode.source_text.trim().is_empty())
+        || choose_mode
+            .modes
+            .iter()
+            .any(|mode| !mode.source_text.trim().is_empty())
     {
         return None;
     }
 
     fn extract(
         mode: &crate::effect::EffectMode,
-    ) -> Option<(
-        &crate::effects::ApplyContinuousEffect,
-        &Value,
-        &Value,
-    )> {
+    ) -> Option<(&crate::effects::ApplyContinuousEffect, &Value, &Value)> {
         let [effect] = mode.effects.as_slice() else {
             return None;
         };
         let apply = unwrap_basic_tag_wrappers(effect)
             .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-        let [crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
-            power,
-            toughness,
-        }] = apply.runtime_modifications.as_slice()
+        let [
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power,
+                toughness,
+            },
+        ] = apply.runtime_modifications.as_slice()
         else {
             return None;
         };
@@ -3786,9 +3787,7 @@ pub(super) fn describe_inline_pt_modifier_choice(
     let tail = describe_apply_continuous_tail(first)
         .map(|tail| format!(" {tail}"))
         .unwrap_or_default();
-    Some(format!(
-        "{target} {verb} {first_pt} or {second_pt}{tail}"
-    ))
+    Some(format!("{target} {verb} {first_pt} or {second_pt}{tail}"))
 }
 
 pub(crate) fn describe_tap_or_untap_mode(
@@ -4269,7 +4268,9 @@ pub(super) fn describe_for_each_object_filter_subject(filter: &ObjectFilter) -> 
     // Battlefield is the implicit zone for an iterated permanent noun in
     // oracle text ("For each land, ..."), so the explicit zone suffix only
     // survives for other zones.
-    let subject = subject.strip_suffix(" on the battlefield").unwrap_or(subject);
+    let subject = subject
+        .strip_suffix(" on the battlefield")
+        .unwrap_or(subject);
     if let Some(rest) = subject.strip_prefix("opponent's ") {
         return format!("{rest} your opponents control");
     }

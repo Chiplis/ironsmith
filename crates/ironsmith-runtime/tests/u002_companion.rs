@@ -150,7 +150,10 @@ fn payment_is_atomic_moves_directly_to_hand_and_is_once_per_game() {
         perform(action.clone(), &mut game, alice, &mut dm),
         Err(ActionError::CantPayCost)
     );
-    assert_eq!(game.player(alice).unwrap().mana_pool, before.player(alice).unwrap().mana_pool);
+    assert_eq!(
+        game.player(alice).unwrap().mana_pool,
+        before.player(alice).unwrap().mana_pool
+    );
     assert_eq!(game.player(alice).unwrap().companion, Some(companion_id));
     assert!(!game.player(alice).unwrap().companion_special_action_used);
     assert!(game.stack_is_empty());
@@ -159,17 +162,25 @@ fn payment_is_atomic_moves_directly_to_hand_and_is_once_per_game() {
         .unwrap()
         .mana_pool
         .add(ManaSymbol::Red, 3);
-    assert!(compute_legal_actions(&game, alice).contains(&LegalAction::SpecialAction(action.clone())));
+    assert!(
+        compute_legal_actions(&game, alice).contains(&LegalAction::SpecialAction(action.clone()))
+    );
     perform(action, &mut game, alice, &mut dm).expect("pay {3} for companion");
 
     let player = game.player(alice).unwrap();
     assert_eq!(player.mana_pool.total(), 0);
     assert_eq!(player.hand.len(), 1);
     assert!(player.companion_special_action_used);
-    assert!(game.stack_is_empty(), "the special action does not use the stack");
+    assert!(
+        game.stack_is_empty(),
+        "the special action does not use the stack"
+    );
     assert_eq!(game.turn.priority_player, Some(alice));
     assert!(!compute_legal_actions(&game, alice).iter().any(|action| {
-        matches!(action, LegalAction::SpecialAction(SpecialAction::Companion { .. }))
+        matches!(
+            action,
+            LegalAction::SpecialAction(SpecialAction::Companion { .. })
+        )
     }));
 }
 

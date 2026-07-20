@@ -1,4 +1,6 @@
-use super::super::lexer::{OwnedLexToken, TokenKind, token_word_refs, trim_lexed_commas};
+use super::super::lexer::{
+    OwnedLexToken, TokenKind, parser_token_word_refs, token_word_refs, trim_lexed_commas,
+};
 use super::lex_chain_helpers::find_verb_lexed;
 use crate::cards::builders::{EffectAst, PlayerAst, TagKey};
 use crate::effect::Value;
@@ -132,7 +134,7 @@ pub(super) fn split_quantified_opponent_then_controller_clauses(
 }
 
 fn starts_quantified_opponent_action(tokens: &[OwnedLexToken]) -> bool {
-    let words = token_word_refs(tokens);
+    let words = parser_token_word_refs(tokens);
     let expected_verb_idx = match words.as_slice() {
         ["each", "opponent" | "opponents", ..] => 2,
         ["for", "each", "opponent" | "opponents", ..] => 3,
@@ -179,7 +181,7 @@ mod tests {
         assert_eq!(clauses.len(), 3);
         assert_eq!(
             super::token_word_refs(clauses[0]),
-            ["each", "opponent", "discards", "a", "card"]
+            ["Each", "opponent", "discards", "a", "card"]
         );
         assert_eq!(
             super::token_word_refs(clauses[1]),
@@ -204,7 +206,7 @@ mod tests {
         assert_eq!(
             super::token_word_refs(clauses[0]),
             [
-                "each",
+                "Each",
                 "opponent",
                 "sacrifices",
                 "a",
@@ -240,6 +242,10 @@ mod tests {
         )
         .expect("player sequence should lex");
         let effects = parse_effect_sentence_lexed(&tokens).expect("player sequence should parse");
+        let effects = match effects.as_slice() {
+            [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
+            effects => effects,
+        };
         assert!(
             matches!(effects.first(), Some(EffectAst::ForEachOpponent { .. })),
             "{effects:#?}"

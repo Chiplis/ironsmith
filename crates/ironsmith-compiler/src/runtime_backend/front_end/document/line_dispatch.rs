@@ -143,7 +143,10 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     },
     LineFamilyRuleDef {
         id: "station-threshold-line",
-        priority: 41,
+        // Threshold rows contain a colon in their activation body. They must
+        // be recognized before the generic activation probe gets a chance to
+        // treat the threshold header as part of the payment cost.
+        priority: 38,
         heads: &[],
         run: run_station_threshold_line_family,
     },
@@ -179,7 +182,10 @@ const LINE_FAMILY_RULES: [LineFamilyRuleDef; 32] = [
     },
     LineFamilyRuleDef {
         id: "activated-line",
-        priority: 60,
+        // A valid colon-separated activation must be classified before the
+        // broad keyword probe, which can otherwise find a keyword in the
+        // effect half and claim the complete line.
+        priority: 39,
         heads: &[],
         run: run_activation_line_family,
     },

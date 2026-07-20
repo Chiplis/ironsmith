@@ -44,6 +44,43 @@ pub(crate) fn compile_delayed_trigger_spec(
                 subject_number: *subject_number,
             },
         ),
+        TriggerSpec::EntersBattlefield {
+            filter,
+            cause_filter,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::EntersBattlefield {
+            filter: filter.clone(),
+            cause_filter: cause_filter.clone(),
+            count: ironsmith_core::trigger_model::CountMode::One,
+            tapped: None,
+        }),
+        TriggerSpec::EntersBattlefieldOneOrMore {
+            filter,
+            cause_filter,
+            ..
+        } => Ok(ironsmith_core::DelayedTriggerSpec::EntersBattlefield {
+            filter: filter.clone(),
+            cause_filter: cause_filter.clone(),
+            count: ironsmith_core::trigger_model::CountMode::OneOrMore,
+            tapped: None,
+        }),
+        TriggerSpec::EntersBattlefieldTapped {
+            filter,
+            cause_filter,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::EntersBattlefield {
+            filter: filter.clone(),
+            cause_filter: cause_filter.clone(),
+            count: ironsmith_core::trigger_model::CountMode::One,
+            tapped: Some(true),
+        }),
+        TriggerSpec::EntersBattlefieldUntapped {
+            filter,
+            cause_filter,
+        } => Ok(ironsmith_core::DelayedTriggerSpec::EntersBattlefield {
+            filter: filter.clone(),
+            cause_filter: cause_filter.clone(),
+            count: ironsmith_core::trigger_model::CountMode::One,
+            tapped: Some(false),
+        }),
         TriggerSpec::IsDealtDamage(filter) => Ok(
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(ChooseSpec::Object(filter.clone())),
         ),

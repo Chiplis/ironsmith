@@ -31,6 +31,21 @@ pub type ConditionalEffect = ironsmith_core::ConditionalEffect<crate::effect::Ef
 /// );
 /// ```
 impl EffectExecutor for ConditionalEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -62,6 +77,12 @@ impl EffectExecutor for ConditionalEffect {
             outcomes.push(execute_effect(game, effect, ctx)?);
         }
 
+        if outcomes.is_empty() {
+            // A false conditional with no else branch did not perform the
+            // guarded action. Preserve that distinction for trailing
+            // "otherwise" effects and other result predicates.
+            return Ok(EffectOutcome::count(0));
+        }
         Ok(EffectOutcome::aggregate(outcomes))
     }
 

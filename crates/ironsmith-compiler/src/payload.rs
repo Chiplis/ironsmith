@@ -222,6 +222,8 @@ impl KeywordAction {
                 | Self::Phasing
                 | Self::Indestructible
                 | Self::Shroud
+                | Self::Daybound
+                | Self::Nightbound
                 | Self::Ward(_)
                 | Self::Wither
                 | Self::Afterlife(_)

@@ -2310,7 +2310,9 @@ pub(super) fn describe_planeswalk_chaos_vote_sequence(effects: &[&Effect]) -> Op
     )
 }
 
-pub(in crate::compiled_text) fn describe_named_vote_conditional_sequence(effects: &[&Effect]) -> Option<String> {
+pub(in crate::compiled_text) fn describe_named_vote_conditional_sequence(
+    effects: &[&Effect],
+) -> Option<String> {
     let [vote_effect, followups @ ..] = effects else {
         return None;
     };

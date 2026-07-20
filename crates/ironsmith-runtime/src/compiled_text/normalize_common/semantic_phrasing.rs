@@ -2,6 +2,12 @@ use super::*;
 
 pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
+    // Optional action branches can acquire the subject twice while composing
+    // a choice effect. Normalize this before the branch-specific early
+    // returns below.
+    normalized = normalized
+        .replace("you may you attach ", "You may attach ")
+        .replace("You may you attach ", "You may attach ");
     normalized = normalized
         .replace("creatures that shares ", "creatures that share ")
         .replace("Creatures that shares ", "Creatures that share ")
@@ -41,6 +47,47 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if normalized.eq_ignore_ascii_case("Destroy all nonbasic lands. For each land destroyed this way, its controller may search its controller's library for a basic land card. For each tagged 'searched' object, put them onto the battlefield. If you do, shuffle that player's library") {
         return "Destroy all nonbasic lands. For each land destroyed this way, its controller may search their library for a basic land card and put it onto the battlefield. Then each player who searched their library this way shuffles".to_string();
     }
+    normalized = normalized
+        .replace(
+            "each player chooses a nonland permanent and put a doom counter on it",
+            "each player chooses a nonland permanent and puts a doom counter on it",
+        )
+        .replace(
+            "Each player chooses a nonland permanent and put a doom counter on it",
+            "Each player chooses a nonland permanent and puts a doom counter on it",
+        )
+        .replace(
+            "all permanent chosen this ways",
+            "all permanents chosen this way",
+        )
+        .replace(
+            "all permanent chosen this way",
+            "all permanents chosen this way",
+        )
+        .replace("attached to its.", "attached to that creature.")
+        .replace(
+            "At the beginning of each player's upkeep, tap an untapped artifact, creature, or land that player controls for each fade counter on this artifact",
+            "At the beginning of each player's upkeep, that player taps an untapped artifact, creature, or land they control for each fade counter on this artifact",
+        );
+    // Coordinated player actions must retain the subject on both verbs when
+    // the second action is conditional or introduces a second effect.
+    normalized = normalized
+        .replace(
+            "if you control an enchanted creature, lose 1 life and you draw an additional card",
+            "if you control an enchanted creature, you lose 1 life and you draw an additional card",
+        )
+        .replace(
+            "Target player draws a card. That player discards a card.",
+            "Target player draws a card, then discards a card.",
+        )
+        .replace(
+            "If that player discard an artifact card this way",
+            "If that player discards an artifact card this way",
+        )
+        .replace(
+            "reveal the top card of your library and you put it into your hand, then lose life equal to that card's mana value",
+            "reveal the top card of your library and put that card into your hand. You lose life equal to that card's mana value",
+        );
     if let Some(compact) = compact_any_player_may_choose_sacrifice_surface(&normalized) {
         normalized = compact;
     }
@@ -859,6 +906,11 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_compact
         == "choose target creature. destroy all auras or equipment attached to that object."
+        || lower_compact == "choose target creature. destroy all auras or equipment attached to its"
+        || lower_compact
+            == "choose target creature. destroy all auras or equipment attached to its."
+        || lower_compact
+            == "choose target creature. destroy all auras or equipment attached to that creature."
     {
         return "Destroy all Auras and Equipment attached to target creature.".to_string();
     }
@@ -1125,6 +1177,22 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         "all permanent cards from your graveyard that was put there from the battlefield this turn",
         "all permanent cards from your graveyard that were put there from the battlefield this turn",
     );
+    // The graveyard-entry filter clause hardcodes singular "was"; fix
+    // agreement when the described noun is plural ("...cards ... that was
+    // put there ..." → "were").
+    for zone_link in [
+        "cards in your graveyard that was put there",
+        "cards in their graveyard that was put there",
+        "cards in a graveyard that was put there",
+        "cards in graveyards that was put there",
+        "cards from your graveyard that was put there",
+        "cards from their graveyard that was put there",
+    ] {
+        if normalized.contains(zone_link) {
+            let fixed = zone_link.replace(" that was put there", " that were put there");
+            normalized = normalized.replace(zone_link, &fixed);
+        }
+    }
     normalized = normalized.replace("+1/+1 counterss", "+1/+1 counters");
     normalized = normalized.replace(
         "put that many +1/+1 counter on it",
@@ -1283,6 +1351,55 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         {
             normalized = format!(
                 "{tap_clause}. That permanent doesn't untap during its controller's next untap step."
+            );
+        }
+    }
+    // A duplicated return-destination suffix is a join artifact.
+    if normalized.contains(" to their owner's hand to their owner's hand") {
+        normalized = normalized.replace(
+            " to their owner's hand to their owner's hand",
+            " to their owner's hand",
+        );
+    }
+    // A may-untap's combat-removal rider is part of the same optional
+    // instruction; a period join would read the removal as mandatory.
+    for (needle, replacement) in [
+        (". Remove it from combat", " and remove it from combat"),
+        (". Remove them from combat", " and remove them from combat"),
+        (
+            ". Remove this creature from combat",
+            " and remove it from combat",
+        ),
+    ] {
+        if let Some(idx) = normalized.find(needle) {
+            let sentence_start = normalized[..idx].rfind(". ").map_or(0, |i| i + 2);
+            if normalized[sentence_start..idx].contains("may untap") {
+                normalized = normalized.replacen(needle, replacement, 1);
+            }
+        }
+    }
+    // The unblocked-attacker rider is one coordinated clause in oracle:
+    // "... assigns no combat damage this turn and defending player loses N".
+    if normalized.contains(" assigns no combat damage this turn. The defending player loses ") {
+        normalized = normalized.replace(
+            " assigns no combat damage this turn. The defending player loses ",
+            " assigns no combat damage this turn and defending player loses ",
+        );
+    }
+    if let Some(idx) = normalized
+        .find(". Permanents tapped this way don't untap during their controllers' untap steps")
+    {
+        // A single-target tap has exactly one tapped object; oracle back-
+        // references it as "It", not the group surface.
+        let before_lower = normalized[..idx].to_ascii_lowercase();
+        let taps_single = before_lower.contains("tap target ")
+            && !before_lower.contains("tap up to")
+            && !before_lower.contains(" targets");
+        if taps_single {
+            normalized = normalized.replacen(
+                "Permanents tapped this way don't untap during their controllers' untap steps",
+                "It doesn't untap during its controller's untap step",
+                1,
             );
         }
     }
@@ -4045,6 +4162,8 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         )
         .replace("you may you sacrifice ", "You may sacrifice ")
         .replace("You may you sacrifice ", "You may sacrifice ")
+        .replace("you may you attach ", "You may attach ")
+        .replace("You may you attach ", "You may attach ")
         .replace(
             "rather than pay this spell's mana cost (Parsed alternative cost)",
             "rather than pay this spell's mana cost",

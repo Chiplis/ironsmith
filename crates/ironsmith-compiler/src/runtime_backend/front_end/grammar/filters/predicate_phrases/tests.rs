@@ -366,7 +366,10 @@ fn parse_predicate_demonstrative_permanent_card_strips_article() -> Result<(), C
 #[test]
 fn parse_predicate_preserves_last_known_copula_and_negation() -> Result<(), CardTextError> {
     let creature = ObjectFilter::creature();
-    let horror = ObjectFilter::default().with_subtype(Subtype::Horror);
+    let horror = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        ..ObjectFilter::default().with_subtype(Subtype::Horror)
+    };
     let demon = ObjectFilter::default().with_subtype(Subtype::Demon);
 
     for (text, expected) in [
@@ -592,7 +595,6 @@ fn parse_predicate_conjoined_control_uses_capture_parser() -> Result<(), CardTex
     let predicate_tokens = predicate_tokens_after_if(&tokens);
 
     let parsed = parse_predicate(&predicate_tokens)?;
-
     let PredicateAst::And(left, right) = parsed else {
         panic!("expected conjoined control predicate");
     };
@@ -805,9 +807,12 @@ fn parse_predicate_control_conditions_use_shared_capture_parser() -> Result<(), 
         ),
         (
             "If you control three or more creatures with different powers",
-            PredicateAst::PlayerHasAtLeastWithDifferentPowers {
+            PredicateAst::PlayerHasAtLeast {
                 player: PlayerAst::You,
-                filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                filter: ObjectFilter {
+                    distinct_powers: true,
+                    ..ObjectFilter::creature().controlled_by(PlayerFilter::You)
+                },
                 count: 3,
             },
         ),
@@ -1697,13 +1702,10 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
         ),
         (
             "If that creature was blue or black",
-            PredicateAst::TaggedMatches(
-                TagKey::from(IT_TAG),
-                ObjectFilter {
-                    colors: Some(ColorSet::BLUE.union(ColorSet::BLACK)),
-                    ..Default::default()
-                },
-            ),
+            PredicateAst::ItMatchedLastKnown(ObjectFilter {
+                colors: Some(ColorSet::BLUE.union(ColorSet::BLACK)),
+                ..Default::default()
+            }),
         ),
     ] {
         let tokens = lex_line(text, 0)?;
@@ -1846,7 +1848,12 @@ fn parse_predicate_spell_lifecycle_uses_shared_capture_parser() -> Result<(), Ca
             "If no spells were cast last turn",
             PredicateAst::NoSpellsWereCastLastTurn,
         ),
-        ("If this spell was kicked", PredicateAst::ThisSpellWasKicked),
+        (
+            "If this spell was kicked",
+            PredicateAst::TurnHistory(TurnHistoryPredicateAst::SourceWasKicked {
+                surface: SourceReferenceSurface::ThisPermanentType("this spell".to_string()),
+            }),
+        ),
         (
             "If this spell was bargained",
             PredicateAst::ThisSpellPaidLabel("Bargain".into()),
@@ -3166,10 +3173,9 @@ fn parse_predicate_compares_object_count_with_source_counter_count() -> Result<(
     };
     assert_eq!(left, Value::Count(attacking_creatures));
     assert_eq!(operator, ValueComparisonOperator::GreaterThan);
-    let Value::CountersOn(spec, Some(CounterType::Quest)) = right else {
+    let Value::CountersOnSource(CounterType::Quest) = right else {
         panic!("expected quest counters on the source, got {right:?}");
     };
-    assert!(matches!(spec.unhinted(), crate::target::ChooseSpec::Source));
     Ok(())
 }
 

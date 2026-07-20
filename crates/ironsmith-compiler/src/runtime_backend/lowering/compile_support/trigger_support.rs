@@ -9,6 +9,183 @@ use crate::triggers::Trigger;
 
 use super::LoweredEffects;
 
+fn one_or_more_subject_description(filter: &crate::target::ObjectFilter) -> String {
+    fn has_subtype_named(filter: &crate::target::ObjectFilter, word: &str) -> bool {
+        filter
+            .subtypes
+            .iter()
+            .any(|subtype| subtype.to_string().eq_ignore_ascii_case(word))
+            || filter
+                .any_of
+                .iter()
+                .any(|branch| has_subtype_named(branch, word))
+    }
+
+    let pluralize_word = |word: &str| {
+        let lower = word.to_ascii_lowercase();
+        let plural = match lower.as_str() {
+            "elf" => "elves".to_string(),
+            "dwarf" => "dwarves".to_string(),
+            "wolf" => "wolves".to_string(),
+            "werewolf" => "werewolves".to_string(),
+            "mouse" => "mice".to_string(),
+            "plains" | "urzas" | "myr" | "merfolk" | "equipment" => word.to_string(),
+            _ if lower.ends_with('y')
+                && lower.len() > 1
+                && !matches!(
+                    lower.as_bytes().get(lower.len() - 2).copied(),
+                    Some(b'a' | b'e' | b'i' | b'o' | b'u')
+                ) =>
+            {
+                format!("{}ies", &word[..word.len() - 1])
+            }
+            _ if lower.ends_with('s')
+                || lower.ends_with('x')
+                || lower.ends_with('z')
+                || lower.ends_with("ch")
+                || lower.ends_with("sh") =>
+            {
+                format!("{word}es")
+            }
+            _ => format!("{word}s"),
+        };
+        if word.chars().next().is_some_and(char::is_uppercase) {
+            let mut chars = plural.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().collect::<String>() + chars.as_str(),
+                None => String::new(),
+            }
+        } else {
+            plural
+        }
+    };
+    let description = filter
+        .description()
+        .split_whitespace()
+        .map(|word| {
+            let bare_word = word.trim_end_matches(',');
+            let punctuation = &word[bare_word.len()..];
+            let is_subtype = has_subtype_named(filter, bare_word);
+            if is_subtype
+                || matches!(
+                    bare_word,
+                    "artifact"
+                        | "battle"
+                        | "card"
+                        | "creature"
+                        | "enchantment"
+                        | "land"
+                        | "permanent"
+                        | "planeswalker"
+                        | "player"
+                        | "source"
+                        | "spell"
+                        | "token"
+                )
+            {
+                format!("{}{punctuation}", pluralize_word(bare_word))
+            } else {
+                word.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+    let description = description
+        .strip_prefix("a ")
+        .or_else(|| description.strip_prefix("an "))
+        .unwrap_or(&description);
+    let description = if filter.other {
+        description
+            .strip_prefix("another ")
+            .map(|rest| format!("other {rest}"))
+            .unwrap_or_else(|| description.to_string())
+    } else {
+        description.to_string()
+    };
+    format!("one or more {description}")
+}
+
+fn damage_source_description(
+    source: &crate::target::ObjectFilter,
+    source_surface: &crate::triggers::DamageSourceSurface,
+) -> String {
+    let description = source.description();
+    if *source_surface == crate::triggers::DamageSourceSurface::Source {
+        description
+            .split_whitespace()
+            .map(|word| if word == "permanent" { "source" } else { word })
+            .collect::<Vec<_>>()
+            .join(" ")
+    } else {
+        description
+    }
+}
+
+fn describe_damage_to_object_and_player_union(
+    left: &TriggerSpec,
+    right: &TriggerSpec,
+) -> Option<String> {
+    let (source, target, source_surface, player_source, player, player_source_surface) =
+        match (left, right) {
+            (
+                TriggerSpec::DealsDamageTo {
+                    source,
+                    target,
+                    source_surface,
+                },
+                TriggerSpec::DealsDamageToPlayer {
+                    source: player_source,
+                    player,
+                    source_surface: player_source_surface,
+                },
+            ) => (
+                source,
+                target,
+                source_surface,
+                player_source,
+                player,
+                player_source_surface,
+            ),
+            (
+                TriggerSpec::DealsDamageToPlayer {
+                    source: player_source,
+                    player,
+                    source_surface: player_source_surface,
+                },
+                TriggerSpec::DealsDamageTo {
+                    source,
+                    target,
+                    source_surface,
+                },
+            ) => (
+                source,
+                target,
+                source_surface,
+                player_source,
+                player,
+                player_source_surface,
+            ),
+            _ => return None,
+        };
+
+    if source != player_source
+        || source_surface != player_source_surface
+        || *player != PlayerFilter::Any
+        || !target.union_is_one_or_more()
+        || target.union_connective() != crate::filter::ObjectFilterUnionConnective::AndOr
+    {
+        return None;
+    }
+    let target_description = one_or_more_subject_description(target);
+    let target_description = target_description
+        .strip_prefix("one or more ")
+        .unwrap_or(&target_description);
+    Some(format!(
+        "Whenever {} deals damage to one or more {target_description} and/or players",
+        damage_source_description(source, source_surface),
+    ))
+}
+
 pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
     match trigger {
         TriggerSpec::WithIntro { intro, trigger } => compile_trigger_spec(*trigger)
@@ -273,21 +450,29 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             one_or_more,
         } => Trigger::tokens_created(player, filter, one_or_more),
         TriggerSpec::LeavesBattlefield(filter) => Trigger::leaves_battlefield(filter),
-        TriggerSpec::Dies(filter) => Trigger::new(
-            crate::triggers::zone_changes::ZoneChangeTrigger::new()
-                .from(crate::zone::Zone::Battlefield)
-                .to(crate::zone::Zone::Graveyard)
-                .filter(filter)
-                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies),
-        ),
-        TriggerSpec::DiesOneOrMore(filter) => Trigger::new(
-            crate::triggers::zone_changes::ZoneChangeTrigger::new()
-                .from(crate::zone::Zone::Battlefield)
-                .to(crate::zone::Zone::Graveyard)
-                .filter(filter)
-                .count(crate::triggers::CountMode::OneOrMore)
-                .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies),
-        ),
+        TriggerSpec::Dies(filter) => {
+            let display = format!("Whenever {} dies", filter.description());
+            Trigger::new(
+                crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                    .from(crate::zone::Zone::Battlefield)
+                    .to(crate::zone::Zone::Graveyard)
+                    .filter(filter)
+                    .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies),
+            )
+            .with_display_label(display)
+        }
+        TriggerSpec::DiesOneOrMore(filter) => {
+            let display = format!("Whenever {} die", one_or_more_subject_description(&filter));
+            Trigger::new(
+                crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                    .from(crate::zone::Zone::Battlefield)
+                    .to(crate::zone::Zone::Graveyard)
+                    .filter(filter)
+                    .count(crate::triggers::CountMode::OneOrMore)
+                    .graveyard_surface(crate::triggers::GraveyardTriggerSurface::Dies),
+            )
+            .with_display_label(display)
+        }
         TriggerSpec::DiesDuringTurn {
             filter,
             one_or_more,
@@ -456,7 +641,8 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                         .cause_filter(cause_filter),
                 )
             } else {
-                Trigger::enters_battlefield(filter, cause_filter)
+                let display = format!("Whenever {} enters the battlefield", filter.description());
+                Trigger::enters_battlefield(filter, cause_filter).with_display_label(display)
             }
         }
         TriggerSpec::EntersBattlefieldOneOrMore {
@@ -465,6 +651,10 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             origin_condition,
         } => {
             if let Some(origin_condition) = origin_condition {
+                let display = format!(
+                    "Whenever {} enter the battlefield, if one or more of them entered from exile or was cast from exile",
+                    one_or_more_subject_description(&filter),
+                );
                 Trigger::new(
                     crate::triggers::zone_changes::ZoneChangeTrigger::new()
                         .to(crate::zone::Zone::Battlefield)
@@ -473,8 +663,14 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                         .cause_filter(cause_filter)
                         .origin_condition(origin_condition),
                 )
+                .with_display_label(display)
             } else {
+                let display = format!(
+                    "Whenever {} enter the battlefield",
+                    one_or_more_subject_description(&filter),
+                );
                 Trigger::enters_battlefield_one_or_more(filter, cause_filter)
+                    .with_display_label(display)
             }
         }
         TriggerSpec::EntersBattlefieldFromZone {
@@ -613,7 +809,14 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             "When the creature it haunts dies".to_string(),
         ),
         TriggerSpec::Either(left, right) => {
-            Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right))
+            let display = describe_damage_to_object_and_player_union(&left, &right);
+            let trigger =
+                Trigger::either(compile_trigger_spec(*left), compile_trigger_spec(*right));
+            if let Some(display) = display {
+                trigger.with_display_label(display)
+            } else {
+                trigger
+            }
         }
     }
 }

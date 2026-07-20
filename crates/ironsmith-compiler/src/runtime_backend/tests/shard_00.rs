@@ -1746,7 +1746,7 @@ pub(super) fn rewrite_structure_triggered_conditional_clause_keeps_search_action
         ),
         (
             "When this creature dies, if it had no time counters on it, you may search your library for an enchantment card, put it onto the battlefield, then shuffle.",
-            "TriggeringObjectHadCounters",
+            "TriggeringObjectHadNoCounter",
             &[
                 "you",
                 "may",
@@ -2697,8 +2697,14 @@ pub(super) fn rewrite_triggered_keeps_linked_exile_permission_tax_in_resolution(
         None,
     )?;
 
-    let crate::cards::builders::LineAst::Triggered { effects, .. } = parsed else {
-        panic!("linked exile-tax program must remain one triggered ability, got {parsed:#?}");
+    let effects = match parsed {
+        crate::cards::builders::LineAst::Triggered { effects, .. } => effects,
+        crate::cards::builders::LineAst::Ability(parsed) => parsed
+            .effects_ast
+            .expect("linked exile-tax ability must retain parsed effects"),
+        other => {
+            panic!("linked exile-tax program must remain one triggered ability, got {other:#?}")
+        }
     };
     let debug = format!("{effects:#?}");
     assert_eq!(effects.len(), 4, "{debug}");
@@ -3395,9 +3401,7 @@ pub(super) fn rewrite_zone_counter_helpers_parse_put_or_remove_counter_modes() {
         .expect("put-or-remove counter clause should parse");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("UnlessAction"), "{debug}");
-    assert!(debug.contains("PutCounters"), "{debug}");
-    assert!(debug.contains("RemoveUpToAnyCounters"), "{debug}");
+    assert!(debug.contains("PutOrRemoveCounters"), "{debug}");
     assert!(debug.contains("PlusOnePlusOne"), "{debug}");
 }
 
@@ -3442,7 +3446,8 @@ pub(super) fn rewrite_zone_counter_helpers_parse_for_each_spells_youve_cast_this
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("PutCounters"), "{debug}");
-    assert!(debug.contains("SpellsCastThisTurn(You)"), "{debug}");
+    assert!(debug.contains("TurnHistoryCount"), "{debug}");
+    assert!(debug.contains("SpellsCast"), "{debug}");
 }
 
 #[test]
@@ -3624,6 +3629,21 @@ pub(super) fn rewrite_zone_counter_helpers_keep_trailing_if_counter_clause_after
                 )]
             ));
         }
+        [crate::cards::builders::EffectAst::TrailingIf { predicate, effects }] => {
+            assert!(matches!(
+                predicate,
+                crate::cards::builders::PredicateAst::ItMatches(_)
+            ));
+            assert!(matches!(
+                effects.as_slice(),
+                [crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::PutCounters { .. },
+                        ..
+                    }
+                )]
+            ));
+        }
         other => panic!("expected conditional put-counters clause, got {other:?}"),
     }
 }
@@ -3650,6 +3670,21 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_counter_clause_after_struct
             ));
             assert!(matches!(
                 if_true.as_slice(),
+                [crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::Counter { .. },
+                        ..
+                    }
+                )]
+            ));
+        }
+        [crate::cards::builders::EffectAst::TrailingIf { predicate, effects }] => {
+            assert!(matches!(
+                predicate,
+                crate::cards::builders::PredicateAst::ItMatches(_)
+            ));
+            assert!(matches!(
+                effects.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
                         action: crate::cards::builders::SubjectVerbActionAst::Counter { .. },
@@ -3687,6 +3722,21 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_damage_clause_after_structu
             ));
             assert!(matches!(
                 if_true.as_slice(),
+                [crate::cards::builders::EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
+                        ..
+                    }
+                )]
+            ));
+        }
+        [crate::cards::builders::EffectAst::TrailingIf { predicate, effects }] => {
+            assert!(matches!(
+                predicate,
+                crate::cards::builders::PredicateAst::ItMatches(_)
+            ));
+            assert!(matches!(
+                effects.as_slice(),
                 [crate::cards::builders::EffectAst::SubjectVerb(
                     crate::cards::builders::SubjectVerbEffectAst {
                         action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },

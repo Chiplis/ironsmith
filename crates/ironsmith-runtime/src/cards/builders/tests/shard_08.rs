@@ -2311,7 +2311,7 @@ pub(super) fn foul_tongue_invocation_condition_matches_when_behold_label_was_pai
     game.object_mut(source)
         .expect("source spell object should exist")
         .optional_costs_paid
-        .mark_label_paid("Behold");
+        .mark_label_paid("Behold Dragon");
     let condition_matches = crate::condition_eval::evaluate_condition_cast_time(
         &game,
         &condition,

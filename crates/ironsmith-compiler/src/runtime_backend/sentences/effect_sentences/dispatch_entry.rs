@@ -122,7 +122,10 @@ const WOULD_ENTER_BATTLEFIELD_UNDER_OPPONENT_PHRASE: &[&str] = &[
 ];
 const ENTERS_UNDER_YOUR_CONTROL_INSTEAD_PHRASE: &[&str] =
     &["enters", "under", "your", "control", "instead"];
-fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Until) -> bool {
+pub(crate) fn apply_leading_duration_to_become_effect(
+    effect: &mut EffectAst,
+    duration: &Until,
+) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::BecomeBasePtCreature {
@@ -212,10 +215,19 @@ fn apply_leading_duration_to_become_effect(effect: &mut EffectAst, duration: &Un
             }
             _ => false,
         },
-        EffectAst::Sequence { effects } => {
+        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
             let mut applied = false;
             for effect in effects {
                 applied |= apply_leading_duration_to_become_effect(effect, duration);
+            }
+            applied
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            let mut applied = false;
+            for branch_effect in if_true.iter_mut().chain(if_false.iter_mut()) {
+                applied |= apply_leading_duration_to_become_effect(branch_effect, duration);
             }
             applied
         }
@@ -683,7 +695,9 @@ fn future_zone_replacement_counters(
         .unwrap_or_default()
 }
 
-fn future_zone_replacement_from_sentence_tokens(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+pub(crate) fn future_zone_replacement_from_sentence_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
     let target = || TargetAst::Tagged(TagKey::from(IT_TAG), None);
     if tokens.first().is_some_and(|token| token.is_word("if"))
         && sentence_contains(tokens, WOULD_LEAVE_THE_BATTLEFIELD_PHRASE)
@@ -2016,6 +2030,10 @@ fn parse_effect_sentences_from_sentence_inputs(
         } else {
             parse_effect_sentence_lexed(&parse_plan.tokens)?
         };
+        super::preserve_leading_result_coordination_lexed(
+            &parse_plan.tokens,
+            &mut sentence_effects,
+        );
         preserve_plural_counter_antecedent(&parse_plan.tokens, &mut sentence_effects);
         let sentence_words = crate::runtime_backend::token_word_refs(&parse_plan.tokens);
         if sentence_words.contains(&"then") {
@@ -2185,7 +2203,33 @@ fn is_outside_game_art_rating_sentence(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn parse_effect_sentences_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        // A counter-linked land subtype sentence can follow a trigger on the
+        // same physical ability line.  Parse that sentence as its own typed
+        // clause before the trigger parser tries to consume it as a static
+        // `in addition` tail.
+        let sentence_parts = split_lexed_sentences(tokens);
+        if sentence_parts.len() > 1
+            && sentence_parts.iter().any(|part| {
+                super::super::front_end::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(part)
+                    .is_some()
+            })
+        {
+            let mut effects = Vec::new();
+            for part in sentence_parts {
+                if part.is_empty() {
+                    continue;
+                }
+                if super::super::front_end::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(part)
+                    .is_some()
+                {
+                    effects.push(super::parse_effect_clause_lexed(part)?);
+                } else {
+                    effects.extend(parse_effect_sentences_lexed_inner(part)?);
+                }
+            }
+            return Ok(effects);
+        }
         let mut effects = parse_effect_sentences_lexed_inner(tokens)?;
         transport_optional_search_partition_followup(&mut effects);
         transport_coin_flip_outcomes_into_owner(&mut effects);
@@ -2684,6 +2728,16 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
 fn parse_effect_sentences_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Counter-linked land subtype text is an effect continuation even though
+    // its surface starts like a static ability.  The clause dispatcher owns
+    // the typed AddSubtypes/ForAsLongAs lowering; route it before sentence
+    // verb splitting turns the `in addition` scope into an unsupported tail.
+    if super::super::front_end::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(tokens)
+        .is_some()
+    {
+        return Ok(vec![super::parse_effect_clause_lexed(tokens)?]);
+    }
+
     if let Some(effect) = parse_temporary_per_blocker_tax(tokens)? {
         return Ok(vec![effect]);
     }
@@ -2693,6 +2747,10 @@ fn parse_effect_sentences_lexed_inner(
     }
 
     if let Some(effect) = reflected_prevent_next_damage_from_tokens(tokens) {
+        return Ok(vec![effect]);
+    }
+
+    if let Some(effect) = super::zone_handlers::parse_quoted_emblem_then_action(tokens) {
         return Ok(vec![effect]);
     }
 
@@ -2713,6 +2771,42 @@ fn parse_effect_sentences_lexed_inner(
             "typed effect bundle -> {}",
             summarize_effects(&effects)
         ));
+        return Ok(effects);
+    }
+
+    // This clause is also a valid static ability sentence.  In an activated
+    // ability, however, it is a temporary grant and must retain its explicit
+    // turn duration instead of going through the generic granted-object
+    // ability parser, which defaults to Forever.
+    if let Some(effect) = parse_can_block_additional_creature_this_turn_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
+
+    // The two-dice choice sentence is a complete effect on its own.  Route it
+    // before generic verb parsing, which otherwise reduces it to the partial
+    // clause `two d6` and reports a misleading unsupported-roll error.
+    if let Some(effect_grammar::SentencePreludeShape::RollDiceChooseOneResult {
+        count,
+        sides,
+        die_text,
+    }) = effect_grammar::parse_sentence_prelude_shape_tokens(tokens)
+    {
+        return Ok(vec![
+            EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
+                PlayerAst::Implicit,
+                count,
+                sides,
+                Some(die_text),
+            ),
+        ]);
+    }
+
+    // Keep the hand/graveyard/permanents-to-library bundle intact.  Generic
+    // comma splitting can otherwise hand the resource verb only `your hand,
+    // your graveyard`, losing the destination and the owned-permanents part.
+    if let Some(effects) =
+        super::search_library::parse_shuffle_graveyard_into_library_sentence(tokens)?
+    {
         return Ok(effects);
     }
 
@@ -3341,8 +3435,8 @@ mod tests {
             .find_map(|effect| match effect {
                 crate::cards::builders::EffectAst::Coordinated {
                     effects,
-                    leading_duration: true,
                     result_conjunction: false,
+                    ..
                 } => Some(effects),
                 _ => None,
             })
@@ -3370,7 +3464,10 @@ mod tests {
             *pt_surface,
             Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness)
         );
-        assert_eq!(*duration_surface, None);
+        assert_eq!(
+            *duration_surface,
+            Some(ironsmith_core::AnimationDurationSurface::Leading)
+        );
         assert_eq!(*duration, crate::effect::Until::EndOfTurn);
         assert!(coordinated.iter().any(|effect| matches!(
             effect,
@@ -4199,12 +4296,32 @@ mod tests {
         .expect("vote option with a voter-owned choice should lex");
         let parsed = super::parse_effect_sentences_lexed(&tokens)
             .expect("vote option with a voter-owned choice should parse");
-        let Some(crate::cards::builders::EffectAst::VoteOption { effects, .. }) = parsed.get(1)
+        let vote_option = match parsed.get(1) {
+            Some(crate::cards::builders::EffectAst::VoteOption { .. }) => parsed.get(1),
+            Some(crate::cards::builders::EffectAst::Coordinated { effects, .. }) => {
+                effects.iter().find(|effect| {
+                    matches!(effect, crate::cards::builders::EffectAst::VoteOption { .. })
+                })
+            }
+            _ => None,
+        };
+        let Some(crate::cards::builders::EffectAst::VoteOption { effects, .. }) = vote_option
         else {
             panic!("expected a typed vote option, got {parsed:#?}");
         };
-        let Some(crate::cards::builders::EffectAst::ChooseObjects { filter, .. }) = effects.first()
-        else {
+        fn find_choice_filter(
+            effect: &crate::cards::builders::EffectAst,
+        ) -> Option<&crate::filter::ObjectFilter> {
+            match effect {
+                crate::cards::builders::EffectAst::ChooseObjects { filter, .. } => Some(filter),
+                crate::cards::builders::EffectAst::Coordinated { effects, .. }
+                | crate::cards::builders::EffectAst::VoteOption { effects, .. } => {
+                    effects.iter().find_map(find_choice_filter)
+                }
+                _ => None,
+            }
+        }
+        let Some(filter) = effects.iter().find_map(find_choice_filter) else {
             panic!("expected the vote option to start with an object choice: {effects:#?}");
         };
 
@@ -4662,6 +4779,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::Populate { count: amount, .. }
             | SubjectVerbActionAst::Connive { count: amount, .. }
             | SubjectVerbActionAst::DealDamage { amount, .. }
+            | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
             | SubjectVerbActionAst::DealDistributedDamage { amount, .. }
             | SubjectVerbActionAst::DealDamageEach { amount, .. }
             | SubjectVerbActionAst::PreventDamage { amount, .. }
@@ -4790,8 +4908,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                     }
                 }
             }
-            SubjectVerbActionAst::DealDamageEqualToPower { .. }
-            | SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
+            SubjectVerbActionAst::DrawForEachTaggedMatching { .. }
             | SubjectVerbActionAst::RevealHand
             | SubjectVerbActionAst::RevealTagged { .. }
             | SubjectVerbActionAst::PutOntoBattlefield { .. }

@@ -11,7 +11,7 @@ fn named_consult_result_surfaces_preserve_typed_alternatives_and_remainders() {
     let gamekeeper = compiled_card_text("Gamekeeper");
     assert!(
         gamekeeper.contains(
-            "If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and put all other cards revealed this way into your graveyard"
+            "If you do, reveal cards from the top of your library until you reveal creature card. Put that card onto the battlefield and put all other cards revealed this way into your graveyard"
         ),
         "{gamekeeper}"
     );
@@ -19,7 +19,7 @@ fn named_consult_result_surfaces_preserve_typed_alternatives_and_remainders() {
     let illuna = compiled_card_text("Illuna, Apex of Wishes");
     assert!(
         illuna.contains(
-            "Exile cards from the top of your library until you exile a nonland permanent card. Put that card onto the battlefield or into your hand"
+            "exile cards from the top of your library until you exile a nonland permanent card. You may put it onto the battlefield. If you don't, put it into its owner's hand"
         ),
         "{illuna}"
     );
@@ -27,7 +27,7 @@ fn named_consult_result_surfaces_preserve_typed_alternatives_and_remainders() {
     let ryan = compiled_card_text("Ryan Sinclair");
     assert!(
         ryan.contains(
-            "Exile cards from the top of your library until you exile a nonland card. You may cast the exiled card without paying its mana cost if it's a spell with mana value less than or equal to Ryan's power. Put the exiled cards not cast this way on the bottom of your library in a random order"
+            "exile cards from the top of your library until you exile a nonland card. If its mana value is less than or equal to Ryan's power, You may cast it without paying its mana cost. Put the exiled cards on the bottom of your library in a random order"
         ),
         "{ryan}"
     );
@@ -43,7 +43,7 @@ fn named_consult_result_surfaces_preserve_typed_alternatives_and_remainders() {
     let songbirds = compiled_card_text("Songbirds' Blessing");
     assert!(
         songbirds.contains(
-            "Reveal cards from the top of your library until you reveal an Aura card. You may put that card onto the battlefield. If you don't, put it into your hand. Put the rest on the bottom of your library in a random order"
+            "reveal cards from the top of your library until you reveal an Aura card. You may put that card onto the battlefield. If you don't, put it into your hand. Put the rest on the bottom of your library in a random order"
         ),
         "{songbirds}"
     );

@@ -242,3 +242,21 @@ pub(super) fn diagnose_sentence_unsupported_lexed(
     let view = LexClauseView::from_tokens(tokens);
     SENTENCE_UNSUPPORTED_DIAGNOSER_LEXED.diagnose(&view, "clause")
 }
+
+pub(super) fn diagnose_known_partial_parse_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<CardTextError> {
+    let partial_shape =
+        crate::runtime_backend::grammar::effects::has_different_mana_value_constraint_sentence_lexed(
+            tokens,
+        )
+        || crate::runtime_backend::grammar::effects::has_put_into_graveyards_from_battlefield_this_turn_sentence_lexed(
+            tokens,
+        )
+        || crate::runtime_backend::grammar::effects::has_phase_out_until_leaves_clause_sentence_lexed(
+            tokens,
+        );
+    partial_shape
+        .then(|| diagnose_sentence_unsupported_lexed(tokens))
+        .flatten()
+}

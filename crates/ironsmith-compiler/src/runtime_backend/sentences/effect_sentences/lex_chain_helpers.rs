@@ -38,6 +38,15 @@ pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
     find_verb_lexed(tokens).is_some()
         || has_effect_head_without_verb_lexed(tokens)
         || chain_grammar::starts_with_player_may_tokens(tokens)
+        // `copy` is a real effect head, but it is intentionally kept out of
+        // the generic chain-verb vocabulary because copy parsing has several
+        // specialized target/retarget shapes. Still recognize it here so a
+        // following coordinated clause is not merged into the copy parser's
+        // prefix-only result.
+        || super::super::grammar::effects::clause_pattern_shapes::parse_copy_clause_shape_tokens(
+            tokens,
+        )
+        .is_some_and(|shape| shape.copy_word == 0)
 }
 
 pub(crate) fn split_segments_on_comma_then_lexed(

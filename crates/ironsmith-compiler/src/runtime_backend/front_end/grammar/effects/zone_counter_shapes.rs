@@ -806,7 +806,8 @@ pub(crate) fn player_filter_for_half_reference(player: PlayerAst) -> Option<Play
         PlayerAst::LowestLifeTied => Some(PlayerFilter::LowestLifeTied),
         PlayerAst::ThatPlayerOrTargetController
         | PlayerAst::ItsController
-        | PlayerAst::ItsOwner => None,
+        | PlayerAst::ItsOwner
+        | PlayerAst::Enchanted => None,
     }
 }
 

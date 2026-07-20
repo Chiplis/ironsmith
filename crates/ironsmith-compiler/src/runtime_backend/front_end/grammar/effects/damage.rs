@@ -169,7 +169,7 @@ mod tests {
                 "player",
                 "or",
                 "that",
-                "planeswalker",
+                "planeswalkers",
                 "controller",
                 "controls"
             ]

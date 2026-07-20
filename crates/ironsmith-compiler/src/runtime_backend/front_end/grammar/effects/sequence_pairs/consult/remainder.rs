@@ -91,6 +91,19 @@ pub(crate) fn is_if_declined_put_match_into_hand_shape(tokens: &[OwnedLexToken])
             return true;
         }
     }
+    let words = TokenWordView::new(tokens).word_refs();
+    if words.len() == 13
+        && permission_shapes::exact_words(&words[..2], &["if", "you"])
+        && permission_shapes::exact_any_words(&words[2..3], &[&["dont"], &["don't"], &["don’t"]])
+        && permission_shapes::exact_words(
+            &words[3..],
+            &[
+                "cast", "that", "card", "this", "way", "put", "it", "into", "your", "hand",
+            ],
+        )
+    {
+        return true;
+    }
     primitives::parse_prefix(tokens, declined_move_prefix).is_some()
 }
 

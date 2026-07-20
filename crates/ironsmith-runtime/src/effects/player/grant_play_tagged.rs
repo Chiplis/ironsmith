@@ -133,13 +133,12 @@ impl GrantPlayTaggedEffect {
                 Self::next_turn_number_for_player(game, player)
             }
             GrantPlayTaggedDuration::UntilYourNextEndStep => {
-                if game.is_active_player(player)
-                    && !matches!(game.turn.phase, crate::game_state::Phase::Ending)
-                {
-                    game.turn.turn_number
-                } else {
-                    Self::next_turn_number_for_player(game, player)
-                }
+                // The grant registry stores an end-of-turn boundary rather
+                // than a phase-step marker. Keep the same one-turn boundary
+                // used by the tagged free-cast implementation so a grant
+                // created during the active player's turn remains visible
+                // until the next end-step window is crossed.
+                game.turn.turn_number.saturating_add(1)
             }
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,

@@ -4993,7 +4993,13 @@ pub(super) fn finalize_spell_cast(
                 cast_filter.targets_player = None;
                 cast_filter.targets_object = None;
                 cast_filter.alternative_cast = None;
-                cast_filter.matches(&spell_obj, &ctx, game).then_some(idx)
+                // A dynamic filter such as `{chosen name}` is relative to
+                // the permanent/effect that established the reduction, not
+                // to the spell currently being evaluated.
+                let effect_ctx = ctx.clone().with_source(effect.source);
+                cast_filter
+                    .matches(&spell_obj, &effect_ctx, game)
+                    .then_some(idx)
             })
             .collect::<Vec<_>>();
         for idx in matching_effects {

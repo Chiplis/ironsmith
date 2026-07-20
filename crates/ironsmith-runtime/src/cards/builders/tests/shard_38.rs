@@ -168,9 +168,10 @@ pub(super) fn living_inferno_reuses_every_distributed_damage_target_as_a_source(
         ),
         "{rendered}"
     );
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered
-            .contains("Each of those creatures deals damage equal to its power to this creature"),
+        rendered_lower.contains("for each creature dealt damage this way")
+            && rendered_lower.contains("deals damage equal to its power to this creature"),
         "{rendered}"
     );
 }

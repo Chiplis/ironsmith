@@ -164,6 +164,12 @@ pub fn normalize_targets_for_requirements(
     proposed: Vec<Target>,
 ) -> Option<Vec<Target>> {
     let counts = assign_target_counts(requirements, &proposed, true)?;
+    // A chooser may provide one target for a repeated `that player`-style
+    // reference while the lowered program exposes two compatible target
+    // requirements.  When autofilling the second requirement, preserve the
+    // chooser's selection as the first preference instead of silently
+    // replacing it with the first legal player.
+    let proposed_preference = proposed.clone();
     let mut out = Vec::new();
     let mut cursor = 0usize;
     let mut used_by_group = HashMap::new();
@@ -179,7 +185,17 @@ pub fn normalize_targets_for_requirements(
 
         if selected.len() < req.min_targets {
             let legal_pool = legal_pool_for_selected(req, &selected)?;
-            for legal in &legal_pool {
+            let mut ordered_pool = proposed_preference
+                .iter()
+                .filter(|target| legal_pool.contains(target))
+                .copied()
+                .collect::<Vec<_>>();
+            for legal in legal_pool.iter().copied() {
+                if !ordered_pool.contains(&legal) {
+                    ordered_pool.push(legal);
+                }
+            }
+            for legal in &ordered_pool {
                 if selected.len() >= req.min_targets {
                     break;
                 }

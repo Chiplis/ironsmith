@@ -12,13 +12,10 @@ fn parses_active_and_passive_consult_traversal_surfaces() {
     ))
     .unwrap();
     assert_eq!(active.mode, LibraryConsultModeAst::Exile);
-    assert_eq!(
-        active.stop.stop_rule,
-        LibraryConsultStopRuleAst::MatchCount(Value::Fixed(1))
-    );
+    assert_eq!(active.stop.stop_rule, LibraryConsultStopRuleAst::FirstMatch);
     assert!(permission_shapes::exact_tokens(
         &active.stop.filter,
-        &["nonland", "card"]
+        &["a", "nonland", "card"]
     ));
 
     let passive = parse_consult_traversal_shape(&lex(

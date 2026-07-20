@@ -2474,6 +2474,7 @@ pub(super) fn test_curse_aura_attaches_to_player_and_triggers_on_enchanted_playe
     game.turn.priority_player = Some(alice);
 
     let curse_def = CardDefinitionBuilder::new(CardId::new(), "Curse Runtime Variant")
+        .mana_cost(ManaCost::new())
         .card_types(vec![CardType::Enchantment])
         .subtypes(vec![crate::types::Subtype::Aura])
         .parse_text(

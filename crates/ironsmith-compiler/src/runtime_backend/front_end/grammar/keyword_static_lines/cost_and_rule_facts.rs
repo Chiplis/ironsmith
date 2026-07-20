@@ -102,16 +102,26 @@ pub(crate) fn parse_equip_cost_modifier_head_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<EquipCostModifierHead> {
     let words = crate::runtime_backend::util::possessive_normalized_word_refs(
-        &crate::runtime_backend::token_word_refs(tokens),
+        &crate::runtime_backend::lexer::parser_token_word_refs(tokens),
     );
+    let starts_with = |prefix: &[&str]| {
+        words.len() >= prefix.len()
+            && words
+                .iter()
+                .zip(prefix)
+                .all(|(word, expected)| word.eq_ignore_ascii_case(expected))
+    };
     let source_relative_equipment = words.len() >= 5
-        && words[0] == "this"
-        && words[1] == "equipment"
-        && words[2] == "equip"
-        && words[3] == "abilities"
-        && matches!(words[4], "cost" | "costs");
-    let has_equip_cost_head = words.starts_with(&["equip", "costs"])
-        || words.starts_with(&["equip", "cost"])
+        && starts_with(&["this"])
+        && matches!(
+            words[1].to_ascii_lowercase().as_str(),
+            "equipment" | "equipments"
+        )
+        && words[2].eq_ignore_ascii_case("equip")
+        && words[3].eq_ignore_ascii_case("abilities")
+        && matches!(words[4].to_ascii_lowercase().as_str(), "cost" | "costs");
+    let has_equip_cost_head = starts_with(&["equip", "costs"])
+        || starts_with(&["equip", "cost"])
         || source_relative_equipment;
     if !has_equip_cost_head {
         return None;

@@ -7872,11 +7872,13 @@ fn describe_create_token_and_exile_top_setup(
 fn describe_linked_exile_top_play_parts(
     exile_top: &crate::effects::ExileTopOfLibraryEffect,
     grant_play: &crate::effects::GrantPlayTaggedEffect,
+    suppress_count_where_clause: bool,
 ) -> Option<(String, String)> {
     if grant_play.player != PlayerFilter::You {
         return None;
     }
-    let (exile_clause, singular_count) = describe_exile_top_clause(exile_top, false)?;
+    let (exile_clause, singular_count) =
+        describe_exile_top_clause(exile_top, suppress_count_where_clause)?;
     let cards_text = if singular_count {
         "that card"
     } else {
@@ -7956,7 +7958,16 @@ fn describe_linked_exile_top_play_clause(effects: &[Effect]) -> Option<String> {
         .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()?;
     let grant_play = structural_unwrap_render_wrappers(&effects[grant_idx])
         .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
-    let (exile_clause, permission) = describe_linked_exile_top_play_parts(exile_top, grant_play)?;
+    let suppress_count_where_clause = exile_idx
+        .checked_sub(1)
+        .and_then(|previous_idx| {
+            structural_unwrap_render_wrappers(&effects[previous_idx])
+                .downcast_ref::<crate::effects::GrantNextSpellCostReductionEffect>()
+        })
+        .and_then(|reduction| reduction.generic_reduction.as_ref())
+        .is_some_and(|reduction| reduction == &exile_top.count);
+    let (exile_clause, permission) =
+        describe_linked_exile_top_play_parts(exile_top, grant_play, suppress_count_where_clause)?;
 
     let mut sentences = if let Some(coordinated) =
         describe_create_token_and_exile_top_setup(effects, exile_idx, grant_idx, &exile_clause)

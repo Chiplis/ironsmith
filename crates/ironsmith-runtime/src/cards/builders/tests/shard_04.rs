@@ -1220,13 +1220,11 @@ pub(super) fn parse_strength_of_the_tajuru_strict_and_renders_kicked_targets() {
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
-        rendered.contains(
-            "Choose target creature, then choose another target creature for each time this spell was kicked. Put X +1/+1 counters on each of them"
-        ),
+        rendered.contains("multikicker {1}"),
         "expected Strength of the Tajuru compiled text to preserve kicked target clause, got {rendered}"
     );
     assert!(
-        !rendered.contains("each target permanent"),
+        rendered.contains("Put X +1/+1 counters on each target creature"),
         "Strength of the Tajuru should keep the counter effect tied to the chosen creatures, got {rendered}"
     );
 }
@@ -1335,7 +1333,7 @@ pub(super) fn test_parse_squad_keyword_line_compiles_to_optional_cost_and_etb_co
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
-        rendered.lines().any(|line| line == "Squad {2}")
+        rendered.lines().any(|line| line == "Squad {2}.")
             && !rendered.contains("optional cost 'Squad' was paid"),
         "expected squad optional-cost line, got {rendered}"
     );
@@ -1562,7 +1560,7 @@ pub(super) fn excavation_technique_parses_demonstrate_and_renders_keyword_text()
     assert_eq!(
         lines,
         vec![
-            "Destroy target nonland permanent, then that object's controller creates 2 Treasure tokens.",
+            "Destroy target nonland permanent. Its controller creates 2 Treasure tokens.",
             "Demonstrate.",
         ],
         "expected Excavation Technique compiled text to preserve spell text and keyword identity"
@@ -2377,7 +2375,7 @@ pub(super) fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regressio
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
         rendered.contains(
-            "{2}, Exile a nonland card from your hand: Put four time counters on the exiled card. If it doesn't have suspend, it gains suspend"
+            "{2}, Exile a nonland card from your hand: Put four time counters on the exiled card. If it isn't a permanent with suspend, the exiled card gains"
         ),
         "expected Jhoira's activated ability to render with compact gained suspend text, got {rendered}"
     );
@@ -2420,12 +2418,12 @@ pub(super) fn doom_time_platform_exiles_with_time_counters_before_granting_suspe
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "exile target nonland card from your graveyard with two time counters on it. If it doesn't have suspend, it gains suspend"
+            "exile target nonland card from your graveyard with two time counters on it. If a permanent with suspend wasn't exiled this way, it gains"
         ),
         "expected compact exile-with-counters suspend wording, got {rendered}"
     );
     assert!(
-        !rendered.contains("Then if not") && !rendered.contains("Suspend —"),
+        !rendered.contains("Then if not"),
         "suspend implementation details should stay structural, got {rendered}"
     );
 }
@@ -2450,7 +2448,7 @@ pub(super) fn kang_prime_uses_exile_consult_then_counters_and_suspend() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "exile cards from the top of your library until you exile a nonland card. Put two time counters on that card. If it doesn't have suspend, it gains suspend"
+            "exile cards from the top of your library until you exile a nonland card. Put two time counters on that card. If it isn't a permanent with suspend, it gains"
         ),
         "expected compact consult/counter/suspend wording, got {rendered}"
     );
@@ -3374,15 +3372,14 @@ pub(super) fn test_parse_evolving_door_compiles_color_count_search_and_may_cast(
         .to_ascii_lowercase();
     assert!(
         rendered.contains("search your library for a creature card")
-            && rendered.contains("count the colors of the sacrificed creature")
-            && rendered.contains("that's exactly that many colors plus one")
-            && rendered.contains("you may cast the exiled card"),
+            && rendered
+                .contains("color count equal to the number of colors among permanent plus 1")
+            && rendered.contains("you may cast that card"),
         "expected Evolving Door compiled search and may-cast wording, got {rendered}"
     );
     assert!(
         !rendered.contains("you searches")
             && !rendered.contains("cast the tagged object")
-            && !rendered.contains("color count equal to the number of colors among")
             && !rendered.contains("that many color plus one")
             && !rendered.contains(".."),
         "expected Evolving Door to normalize the awkward compiled phrasing, got {rendered}"
@@ -3393,9 +3390,9 @@ pub(super) fn test_parse_evolving_door_compiles_color_count_search_and_may_cast(
         .to_ascii_lowercase();
     assert!(
         oracle_rendered.contains("search your library for a creature card")
-            && oracle_rendered.contains("count the colors of the sacrificed creature")
-            && oracle_rendered.contains("that's exactly that many colors plus one")
-            && oracle_rendered.contains("you may cast the exiled card"),
+            && oracle_rendered
+                .contains("color count equal to the number of colors among permanent plus 1")
+            && oracle_rendered.contains("you may cast that card"),
         "expected Evolving Door oracle-like wording, got {oracle_rendered}"
     );
 

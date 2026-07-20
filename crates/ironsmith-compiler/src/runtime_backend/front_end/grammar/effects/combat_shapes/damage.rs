@@ -112,7 +112,6 @@ pub(crate) enum CombatDividedAmountShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CombatDamageTargetShapeError {
     MissingDamageKeyword,
-    UnsupportedWhereClause,
     UnsupportedTrailingIfClause,
     UnsupportedEmbeddedIfClause,
     MissingEachFilter,
@@ -521,6 +520,15 @@ fn normalize_damage_target_tokens(
             target_tokens = after_among;
         }
     }
+    // A damage amount may be bound by a trailing `where X is ...` clause.
+    // That clause is consumed by the effect dispatcher after the target
+    // shape is recognized, so it must not be treated as part of the target
+    // phrase here.
+    if let Some((where_idx, (), _)) =
+        primitives::find_prefix(target_tokens, || primitives::kw("where").void())
+    {
+        target_tokens = &target_tokens[..where_idx];
+    }
     Ok(trim_lexed_commas(target_tokens))
 }
 
@@ -529,9 +537,6 @@ pub(crate) fn parse_combat_damage_target_shape_lexed(
     used: usize,
 ) -> Result<CombatDamageTargetShape<'_>, CombatDamageTargetShapeError> {
     let target_tokens = normalize_damage_target_tokens(tokens, used)?;
-    if primitives::find_prefix(target_tokens, || primitives::kw("where")).is_some() {
-        return Err(CombatDamageTargetShapeError::UnsupportedWhereClause);
-    }
 
     if let Some((instead_idx, (), predicate_tokens)) =
         primitives::find_prefix(target_tokens, || {

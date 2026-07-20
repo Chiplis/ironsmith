@@ -126,7 +126,6 @@ pub(crate) fn parse_consult_traversal_sentence(
             match_tag.clone(),
         )
     });
-
     Ok(Some(ConsultSentenceParts {
         effects,
         player,
@@ -415,6 +414,17 @@ pub(crate) fn consult_cast_effects(
 pub(crate) fn parse_if_you_dont_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // Some card text spells out the action whose failure is being tested:
+    // "If you don't put the card into your hand, ...".  The compact form
+    // above has a comma immediately after "don't", but both forms are the
+    // same result-gated follow-up.  Consume the explicit action only as the
+    // predicate surface; the clause after its comma is the effect to run.
+    if let Some(after_explicit_action) = explicit_if_you_dont_action_remainder(tokens) {
+        let effects = parse_effect_chain(after_explicit_action)?;
+        if !effects.is_empty() {
+            return Ok(Some(effects));
+        }
+    }
     let Some(after) = grammar::parse_all_or_none(
         tokens,
         parse_if_you_dont_remainder_inner,
@@ -423,12 +433,43 @@ pub(crate) fn parse_if_you_dont_sentence(
     else {
         return Ok(None);
     };
-
     let effects = parse_effect_chain(after)?;
     if effects.is_empty() {
         return Ok(None);
     }
     Ok(Some(effects))
+}
+
+fn explicit_if_you_dont_action_remainder(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let prefix_len = if tokens.first().is_some_and(|token| token.is_word("if"))
+        && tokens.get(1).is_some_and(|token| token.is_word("you"))
+        && tokens
+            .get(2)
+            .is_some_and(|token| token.is_word("don't") || token.is_word("dont"))
+    {
+        3
+    } else if tokens.first().is_some_and(|token| token.is_word("if"))
+        && tokens.get(1).is_some_and(|token| token.is_word("you"))
+        && tokens.get(2).is_some_and(|token| token.is_word("do"))
+        && tokens.get(3).is_some_and(|token| token.is_word("not"))
+    {
+        4
+    } else {
+        return None;
+    };
+
+    // The ordinary "If you don't, ..." form is intentionally left to the
+    // cut-error parser above, including its missing-comma diagnostic.
+    if tokens.get(prefix_len).is_some_and(OwnedLexToken::is_comma) {
+        return None;
+    }
+
+    let comma = tokens
+        .iter()
+        .enumerate()
+        .skip(prefix_len)
+        .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
+    (comma > prefix_len).then(|| &tokens[comma + 1..])
 }
 
 pub(crate) fn parse_if_you_cant_sentence(
@@ -491,5 +532,32 @@ mod tests {
             filter.description(),
             "a Doctor card, a card with doctor's companion, or a Vehicle card"
         );
+    }
+
+    #[test]
+    fn active_consult_matches_sacrificed_card_type_stop() {
+        let tokens = lex_line(
+            "they reveal cards from the top of their library until they reveal a permanent card that shares a card type with the sacrificed permanent, put that card onto the battlefield, then shuffle",
+            0,
+        )
+        .expect("consult sentence should lex");
+        let parsed = parse_consult_traversal_sentence(&tokens)
+            .expect("consult sentence should parse")
+            .expect("consult traversal shape");
+        let EffectAst::SubjectVerb(subject_verb) = &parsed.effects[0] else {
+            panic!(
+                "expected consult subject-verb effect: {:#?}",
+                parsed.effects
+            );
+        };
+        let crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. } =
+            &subject_verb.action
+        else {
+            panic!("expected consult action: {subject_verb:#?}");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "sacrificed_0"
+                && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
+        }));
     }
 }

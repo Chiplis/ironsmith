@@ -296,7 +296,6 @@ fn parses_and_or_player_object_damage_recipients_as_both_trigger_branches() {
             &tokens,
         )
         .unwrap();
-
     assert_eq!(
         crate::runtime_backend::compile_support::compile_trigger_spec(parsed.clone()).display(),
         "Whenever a red source you control deals damage to one or more permanents and/or players"

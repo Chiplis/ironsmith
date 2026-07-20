@@ -75,6 +75,11 @@ fn delayed_schedule_header<'a>(
             PlayerAst::That,
             true,
         )),
+        primitives::phrase(&["that", "turn's", "end", "step"]).value((
+            DelayedScheduleStep::EndStep,
+            PlayerAst::That,
+            true,
+        )),
         (
             delayed_schedule_player,
             semantic_kw("next"),
@@ -158,7 +163,7 @@ mod tests {
         assert!(!main_phase.start_next_turn);
         assert_eq!(
             LexedClause::new(main_phase.effect_tokens).word_refs(),
-            ["add", "{C}"]
+            ["add", "c"]
         );
 
         let recurring = tokens("At the beginning of your upkeep, draw a card.");

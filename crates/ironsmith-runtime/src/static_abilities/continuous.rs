@@ -1314,6 +1314,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
     if source_is_attacking_alone_condition(condition) {
         return "as long as this creature is attacking alone".to_string();
     }
+    if let Some(described) = describe_attached_subject_static_condition(
+        condition,
+        "the permanent this source is attached to",
+    ) {
+        return described;
+    }
     match condition {
         crate::ConditionExpr::And(_, _) => {
             let mut clauses = Vec::new();
@@ -3528,11 +3534,7 @@ impl StaticAbilityKind for RemoveAbilityForFilter {
         // Keyword names render lowercase mid-sentence ("lose trample", not
         // "lose Trample"); non-keyword displays (quoted ability text) keep
         // their original casing.
-        let ability_text = if self
-            .abilities
-            .iter()
-            .all(object_ability_is_static_keyword)
-        {
+        let ability_text = if self.abilities.iter().all(object_ability_is_static_keyword) {
             self.display.to_ascii_lowercase()
         } else {
             self.display.clone()

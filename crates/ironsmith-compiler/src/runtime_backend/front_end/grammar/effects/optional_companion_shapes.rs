@@ -29,7 +29,7 @@ pub(crate) struct LeadingOptionalCompanionShape<'a> {
 }
 
 fn word(token: &OwnedLexToken) -> Option<&str> {
-    token.as_word()
+    token.as_word().map(|_| token.parser_text())
 }
 
 fn is_cant(token: &OwnedLexToken) -> bool {

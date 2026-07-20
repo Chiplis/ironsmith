@@ -3071,14 +3071,28 @@ pub(super) fn sleep_with_the_fishes_creates_unblockable_fish_token() {
         )
         .expect("Sleep with the Fishes should parse");
 
+    fn find_create_token(effect: &crate::effect::Effect) -> Option<CreateTokenEffect> {
+        if let Some(create) = effect.downcast_ref::<CreateTokenEffect>() {
+            return Some(create.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_create_token(child);
+            }
+        });
+        found
+    }
+
     let create_effect = sleep
         .abilities
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Triggered(triggered) => triggered
                 .effects
-                .iter()
-                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>()),
+                .all_effects()
+                .into_iter()
+                .find_map(find_create_token),
             _ => None,
         })
         .expect("Sleep with the Fishes trigger should create a token");

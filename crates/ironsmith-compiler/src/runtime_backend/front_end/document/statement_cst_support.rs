@@ -83,11 +83,28 @@ pub(super) fn parse_statement_line_cst(
     let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
         .ok()
         .flatten();
-    let typed_create_statement = parse_create_head_tokens(&line.tokens).is_some();
+    let typed_create_statement = line
+        .tokens
+        .first()
+        .is_some_and(|token| token.is_word("create"))
+        || parse_create_head_tokens(&line.tokens).is_some();
     let typed_energy_payment_threshold =
         super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(&line.tokens).is_some();
     let typed_counter_linked_land_subtype = super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(&line.tokens)
         .is_some();
+    if typed_counter_linked_land_subtype {
+        // This follow-up is intentionally close to a static sentence, but it
+        // is an effect-backed continuation of the preceding tagged land.
+        // Route it through the statement parser before the generic static
+        // probe can discard it as a static-only line.
+        parse_effect_sentences_lexed(&line.tokens)?;
+        return Ok(Some(StatementLineCst {
+            info: line.info.clone(),
+            text: normalized.to_string(),
+            parse_tokens: line.tokens.clone(),
+            parse_groups: vec![line.tokens.clone()],
+        }));
+    }
     let force_surface = statement_shapes::parse_statement_force_shape(&line.tokens);
     let persistent_static_modifier = !typed_create_statement
         && !typed_energy_payment_threshold
@@ -102,7 +119,8 @@ pub(super) fn parse_statement_line_cst(
     if persistent_static_modifier {
         return Ok(None);
     }
-    let force_statement = typed_energy_payment_threshold
+    let force_statement = typed_create_statement
+        || typed_energy_payment_threshold
         || typed_counter_linked_land_subtype
         || matches!(
             line_family,

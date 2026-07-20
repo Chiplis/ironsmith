@@ -368,7 +368,7 @@ pub(crate) fn parse_top_cards_move_then_grant_rest_bottom(
     else {
         return Ok(None);
     };
-    if !matches!(target, TargetAst::Tagged(tag, None) if tag.as_str() == crate::cards::builders::IT_TAG)
+    if !matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == crate::cards::builders::IT_TAG)
     {
         return Ok(None);
     }

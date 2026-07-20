@@ -25,7 +25,6 @@ impl EffectExecutor for ChooseModeEffect {
         }))
     }
 
-
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

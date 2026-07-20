@@ -326,7 +326,7 @@ const RETURN_LINKED_AT_NEXT_END_STEP: &[&str] = &[
     "battlefield",
     "under",
     "its",
-    "owners",
+    "owner's",
     "control",
     "at",
     "the",
@@ -342,8 +342,8 @@ pub(crate) fn is_filtered_future_exile_return_next_end_step_shape(
     replacement: &[OwnedLexToken],
     delayed_return: &[OwnedLexToken],
 ) -> bool {
-    matches_complete_content_sequence(replacement, &[FILTERED_FUTURE_EXILE_THIS_TURN])
-        && matches_complete_content_sequence(delayed_return, &[RETURN_LINKED_AT_NEXT_END_STEP])
+    matches_complete_sequence(replacement, &[FILTERED_FUTURE_EXILE_THIS_TURN])
+        && matches_complete_sequence(delayed_return, &[RETURN_LINKED_AT_NEXT_END_STEP])
 }
 
 fn parse_fixed_limit_word(input: &mut LexStream<'_>) -> WResult<i32> {

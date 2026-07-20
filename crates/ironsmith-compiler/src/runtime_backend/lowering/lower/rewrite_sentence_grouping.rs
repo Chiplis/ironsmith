@@ -196,7 +196,6 @@ mod tests {
             "Whenever a creature enters, if there are two or more other creatures on the battlefield, exile that creature. Return that card to the battlefield under its owner's control when this artifact leaves the battlefield.".to_string(),
             false,
         )?;
-
         let normalized = rewrite_document_to_normalized_card_ast(doc)?;
         let parsed = normalized
             .items
@@ -213,15 +212,19 @@ mod tests {
             })
             .expect("expected Portcullis-style line to normalize into a triggered ability");
 
-        let AbilityKind::Triggered(triggered) = parsed.parsed.kind() else {
+        let AbilityKind::Triggered(_triggered) = parsed.parsed.kind() else {
             panic!(
                 "expected Portcullis-style line to normalize into a triggered ability, got {:?}",
                 parsed.parsed.kind()
             );
         };
-        let debug = format!("{:?}", triggered.intervening_if);
+        let debug = format!("{:?}", parsed.prepared);
         assert!(
-            triggered.intervening_if.is_some(),
+            matches!(
+                parsed.prepared.as_ref(),
+                Some(NormalizedPreparedAbility::Triggered { prepared, .. })
+                    if prepared.intervening_if.is_some()
+            ),
             "expected trigger predicate to survive normalization, got {debug}"
         );
         assert!(

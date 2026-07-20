@@ -100,6 +100,7 @@ pub(crate) fn parse_lose_life(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    let tokens = crate::runtime_backend::util::trim_edge_punctuation_tokens(tokens);
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -193,6 +194,7 @@ pub(crate) fn parse_gain_life(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    let tokens = crate::runtime_backend::util::trim_edge_punctuation_tokens(tokens);
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
 
@@ -415,7 +417,7 @@ pub(crate) fn parse_exiled_with_source_move_surface(
         ExiledWithSourceSubjectSurface as SubjectSurface,
     };
 
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     let destination_marker = words
         .iter()
         .position(|word| matches!(*word, "into" | "onto" | "to"))?;

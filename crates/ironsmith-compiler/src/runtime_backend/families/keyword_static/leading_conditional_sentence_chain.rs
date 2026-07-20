@@ -274,7 +274,7 @@ mod tests {
                 "Escaped Shapeshifter",
                 "As long as an opponent controls a creature with flying not named Escaped Shapeshifter, this creature has flying. The same is true for first strike, trample, and protection from any color.",
                 ESCAPED_SELECTORS,
-                &["Opponent", "Escaped Shapeshifter"][..],
+                &["Opponent", "escaped shapeshifter"][..],
             ),
             (
                 "Rayami, First of the Fallen",

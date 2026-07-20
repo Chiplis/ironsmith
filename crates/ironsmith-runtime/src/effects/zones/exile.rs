@@ -180,6 +180,25 @@ fn matching_cost_candidates(
 }
 
 impl EffectExecutor for ExileEffect {
+    fn supports_simultaneous_player_action(&self) -> bool {
+        // Exiling the objects selected for the iterated player is choice-free
+        // once the surrounding effect has established that player.  Defer
+        // the actual move until the batch commits so the normal zone-change
+        // replacement and tagging machinery remains authoritative.
+        true
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        _game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
+            effect: crate::effect::Effect::new(self.clone()),
+            iterated_player: ctx.iteration.iterated_player,
+        }))
+    }
+
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

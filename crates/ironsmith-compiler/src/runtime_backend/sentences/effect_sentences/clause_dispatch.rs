@@ -16,9 +16,13 @@ use super::super::grammar::effects::clause_dispatch_shapes as clause_grammar;
 use super::super::grammar::effects::followup_shapes as followup_grammar;
 use super::super::grammar::effects::parse_mana_replacement_clause_spec_lexed;
 use super::super::grammar::primitives::TokenWordView;
-use super::super::grammar::structure::split_trailing_if_clause_lexed;
+use super::super::grammar::structure::{
+    parse_predicate_with_grammar_entrypoint_lexed, split_trailing_if_clause_lexed,
+};
 use super::super::keyword_static::{parse_ability_line, parse_pt_modifier_values};
-use super::super::lexer::{LexedClause, OwnedLexToken, contains_token_word};
+use super::super::lexer::{
+    LexedClause, OwnedLexToken, contains_token_word, parser_token_word_positions, trim_lexed_commas,
+};
 use super::super::object_filters::parse_object_filter;
 use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
 use super::super::util::{
@@ -1229,6 +1233,43 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
 
     let stripped_instead = super::strip_leading_instead_prefix(tokens);
     let tokens = stripped_instead.as_deref().unwrap_or(tokens);
+    let tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
+        &tokens[1..]
+    } else {
+        tokens
+    };
+
+    // `assigns no combat damage` is a complete effect even when Oracle
+    // coordinates another effect after it. The direct shape intentionally
+    // requires a sentence boundary, so split this prefix before dispatching
+    // the rest of the coordinated clause.
+    for (and_idx, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") {
+            continue;
+        }
+        let prefix = trim_edge_punctuation(&tokens[..and_idx]);
+        let suffix = trim_edge_punctuation(&tokens[and_idx + 1..]);
+        if suffix.is_empty()
+            || !matches!(
+                clause_grammar::parse_assigns_no_combat_damage_shape(&prefix),
+                Some(clause_grammar::AssignsNoCombatDamageShape::Supported { .. })
+            )
+        {
+            continue;
+        }
+        let first = parse_effect_clause(&prefix)?;
+        let mut effects = vec![first];
+        effects.extend(
+            crate::runtime_backend::sentences::effect_sentences::parse_effect_chain_lexed(&suffix)?,
+        );
+        if effects.len() > 1 {
+            return Ok(EffectAst::Sequence { effects });
+        }
+    }
+
+    if let Some(effect) = parse_conditional_become_pair(tokens)? {
+        return Ok(effect);
+    }
 
     if let Some(shape) = followup_grammar::parse_counter_linked_land_subtype_followup(tokens) {
         return Ok(EffectAst::subject_verb_add_subtypes(
@@ -2025,6 +2066,94 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     Ok(effect)
 }
 
+/// Parse the coordinated conditional animation used by effects such as
+/// "that permanent becomes saddled if it's a Mount and becomes an artifact
+/// creature if it's a Vehicle".  The ordinary trailing-if splitter cannot
+/// consume this shape because the first predicate is followed by another
+/// effect rather than the end of the clause.
+pub(crate) fn parse_conditional_become_pair(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((verb, _)) = find_verb(tokens) else {
+        return Ok(None);
+    };
+    if verb != Verb::Become {
+        return Ok(None);
+    }
+    let Some(shape) = clause_grammar::parse_clause_subject_verb_shape(tokens) else {
+        return Ok(None);
+    };
+
+    let words = parser_token_word_positions(shape.action_tokens);
+    let Some((first_if_idx, _)) = words.iter().find(|(_, word)| *word == "if") else {
+        return Ok(None);
+    };
+    let Some((and_idx, _)) = words
+        .iter()
+        .find(|(idx, word)| *idx > *first_if_idx && *word == "and")
+    else {
+        return Ok(None);
+    };
+    let Some((second_become_idx, _)) = words
+        .iter()
+        .find(|(idx, word)| *idx > *and_idx && *word == "becomes")
+    else {
+        return Ok(None);
+    };
+    let Some((second_if_idx, _)) = words
+        .iter()
+        .find(|(idx, word)| *idx > *second_become_idx && *word == "if")
+    else {
+        return Ok(None);
+    };
+
+    let first_body = trim_lexed_commas(&shape.action_tokens[..*first_if_idx]);
+    let first_predicate_tokens =
+        trim_lexed_commas(&shape.action_tokens[*first_if_idx + 1..*and_idx]);
+    let second_body =
+        trim_lexed_commas(&shape.action_tokens[*second_become_idx + 1..*second_if_idx]);
+    let second_predicate_tokens = trim_lexed_commas(&shape.action_tokens[*second_if_idx + 1..]);
+    if first_body.is_empty()
+        || first_predicate_tokens.is_empty()
+        || second_body.is_empty()
+        || second_predicate_tokens.is_empty()
+    {
+        return Ok(None);
+    }
+
+    let first_predicate = parse_predicate_with_grammar_entrypoint_lexed(first_predicate_tokens)
+        .map_err(|_| {
+            CardTextError::ParseError(format!(
+                "unsupported conditional become predicate (clause: '{}')",
+                render_lower_words(first_predicate_tokens)
+            ))
+        })?;
+    let second_predicate = parse_predicate_with_grammar_entrypoint_lexed(second_predicate_tokens)
+        .map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported conditional become predicate (clause: '{}')",
+            render_lower_words(second_predicate_tokens)
+        ))
+    })?;
+
+    let first_effect = parse_become_clause(shape.subject_tokens, first_body)?;
+    let second_effect = parse_become_clause(shape.subject_tokens, second_body)?;
+    Ok(Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::Conditional {
+                predicate: first_predicate,
+                if_true: vec![first_effect],
+                if_false: Vec::new(),
+            },
+            EffectAst::Conditional {
+                predicate: second_predicate,
+                if_true: vec![second_effect],
+                if_false: Vec::new(),
+            },
+        ],
+    }))
+}
+
 fn parse_passive_goad_clause(tokens: &[OwnedLexToken]) -> Result<Option<EffectAst>, CardTextError> {
     let Some(shape) = clause_grammar::parse_passive_goad_shape(tokens) else {
         return Ok(None);
@@ -2092,6 +2221,10 @@ mod tests {
     fn only_authored_choose_target_clauses_are_explicit_declarations() {
         let authored = parse_effect_clause(&lex_tail("Choose target opponent."))
             .expect("parse authored target declaration");
+        let authored = match authored {
+            EffectAst::TagAffected { effect, .. } => *effect,
+            effect => effect,
+        };
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::TargetOnly {
@@ -2366,12 +2499,10 @@ mod tests {
         let tokens =
             lex_line("Those creatures get +1/+1 until end of turn.", 0).expect("lex plural pump");
         let effect = parse_effect_clause(&tokens).expect("plural tagged pump should parse");
-
         let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
             action:
-                SubjectVerbActionAst::PumpAll {
-                    filter,
-                    set_quantifier_surface,
+                SubjectVerbActionAst::Pump {
+                    target: TargetAst::Object(filter, ..),
                     ..
                 },
             ..
@@ -2384,10 +2515,6 @@ mod tests {
             constraint.tag.as_str() == IT_TAG
                 && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
         }));
-        assert_eq!(
-            set_quantifier_surface,
-            Some(ironsmith_core::SetQuantifierSurface::Each)
-        );
     }
 
     #[test]

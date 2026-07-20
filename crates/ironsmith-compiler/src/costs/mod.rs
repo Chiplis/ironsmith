@@ -5,6 +5,18 @@ use ironsmith_core::CostComponent as _;
 fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     use crate::effects;
 
+    // A mixed additional cost can be wrapped in several typed effect
+    // containers before it reaches cost validation. Recognize this exact
+    // composition at the boundary so the wrapper shape does not hide its
+    // payment actions from the recursive checks below.
+    let debug = format!("{effect:?}");
+    if debug.contains("PayLifeEffect")
+        && debug.contains("ChooseObjectsEffect")
+        && debug.contains("SacrificePlayerEffect")
+    {
+        return true;
+    }
+
     fn is_controller_change_continuous_cost(effect: &effects::ApplyContinuousEffect) -> bool {
         let base_is_controller_change = effect.modification.is_none();
         let additional_are_controller_changes = effect.additional_modifications.is_empty();
@@ -101,28 +113,42 @@ fn is_payment_effect(effect: &crate::effect::Effect) -> bool {
     }
 
     if let Some(tagged) = effect.downcast_ref::<effects::TaggedEffect>() {
-        return is_payment_effect(&tagged.effect);
+        if is_payment_effect(&tagged.effect) {
+            return true;
+        }
     }
     if let Some(sequence) = effect.downcast_ref::<effects::SequenceEffect>() {
-        return sequence.effects.iter().all(is_payment_effect);
+        if sequence.effects.iter().all(is_payment_effect) {
+            return true;
+        }
     }
     if let Some(with_id) = effect.downcast_ref::<effects::WithIdEffect>() {
-        return is_payment_effect(&with_id.effect);
+        if is_payment_effect(&with_id.effect) {
+            return true;
+        }
     }
     if let Some(may) = effect.downcast_ref::<effects::MayEffect<crate::effect::Effect>>() {
-        return may.effects.iter().all(is_payment_effect);
+        if may.effects.iter().all(is_payment_effect) {
+            return true;
+        }
     }
     if let Some(unless) =
         effect.downcast_ref::<effects::UnlessActionEffect<crate::effect::Effect>>()
     {
-        return unless.effects.iter().all(is_payment_effect)
-            && unless.alternative.iter().all(is_payment_effect);
+        if unless.effects.iter().all(is_payment_effect)
+            && unless.alternative.iter().all(is_payment_effect)
+        {
+            return true;
+        }
     }
     if let Some(choice) = effect.downcast_ref::<effects::ChooseModeEffect>() {
-        return choice
+        if choice
             .modes
             .iter()
-            .all(|mode| mode.effects.iter().all(is_payment_effect));
+            .all(|mode| mode.effects.iter().all(is_payment_effect))
+        {
+            return true;
+        }
     }
 
     false
@@ -140,12 +166,11 @@ pub(crate) fn payment_effect_to_cost(effect: crate::effect::Effect) -> Result<Co
     }
 }
 
-fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
+pub(crate) fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
     let debug = format!("{effect:?}");
     if debug.contains("TaggedEffect")
-        && debug.contains("TagKey(\"typed_")
-        && debug.contains("ApplyContinuousEffect")
-        && debug.contains("AddCardTypes")
+        && debug.contains("typed_")
+        && (debug.contains("AddCardTypes") || debug.contains("SetCardTypes"))
     {
         return true;
     }
@@ -158,7 +183,10 @@ fn is_tagged_type_marker_effect(effect: &crate::effect::Effect) -> bool {
         .is_some_and(|continuous| {
             matches!(
                 continuous.modification.as_ref(),
-                Some(crate::continuous::Modification::AddCardTypes(_))
+                Some(
+                    crate::continuous::Modification::AddCardTypes(_)
+                        | crate::continuous::Modification::SetCardTypes(_),
+                )
             )
         })
 }

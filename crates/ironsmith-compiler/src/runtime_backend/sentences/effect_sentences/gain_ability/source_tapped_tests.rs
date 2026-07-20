@@ -63,8 +63,16 @@ fn source_tapped_compound_pump_and_hexproof_share_the_typed_duration() {
         .expect("compound source-tapped grant should parse")
         .expect("compound source-tapped grant should produce effects");
 
-    assert_eq!(effects.len(), 2, "expected pump plus grant: {effects:#?}");
-    for effect in &effects {
+    let effect_slice = match effects.as_slice() {
+        [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
+        effects => effects,
+    };
+    assert_eq!(
+        effect_slice.len(),
+        2,
+        "expected pump plus grant: {effects:#?}"
+    );
+    for effect in effect_slice {
         let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
             panic!("expected subject-verb effect, got {effect:#?}");
         };

@@ -133,10 +133,7 @@ pub struct PregameRevealFromOpeningHandSpec {
 /// companion cards, so setup validation is independent of a card's identity.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CompanionDeckCondition {
-    OnlyManaValueParity {
-        even: bool,
-        lands_are_exempt: bool,
-    },
+    OnlyManaValueParity { even: bool, lands_are_exempt: bool },
     NoRepeatedManaSymbols,
     CreatureSubtypes(Vec<Subtype>),
     NonlandManaValueAtLeast(u32),
@@ -167,9 +164,7 @@ impl CompanionDeckCondition {
     ) -> bool {
         use std::collections::HashSet;
 
-        let is_land = |card: &CompanionDeckCardFacts| {
-            card.card_types.contains(&CardType::Land)
-        };
+        let is_land = |card: &CompanionDeckCardFacts| card.card_types.contains(&CardType::Land);
         let is_permanent = |card: &CompanionDeckCardFacts| {
             card.card_types.iter().any(|card_type| {
                 matches!(
@@ -183,9 +178,8 @@ impl CompanionDeckCondition {
                 )
             })
         };
-        let mana_value = |card: &CompanionDeckCardFacts| {
-            card.mana_cost.as_ref().map_or(0, ManaCost::mana_value)
-        };
+        let mana_value =
+            |card: &CompanionDeckCardFacts| card.mana_cost.as_ref().map_or(0, ManaCost::mana_value);
 
         match self {
             Self::OnlyManaValueParity {
@@ -205,7 +199,10 @@ impl CompanionDeckCondition {
             Self::CreatureSubtypes(allowed) => deck.iter().all(|card| {
                 !card.card_types.contains(&CardType::Creature)
                     || card.has_all_creature_types
-                    || card.subtypes.iter().any(|subtype| allowed.contains(subtype))
+                    || card
+                        .subtypes
+                        .iter()
+                        .any(|subtype| allowed.contains(subtype))
             }),
             Self::NonlandManaValueAtLeast(minimum) => deck
                 .iter()
@@ -215,9 +212,9 @@ impl CompanionDeckCondition {
                 .all(|card| !is_permanent(card) || mana_value(card) <= *maximum),
             Self::UniqueNonlandNames => {
                 let mut names = HashSet::new();
-                deck.iter().filter(|card| !is_land(card)).all(|card| {
-                    names.insert(card.name.trim().to_ascii_lowercase())
-                })
+                deck.iter()
+                    .filter(|card| !is_land(card))
+                    .all(|card| names.insert(card.name.trim().to_ascii_lowercase()))
             }
             Self::SharedNonlandCardType => {
                 let mut nonlands = deck.iter().filter(|card| !is_land(card));

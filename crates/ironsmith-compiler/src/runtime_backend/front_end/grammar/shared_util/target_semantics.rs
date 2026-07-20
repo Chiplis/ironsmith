@@ -183,6 +183,36 @@ pub(crate) fn parse_target_phrase_inner(
         )));
     }
 
+    // Some non-targeting references use the same union grammar as target
+    // phrases. Recognize them before the target-head parser, which correctly
+    // rejects them as non-targets but would otherwise hide the typed union.
+    let non_target_words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
+    if matches!(
+        non_target_words.as_slice(),
+        ["a", "permanent", "or", "player"] | ["permanent", "or", "player"]
+    ) {
+        return Ok(TargetAst::ObjectOrPlayer(
+            ObjectFilter::permanent(),
+            PlayerFilter::Any,
+            None,
+        ));
+    }
+    if matches!(
+        non_target_words.as_slice(),
+        ["the", "player", "or", "planeswalker", "its", "attacking"]
+            | [
+                "the",
+                "player",
+                "or",
+                "planeswalker",
+                "it",
+                "s",
+                "attacking"
+            ]
+    ) {
+        return Ok(TargetAst::AttackedPlayerOrPlaneswalker(None));
+    }
+
     // Recognize an exact `this <permanent type>` source surface before the
     // generic target head consumes `this` as a demonstrative prefix.  Once
     // consumed, only the object noun remains and the phrase would otherwise
@@ -512,6 +542,27 @@ pub(crate) fn parse_target_phrase_inner(
                 target_count,
             ));
         }
+    }
+    // "enchanted artifact's controller" — the attachment host's controller,
+    // resolved through the source's attachment at runtime.
+    if remaining_words.len() == 3
+        && matches!(remaining_words[0], "enchanted" | "equipped")
+        && matches!(remaining_words[2], "controller" | "owner")
+        && leaf::parse_leaf_object_reference_head_complete(strip_possessive_suffix(
+            remaining_words[1],
+        ))
+        .is_ok()
+    {
+        let object_ref = crate::filter::ObjectRef::tagged(remaining_words[0]);
+        let player = if remaining_words[2] == "controller" {
+            PlayerFilter::ControllerOf(object_ref)
+        } else {
+            PlayerFilter::OwnerOf(object_ref)
+        };
+        return Ok(wrap_target_count(
+            TargetAst::Player(player, None),
+            target_count,
+        ));
     }
     if matches_surface(&remaining_words, ITS_OR_THEIR_OWNER_TARGET_PATTERN) {
         return Ok(wrap_target_count(

@@ -1004,6 +1004,9 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         description.push_str(" with ");
         description.push_str(&keyword_labels.join(" and "));
     }
+    if filter.name.as_deref() == Some("{chosen name}") {
+        description.push_str(" with the chosen name");
+    }
     match filter.cast_by.as_ref() {
         Some(PlayerFilter::You) => description.push_str(" you cast"),
         Some(PlayerFilter::Opponent) => description.push_str(" your opponents cast"),

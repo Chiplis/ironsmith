@@ -177,10 +177,7 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(parsed.duration, Until::YouStopControllingThis);
-        assert_eq!(
-            parsed.placement,
-            SearchRestrictionDurationPlacement::Prefix
-        );
+        assert_eq!(parsed.placement, SearchRestrictionDurationPlacement::Prefix);
         assert!(!parsed.remainder.is_empty());
 
         let tokens = lex_line("you may play it this turn", 0).unwrap();
@@ -188,19 +185,12 @@ mod tests {
             .unwrap()
             .unwrap();
         assert_eq!(parsed.duration, Until::EndOfTurn);
-        assert_eq!(
-            parsed.placement,
-            SearchRestrictionDurationPlacement::Suffix
-        );
+        assert_eq!(parsed.placement, SearchRestrictionDurationPlacement::Suffix);
     }
 
     #[test]
     fn distinguishes_leading_and_trailing_animation_durations() {
-        let leading = lex_line(
-            "Until end of turn, target land becomes a 4/4 creature",
-            0,
-        )
-        .unwrap();
+        let leading = lex_line("Until end of turn, target land becomes a 4/4 creature", 0).unwrap();
         let trailing = lex_line(
             "target artifact becomes an artifact creature for as long as this creature remains on the battlefield",
             0,

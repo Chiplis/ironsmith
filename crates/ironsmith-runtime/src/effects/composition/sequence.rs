@@ -3,7 +3,7 @@
 //! Runs a list of effects in order and aggregates their outcomes.
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect, rebase_target_scope};
 use crate::game_state::GameState;
 
@@ -48,6 +48,13 @@ impl SequenceEffect {
 }
 
 impl EffectExecutor for SequenceEffect {
+    fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
+        self.effects
+            .iter()
+            .all(|effect| effect.0.as_cost_executable().is_some())
+            .then_some(self as &dyn CostExecutableEffect)
+    }
+
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
     }
@@ -153,6 +160,20 @@ impl EffectExecutor for SequenceEffect {
 
     fn get_target_count(&self) -> Option<crate::effect::ChoiceCount> {
         super::target_metadata::first_target_count(&[&self.effects])
+    }
+}
+
+impl CostExecutableEffect for SequenceEffect {
+    fn can_execute_as_cost(
+        &self,
+        game: &GameState,
+        source: crate::ids::ObjectId,
+        controller: crate::ids::PlayerId,
+    ) -> Result<(), CostValidationError> {
+        for effect in &self.effects {
+            effect.0.can_execute_as_cost(game, source, controller)?;
+        }
+        Ok(())
     }
 }
 

@@ -142,21 +142,32 @@ mod tests {
             .spell_effect
             .expect("copy-and-haste spell effect");
         let effects = spell_effect.to_vec();
-        let haste = effects
-            .iter()
-            .find_map(|effect| {
-                let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-                let is_haste = apply.modification.as_ref().is_some_and(|modification| {
+        fn find_haste_until(effect: &crate::effect::Effect) -> Option<crate::effect::Until> {
+            if let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                && apply.modification.as_ref().is_some_and(|modification| {
                     matches!(
                         modification,
                         crate::continuous::Modification::AddAbility(ability)
                             if ability.id() == crate::static_abilities::StaticAbilityId::Haste
                     )
-                });
-                is_haste.then_some(apply)
-            })
+                })
+            {
+                return Some(apply.until.clone());
+            }
+            let mut found = None;
+            effect.visit_child_effects(&mut |child| {
+                if found.is_none() {
+                    found = find_haste_until(child);
+                }
+            });
+            found
+        }
+
+        let haste_until = effects
+            .iter()
+            .find_map(find_haste_until)
             .expect("typed haste grant");
-        assert_eq!(haste.until, crate::effect::Until::EndOfTurn);
+        assert_eq!(haste_until, crate::effect::Until::EndOfTurn);
         Ok(())
     }
 

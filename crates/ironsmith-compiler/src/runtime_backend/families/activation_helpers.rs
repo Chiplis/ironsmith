@@ -9,7 +9,8 @@ use super::grammar::activation_helpers as activation_grammar;
 use super::grammar::structure::parse_trailing_instead_if_predicate_lexed;
 use super::keyword_static::{
     parse_add_mana_equal_amount_value, parse_add_mana_that_much_value,
-    parse_dynamic_cost_modifier_value, parse_where_x_is_number_of_filter_value,
+    parse_dynamic_cost_modifier_value, parse_value_binding_clause_lexed,
+    parse_where_x_is_number_of_filter_value,
 };
 use super::lexer::TokenWordView;
 use super::object_filters::parse_object_filter;
@@ -117,7 +118,13 @@ pub(crate) fn parse_add_mana(
     }
 
     if let Some(available_colors) = parse_any_combination_mana_colors(tokens)? {
-        let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
+        let mut amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
+        if matches!(amount, Value::X)
+            && let Some(tail) = activation_grammar::parse_any_combination_mana_tail(tokens)
+            && let Some(dynamic_amount) = parse_value_binding_clause_lexed(tail)
+        {
+            amount = dynamic_amount;
+        }
         return Ok(EffectAst::subject_verb_add_mana_any_color(
             player,
             amount,

@@ -24,6 +24,9 @@ fn run_sentence_rule_family(
 pub(super) fn run_sentence_parse_rules_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<(&'static str, Vec<EffectAst>), CardTextError> {
+    if let Some(diag) = super::sentence_unsupported::diagnose_known_partial_parse_lexed(tokens) {
+        return Err(diag);
+    }
     if let Some(prelude) = parse_sentence_prelude_shape_tokens(tokens) {
         match prelude {
             SentencePreludeShape::XCantBeZero => {

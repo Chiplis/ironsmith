@@ -182,6 +182,9 @@ fn parse_forage<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'
 
 fn parse_harness<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     primitives::kw("harness").parse_next(input)?;
+    // Infinity Stone cards print the keyword action with the permanent's
+    // name (for example, "Harness The Soul Stone").  The name is reminder
+    // text for the already-known source, not a second effect operand.
     tokens_before(input, 0, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::Harness)

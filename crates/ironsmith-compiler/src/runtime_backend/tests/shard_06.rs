@@ -203,10 +203,19 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         .iter()
         .find_map(|item| rewrite_direct_triggered_chunk(item).map(|(_, effects, _)| effects))
         .expect("expected one typed triggered ability");
+    fn source_sentence_effects<'a>(effect: &'a EffectAst) -> &'a [EffectAst] {
+        match effect {
+            EffectAst::SourceSentence { effects } => effects.as_slice(),
+            other => std::slice::from_ref(other),
+        }
+    }
+    let payment_sentence = source_sentence_effects(&effects[1]);
     let EffectAst::MayByPlayer {
         effects: payment_effects,
         ..
-    } = &effects[1]
+    } = payment_sentence
+        .first()
+        .expect("payment sentence should contain an effect")
     else {
         panic!("expected optional X payment: {effects:#?}");
     };
@@ -219,23 +228,30 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
                     if is_source_plus_one_counter_count(value)
             )
     ));
+    let decline_sentence = source_sentence_effects(&effects[2]);
     let EffectAst::IfResult {
         effects: decline_effects,
         ..
-    } = &effects[2]
+    } = decline_sentence
+        .first()
+        .expect("decline sentence should contain an effect")
     else {
         panic!("expected decline follow-up: {effects:#?}");
     };
+    fn contains_typed_x_damage(effects: &[EffectAst]) -> bool {
+        effects.iter().any(|effect| match effect {
+            EffectAst::SubjectVerb(subject_verb) => matches!(
+                &subject_verb.action,
+                SubjectVerbActionAst::DealDamage { amount, .. }
+                    | SubjectVerbActionAst::DealDamageEqualToPower { amount, .. }
+                    if is_source_plus_one_counter_count(amount)
+            ),
+            EffectAst::Coordinated { effects, .. } => contains_typed_x_damage(effects),
+            _ => false,
+        })
+    }
     assert!(
-        decline_effects.iter().any(|effect| matches!(
-            effect,
-            EffectAst::SubjectVerb(subject_verb)
-                if matches!(
-                    &subject_verb.action,
-                    SubjectVerbActionAst::DealDamage { amount, .. }
-                        if is_source_plus_one_counter_count(amount)
-                )
-        )),
+        contains_typed_x_damage(decline_effects),
         "expected the decline damage to reuse the typed X binding: {decline_effects:#?}"
     );
 
@@ -286,7 +302,10 @@ pub(super) fn arcee_acrobatic_coupe_binds_that_many_to_qualifying_spell_targets(
         )
         .expect("Arcee's spell-target trigger should bind that many to its matching targets");
     let debug = format!("{:#?}", definition.abilities);
-    assert!(debug.contains("SpellCastTrigger"), "{debug}");
+    assert!(
+        debug.contains("SpellCastTrigger") || debug.contains("SpellCastQualified"),
+        "{debug}"
+    );
     assert!(debug.contains("targets_object: Some"), "{debug}");
     assert!(
         debug.contains("Creature") && debug.contains("Vehicle"),

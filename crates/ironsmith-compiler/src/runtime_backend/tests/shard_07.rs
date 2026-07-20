@@ -63,7 +63,8 @@ pub(super) fn turn_history_values_compile_for_exact_card_surfaces() {
         impending_debug.contains("from_outside_hand: true"),
         "{impending_debug}"
     );
-    assert!(impending_debug.contains("Fixed(1)"), "{impending_debug}");
+    let impending_compact = impending_debug.split_whitespace().collect::<String>();
+    assert!(impending_compact.contains("Fixed(1,"), "{impending_debug}");
 
     let welcome = CardDefinitionBuilder::new(CardId::new(), "Welcome the Dead")
         .card_types(vec![CardType::Sorcery])
@@ -99,7 +100,8 @@ pub(super) fn spell_history_floor_cards_compile_to_turn_totals_and_trigger_bound
         rionya_debug.contains("before_triggering_spell: false"),
         "{rionya_debug}"
     );
-    assert!(rionya_debug.contains("Fixed(1)"), "{rionya_debug}");
+    let rionya_compact = rionya_debug.split_whitespace().collect::<String>();
+    assert!(rionya_compact.contains("Fixed(1,"), "{rionya_debug}");
     assert!(
         rionya_debug.contains("Instant") && rionya_debug.contains("Sorcery"),
         "{rionya_debug}"
@@ -121,7 +123,8 @@ pub(super) fn spell_history_floor_cards_compile_to_turn_totals_and_trigger_bound
         thunder_debug.contains("exclude_source: true"),
         "{thunder_debug}"
     );
-    assert!(thunder_debug.contains("Fixed(2)"), "{thunder_debug}");
+    let thunder_compact = thunder_debug.split_whitespace().collect::<String>();
+    assert!(thunder_compact.contains("Fixed(2,"), "{thunder_debug}");
 
     let sentinel = CardDefinitionBuilder::new(CardId::new(), "Sentinel Tower")
         .card_types(vec![CardType::Artifact])
@@ -140,7 +143,8 @@ pub(super) fn spell_history_floor_cards_compile_to_turn_totals_and_trigger_bound
         "{sentinel_debug}"
     );
     assert!(sentinel_debug.contains("player: Any"), "{sentinel_debug}");
-    assert!(sentinel_debug.contains("Fixed(1)"), "{sentinel_debug}");
+    let sentinel_compact = sentinel_debug.split_whitespace().collect::<String>();
+    assert!(sentinel_compact.contains("Fixed(1,"), "{sentinel_debug}");
 
     let thousand_year = CardDefinitionBuilder::new(CardId::new(), "Thousand-Year Storm")
         .card_types(vec![CardType::Enchantment])

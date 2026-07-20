@@ -303,6 +303,17 @@ pub(crate) fn parse_spells_cost_modifier_line(
             filter.zone = Some(Zone::Graveyard);
             filter.owner = Some(PlayerFilter::You);
         }
+        // "Spells with the chosen name you cast cost {2} less to cast."
+        // (Council of the Absolute) — the name constraint resolves against
+        // the as-enters choice at runtime. The "this turn" form is a
+        // one-shot effect (Cheering Fanatic) owned by the effect-shape
+        // parser, not this static line.
+        if (cost_words_contain_phrase(&between_words, &["with", "the", "chosen", "name"])
+            || cost_words_contain_phrase(&between_words, &["with", "chosen", "name"]))
+            && !cost_words_contain_phrase(&clause_words, &["this", "turn"])
+        {
+            filter.name = Some("{chosen name}".to_string());
+        }
         if cost_words_contain_phrase(
             &between_words,
             &["from", "anywhere", "other", "than", "your", "hand"],

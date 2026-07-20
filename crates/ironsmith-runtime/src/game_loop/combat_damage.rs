@@ -822,7 +822,12 @@ fn plan_unblocked_player_damage(
     first_strike: bool,
     first_step_strikers: Option<&std::collections::HashSet<ObjectId>>,
 ) -> Vec<PlannedUnblockedPlayerDamage> {
-    let view = crate::derived_view::DerivedGameView::from_refreshed_state(game);
+    // Attachment metadata can be populated while constructing a combat
+    // scenario without going through the mutation path that marks the cached
+    // continuous state dirty.  Rebuild the view from current effects here so
+    // granted combat abilities (such as first strike) cannot come from a stale
+    // cache.
+    let view = crate::derived_view::DerivedGameView::from_effects(game, game.all_continuous_effects());
     view.prewarm_characteristics(&game.battlefield);
     let toughness_sources = ToughnessCombatDamageSources::from_view(game, &view);
     let mut planned = Vec::with_capacity(combat.attackers.len());

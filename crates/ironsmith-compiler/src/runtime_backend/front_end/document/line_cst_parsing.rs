@@ -1,5 +1,6 @@
 use super::super::grammar::{
-    keyword_static_lines, line_families, line_family_rewrites, semantic_lowering, structure,
+    clause_support, keyword_static_lines, line_families, line_family_rewrites, semantic_lowering,
+    structure,
 };
 use super::*;
 use crate::parse_trace;
@@ -78,6 +79,14 @@ fn moved_or_cast_origin_trigger_split_index(
 }
 
 pub(super) fn parse_triggered_line_cst(
+    line: &PreprocessedLine,
+) -> Result<TriggeredLineCst, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_triggered_line_cst_inner(line)
+    })
+}
+
+fn parse_triggered_line_cst_inner(
     line: &PreprocessedLine,
 ) -> Result<TriggeredLineCst, CardTextError> {
     let Some(_first_token) = line.tokens.first() else {
@@ -177,6 +186,23 @@ pub(super) fn parse_triggered_line_cst(
         // behavior, but keep the successfully parsed predicate attached.
         // This is the conditional counterpart to the generic fallback below.
         typed_conditional_fallback = probe.fallback_cst(line, tokens_without_cap);
+    }
+
+    // The combined X-cost trigger has a typed semantic lowering, but its
+    // intervening-if predicate is intentionally not represented as an
+    // ordinary standalone predicate. Build the CST directly so the semantic
+    // pass can recognize the complete authored shape.
+    if let Some(effect_start) =
+        clause_support::parse_combined_x_cost_trigger_tokens(tokens_without_cap)
+        && let Some(comma_index) = tokens_without_cap
+            .iter()
+            .position(|token| token.kind == TokenKind::Comma)
+        && let Some(trigger_tokens) = tokens_without_cap.get(1..comma_index)
+        && let Some(effect_tokens) = tokens_without_cap.get(effect_start..)
+        && let Some(candidate) =
+            render_triggered_split_candidate(trigger_tokens, effect_tokens, None, trailing_cap)
+    {
+        return Ok(candidate.into_cst(line, tokens_without_cap));
     }
 
     if has_explicit_intervening_if {

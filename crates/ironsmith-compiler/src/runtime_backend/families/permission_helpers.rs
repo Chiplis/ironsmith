@@ -1058,6 +1058,28 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
+    // Yawgmoth's Will uses the compact permission wording that combines the
+    // land-play and spell-cast portions in one graveyard clause.  It is a
+    // source-wide static permission, not a tagged temporary play effect.
+    if allow_land
+        && token_word_refs(rest_tokens)
+            == [
+                "lands",
+                "and",
+                "cast",
+                "spells",
+                "from",
+                "your",
+                "graveyard",
+            ]
+    {
+        return Ok(Some(PermissionClauseSpec::GrantBySpec {
+            player,
+            spec: crate::grant::GrantSpec::play_from_graveyard(),
+            lifetime: prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
+        }));
+    }
+
     if !allow_land {
         let (zone_grant_tokens, zone_grant_lifetime) =
             if let Some((without_duration, duration)) = parse_turn_duration_suffix(rest_tokens) {

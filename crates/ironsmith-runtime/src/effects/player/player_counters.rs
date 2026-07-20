@@ -42,7 +42,6 @@ impl EffectExecutor for PlayerCountersEffect {
         }))
     }
 
-
     fn execute(
         &self,
         game: &mut GameState,

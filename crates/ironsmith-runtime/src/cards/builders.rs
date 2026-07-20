@@ -1366,6 +1366,7 @@ fn parse_subtype_word(raw: &str) -> Option<Subtype> {
         .chain(SubtypeFamily::Enchantment.all_subtypes())
         .chain(SubtypeFamily::Spell.all_subtypes())
         .chain(SubtypeFamily::Planeswalker.all_subtypes())
+        .chain(SubtypeFamily::Battle.all_subtypes())
         .copied()
         .find(|subtype| {
             let display = normalize_type_word(&subtype.display_name());

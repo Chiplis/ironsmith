@@ -426,7 +426,13 @@ pub(crate) fn cant_sentence_has_supported_negation_gate_lexed(
 
     !clause_tokens[..neg_start]
         .iter()
-        .any(|token| token_is_any_word(token, &["and"]))
+        .enumerate()
+        .any(|(index, token)| {
+            token_is_any_word(token, &["and"])
+                && !clause_tokens
+                    .get(index + 1)
+                    .is_some_and(|next| token_is_any_word(next, &["each", "every"]))
+        })
 }
 
 pub(crate) fn find_cant_sentence_negation_span_lexed(

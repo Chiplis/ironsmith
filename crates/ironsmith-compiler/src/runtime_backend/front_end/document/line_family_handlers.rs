@@ -1418,6 +1418,47 @@ fn is_lose_game_replacement_static_line(tokens: &[OwnedLexToken]) -> bool {
 pub(super) fn run_statement_probe_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    // A token creation can contain quoted static-looking abilities.  Claim
+    // the complete create sentence before the ability/static probes classify
+    // one of those quoted rules as the host card's own ability.
+    if ctx
+        .line
+        .tokens
+        .first()
+        .is_some_and(|token| token.is_word("create"))
+        && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?
+    {
+        statement_line
+            .info
+            .semantic_facts
+            .statement
+            .presentation_label = activated_presentation_from_preprocessed_line(ctx.line);
+        let (statement_line, next_idx) = extend_statement_line_with_result_followups(
+            &ctx.preprocessed.items,
+            ctx.idx,
+            statement_line,
+        );
+        return Ok(Some(LineDispatchResult::single(
+            RewriteLineCst::Statement(statement_line),
+            next_idx,
+        )));
+    }
+    // Bare keyword lines are claimed by the static/keyword line families.
+    // Keep the broad statement probe from consuming them as empty effect
+    // programs (notably Daybound, Nightbound, and Fuse).
+    if parse_ability_line_lexed(&ctx.line.tokens).is_some() {
+        return Ok(None);
+    }
+    // Typed static-line parsers must win over the broad statement probe. In
+    // particular, `As this enters, choose ...` and `As this enters, note ...`
+    // otherwise become generic AsEntersEffectProgram abilities, losing the
+    // runtime ETB choice/note metadata.
+    if matches!(
+        parse_static_ability_ast_line_lexed(&ctx.line.tokens),
+        Ok(Some(_))
+    ) {
+        return Ok(None);
+    }
     if crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
         &ctx.line.tokens,
     )?
@@ -1433,6 +1474,18 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
+    // Pay-life enter-the-battlefield replacements are expressed as two
+    // sentences, so the generic statement parser can otherwise consume the
+    // line before the typed static replacement family sees it.  Probe the
+    // typed shape here as well so malformed variants fail instead of being
+    // accepted as a partial "enters tapped" statement.
+    if super::super::families::keyword_static::parse_pay_life_or_enter_tapped_line(
+        &ctx.line.tokens,
+    )?
+    .is_some()
+    {
+        return Ok(None);
+    }
     if let Some(split_result) =
         parse_labeled_conditional_replacement_sentence_split(ctx.line, ctx.idx)?
     {
@@ -1441,6 +1494,11 @@ pub(super) fn run_statement_probe_line_family(
 
     let linked_preference = line_grammar::parse_linked_statement_preference(&ctx.line.tokens);
     let static_preference = line_grammar::parse_statement_static_preference(&ctx.line.tokens);
+    let prefer_nonpermanent_statement =
+        should_prefer_statement_before_static_for_nonpermanent_spell(
+            ctx.preprocessed,
+            &ctx.line.tokens,
+        );
 
     if (matches!(
         crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
@@ -1453,11 +1511,8 @@ pub(super) fn run_statement_probe_line_family(
         )
     ) || linked_preference.is_some()
         || looks_like_statement_line_lexed(ctx.line)
-        || should_prefer_statement_before_static_for_nonpermanent_spell(
-            ctx.preprocessed,
-            &ctx.line.tokens,
-        ))
-        && !matches!(
+        || prefer_nonpermanent_statement)
+        && (!matches!(
             static_preference,
             Some(
                 line_grammar::StatementStaticPreference::BlocksAdditionalCreatures
@@ -1467,7 +1522,7 @@ pub(super) fn run_statement_probe_line_family(
                     | line_grammar::StatementStaticPreference::FirstEquipCostAlternative
                     | line_grammar::StatementStaticPreference::ConditionalKeywordTypeAddition
             )
-        )
+        ) || prefer_nonpermanent_statement)
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
         && !is_lose_game_replacement_static_line(&ctx.line.tokens)
         && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?
@@ -1708,7 +1763,7 @@ mod ticket_marker_tests {
     fn sticker_ticket_keyword_rows_keep_their_threshold_header() {
         let labels = compiled_sticker_marker_labels(
             "Trendy Circus Pirate",
-            "Stickers\n\
+            "Type: Stickers\n\
              {TK}{TK} — Deathtouch\n\
              {TK}{TK}{TK}{TK}{TK} — Whenever this creature deals combat damage to a player, create that many 1/1 green Squirrel creature tokens.\n\
              {TK}{TK} — 5/1\n\
@@ -1724,7 +1779,7 @@ mod ticket_marker_tests {
     fn sticker_ticket_double_labeled_trigger_stays_one_presentation_row() {
         let labels = compiled_sticker_marker_labels(
             "Werewolf Lightning Mage",
-            "Stickers\n\
+            "Type: Stickers\n\
              {TK}{TK} — Landfall — Whenever a land enters under your control, put a +1/+1 counter on this permanent.\n\
              {TK}{TK}{TK}{TK} — Whenever a creature blocks this creature, that creature gets -4/-4 until end of turn.\n\
              {TK}{TK} — 4/1\n\

@@ -478,7 +478,7 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
         PlayerAst::ThatPlayerOrTargetController => {
             Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
         }
-        PlayerAst::ItsController | PlayerAst::ItsOwner => None,
+        PlayerAst::ItsController | PlayerAst::ItsOwner | PlayerAst::Enchanted => None,
     }
 }
 
@@ -4341,6 +4341,61 @@ pub(super) fn render_unsupported_predicate_message(tokens: &[OwnedLexToken]) -> 
     )
 }
 
+fn parse_source_regenerated_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    if !surface::exact_any(
+        clause,
+        &[
+            &["this", "creature", "regenerated", "this", "turn"][..],
+            &["this", "permanent", "regenerated", "this", "turn"][..],
+            &["it", "regenerated", "this", "turn"][..],
+        ],
+    ) {
+        return None;
+    }
+    Some(PredicateAst::ValueComparison {
+        left: Value::SourceRegeneratedThisTurnCount,
+        operator: ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(1),
+    })
+}
+
+fn parse_each_global_greatest_power_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = LexedClause::new(tokens);
+    let words = clause.word_refs();
+    if words.len() < 3
+        || !surface::exact_words(&words[..2], &["you", "control"])
+        || words[2] != "each"
+        || !is_creature_on_battlefield_with_greatest_power(
+            &words[3..]
+                .iter()
+                .map(|word| (*word).to_string())
+                .collect::<Vec<_>>(),
+        )
+    {
+        return None;
+    }
+
+    let filter_tokens = clause
+        .tokens()
+        .get(clause.words().token_span_for_words(2, words.len())?)?;
+    let mut global_creatures = parse_object_filter(filter_tokens, false).ok()?;
+    global_creatures.controller = None;
+    global_creatures.zone = Some(Zone::Battlefield);
+    let mut greatest_creatures = global_creatures.clone();
+    greatest_creatures.power = Some(crate::filter::Comparison::EqualExpr(Box::new(
+        Value::GreatestPower(global_creatures.clone()),
+    )));
+    let mut controlled = greatest_creatures.clone();
+    controlled.controller = Some(PlayerFilter::You);
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(controlled),
+        operator: crate::effect::ValueComparisonOperator::Equal,
+        right: Value::Count(greatest_creatures),
+    })
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
         &tokens[1..]
@@ -4358,11 +4413,33 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
+    // Keep independently articulated control conjunctions ahead of the broad
+    // phase-step control gate, whose generic object-filter parser would merge
+    // them into one filter (for example, "an artifact and a creature").
+    if let Some(predicate) =
+        parse_you_control_or_graveyard_predicate(predicate_tokens).transpose()?
+    {
+        return Ok(predicate);
+    }
+    if non_article_token_words_starts_with_any(predicate_tokens, YOU_CONTROL_PREFIXES)
+        && let Some(predicate) =
+            parse_you_control_conjoined_predicate(predicate_tokens).transpose()?
+    {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_each_global_greatest_power_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = phase_step_gates::parse_phase_step_gate_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
     if let Some(predicate) = parse_triggering_spell_ordinal_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_source_regenerated_this_turn_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -4579,11 +4656,11 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_triggering_object_keyword_predicate(predicate_tokens) {
+    if let Some(predicate) = parse_source_keyword_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
-    if let Some(predicate) = parse_source_keyword_predicate(predicate_tokens) {
+    if let Some(predicate) = parse_triggering_object_keyword_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 

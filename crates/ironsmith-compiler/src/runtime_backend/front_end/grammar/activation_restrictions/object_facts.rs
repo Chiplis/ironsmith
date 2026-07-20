@@ -230,6 +230,8 @@ pub(crate) fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedO
         &["attack", "you", "or", "planeswalkers", "you", "control"],
     ) {
         Some(NegatedObjectTailShape::AttackYouOrPlaneswalkers)
+    } else if prefix(words, &["be", "blocked", "this", "turn", "except", "by"]) {
+        Some(NegatedObjectTailShape::BeBlockedExceptBy { payload_words: 6 })
     } else if prefix(words, &["be", "blocked", "except", "by"]) {
         Some(NegatedObjectTailShape::BeBlockedExceptBy { payload_words: 4 })
     } else if prefix(words, &["be", "blocked", "by"]) {

@@ -78,10 +78,9 @@ pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
 // Re-export the traits, modal spec, and cost validation error
 pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
 pub use executor_trait::{
-    DeferredPlayerActionProposal,
-    CostExecutableEffect, CostValidationError, EffectExecutionCategory, EffectExecutor,
-    ModalEffectSpec, ModalSpec, SimultaneousEffectProposal, TargetReusePolicy,
-    TargetSelectionProfile,
+    CostExecutableEffect, CostValidationError, DeferredPlayerActionProposal,
+    EffectExecutionCategory, EffectExecutor, ModalEffectSpec, ModalSpec,
+    SimultaneousEffectProposal, TargetReusePolicy, TargetSelectionProfile,
 };
 pub type EffectContext<'a> = context::ExecutionContext<'a>;
 pub(crate) use context::ExecutionContext;

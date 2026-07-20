@@ -556,7 +556,7 @@ pub(crate) fn parse_granted_keyword_verb_facts(
     let mut have_token = None;
     while let Ok(token) = take_token(&mut input) {
         if token.is_any_word(&["has", "have"]) {
-            have_token = Some(initial_len.saturating_sub(input.len() + 1));
+            have_token.get_or_insert(initial_len.saturating_sub(input.len() + 1));
         }
     }
     let have_token = have_token?;

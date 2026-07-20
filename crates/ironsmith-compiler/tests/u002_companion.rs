@@ -1,11 +1,9 @@
 use ironsmith_compiler::ability::AbilityKind;
 use ironsmith_compiler::cards::{CardDefinition, CardDefinitionBuilder};
 use ironsmith_compiler::ids::CardId;
-use ironsmith_compiler::static_abilities::{
-    CompanionDeckCondition, StaticAbilityPayload,
-};
 use ironsmith_compiler::mana::{ManaCost, ManaSymbol};
 use ironsmith_compiler::static_abilities::CompanionDeckCardFacts;
+use ironsmith_compiler::static_abilities::{CompanionDeckCondition, StaticAbilityPayload};
 use ironsmith_compiler::types::{CardType, Subtype};
 
 fn compile_companion(text: &str) -> CardDefinition {
@@ -17,7 +15,10 @@ fn compile_companion(text: &str) -> CardDefinition {
 
 fn condition(definition: &CardDefinition) -> &CompanionDeckCondition {
     let AbilityKind::Static(ability) = &definition.abilities[0].kind else {
-        panic!("expected a static companion ability: {:#?}", definition.abilities);
+        panic!(
+            "expected a static companion ability: {:#?}",
+            definition.abilities
+        );
     };
     let StaticAbilityPayload::Companion(condition) = &ability.payload else {
         panic!("companion must not lower to fallback text: {ability:#?}");
@@ -134,16 +135,20 @@ fn simple_card(name: &str, mana_value: u8, card_type: CardType) -> CompanionDeck
 fn every_companion_deck_predicate_accepts_and_rejects_its_meaningful_boundary() {
     let even = simple_card("Even", 2, CardType::Creature);
     let odd = simple_card("Odd", 3, CardType::Creature);
-    assert!(CompanionDeckCondition::OnlyManaValueParity {
-        even: true,
-        lands_are_exempt: false,
-    }
-    .is_fulfilled_by(std::slice::from_ref(&even), 1));
-    assert!(!CompanionDeckCondition::OnlyManaValueParity {
-        even: true,
-        lands_are_exempt: false,
-    }
-    .is_fulfilled_by(std::slice::from_ref(&odd), 1));
+    assert!(
+        CompanionDeckCondition::OnlyManaValueParity {
+            even: true,
+            lands_are_exempt: false,
+        }
+        .is_fulfilled_by(std::slice::from_ref(&even), 1)
+    );
+    assert!(
+        !CompanionDeckCondition::OnlyManaValueParity {
+            even: true,
+            lands_are_exempt: false,
+        }
+        .is_fulfilled_by(std::slice::from_ref(&odd), 1)
+    );
 
     let distinct_hybrids = deck_card(
         "Distinct hybrid symbols",
@@ -167,10 +172,8 @@ fn every_companion_deck_predicate_accepts_and_rejects_its_meaningful_boundary() 
         false,
         false,
     );
-    assert!(CompanionDeckCondition::NoRepeatedManaSymbols
-        .is_fulfilled_by(&[distinct_hybrids], 1));
-    assert!(!CompanionDeckCondition::NoRepeatedManaSymbols
-        .is_fulfilled_by(&[repeated_symbol], 1));
+    assert!(CompanionDeckCondition::NoRepeatedManaSymbols.is_fulfilled_by(&[distinct_hybrids], 1));
+    assert!(!CompanionDeckCondition::NoRepeatedManaSymbols.is_fulfilled_by(&[repeated_symbol], 1));
 
     let cat = deck_card(
         "Cat",
@@ -202,31 +205,47 @@ fn every_companion_deck_predicate_accepts_and_rejects_its_meaningful_boundary() 
 
     let land = simple_card("Land", 0, CardType::Land);
     let high_nonland = simple_card("High", 3, CardType::Instant);
-    assert!(CompanionDeckCondition::NonlandManaValueAtLeast(3)
-        .is_fulfilled_by(&[land.clone(), high_nonland.clone()], 2));
-    assert!(!CompanionDeckCondition::NonlandManaValueAtLeast(3)
-        .is_fulfilled_by(std::slice::from_ref(&even), 1));
+    assert!(
+        CompanionDeckCondition::NonlandManaValueAtLeast(3)
+            .is_fulfilled_by(&[land.clone(), high_nonland.clone()], 2)
+    );
+    assert!(
+        !CompanionDeckCondition::NonlandManaValueAtLeast(3)
+            .is_fulfilled_by(std::slice::from_ref(&even), 1)
+    );
 
-    assert!(CompanionDeckCondition::PermanentManaValueAtMost(2)
-        .is_fulfilled_by(&[even.clone(), high_nonland], 2));
-    assert!(!CompanionDeckCondition::PermanentManaValueAtMost(2)
-        .is_fulfilled_by(std::slice::from_ref(&odd), 1));
+    assert!(
+        CompanionDeckCondition::PermanentManaValueAtMost(2)
+            .is_fulfilled_by(&[even.clone(), high_nonland], 2)
+    );
+    assert!(
+        !CompanionDeckCondition::PermanentManaValueAtMost(2)
+            .is_fulfilled_by(std::slice::from_ref(&odd), 1)
+    );
 
-    assert!(CompanionDeckCondition::UniqueNonlandNames
-        .is_fulfilled_by(&[land.clone(), land.clone(), even.clone()], 3));
-    assert!(!CompanionDeckCondition::UniqueNonlandNames
-        .is_fulfilled_by(&[even.clone(), even.clone()], 2));
+    assert!(
+        CompanionDeckCondition::UniqueNonlandNames
+            .is_fulfilled_by(&[land.clone(), land.clone(), even.clone()], 3)
+    );
+    assert!(
+        !CompanionDeckCondition::UniqueNonlandNames
+            .is_fulfilled_by(&[even.clone(), even.clone()], 2)
+    );
 
-    assert!(CompanionDeckCondition::OnlyManaValueParity {
-        even: false,
-        lands_are_exempt: true,
-    }
-    .is_fulfilled_by(&[odd.clone(), land], 2));
-    assert!(!CompanionDeckCondition::OnlyManaValueParity {
-        even: false,
-        lands_are_exempt: true,
-    }
-    .is_fulfilled_by(std::slice::from_ref(&even), 1));
+    assert!(
+        CompanionDeckCondition::OnlyManaValueParity {
+            even: false,
+            lands_are_exempt: true,
+        }
+        .is_fulfilled_by(&[odd.clone(), land], 2)
+    );
+    assert!(
+        !CompanionDeckCondition::OnlyManaValueParity {
+            even: false,
+            lands_are_exempt: true,
+        }
+        .is_fulfilled_by(std::slice::from_ref(&even), 1)
+    );
 
     let artifact_creature = deck_card(
         "Artifact creature",
@@ -236,15 +255,31 @@ fn every_companion_deck_predicate_accepts_and_rejects_its_meaningful_boundary() 
         false,
         false,
     );
-    assert!(CompanionDeckCondition::SharedNonlandCardType
-        .is_fulfilled_by(&[even.clone(), artifact_creature], 2));
-    assert!(!CompanionDeckCondition::SharedNonlandCardType
-        .is_fulfilled_by(&[even.clone(), simple_card("Spell", 1, CardType::Instant)], 2));
+    assert!(
+        CompanionDeckCondition::SharedNonlandCardType
+            .is_fulfilled_by(&[even.clone(), artifact_creature], 2)
+    );
+    assert!(
+        !CompanionDeckCondition::SharedNonlandCardType.is_fulfilled_by(
+            &[even.clone(), simple_card("Spell", 1, CardType::Instant)],
+            2
+        )
+    );
 
-    assert!(CompanionDeckCondition::CardsAboveMinimumDeckSize(2)
-        .is_fulfilled_by(&[even.clone(), odd.clone(), simple_card("Third", 1, CardType::Instant)], 1));
-    assert!(!CompanionDeckCondition::CardsAboveMinimumDeckSize(2)
-        .is_fulfilled_by(&[even.clone(), odd], 1));
+    assert!(
+        CompanionDeckCondition::CardsAboveMinimumDeckSize(2).is_fulfilled_by(
+            &[
+                even.clone(),
+                odd.clone(),
+                simple_card("Third", 1, CardType::Instant)
+            ],
+            1
+        )
+    );
+    assert!(
+        !CompanionDeckCondition::CardsAboveMinimumDeckSize(2)
+            .is_fulfilled_by(&[even.clone(), odd], 1)
+    );
 
     let activated_permanent = deck_card(
         "Activated permanent",
@@ -254,8 +289,14 @@ fn every_companion_deck_predicate_accepts_and_rejects_its_meaningful_boundary() 
         false,
         true,
     );
-    assert!(CompanionDeckCondition::PermanentsHaveActivatedAbility
-        .is_fulfilled_by(&[activated_permanent, simple_card("Spell", 1, CardType::Instant)], 2));
-    assert!(!CompanionDeckCondition::PermanentsHaveActivatedAbility
-        .is_fulfilled_by(&[even], 1));
+    assert!(
+        CompanionDeckCondition::PermanentsHaveActivatedAbility.is_fulfilled_by(
+            &[
+                activated_permanent,
+                simple_card("Spell", 1, CardType::Instant)
+            ],
+            2
+        )
+    );
+    assert!(!CompanionDeckCondition::PermanentsHaveActivatedAbility.is_fulfilled_by(&[even], 1));
 }

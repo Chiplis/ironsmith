@@ -630,13 +630,10 @@ fn parse_distributive_compound_subject_filter(
         .iter()
         .enumerate()
         .filter_map(|(index, token)| {
-            let separator = token
-                .as_word()
-                .is_some_and(|word| matches!(word, "and" | "or"));
+            let separator = token.is_word("and") || token.is_word("or");
             let starts_distributive_arm = tokens
                 .get(index + 1)
-                .and_then(OwnedLexToken::as_word)
-                .is_some_and(|word| matches!(word, "each" | "every"));
+                .is_some_and(|token| token.is_word("each") || token.is_word("every"));
             (separator && starts_distributive_arm).then_some(index)
         })
         .collect::<Vec<_>>();
@@ -648,7 +645,12 @@ fn parse_distributive_compound_subject_filter(
     let mut start = 0usize;
     for end in separators.into_iter().chain(std::iter::once(tokens.len())) {
         let segment = trim_commas(&tokens[start..end]);
-        let Some(filter) = parse_subject_object_filter(&segment)? else {
+        let filter_tokens = segment
+            .first()
+            .filter(|token| token.is_word("each") || token.is_word("every"))
+            .map(|_| &segment[1..])
+            .unwrap_or(segment.as_slice());
+        let Some(filter) = parse_subject_object_filter(filter_tokens)? else {
             return Ok(None);
         };
         filters.push(filter);
@@ -753,6 +755,20 @@ pub(crate) fn parse_negated_object_restriction_clause(
                 Some(target),
                 None,
             )
+        } else if matches!(
+            subject_words.as_slice(),
+            ["it"]
+                | ["that", "creature"]
+                | ["that", "permanent"]
+                | ["them"]
+                | ["those", "creatures"]
+        ) {
+            // A pronoun/demonstrative subject back-references the object the
+            // trigger introduced (e.g. "Whenever this blocks or becomes
+            // blocked, it can't be regenerated this turn"), not a filter over
+            // every creature. target=None keeps it on the plain
+            // cant-restriction path (no spurious "choose it").
+            (ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None)
         } else if bare_other_choice {
             (
                 ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),

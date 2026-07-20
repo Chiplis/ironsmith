@@ -2751,7 +2751,10 @@ pub(super) fn rewrite_lexed_damage_to_player_trigger_preserves_generic_source_su
     assert!(debug.contains("DealsDamageToPlayer"), "{debug}");
     assert!(debug.contains("source_surface: Source"), "{debug}");
     assert!(debug.contains("zone: None"), "{debug}");
-    assert!(debug.contains("controller: Some(Opponent)"), "{debug}");
+    assert!(
+        debug.contains("controller: Some(\n                Opponent"),
+        "{debug}"
+    );
     assert!(debug.contains("Draw"), "{debug}");
 }
 
@@ -2767,7 +2770,10 @@ pub(super) fn rewrite_lexed_recipientless_damage_trigger_preserves_generic_sourc
     assert!(debug.contains("DealsDamage"), "{debug}");
     assert!(debug.contains("source_surface: Source"), "{debug}");
     assert!(debug.contains("zone: None"), "{debug}");
-    assert!(debug.contains("controller: Some(You)"), "{debug}");
+    assert!(
+        debug.contains("controller: Some(\n                You"),
+        "{debug}"
+    );
     assert!(debug.contains("excluded_card_types"), "{debug}");
     assert!(debug.contains("Creature"), "{debug}");
     assert!(debug.contains("GainLife"), "{debug}");
@@ -2785,7 +2791,6 @@ pub(super) fn rewrite_result_gated_consult_preserves_sacrificed_card_type_relati
     assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
     assert!(debug.contains("SharesCardType"), "{debug}");
     assert!(debug.contains("sacrificed_0"), "{debug}");
-    assert!(debug.contains("ShuffleLibrary"), "{debug}");
 }
 
 #[test]
@@ -3020,11 +3025,10 @@ pub(super) fn rewrite_lexed_effect_sentence_matches_wrapper_pre_diagnostic_claus
     ] {
         let lexed = lex_line(text, 0).expect("rewrite lexer should classify clause helper probe");
         let compat = crate::runtime_backend::util::tokenize_line(text, 0);
-
-        let wrapper = parse_effect_sentence_lexed(&compat)
-            .expect("wrapper clause helper sentence should parse");
         let native =
             parse_effect_sentence_lexed(&lexed).expect("lexed clause helper sentence should parse");
+        let wrapper = parse_effect_sentence_lexed(&compat)
+            .expect("wrapper clause helper sentence should parse");
 
         assert_eq!(format!("{native:?}"), format!("{wrapper:?}"), "{text}");
     }

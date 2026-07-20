@@ -467,7 +467,14 @@ pub(crate) fn split_return_then_loses_tokens(tokens: &[OwnedLexToken]) -> Option
 pub(crate) fn is_rounded_up_segment_tokens(tokens: &[OwnedLexToken]) -> bool {
     primitives::parse_all(
         tokens,
-        (semantic_phrase(&["rounded", "up"]), semantic_finish).void(),
+        (
+            alt((
+                semantic_phrase(&["rounded", "up"]),
+                semantic_phrase(&["round", "up", "each", "time"]),
+            )),
+            semantic_finish,
+        )
+            .void(),
         "rounded-up carry segment",
     )
     .is_ok()

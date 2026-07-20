@@ -159,6 +159,7 @@ pub(super) fn runtime_effects_to_costs(
 ) -> Result<Vec<crate::costs::Cost>, CardTextError> {
     effects
         .into_iter()
+        .filter(|effect| !crate::costs::is_tagged_type_marker_effect(effect))
         .map(|effect| {
             crate::costs::payment_effect_to_cost(effect).map_err(CardTextError::ParseError)
         })

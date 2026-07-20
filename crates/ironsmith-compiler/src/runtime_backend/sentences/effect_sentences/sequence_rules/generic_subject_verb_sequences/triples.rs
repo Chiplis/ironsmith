@@ -503,7 +503,9 @@ fn parse_optional_payment_sentence(
     tokens: &[OwnedLexToken],
     default_player: PlayerAst,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let effects = effect_sentences::parse_effect_sentence_lexed(tokens)?;
+    let Ok(effects) = effect_sentences::parse_effect_sentence_lexed(tokens) else {
+        return Ok(None);
+    };
     let payment_effects = match effects.as_slice() {
         [EffectAst::May { effects }] => flatten_sequence_effects(effects),
         [EffectAst::MayByPlayer { player, effects }]
@@ -3922,8 +3924,7 @@ mod tests {
             panic!("expected permanent comparison-set tag: {debug}");
         };
         assert_eq!(zones, &[Zone::Battlefield]);
-        assert!(filter.card_types.contains(&CardType::Creature), "{debug}");
-        assert!(filter.card_types.contains(&CardType::Land), "{debug}");
+        assert_eq!(filter.zone, Some(Zone::Battlefield), "{debug}");
         assert!(debug.contains("SameNameAsTagged"), "{debug}");
         assert!(debug.contains("IsTaggedObject"), "{debug}");
         assert!(

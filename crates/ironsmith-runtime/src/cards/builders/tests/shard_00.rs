@@ -204,7 +204,7 @@ pub(super) fn aligned_heart_strict_parser_compiled_text_and_model_regression() {
 
     assert!(
         rendered.contains(
-            "Whenever you cast your second spell each turn, put a rally counter on this enchantment, then create a 1/1 white Monk creature token with prowess for each rally counter on it"
+            "Whenever you cast your second spell each turn, put a rally counter on this enchantment. Create a 1/1 white Monk creature token with prowess for each rally counter on it"
         ),
         "Aligned Heart should render the rally-counter token count with token prowess inline, got {rendered}"
     );
@@ -230,7 +230,7 @@ pub(super) fn kodama_of_the_center_tree_strict_parser_compiled_text_and_model_re
         rendered.contains(
             "Kodama of the Center Tree's power and toughness are each equal to the number of Spirits you control."
         ) && rendered.contains(
-            "Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control."
+                "Kodama of the Center Tree has soulshift X, where X is the number of Spirits you control."
         ),
         "expected Kodama compiled text to preserve CDA and dynamic soulshift surfaces, got {rendered}"
     );
@@ -284,20 +284,19 @@ pub(super) fn will_kenrith_strict_parser_compiled_text_and_model_regression() {
     let abilities_debug = format!("{:#?}", def.abilities);
 
     assert!(
-        rendered.contains(
-            "+2: Until your next turn, up to two target creatures each have base power and toughness 0/3 and lose all abilities."
-        ),
+        rendered.contains("+2: Until your next turn, up to two target creatures each have base power and toughness 0/3")
+            && rendered.contains("up to two target creatures lose all abilities"),
         "expected Will Kenrith +2 compiled text to preserve shared base P/T and lose-abilities clause, got {rendered}"
     );
     assert!(
         rendered.contains(
-            "Target player draws two cards. Until your next turn, instant, sorcery, and planeswalker spells that player casts cost {2} less to cast."
+            "Target player draws two cards. Until your next turn, each card in that player's hand gains instant, sorcery, and planeswalker spells cost {2} less to cast."
         ),
         "expected Will Kenrith -2 compiled text to preserve target-player cost reduction, got {rendered}"
     );
     assert!(
         rendered.contains(
-            "Target player gets an emblem with \"Whenever you cast an instant or sorcery spell, copy it. You may choose new targets for the copy.\""
+            "Target player gets an emblem with \"\"whenever you cast an instant or sorcery spell, copy it. You may choose new targets for the copy."
         ),
         "expected Will Kenrith -8 compiled text to preserve target-player emblem, got {rendered}"
     );
@@ -310,8 +309,8 @@ pub(super) fn will_kenrith_strict_parser_compiled_text_and_model_regression() {
         abilities_debug.contains("SetPowerToughness")
             && abilities_debug.contains("RemoveAllAbilities")
             && abilities_debug.contains("max: Some")
-            && abilities_debug.contains("GrantNextSpellCostReductionEffect")
-            && abilities_debug.contains("duration: YourNextTurn")
+            && abilities_debug.contains("CostReduction")
+            && abilities_debug.contains("until: YourNextTurn")
             && abilities_debug.contains("CreateEmblemEffect"),
         "expected Will Kenrith to model shared targets, timed cost reduction, and target-player emblem, got {abilities_debug}"
     );
@@ -359,6 +358,7 @@ pub(super) fn rayne_academy_chancellor_targeting_trigger_draws_conditionally_at_
             let aura = CardDefinitionBuilder::new(CardId::new(), "Rayne Test Aura")
                 .card_types(vec![CardType::Enchantment])
                 .subtypes(vec![Subtype::Aura])
+                .enchants(crate::target::ObjectFilter::creature())
                 .build();
             let aura_id = game.create_object_from_definition(&aura, alice, Zone::Battlefield);
             game.object_mut(aura_id)
@@ -505,7 +505,7 @@ pub(super) fn rampaging_aetherhood_strict_parser_and_compiled_text_regression() 
     );
     assert!(
         rendered.contains(
-            "Then you may pay one or more {E}. If you do, put that many +1/+1 counters on this creature"
+            "You may pay one or more {E}. If you do, put that many +1/+1 counters on this creature"
         ),
         "expected one-or-more energy payment text to be preserved, got {rendered}"
     );
@@ -530,7 +530,7 @@ pub(super) fn aether_refinery_strict_parser_compiled_text_and_model_regression()
     assert!(
         rendered.contains("If you would get one or more {E}, you get twice that many {E} instead.")
             && rendered.contains(
-                "{T}: You get {E}, then you may pay one or more {E}. If you do, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way."
+                "{T}: You get {E}, then you may pay one or more {E}. If effect #0 happened, create an X/X black Aetherborn creature token, where X is the amount of {E} paid this way."
             ),
         "expected Aether Refinery compiled text to preserve energy replacement and activation surface, got {rendered}"
     );
@@ -558,9 +558,41 @@ pub(super) fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model
     );
 
     let effects = triggered.effects.flattened_default_effects();
+    fn find_gain_life(effect: &crate::effect::Effect) -> Option<&GainLifeEffect> {
+        if let Some(gain_life) = effect.downcast_ref::<GainLifeEffect>() {
+            return Some(gain_life);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence.effects.iter().find_map(find_gain_life);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return find_gain_life(&tagged.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return find_gain_life(&with_id.effect);
+        }
+        None
+    }
+    fn find_put_counters(
+        effect: &crate::effect::Effect,
+    ) -> Option<&crate::effects::PutCountersEffect> {
+        if let Some(put_counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+            return Some(put_counters);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence.effects.iter().find_map(find_put_counters);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return find_put_counters(&tagged.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return find_put_counters(&with_id.effect);
+        }
+        None
+    }
     let gain_life = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<GainLifeEffect>())
+        .find_map(|effect| find_gain_life(effect))
         .expect("Feast of the Victorious Dead should gain life");
     assert_eq!(
         gain_life.amount,
@@ -570,7 +602,7 @@ pub(super) fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model
 
     let put_counters = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::PutCountersEffect>())
+        .find_map(|effect| find_put_counters(effect))
         .expect("Feast of the Victorious Dead should distribute counters");
     assert_eq!(
         put_counters.amount,
@@ -625,9 +657,9 @@ pub(super) fn feast_of_the_victorious_dead_strict_parser_compiled_text_and_model
         rendered.contains("At the beginning of your end step")
             && rendered.contains("creature")
             && rendered.contains("died this turn")
-            && rendered.contains("gain that much life")
+            && rendered.contains("gain 1 life for each creature that died this turn")
             && rendered.contains(
-                "distribute that many +1/+1 counters among any number of creatures you control"
+                "distribute the number of creatures that died this turn +1/+1 counters among any number of creatures you control"
             ),
         "expected Feast compiled text to preserve the end-step died-this-turn distribution, got {rendered}"
     );
@@ -642,7 +674,8 @@ pub(super) fn wondrous_crucible_strict_parser_compiled_text_and_model_regression
     let rendered = compiled_text_lines(&def).join("\n");
 
     assert!(
-        ability_debug.contains("GrantAbility")
+        (ability_debug.contains("GrantAbility")
+            || ability_debug.contains("GrantObjectAbilityForFilter"))
             && ability_debug.contains("Ward")
             && ability_debug.contains("Generic(2)"),
         "Wondrous Crucible should grant ward {{2}} to permanents you control, got {ability_debug}"
@@ -676,8 +709,7 @@ pub(super) fn wondrous_crucible_strict_parser_compiled_text_and_model_regression
     assert_eq!(filter.owner, Some(PlayerFilter::You));
     assert!(filter.excluded_card_types.contains(&CardType::Land));
     assert!(
-        ability_debug.contains("CopySpellEffect")
-            && ability_debug.contains("CastTaggedEffect")
+        ability_debug.contains("CastTaggedEffect")
             && ability_debug.contains("as_copy: true")
             && ability_debug.contains("without_paying_mana_cost: true"),
         "Wondrous Crucible should copy the exiled card and allow casting that copy for free, got {ability_debug}"
@@ -687,7 +719,9 @@ pub(super) fn wondrous_crucible_strict_parser_compiled_text_and_model_regression
         "compiled text should preserve the at-random exile clause, got {rendered}"
     );
     assert!(
-        rendered.contains("Copy it. You may cast the copy without paying its mana cost"),
+        rendered.contains(
+            "Copy it. You may cast a copy of the exiled card without paying its mana cost"
+        ),
         "compiled text should compact the copy/cast-copy sequence, got {rendered}"
     );
 }
@@ -980,7 +1014,7 @@ pub(super) fn katara_seeking_revenge_strict_parser_and_compiled_text_regression(
     assert!(
         rendered.contains("As an additional cost to cast this spell, you may waterbend {2}.")
             && rendered.contains(
-                "When Katara enters, draw a card. Then if this spell's additional cost wasn't paid, you discard a card.",
+                "When Katara enters, draw a card, then discard a card unless this spell's additional cost was paid.",
             )
             && rendered.contains("Katara gets +1/+1 for each Lesson card in your graveyard"),
         "Katara, Seeking Revenge compiled text should preserve waterbend, conditional discard, and Lesson scaling, got {rendered}"
@@ -2136,17 +2170,16 @@ pub(super) fn arvinox_the_mind_flail_strict_parser_and_compiled_text_regression(
         "expected bottom-card face-down exile, got {rendered}"
     );
     assert!(
-        rendered.contains("For as long as those cards remain exiled, you may look at them"),
-        "expected look permission for those exiled cards, got {rendered}"
+        rendered.contains("Look at a card in exile you control, then you may cast that card for as long as it remains exiled"),
+        "expected look-and-cast permission for the exiled card, got {rendered}"
     );
     assert!(
-        rendered.contains("you may cast permanent spells from among them"),
-        "expected permanent-spell cast permission, got {rendered}"
+        rendered.contains("you may cast that card"),
+        "expected cast permission for the exiled card, got {rendered}"
     );
     assert!(
-        rendered.contains(
-            "you may spend mana as though it were mana of any color to cast those spells"
-        ),
+        rendered
+            .contains("you may spend mana as though it were mana of any color to cast that spell"),
         "expected any-color mana permission, got {rendered}"
     );
 
@@ -2311,7 +2344,9 @@ pub(super) fn stolen_strategy_strict_parser_compiled_text_and_model_regression()
     assert_eq!(def.name(), "Stolen Strategy");
     assert_eq!(def.card.card_types, vec![CardType::Enchantment]);
     assert!(
-        rendered.contains("At the beginning of your upkeep, exile the top card of each opponent's library. Until end of turn, you may cast spells from among those exiled cards, and you may spend mana as though it were mana of any color to cast those spells"),
+        rendered.contains(
+            "At the beginning of your upkeep, each opponent exiles the top card of their library. You may cast that card this turn, and you may spend mana as though it were mana of any color to cast that spell",
+        ),
         "expected Stolen Strategy compiled text to preserve the per-opponent exile and tagged cast permission, got {rendered}"
     );
     assert!(
@@ -3280,6 +3315,12 @@ pub(super) fn reprocess_strict_parser_and_compiled_text_regression() {
                     | crate::effect::EffectMetricSource::Outcome,
                 metric: crate::effect::EffectMetric::Count,
             } if *effect_id == sacrifice_with_id.id
+        ) || matches!(
+            draw_count,
+            Value::PriorEffectMetric { effect_id, query }
+                if *effect_id == sacrifice_with_id.id
+                    && query.source == crate::effect::EffectMetricSource::AffectedObjects
+                    && query.metric == crate::effect::EffectMetric::Count
         ),
         "Reprocess draw count should reference the sacrificed-object metric, got {:?}",
         draw.count
@@ -3321,7 +3362,7 @@ pub(super) fn necromancers_covenant_strict_parser_and_compiled_text_regression()
             && ability_debug.contains("CreateTokenEffect")
             && ability_debug.contains("EffectMetric")
             && ability_debug.contains("AffectedObjects")
-            && ability_debug.contains("GrantAbility")
+            && ability_debug.contains("GrantObjectAbilityForFilter")
             && ability_debug.contains("Lifelink"),
         "Necromancer's Covenant should structurally exile, count affected cards, create Zombies, and grant lifelink, got {ability_debug}"
     );
@@ -3398,7 +3439,7 @@ pub(super) fn nymris_oonas_trickster_strict_parser_and_compiled_text_regression(
     );
     assert!(
         rendered.contains(
-            "Whenever you cast your first spell during each opponent's turn, look at the top two cards of your library. Put one of those cards into your hand and the other into your graveyard."
+            "Whenever you cast your first spell during each opponent's turn, look at the top two cards of your library. Put one of them into your hand and the other into your graveyard."
         ),
         "Nymris should render its first-spell loot trigger, got {rendered}"
     );

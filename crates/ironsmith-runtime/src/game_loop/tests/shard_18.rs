@@ -2,13 +2,14 @@ use super::*;
 
 #[cfg(ironsmith_runtime_parser_tests)]
 fn chain_lightning_definition() -> crate::cards::CardDefinition {
-    CardDefinitionBuilder::new(CardId::new(), "Chain Lightning")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Chain Lightning")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
         .card_types(vec![CardType::Sorcery])
         .parse_text(
             "Chain Lightning deals 3 damage to any target. Then that player or that permanent's controller may pay {R}{R}. If the player does, they may copy this spell and may choose a new target for that copy.",
         )
-        .expect("Chain Lightning should parse")
+        .expect("Chain Lightning should parse");
+    def
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

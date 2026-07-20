@@ -96,7 +96,7 @@ fn take_to_the_streets_strictly_compiles_both_citizen_modifications() {
                 "Creatures you control get +2/+2 until end of turn. Citizens you control get an additional +1/+1 and gain vigilance until end of turn.",
             )
     });
-    eprintln!("{}", trace.render());
+    let _ = trace;
     let definition = definition.expect("Take to the Streets should parse strictly");
     let effects = definition
         .spell_effect
@@ -115,11 +115,27 @@ fn take_to_the_streets_strictly_compiles_both_citizen_modifications() {
             })
     }
 
-    let citizen_effects: Vec<_> = effects
-        .segments
-        .iter()
-        .flat_map(|segment| &segment.default_effects)
-        .filter_map(continuous_effect)
+    let flattened_effects = effects.flattened_default_effects();
+    fn collect_continuous_effects<'a>(
+        effect: &'a crate::effect::Effect,
+        output: &mut Vec<&'a crate::effects::ApplyContinuousEffect>,
+    ) {
+        if let Some(apply) = continuous_effect(effect) {
+            output.push(apply);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            for child in &sequence.effects {
+                collect_continuous_effects(child, output);
+            }
+        }
+    }
+
+    let mut continuous_effects = Vec::new();
+    for effect in flattened_effects {
+        collect_continuous_effects(effect, &mut continuous_effects);
+    }
+    let citizen_effects: Vec<_> = continuous_effects
+        .into_iter()
         .filter(|apply| {
             matches!(
                 &apply.target,

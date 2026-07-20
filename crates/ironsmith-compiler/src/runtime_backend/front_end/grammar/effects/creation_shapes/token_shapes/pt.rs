@@ -38,7 +38,8 @@ fn parse_unsigned_pt(input: &mut &str) -> WResult<(i32, i32)> {
 }
 
 pub(crate) fn parse_pt_word(word: &str) -> Option<PtSurface> {
-    parse_pt.parse(word).ok()
+    let normalized = word.to_ascii_lowercase();
+    parse_pt.parse(&normalized).ok()
 }
 
 pub(crate) fn parse_unsigned_pt_word(word: &str) -> Option<(i32, i32)> {

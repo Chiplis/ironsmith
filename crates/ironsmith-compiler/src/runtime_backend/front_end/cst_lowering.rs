@@ -138,19 +138,16 @@ fn lower_activated_line(
 
 fn lower_triggered_line(triggered: TriggeredLineCst) -> Result<RewriteSemanticItem, CardTextError> {
     let info = triggered.info;
-    let parsed = super::semantic_line_parsing::apply_explicit_intervening_if_to_triggered_chunk(
-        super::semantic_line_parsing::parse_triggered_line(
-            info.clone(),
-            &triggered.full_text,
-            &triggered.full_parse_tokens,
-            &triggered.trigger_parse_tokens,
-            &triggered.effect_parse_tokens,
-            triggered.intervening_if.clone(),
-            triggered.presentation.as_ref(),
-            triggered.max_triggers_per_turn,
-            triggered.chosen_option.as_ref(),
-        )?,
+    let parsed = super::semantic_line_parsing::parse_triggered_line(
+        info.clone(),
+        &triggered.full_text,
+        &triggered.full_parse_tokens,
+        &triggered.trigger_parse_tokens,
+        &triggered.effect_parse_tokens,
         triggered.intervening_if,
+        triggered.presentation.as_ref(),
+        triggered.max_triggers_per_turn,
+        triggered.chosen_option.as_ref(),
     )?;
     Ok(parsed_line_item(
         info,

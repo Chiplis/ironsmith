@@ -3384,7 +3384,7 @@ pub(super) fn sophina_spearsage_deserter_strict_parse_and_compiled_text_preserve
         rendered_lines,
         vec![
             "Menace".to_string(),
-            "Whenever Sophina attacks, investigate once for each nontoken attacking creature."
+            "Whenever Sophina attacks, investigate X times, where X is the number of nontoken attacking creatures."
                 .to_string(),
             "Partner—friends forever".to_string(),
         ],

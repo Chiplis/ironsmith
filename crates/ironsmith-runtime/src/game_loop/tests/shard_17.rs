@@ -608,8 +608,7 @@ pub(super) fn return_to_dust_allows_second_target_on_your_main_phase() {
 
     let return_to_dust = CardDefinitionBuilder::new(CardId::from_raw(100_910), "Return to Dust")
         .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Colorless],
-            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::Generic(2)],
             vec![ManaSymbol::White],
             vec![ManaSymbol::White],
         ]))
@@ -682,8 +681,7 @@ pub(super) fn return_to_dust_does_not_allow_second_target_outside_main_phase() {
 
     let return_to_dust = CardDefinitionBuilder::new(CardId::from_raw(100_913), "Return to Dust")
         .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Colorless],
-            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::Generic(2)],
             vec![ManaSymbol::White],
             vec![ManaSymbol::White],
         ]))
@@ -750,8 +748,7 @@ pub(super) fn return_to_dust_does_not_allow_second_target_on_opponents_turn() {
 
     let return_to_dust = CardDefinitionBuilder::new(CardId::from_raw(100_915), "Return to Dust")
         .mana_cost(ManaCost::from_pips(vec![
-            vec![ManaSymbol::Colorless],
-            vec![ManaSymbol::Colorless],
+            vec![ManaSymbol::Generic(2)],
             vec![ManaSymbol::White],
             vec![ManaSymbol::White],
         ]))

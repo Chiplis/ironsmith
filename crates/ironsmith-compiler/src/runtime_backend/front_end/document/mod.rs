@@ -231,10 +231,19 @@ fn should_try_combined_static_tokens(
     line_tokens: &[OwnedLexToken],
     next_line_tokens: &[OwnedLexToken],
 ) -> bool {
-    (is_land_reveal_enters_static_line_lexed(line_tokens)
+    ((is_land_reveal_enters_static_line_lexed(line_tokens)
+        || is_pay_life_enters_static_line_lexed(line_tokens))
         && is_land_reveal_enters_tapped_followup_line_lexed(next_line_tokens))
         || (is_opening_hand_begin_game_static_line_lexed(line_tokens)
             && is_if_you_do_exile_followup_tokens(next_line_tokens))
+}
+
+fn is_pay_life_enters_static_line_lexed(tokens: &[OwnedLexToken]) -> bool {
+    grammar::parse_prefix(tokens, grammar::phrase(&["as", "this"])).is_some()
+        && tokens.iter().any(|token| token.is_word("enter"))
+        && tokens.iter().any(|token| token.is_word("may"))
+        && tokens.iter().any(|token| token.is_word("pay"))
+        && tokens.iter().any(|token| token.is_word("life"))
 }
 
 #[derive(Debug, Clone)]
@@ -461,8 +470,10 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
     ) {
         return false;
     }
+    let is_effect_redirect = crate::runtime_backend::grammar::effects::clause_pattern_shapes::parse_redirect_next_damage_tokens(tokens).is_some();
     is_nonpermanent_spell
-        && document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
+        && (document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
+            || is_effect_redirect)
 }
 
 fn looks_like_leading_conditional_self_replacement(tokens: &[OwnedLexToken]) -> bool {

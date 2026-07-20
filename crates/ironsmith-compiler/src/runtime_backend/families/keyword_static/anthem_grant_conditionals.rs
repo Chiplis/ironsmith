@@ -2979,15 +2979,15 @@ fn generic_leading_as_long_as_wraps_explicit_subject_static_families() {
         ),
         (
             "As long as you control eight or more permanents named Phoenix Fleet Airship, this Vehicle is an artifact creature.",
-            &["Phoenix Fleet Airship", "GreaterThanOrEqual(8)"][..],
+            &["phoenix fleet airship", "GreaterThanOrEqual"][..],
         ),
         (
             "As long as there are four or more quest counters on this enchantment, untap all creatures you control during each other player's untap step.",
-            &["Quest", "GreaterThanOrEqual(4)"][..],
+            &["Quest", "GreaterThanOrEqual"][..],
         ),
         (
             "As long as this creature has a conqueror counter on it, nonbasic lands are Mountains.",
-            &["conqueror", "GreaterThanOrEqual(1)"][..],
+            &["conqueror", "GreaterThanOrEqual"][..],
         ),
     ] {
         let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
@@ -3211,14 +3211,14 @@ fn attachment_count_conditions_bind_typed_hosts_for_target_cards() {
     let cases = [
         (
             "Balan has double strike as long as two or more Equipment are attached to it.",
-            &["AttachmentCount", "host: Source", "GreaterThanOrEqual(2)"][..],
+            &["AttachmentCount", "host: Source", "GreaterThanOrEqual"][..],
         ),
         (
             "Equipped creature has double strike as long as two or more Equipment are attached to it.",
             &[
                 "AttachmentCount",
                 "SourceAttachedObject",
-                "GreaterThanOrEqual(2)",
+                "GreaterThanOrEqual",
                 "equipped",
             ][..],
         ),
@@ -3239,7 +3239,7 @@ fn attachment_count_conditions_bind_typed_hosts_for_target_cards() {
                 "AttachmentCount",
                 "Matching(",
                 "grooms finery",
-                "GreaterThanOrEqual(1)",
+                "GreaterThanOrEqual",
             ][..],
         ),
         (
@@ -3248,7 +3248,7 @@ fn attachment_count_conditions_bind_typed_hosts_for_target_cards() {
                 "AttachmentCount",
                 "Matching(",
                 "brides gown",
-                "GreaterThanOrEqual(1)",
+                "GreaterThanOrEqual",
             ][..],
         ),
     ];

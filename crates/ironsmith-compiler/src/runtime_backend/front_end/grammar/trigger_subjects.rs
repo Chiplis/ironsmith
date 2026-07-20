@@ -79,6 +79,17 @@ pub(crate) struct SpellFilterEnvelope {
     pub(crate) end: usize,
 }
 
+fn comma_continues_spell_color_list(tokens: &[OwnedLexToken]) -> bool {
+    let mut words = tokens.iter().filter_map(OwnedLexToken::as_word);
+    match words.next() {
+        Some(word) if crate::runtime_backend::util::parse_color(word).is_some() => true,
+        Some("and" | "or" | "and/or") => words
+            .next()
+            .is_some_and(|word| crate::runtime_backend::util::parse_color(word).is_some()),
+        _ => false,
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TriggerControllerReference {
     You,
@@ -343,7 +354,11 @@ pub(crate) fn parse_spell_filter_envelope(tokens: &[OwnedLexToken]) -> SpellFilt
         // subtype list (`instant, sorcery, or Wizard spell`). Once that noun
         // has been consumed, a comma again marks the end of the trigger's
         // object filter.
-        if token.is_period() || (token.is_comma() && saw_spell_noun) {
+        if token.is_period()
+            || (token.is_comma()
+                && saw_spell_noun
+                && !comma_continues_spell_color_list(input.as_ref()))
+        {
             return SpellFilterEnvelope { end };
         }
         let Some(word) = token.as_word() else {

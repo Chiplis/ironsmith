@@ -1844,6 +1844,9 @@ impl ObjectFilter {
         if let Some(description) = describe_branch_scoped_card_type_union(self) {
             return description;
         }
+        if let Some(description) = describe_owner_scoped_zone_union(self) {
+            return description;
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
             let mut description = describe_filter_union_list(
@@ -1903,6 +1906,13 @@ impl ObjectFilter {
         if has_target_tag {
             parts.push("target".to_string());
         }
+        let has_chosen_tag = self.tagged_constraints.iter().any(|constraint| {
+            matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                && constraint.tag.as_str() == "__chosen_objects__"
+        });
+        if has_chosen_tag {
+            parts.push("the chosen".to_string());
+        }
         if self.source {
             parts.push(
                 source_surface_text
@@ -1914,7 +1924,7 @@ impl ObjectFilter {
             parts.push("modified".to_string());
         }
 
-        let has_leading_determiner = self.other || has_target_tag || self.source;
+        let has_leading_determiner = self.other || has_target_tag || has_chosen_tag || self.source;
 
         if let Some(ref ctrl) = self.controller {
             match ctrl {
@@ -3247,6 +3257,45 @@ impl ObjectFilter {
 
 fn source_reference_surface_text(surface: &SourceReferenceSurface) -> String {
     surface.display_text()
+}
+
+/// An owner-scoped union of bare zones ("all cards from all opponents'
+/// hands and graveyards") — the generic branch join would lose the owner
+/// and mangle pluralization.
+pub fn describe_owner_scoped_zone_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() != 2 || !matches!(filter.owner, Some(PlayerFilter::Opponent)) {
+        return None;
+    }
+    let mut zones = Vec::with_capacity(filter.any_of.len());
+    for branch in &filter.any_of {
+        let zone = branch.zone?;
+        let probe = ObjectFilter {
+            zone: Some(zone),
+            ..ObjectFilter::default()
+        };
+        if branch != &probe {
+            return None;
+        }
+        zones.push(match zone {
+            Zone::Hand => "hands",
+            Zone::Graveyard => "graveyards",
+            Zone::Library => "libraries",
+            _ => return None,
+        });
+    }
+    let outer_probe = ObjectFilter {
+        owner: filter.owner.clone(),
+        any_of: filter.any_of.clone(),
+        union_surface: filter.union_surface.clone(),
+        ..ObjectFilter::default()
+    };
+    if filter != &outer_probe {
+        return None;
+    }
+    Some(format!(
+        "cards from all opponents' {} and {}",
+        zones[0], zones[1]
+    ))
 }
 
 fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<String> {

@@ -2059,6 +2059,9 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::CounterUnlessPays { .. }
                 | SubjectVerbActionAst::PutCounters { .. }
                 | SubjectVerbActionAst::PutCountersAll { .. }
+                | SubjectVerbActionAst::PutOrRemoveCounters { .. }
+                | SubjectVerbActionAst::RemoveUpToAnyCounters { .. }
+                | SubjectVerbActionAst::RemoveCountersAll { .. }
                 | SubjectVerbActionAst::Goad { .. }
                 | SubjectVerbActionAst::PreventDamage { .. }
                 | SubjectVerbActionAst::PreventDamageEach { .. }

@@ -1967,10 +1967,7 @@ fn typed_animation_pt_surface_preserves_leading_and_authored_base_pt_forms() {
         effect
     };
 
-    let leading = build(
-        ironsmith_core::AnimationPtSurface::LeadingPowerToughness,
-        4,
-    );
+    let leading = build(ironsmith_core::AnimationPtSurface::LeadingPowerToughness, 4);
     let (target, plural) = describe_apply_continuous_target(&leading);
     assert_eq!(
         describe_apply_continuous_animation_effect(&leading, &target, plural).as_deref(),

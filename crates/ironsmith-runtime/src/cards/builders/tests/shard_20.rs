@@ -2825,7 +2825,7 @@ pub(super) fn parse_oracle_from_under_the_floorboards_madness_self_replacement()
     );
     assert!(
         rendered.contains("Create three tapped 2/2 black Zombie creature tokens and you gain 3 life")
-            && rendered.contains("If this spell's madness cost was paid, instead create X of those tokens and you gain X life")
+            && rendered.contains("If this spell's madness cost was paid, create X tapped 2/2 black Zombie creature tokens and you gain X life instead")
             && rendered.contains("Madness {X}{B}{B}")
             && !rendered.contains("token tokens"),
         "expected From Under the Floorboards compiled text to preserve the madness replacement clause, got {rendered}"

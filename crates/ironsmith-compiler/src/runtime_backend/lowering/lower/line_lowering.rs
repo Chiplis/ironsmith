@@ -1,7 +1,7 @@
 use crate::ability::{Ability, AbilityKind};
 use crate::cards::builders::{
-    CardDefinitionBuilder, CardTextError, EffectAst, GiftTimingAst, LineInfo, ParseAnnotations,
-    PlayerAst, StaticAbilityAst, TriggerSpec,
+    CardDefinitionBuilder, CardTextError, EffectAst, GiftTimingAst, KeywordAction, LineInfo,
+    ParseAnnotations, PlayerAst, StaticAbilityAst, TriggerSpec,
 };
 use crate::runtime_backend::activation_and_restrictions::last_created_token_info;
 use crate::runtime_backend::effect_ast_traversal::{
@@ -238,7 +238,13 @@ fn rewrite_prior_token_placeholder_effect(
         *definition = token_info.1.clone();
         *player = token_info.2;
         subject_verb.subject.player = token_info.2;
+        return;
     }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            rewrite_prior_token_placeholder_effect(nested_effect, token_info);
+        }
+    });
 }
 
 fn rewrite_prior_token_placeholders(
@@ -319,7 +325,13 @@ fn rewrite_prior_token_placeholder_effect_from_template(
         *next_end_step_player = template_next_end_step_player.clone();
         *granted_abilities = template_granted_abilities.clone();
         subject_verb.subject.player = *template_player;
+        return;
     }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            rewrite_prior_token_placeholder_effect_from_template(nested_effect, template);
+        }
+    });
 }
 
 fn rewrite_prior_token_placeholders_from_template(
@@ -367,8 +379,10 @@ fn created_token_template_from_effect(
             _ => {
                 let mut found = None;
                 for_each_nested_effects(effect, true, |nested| {
-                    if found.is_none() {
-                        found = token_template_before_prior_token_placeholder(nested);
+                    for nested_effect in nested {
+                        if found.is_none() {
+                            found = created_token_template_from_effect(nested_effect);
+                        }
                     }
                 });
                 found
@@ -377,8 +391,10 @@ fn created_token_template_from_effect(
         _ => {
             let mut found = None;
             for_each_nested_effects(effect, true, |nested| {
-                if found.is_none() {
-                    found = token_template_before_prior_token_placeholder(nested);
+                for nested_effect in nested {
+                    if found.is_none() {
+                        found = created_token_template_from_effect(nested_effect);
+                    }
                 }
             });
             found
@@ -392,6 +408,17 @@ fn token_template_before_prior_token_placeholder(
     let mut latest_token_template = None;
     for effect in effects {
         if effect_references_prior_token_placeholder(effect) {
+            // A madness/self-replacement branch commonly puts the prior-token
+            // placeholder in the replacement branch and the concrete token
+            // blueprint in the non-replacement branch. The branches are
+            // alternatives, so that concrete blueprint is the template for
+            // the placeholder even though it is not earlier in this AST.
+            if let EffectAst::SelfReplacement { if_false, .. } = effect {
+                let template = if_false.iter().find_map(created_token_template_from_effect);
+                if let Some(template) = template {
+                    return Some(template);
+                }
+            }
             return latest_token_template;
         }
         if let Some(token_template) = created_token_template_from_effect(effect) {
@@ -1418,6 +1445,16 @@ fn lower_static_ability_chunk(
         return Ok(builder);
     }
 
+    // Fuse is card metadata, not a battlefield static ability.  The document
+    // parser classifies the bare keyword with the other static keyword lines,
+    // so handle it before the generic static-ability lowering path.
+    if matches!(
+        ability,
+        StaticAbilityAst::KeywordAction(KeywordAction::Fuse)
+    ) {
+        return Ok(builder.has_fuse());
+    }
+
     let ability = match super::rewrite_lower_static_ability_ast(ability) {
         Ok(ability) => ability,
         Err(err) if allow_unsupported => {
@@ -1459,6 +1496,9 @@ fn lower_static_abilities_chunk(
             StaticAbilityAst::AttachmentRestriction { filter, display } => {
                 builder.aura_attach_filter = Some(filter);
                 let _ = display;
+            }
+            StaticAbilityAst::KeywordAction(KeywordAction::Fuse) => {
+                builder = builder.has_fuse();
             }
             other => regular_abilities.push(other),
         }
@@ -1602,7 +1642,8 @@ fn lower_statement_chunk(
     }) {
         builder.aura_attach_filter = Some(enchant_filter);
     }
-    if let Some(token_template) = token_template_before_prior_token_placeholder(&prepared.effects) {
+    let prior_token_template = token_template_before_prior_token_placeholder(&prepared.effects);
+    if let Some(token_template) = prior_token_template {
         rewrite_prior_token_placeholders_from_template(&mut prepared.effects, &token_template);
         prepared = super::rewrite_prepare_effects_for_lowering(
             &prepared.effects,
@@ -1694,8 +1735,7 @@ fn lower_statement_chunk(
                         as_enters.subject
                     ),
                 );
-            builder =
-                builder.with_ability(crate::ability::Ability::static_ability(static_ability));
+            builder = builder.with_ability(crate::ability::Ability::static_ability(static_ability));
             return Ok(builder);
         }
         let static_ability = crate::static_abilities::StaticAbility::as_enters_effect_program(

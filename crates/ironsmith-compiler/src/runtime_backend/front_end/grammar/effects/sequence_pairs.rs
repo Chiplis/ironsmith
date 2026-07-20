@@ -39,7 +39,7 @@ pub(super) fn sequence_word<'a>(
 ) -> impl Parser<LexStream<'a>, (), winnow::error::ErrMode<winnow::error::ContextError>> {
     move |input: &mut LexStream<'a>| {
         let token = next_word(input)?;
-        if token.is_word(expected) {
+        if token.parser_text() == expected {
             Ok(())
         } else {
             Err(primitives::backtrack_err("sequence pair word", expected))
@@ -162,7 +162,7 @@ pub(super) fn sequence_content_phrase<'a>(
     move |input: &mut LexStream<'a>| {
         for word in expected {
             let token = next_content_word(input)?;
-            if !token.is_word(word) {
+            if token.parser_text() != *word {
                 return Err(primitives::backtrack_err(
                     "sequence pair content phrase",
                     "requested content word",

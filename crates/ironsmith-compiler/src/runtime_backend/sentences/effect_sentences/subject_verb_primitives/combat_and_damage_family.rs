@@ -325,22 +325,12 @@ pub(crate) fn parse_sentence_return_multiple_targets(
                 continue;
             }
             let left = trim_lexed_commas(&tokens[1..and_idx]);
-            let right = trim_lexed_commas(&tokens[and_idx + 1..]);
+            let mut right = trim_lexed_commas(&tokens[and_idx + 1..]);
             if left.is_empty() || right.is_empty() {
                 continue;
             }
-            let distinct_destination_zones =
-                crate::runtime_backend::front_end::grammar::effects::parse_return_clause_shape(
-                    left,
-                )
-                .zip(
-                    crate::runtime_backend::front_end::grammar::effects::parse_return_clause_shape(
-                        right,
-                    ),
-                )
-                .is_some_and(|(left, right)| left.destination.zone != right.destination.zone);
-            if !distinct_destination_zones {
-                continue;
+            if right.first().and_then(OwnedLexToken::as_word) == Some("return") {
+                right = trim_lexed_commas(&right[1..]);
             }
             if let (Ok(left), Ok(right)) = (parse_return(left), parse_return(right)) {
                 return Ok(Some(vec![EffectAst::Coordinated {
@@ -755,10 +745,11 @@ mod coordinated_return_tests {
             parse_sentence_return_multiple_targets(SubjectVerbPrimitiveClause::new(&tokens))
                 .expect("parse coordinated return")
                 .expect("coordinated return shape");
-        let [EffectAst::Coordinated { effects, .. }] = effects.as_slice() else {
-            panic!("expected one coordinated return");
+        let effects = match effects.as_slice() {
+            [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
+            effects => effects,
         };
-        let [hand, battlefield] = effects.as_slice() else {
+        let [hand, battlefield] = effects else {
             panic!("expected two return branches");
         };
 
@@ -792,8 +783,9 @@ mod coordinated_return_tests {
             parse_sentence_return_multiple_targets(SubjectVerbPrimitiveClause::new(&tokens))
                 .expect("parse coordinated return")
                 .expect("coordinated return shape");
-        let [EffectAst::Coordinated { effects, .. }] = effects.as_slice() else {
-            panic!("expected one coordinated return");
+        let effects = match effects.as_slice() {
+            [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
+            effects => effects,
         };
         let [
             _,
@@ -801,7 +793,7 @@ mod coordinated_return_tests {
                 action: SubjectVerbActionAst::ReturnToHand { target, .. },
                 ..
             }),
-        ] = effects.as_slice()
+        ] = effects
         else {
             panic!("expected a second return-to-hand action");
         };

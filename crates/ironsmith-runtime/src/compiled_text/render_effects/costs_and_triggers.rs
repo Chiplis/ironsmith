@@ -2901,6 +2901,7 @@ pub(super) fn describe_counted_sacrifice_choice_selection(
             Some(format!("{count} {plural}"))
         }
         (min, Some(max)) => Some(format!("{min} to {max} {plural}")),
+        (1, None) => Some(format!("one or more {plural}")),
         (min, None) => Some(format!("at least {min} {plural}")),
     }
 }

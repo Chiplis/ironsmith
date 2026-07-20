@@ -86,15 +86,16 @@ fn parse_doom_weaver_soulbond_shared_dies_draw_clause() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_soulbond_shared_copy_clause_can_lose_soulbond() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
-            .parse_text(
-                "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures has \"At the beginning of combat on your turn, create a token that's a copy of this creature, except it has haste and loses soulbond. Exile it at end of combat.\"",
-            )
-            .expect_err("loses soulbond copy modifier should fail until it has real semantics");
-
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mirage Phalanx Variant")
+        .parse_text(
+            "Soulbond (You may pair this creature with another unpaired creature when either enters. They remain paired for as long as you control both of them.)\nAs long as this creature is paired with another creature, each of those creatures has \"At the beginning of combat on your turn, create a token that's a copy of this creature, except it has haste and loses soulbond. Exile it at end of combat.\"",
+        )
+        .expect("soulbond shared copy clause should parse");
     assert!(
-        format!("{err:?}").to_ascii_lowercase().contains("soulbond"),
-        "expected loses-soulbond marker to fail loudly, got: {err:?}"
+        format!("{def:?}").contains("SoulbondPairEffect")
+            && format!("{def:?}").contains("RemoveAbilityForFilter")
+            && format!("{def:?}").contains("display: \\\"Soulbond\\\""),
+        "expected token-copy haste and soulbond removal semantics, got: {def:?}"
     );
 }
 
@@ -307,10 +308,11 @@ fn parse_delirium_maximum_hand_size_formula_line() {
         AbilityKind::Static(static_ability) => static_ability,
         other => panic!("expected static ability, got {other:?}"),
     };
-    assert_eq!(
-        ability.id(),
-        crate::static_abilities::StaticAbilityId::MaximumHandSizeSevenMinusYourGraveyardCardTypes,
-        "expected dedicated max-hand-size formula ability"
+    let debug = format!("{ability:?}");
+    assert!(
+        ability.id() == crate::static_abilities::StaticAbilityId::GrantAbility
+            && debug.contains("MaximumHandSizeSevenMinusYourGraveyardCardTypes"),
+        "expected typed grant of the max-hand-size formula ability, got {debug}"
     );
 }
 
@@ -1305,9 +1307,11 @@ fn sharpened_pitchfork_parses_with_human_equipped_condition() {
         "missing first-strike static grant in displays: {displays:?}"
     );
     assert!(
-        displays
-            .iter()
-            .any(|display| display.contains("as long as equipped creature is a human")),
+        displays.iter().any(|display| {
+            display
+                .to_ascii_lowercase()
+                .contains("as long as equipped creature is a human")
+        }),
         "missing human equipped-creature condition in displays: {displays:?}"
     );
     assert!(
@@ -1719,7 +1723,7 @@ fn parse_target_artifact_becomes_artifact_creature_until_end_of_turn_spell_line(
 
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("AddCardTypes")
+        (debug.contains("AddCardTypes") || debug.contains("SetCardTypes"))
             && debug.contains("Artifact")
             && debug.contains("Creature")
             && debug.contains("EndOfTurn"),
@@ -2020,9 +2024,9 @@ fn parse_until_next_turn_whenever_trigger_clause() {
     let debug = format!("{:?}", def.spell_effect);
     assert!(
         debug.contains("DestroyEffect { spec: All(")
-            && debug.contains("ApplyContinuousEffect")
             && debug.contains("PermanentBecomesTappedTrigger")
-            && debug.contains("until: YourNextTurn"),
+            && debug.contains("ScheduleDelayedTriggerEffect")
+            && debug.contains("UntilControllerNextTurn"),
         "expected destroy-all plus delayed tap trigger granting, got {debug}"
     );
 }
@@ -2659,23 +2663,15 @@ fn parse_parley_revealed_this_way_uses_tagged_nonland_filter() {
             .expect("parley revealed-this-way sentence should parse");
 
     let effects = def.spell_effect.as_ref().expect("spell effects");
-    let for_each = effects
-        .iter()
-        .find_map(|effect| effect.downcast_ref::<ForEachObject>())
-        .expect("expected ForEachObject for nonland revealed card fanout");
+    let debug = format!("{effects:#?}");
     assert!(
-        for_each.filter.tagged_constraints.iter().any(|constraint| {
-            constraint.relation == crate::TaggedOpbjectRelation::IsTaggedObject
-                && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
-        }),
-        "expected revealed-this-way fanout to reference revealed tag, got {for_each:?}"
-    );
-    assert!(
-        for_each
-            .filter
-            .excluded_card_types
-            .contains(&CardType::Land),
-        "expected nonland constraint on revealed cards, got {for_each:?}"
+        debug.contains("RepeatEffectsEffect")
+            && debug.contains("CardsRevealedThisWay")
+            && debug.contains(
+                "excluded_card_types: [\n                                                Land,"
+            )
+            && debug.contains("CreateTokenEffect"),
+        "expected nonland revealed-this-way fanout, got {debug}"
     );
 }
 

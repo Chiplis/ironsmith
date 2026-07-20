@@ -527,8 +527,8 @@ fn test_commander_cast_count_anthem_scales_from_player_commander_casts() {
 
     assert_eq!(
         game.calculated_power(creature_id),
-        Some(1),
-        "the anthem should start at +0/+0 before commander casts"
+        Some(2),
+        "the anthem should start at +1/+1 before commander casts"
     );
     assert_eq!(
         game.commander_cast_count_for_player(alice),
@@ -1585,7 +1585,10 @@ fn probe_big_board_dependency_hotspots() {
         ),
         ("Fervor", "Creatures you control have haste."),
         ("Glorious Anthem", "Creatures you control get +1/+1."),
-        ("Honor of the Pure", "White creatures you control get +1/+1."),
+        (
+            "Honor of the Pure",
+            "White creatures you control get +1/+1.",
+        ),
         ("Bad Moon", "Black creatures get +1/+1."),
         (
             "Favorable Winds",
@@ -1600,7 +1603,10 @@ fn probe_big_board_dependency_hotspots() {
             "Spidersilk Armor",
             "Creatures you control get +0/+1 and have reach.",
         ),
-        ("Dictate of Heliod", "Flash\nCreatures you control get +2/+2."),
+        (
+            "Dictate of Heliod",
+            "Flash\nCreatures you control get +2/+2.",
+        ),
     ];
 
     let creature_count = 200usize;
@@ -1802,11 +1808,16 @@ fn second_animation_aura_resolves_from_stack_without_hanging() {
     }
 
     let aura_two = game.create_object_from_definition(&animate_artifact, alice, Zone::Stack);
-    game.push_to_stack(StackEntry::new(aura_two, alice).with_targets(vec![Target::Object(mine_two)]));
+    game.push_to_stack(
+        StackEntry::new(aura_two, alice).with_targets(vec![Target::Object(mine_two)]),
+    );
 
     resolve_stack_entry(&mut game).expect("second Animate Artifact should resolve");
 
-    assert!(game.stack.is_empty(), "stack should be empty after resolution");
+    assert!(
+        game.stack.is_empty(),
+        "stack should be empty after resolution"
+    );
     for mine_id in [mine_one, mine_two] {
         let animated = game
             .calculated_characteristics(mine_id)

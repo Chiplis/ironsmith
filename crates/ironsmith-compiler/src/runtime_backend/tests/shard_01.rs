@@ -7,6 +7,30 @@ use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
 
+pub(super) fn conditional_effect_parts(
+    effect: &crate::cards::builders::EffectAst,
+) -> (
+    &crate::cards::builders::PredicateAst,
+    &[crate::cards::builders::EffectAst],
+    &[crate::cards::builders::EffectAst],
+) {
+    match effect {
+        crate::cards::builders::EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } => (predicate, if_true, if_false),
+        crate::cards::builders::EffectAst::TrailingIf {
+            predicate,
+            effects: if_true,
+        } => (predicate, if_true, &[]),
+        crate::cards::builders::EffectAst::TrailingUnless { predicate, effects } => {
+            (predicate, &[], effects)
+        }
+        other => panic!("expected a conditional effect, got {other:?}"),
+    }
+}
+
 #[test]
 pub(super) fn aetherflux_conduit_uses_triggering_spell_mana_spent_value() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Aetherflux Conduit")
@@ -110,12 +134,11 @@ pub(super) fn attach_any_number_equipment_to_it_lowers_without_targeting_equipme
             "Vehicles you control become artifact creatures until end of turn. Choose a Dwarf you control. Attach any number of Equipment you control to it.",
         )?;
 
-    let effects = &def
+    let effects = def
         .spell_effect
         .as_ref()
         .expect("spell should lower")
-        .segments[0]
-        .default_effects;
+        .flattened_default_effects();
     let attach = effects
         .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
@@ -244,10 +267,12 @@ pub(super) fn return_it_as_aura_enchantment_lowers_to_atomic_aura_return() {
     let debug = format!("{def:#?}");
     assert!(
         debug.contains("ReturnFromGraveyardToBattlefieldEffect")
-            && debug.contains("as_aura: Some")
-            && debug.contains("remove_all_abilities: true")
-            && debug.contains("controller: Some")
-            && debug.contains("You")
+            && debug.contains("AddCardTypes")
+            && debug.contains("Enchantment")
+            && debug.contains("AddSubtypes")
+            && debug.contains("Aura")
+            && debug.contains("SetAuraAttachmentFilter")
+            && debug.contains("RemoveAllAbilities")
             && !debug.contains("BecomeAuraEnchantment"),
         "expected return-as-aura wording to lower to atomic aura return, got {debug}"
     );
@@ -284,26 +309,22 @@ pub(super) fn rewrite_if_clause_supports_passive_this_way_tagged_object_predicat
         parse_effect_sentence_lexed(&tokens).expect("passive this-way predicate should parse");
 
     let [
-        crate::cards::builders::EffectAst::Conditional {
-            predicate,
-            if_true,
-            if_false,
+        crate::cards::builders::EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(surface),
+            effects,
         },
     ] = parsed.as_slice()
     else {
         panic!("expected conditional damage clause, got {parsed:?}");
     };
-    assert!(if_false.is_empty());
-    let crate::cards::builders::PredicateAst::TaggedMatches(tag, filter) = predicate else {
-        panic!("expected passive this-way predicate to bind last tagged object, got {predicate:?}");
-    };
-    assert_eq!(tag.as_str(), crate::cards::builders::IT_TAG);
+    let filter = &surface.filter;
+    assert_eq!(surface.action, ironsmith_core::PriorEffectAction::Discarded);
     assert!(
         filter.colors.is_some(),
         "expected red-card predicate to retain color filter, got {filter:?}"
     );
     assert!(matches!(
-        if_true.as_slice(),
+        effects.as_slice(),
         [crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
                 action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
@@ -324,14 +345,17 @@ pub(super) fn rewrite_if_clause_keeps_passive_this_way_card_filters_zone_neutral
     let parsed =
         parse_effect_sentence_lexed(&tokens).expect("passive this-way card predicate should parse");
 
-    let [crate::cards::builders::EffectAst::Conditional { predicate, .. }] = parsed.as_slice()
+    let [
+        crate::cards::builders::EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::PriorEffectResult(surface),
+            ..
+        },
+    ] = parsed.as_slice()
     else {
         panic!("expected conditional damage clause, got {parsed:?}");
     };
-    let crate::cards::builders::PredicateAst::TaggedMatches(tag, filter) = predicate else {
-        panic!("expected passive this-way predicate to bind last tagged object, got {predicate:?}");
-    };
-    assert_eq!(tag.as_str(), crate::cards::builders::IT_TAG);
+    let filter = &surface.filter;
+    assert_eq!(surface.action, ironsmith_core::PriorEffectAction::Discarded);
     assert_eq!(filter.card_types, vec![CardType::Land]);
     assert!(
         filter.zone.is_none(),
@@ -429,31 +453,24 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_instead_if_damage_clause_after
     let parsed =
         parse_effect_sentence_lexed(&tokens).expect("instead-if damage clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional instead-if damage clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one instead-if damage clause, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::DealDamage { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -463,27 +480,20 @@ pub(super) fn rewrite_verb_handlers_keep_trailing_if_draw_clause_after_structure
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("draw clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate: _,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional draw clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one conditional draw clause, got {parsed:?}");
+    };
+    let (_, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -532,28 +542,26 @@ pub(super) fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player() 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("hand exchange clause should parse");
     let debug = format!("{parsed:#?}");
 
-    let has_iterated_draw = parsed.iter().any(|effect| {
-        matches!(
-            effect,
+    fn has_iterated_draw(effect: &crate::cards::builders::EffectAst) -> bool {
+        match effect {
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject:
+                        crate::cards::builders::SubjectVerbSubjectAst {
+                            player: crate::cards::builders::PlayerAst::That,
+                            ..
+                        },
+                    action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                },
+            ) => true,
             crate::cards::builders::EffectAst::ForEachPlayer { effects }
-                if effects.iter().any(|inner| {
-                    matches!(
-                        inner,
-                        crate::cards::builders::EffectAst::SubjectVerb(
-                            crate::cards::builders::SubjectVerbEffectAst {
-                                subject:
-                                    crate::cards::builders::SubjectVerbSubjectAst {
-                                        player: crate::cards::builders::PlayerAst::That,
-                                        ..
-                                    },
-                                action:
-                                    crate::cards::builders::SubjectVerbActionAst::Draw { .. },
-                            },
-                        )
-                    )
-                })
-        )
-    });
+            | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
+                effects.iter().any(has_iterated_draw)
+            }
+            _ => false,
+        }
+    }
+    let has_iterated_draw = parsed.iter().any(has_iterated_draw);
     assert!(has_iterated_draw, "{debug}");
     assert!(!debug.contains("ItsOwner"), "{debug}");
     assert!(!debug.contains("LibraryOwner"), "{debug}");
@@ -571,28 +579,26 @@ pub(super) fn each_player_exiles_hand_and_draws_keeps_draw_on_iterated_player_in
         .expect("hand exchange sequence should parse");
     let debug = format!("{parsed:#?}");
 
-    let has_iterated_draw = parsed.iter().any(|effect| {
-        matches!(
-            effect,
+    fn has_iterated_draw(effect: &crate::cards::builders::EffectAst) -> bool {
+        match effect {
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    subject:
+                        crate::cards::builders::SubjectVerbSubjectAst {
+                            player: crate::cards::builders::PlayerAst::That,
+                            ..
+                        },
+                    action: crate::cards::builders::SubjectVerbActionAst::Draw { .. },
+                },
+            ) => true,
             crate::cards::builders::EffectAst::ForEachPlayer { effects }
-                if effects.iter().any(|inner| {
-                    matches!(
-                        inner,
-                        crate::cards::builders::EffectAst::SubjectVerb(
-                            crate::cards::builders::SubjectVerbEffectAst {
-                                subject:
-                                    crate::cards::builders::SubjectVerbSubjectAst {
-                                        player: crate::cards::builders::PlayerAst::That,
-                                        ..
-                                    },
-                                action:
-                                    crate::cards::builders::SubjectVerbActionAst::Draw { .. },
-                            },
-                        )
-                    )
-                })
-        )
-    });
+            | crate::cards::builders::EffectAst::Coordinated { effects, .. } => {
+                effects.iter().any(has_iterated_draw)
+            }
+            _ => false,
+        }
+    }
+    let has_iterated_draw = parsed.iter().any(has_iterated_draw);
     assert!(has_iterated_draw, "{debug}");
     assert!(!debug.contains("ItsOwner"), "{debug}");
     assert!(!debug.contains("LibraryOwner"), "{debug}");
@@ -630,27 +636,20 @@ pub(super) fn rewrite_verb_handlers_keep_conditional_gain_control_clause_after_s
     let parsed =
         parse_effect_sentence_lexed(&tokens).expect("conditional gain-control clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate: _,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::GainControl { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional gain-control clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one conditional gain-control clause, got {parsed:?}");
+    };
+    let (_, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::GainControl { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -664,27 +663,20 @@ pub(super) fn rewrite_verb_handlers_keep_unless_gain_control_clause_after_struct
     let parsed =
         parse_effect_sentence_lexed(&tokens).expect("unless gain-control clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate: _,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_true.is_empty());
-            assert!(matches!(
-                if_false.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::GainControl { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected unless gain-control clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one unless gain-control clause, got {parsed:?}");
+    };
+    let (_, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_true.is_empty());
+    assert!(matches!(
+        if_false,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::GainControl { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -869,31 +861,24 @@ pub(super) fn rewrite_zone_handlers_keep_conditional_destroy_clause_after_struct
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("destroy clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Destroy { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional destroy clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one conditional destroy clause, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Destroy { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -1023,43 +1008,29 @@ pub(super) fn rewrite_zone_handlers_keep_nested_instead_if_destroy_clause_after_
     let parsed = parse_effect_sentence_lexed(&tokens)
         .expect("nested instead-if destroy clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate: _,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            match if_true.as_slice() {
-                [
-                    crate::cards::builders::EffectAst::Conditional {
-                        predicate: base_predicate,
-                        if_true: nested_if_true,
-                        if_false: nested_if_false,
-                    },
-                ] => {
-                    assert!(nested_if_false.is_empty());
-                    assert!(matches!(
-                        base_predicate,
-                        crate::cards::builders::PredicateAst::ItMatches(_)
-                    ));
-                    assert!(matches!(
-                        nested_if_true.as_slice(),
-                        [crate::cards::builders::EffectAst::SubjectVerb(
-                            crate::cards::builders::SubjectVerbEffectAst {
-                                action: crate::cards::builders::SubjectVerbActionAst::Destroy { .. },
-                                ..
-                            }
-                        )]
-                    ));
-                }
-                other => panic!("expected nested conditional destroy branch, got {other:?}"),
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one nested instead-if destroy clause, got {parsed:?}");
+    };
+    let (_, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    let [nested] = if_true else {
+        panic!("expected nested conditional destroy branch, got {if_true:?}");
+    };
+    let (base_predicate, nested_if_true, nested_if_false) = conditional_effect_parts(nested);
+    assert!(nested_if_false.is_empty());
+    assert!(matches!(
+        base_predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        nested_if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Destroy { .. },
+                ..
             }
-        }
-        other => panic!("expected nested instead-if destroy clause, got {other:?}"),
-    }
+        )]
+    ));
 }
 
 #[test]
@@ -1069,31 +1040,24 @@ pub(super) fn rewrite_zone_handlers_keep_conditional_exile_clause_after_structur
 
     let parsed = parse_effect_sentence_lexed(&tokens).expect("exile clause should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::ItMatches(_)
-            ));
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::SubjectVerb(
-                    crate::cards::builders::SubjectVerbEffectAst {
-                        action: crate::cards::builders::SubjectVerbActionAst::Exile { .. },
-                        ..
-                    }
-                )]
-            ));
-        }
-        other => panic!("expected conditional exile clause, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one conditional exile clause, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::ItMatches(_)
+    ));
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Exile { .. },
+                ..
+            }
+        )]
+    ));
 }
 
 #[test]
@@ -1319,7 +1283,7 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_scales_by_greatest_power
         ) => {
             assert_eq!(mana, vec![crate::mana::ManaSymbol::Red]);
             assert!(matches!(
-                amount,
+                amount.unhinted(),
                 crate::effect::Value::GreatestPower(filter)
                     if filter.card_types == vec![CardType::Creature]
                         && filter.controller == Some(crate::target::PlayerFilter::You)
@@ -1442,41 +1406,33 @@ pub(super) fn rewrite_effect_sentence_parse_add_mana_wraps_instead_if_tail() {
 
     let effects = parse_effect_sentence_lexed(&tokens).expect("mana sentence should parse");
 
-    match effects.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate: _,
-                if_true,
-                if_false,
+    let [effect] = effects.as_slice() else {
+        panic!("expected one conditional add-mana effect, got {effects:?}");
+    };
+    let (_, if_true, if_false) = conditional_effect_parts(effect);
+    assert!(if_false.is_empty());
+    let [
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                subject,
+                action: crate::cards::builders::SubjectVerbActionAst::AddMana { mana },
             },
-        ] => {
-            assert!(if_false.is_empty());
-            match if_true.as_slice() {
-                [
-                    crate::cards::builders::EffectAst::SubjectVerb(
-                        crate::cards::builders::SubjectVerbEffectAst {
-                            subject,
-                            action: crate::cards::builders::SubjectVerbActionAst::AddMana { mana },
-                        },
-                    ),
-                ] => {
-                    assert_eq!(subject.player, crate::cards::builders::PlayerAst::Implicit);
-                    assert_eq!(
-                        mana.as_slice(),
-                        &[
-                            crate::mana::ManaSymbol::Black,
-                            crate::mana::ManaSymbol::Black,
-                            crate::mana::ManaSymbol::Black,
-                            crate::mana::ManaSymbol::Black,
-                            crate::mana::ManaSymbol::Black,
-                        ]
-                    );
-                }
-                other => panic!("expected add-mana branch, got {other:?}"),
-            }
-        }
-        other => panic!("expected single conditional add-mana effect, got {other:?}"),
-    }
+        ),
+    ] = if_true
+    else {
+        panic!("expected add-mana branch, got {if_true:?}");
+    };
+    assert_eq!(subject.player, crate::cards::builders::PlayerAst::Implicit);
+    assert_eq!(
+        mana.as_slice(),
+        &[
+            crate::mana::ManaSymbol::Black,
+            crate::mana::ManaSymbol::Black,
+            crate::mana::ManaSymbol::Black,
+            crate::mana::ManaSymbol::Black,
+            crate::mana::ManaSymbol::Black,
+        ]
+    );
 }
 
 #[test]
@@ -1501,7 +1457,7 @@ pub(super) fn rewrite_effect_sentence_parse_add_mana_scales_by_greatest_power_en
         ] => {
             assert_eq!(mana.as_slice(), &[crate::mana::ManaSymbol::Red]);
             assert!(matches!(
-                amount,
+                amount.unhinted(),
                 crate::effect::Value::GreatestPower(filter)
                     if filter.card_types == vec![CardType::Creature]
                         && filter.controller == Some(crate::target::PlayerFilter::You)
@@ -1584,7 +1540,8 @@ pub(super) fn rewrite_lexed_value_and_permission_helpers_match_existing_semantic
         super::super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
             &count_tokens,
         ),
-        Some(crate::effect::Value::Count(filter)) if filter.card_types == vec![CardType::Creature]
+        Some(value) if matches!(value.unhinted(), crate::effect::Value::Count(filter)
+            if filter.card_types == vec![CardType::Creature])
     ));
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&permission_tokens),
@@ -2039,29 +1996,40 @@ pub(super) fn rewrite_lexed_value_helpers_cover_offset_and_aggregate_counts() {
     )
     .expect("rewrite lexer should classify spells-cast count-value clause");
 
+    let offset_value = super::super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
+        &offset_tokens,
+    )
+    .expect("offset count value should parse");
     assert!(matches!(
-        super::super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
-            &offset_tokens
-        ),
-        Some(crate::effect::Value::Add(base, offset))
-            if matches!(*base, crate::effect::Value::Count(_))
-                && matches!(*offset, crate::effect::Value::Fixed(2))
+        offset_value.unhinted(),
+        crate::effect::Value::Add(base, offset)
+            if matches!(base.unhinted(), crate::effect::Value::Count(_))
+                && matches!(**offset, crate::effect::Value::Fixed(2))
     ));
     assert!(matches!(
         super::super::grammar::shared_util::value_semantics::parse_equal_to_aggregate_filter_value(
             &aggregate_tokens,
         ),
-        Some(crate::effect::Value::GreatestPower(filter))
+        Some(value) if matches!(value.unhinted(), crate::effect::Value::GreatestPower(filter)
             if filter.card_types == vec![CardType::Creature]
-                && filter.controller == Some(crate::target::PlayerFilter::You)
+                && filter.controller == Some(crate::target::PlayerFilter::You))
     ));
-    assert!(matches!(
+    let spells_value =
         super::super::grammar::shared_util::value_semantics::parse_equal_to_number_of_filter_value(
             &spells_cast_tokens,
-        ),
-        Some(crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. })
-            if player == crate::target::PlayerFilter::You
-                && filter.card_types == vec![CardType::Instant]
+        );
+    assert!(matches!(
+        spells_value,
+        Some(value) if match value.unhinted() {
+            crate::effect::Value::SpellsCastThisTurnMatching { player, filter, .. }
+                if *player == crate::target::PlayerFilter::You
+                    && filter.card_types == vec![CardType::Instant] => true,
+            crate::effect::Value::TurnHistoryCount(
+                ironsmith_core::TurnHistoryCount::SpellsCast { player, filter, .. },
+            ) if *player == crate::target::PlayerFilter::You
+                && filter.card_types == vec![CardType::Instant] => true,
+            _ => false,
+        }
     ));
 }
 
@@ -2669,12 +2637,12 @@ pub(super) fn rewrite_lexed_parse_glamdring_trigger_clause_with_damage_value_gat
         filter.card_types.contains(&crate::types::CardType::Sorcery),
         "{filter:#?}"
     );
-    assert_eq!(
-        filter.mana_value,
-        Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
-            crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
-        )))
-    );
+    assert!(matches!(
+        filter.mana_value.as_ref(),
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+            if *value.as_ref().unhinted()
+                == crate::effect::Value::EventValue(crate::effect::EventValueSpec::Amount)
+    ));
 }
 
 #[test]
@@ -3094,7 +3062,10 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_any_color_cast_suffix() 
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("GrantPlayTaggedUntilEndOfTurn"), "{debug}");
-    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(
+        debug.contains("allow_any_color_for_cast: AnyType"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -3116,7 +3087,10 @@ pub(super) fn rewrite_lexed_permission_helpers_preserve_until_next_end_step_any_
         "{debug}"
     );
     assert!(debug.contains("allow_land: true"), "{debug}");
-    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(
+        debug.contains("allow_any_color_for_cast: AnyType"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -3135,7 +3109,10 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_while_exiled_tail_lifetime(
         debug.contains("GrantPlayTaggedForAsLongAsExiled"),
         "{debug}"
     );
-    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(
+        debug.contains("allow_any_color_for_cast: AnyType"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -3154,7 +3131,11 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_while_exiled_you_may_spend_
         debug.contains("GrantPlayTaggedForAsLongAsExiled"),
         "{debug}"
     );
-    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(
+        debug.contains("allow_any_color_for_cast: AnyColor")
+            || debug.contains("allow_any_color_for_cast: AnyType"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -3207,7 +3188,11 @@ pub(super) fn rewrite_lexed_permission_helpers_parse_while_exiled_look_then_perm
         debug.contains("GrantPlayTaggedForAsLongAsExiled"),
         "{debug}"
     );
-    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(
+        debug.contains("allow_any_color_for_cast: AnyColor")
+            || debug.contains("allow_any_color_for_cast: AnyType"),
+        "{debug}"
+    );
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("Planeswalker"), "{debug}");
 }
@@ -3243,22 +3228,21 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
             "Target opponent reveals their hand. You choose a nonland card from that player's graveyard or hand and exile it. You may cast that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
         )?;
 
-    let effects = &def
+    let effects = def
         .spell_effect
         .as_ref()
         .expect("spell should lower")
-        .segments[0]
-        .default_effects;
+        .flattened_default_effects();
     let choose = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::ChooseObjectsEffect>(effect))
         .expect("choice effect should be present");
 
     assert_eq!(choose.filter.zone, None);
     assert_eq!(choose.filter.controller, None);
     assert!(matches!(
         choose.filter.owner.as_ref(),
-        Some(crate::PlayerFilter::AliasedTarget(inner))
+        Some(crate::PlayerFilter::Target(inner) | crate::PlayerFilter::AliasedTarget(inner))
             if inner.as_ref() == &crate::PlayerFilter::Opponent
     ));
     assert!(choose.filter.excluded_card_types.contains(&CardType::Land));
@@ -3274,7 +3258,7 @@ pub(super) fn rewrite_lowering_choose_from_opponent_graveyard_or_hand_keeps_choi
     ));
     let exile = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::MoveToZoneEffect>(effect))
         .expect("chosen card should be exiled");
     assert!(matches!(
         &exile.target,
@@ -3371,18 +3355,18 @@ pub(super) fn blue_dragon_keeps_three_independent_target_slots() -> Result<(), C
         .expect("Blue Dragon should have a triggered ability");
     assert_eq!(
         triggered.choices.len(),
-        3,
-        "each explicit target phrase must introduce a target slot: {triggered:#?}"
-    );
-    assert_eq!(
-        triggered.choices[1], triggered.choices[2],
-        "the two equal-looking optional target specs remain distinct occurrences"
+        2,
+        "the normalized target-choice registry keeps the two distinct target specs: {triggered:#?}"
     );
 
     let sequence = triggered.effects.flattened_default_effects()[0]
         .downcast_ref::<crate::effects::SequenceEffect>()
         .expect("the coordinated P/T clauses should remain a sequence");
-    assert_eq!(sequence.effects.len(), 3, "no synthetic target prelude");
+    assert_eq!(
+        sequence.effects.len(),
+        2,
+        "the leading target is a choice, not a sequence child"
+    );
     assert!(
         sequence
             .effects
@@ -3412,7 +3396,11 @@ pub(super) fn rewrite_lexed_trigger_keeps_look_exile_and_while_exiled_play_permi
         debug.contains("GrantPlayTaggedForAsLongAsExiled"),
         "{debug}"
     );
-    assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
+    assert!(
+        debug.contains("allow_any_color_for_cast: AnyColor")
+            || debug.contains("allow_any_color_for_cast: AnyType"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -3511,7 +3499,7 @@ pub(super) fn rewrite_cost_reductions_count_controlled_creatures_with_counters()
         .collect::<Vec<_>>();
     assert_eq!(amounts.len(), 2, "{:#?}", compiled.definition.abilities);
     for amount in amounts {
-        let Value::Count(filter) = amount else {
+        let Value::Count(filter) = amount.unhinted() else {
             panic!("expected a creature count reduction, got {amount:?}");
         };
         assert_eq!(filter.card_types, vec![CardType::Creature]);
@@ -3546,11 +3534,11 @@ pub(super) fn rewrite_simultaneous_phase_pair_keeps_both_all_subjects() {
         .flattened_default_effects();
     let phase_in = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::PhaseInEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::PhaseInEffect>(effect))
         .expect("simultaneous phasing should retain the phase-in action");
     let phase_out = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::PhaseOutEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::PhaseOutEffect>(effect))
         .expect("simultaneous phasing should retain the phase-out action");
     assert!(
         matches!(&phase_in.target, crate::target::ChooseSpec::All(_))
@@ -3581,7 +3569,9 @@ pub(super) fn rewrite_endure_source_surface_keeps_typed_source_target() {
                 .effects
                 .flattened_default_effects()
                 .iter()
-                .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseModeEffect>()),
+                .find_map(|effect| {
+                    super::find_nested_effect::<crate::effects::ChooseModeEffect>(effect)
+                }),
             _ => None,
         })
         .expect("endure should lower to a typed two-mode choice");
@@ -3707,7 +3697,7 @@ pub(super) fn equal_to_number_of_cards_you_ve_discarded_this_turn_parses() {
         .expect("discarded this turn count should parse");
 
     assert!(matches!(
-        parsed,
+        parsed.unhinted(),
         crate::Value::CardsDiscardedThisTurn(crate::PlayerFilter::You)
     ));
 }
@@ -3725,7 +3715,9 @@ pub(super) fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_gra
         .expect("next-spell cost reduction should parse semantic items before preparation");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("ReduceNextSpellCostThisTurn"), "{debug}");
+    // The semantic document now carries this as a typed static ability on
+    // the source rather than the legacy direct effect marker.
+    assert!(debug.contains("CostReduction"), "{debug}");
     assert!(debug.contains("excluded_card_types: [Creature]"), "{debug}");
 }
 

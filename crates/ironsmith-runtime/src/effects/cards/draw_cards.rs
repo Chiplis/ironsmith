@@ -278,7 +278,6 @@ impl EffectExecutor for DrawCardsEffect {
         }))
     }
 
-
     fn execute(
         &self,
         game: &mut GameState,

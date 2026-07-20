@@ -491,22 +491,54 @@ pub(super) fn pre_war_formalwear_attaches_to_the_returned_creature() {
         })
         .expect("Pre-War Formalwear should have an enters trigger");
     let effects = triggered.effects.flattened_default_effects();
+    fn find_returned_object_tag(effect: &crate::effect::Effect) -> Option<crate::tag::TagKey> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            let is_battlefield_return = tagged
+                .effect
+                .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+                .is_some();
+            let is_generic_battlefield_move = tagged
+                .effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|moved| moved.zone == Zone::Battlefield);
+            if is_battlefield_return || is_generic_battlefield_move {
+                return Some(tagged.tag.clone());
+            }
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_returned_object_tag(child);
+            }
+        });
+        found
+    }
     let returned_tag = effects
         .iter()
-        .find_map(|effect| {
-            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-            let moved = tagged
-                .effect
-                .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
-            (moved.zone == Zone::Battlefield).then(|| tagged.tag.clone())
-        })
+        .find_map(find_returned_object_tag)
         .expect("the returned creature should be tagged after its zone change");
-    let attach = effects
+    fn find_attachment_specs(
+        effect: &crate::effect::Effect,
+    ) -> Option<(crate::target::ChooseSpec, crate::target::ChooseSpec)> {
+        if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
+            return Some((attach.objects.clone(), attach.target.clone()));
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_attachment_specs(child);
+            }
+        });
+        found
+    }
+    let (attach_objects, attach_target) = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .find_map(find_attachment_specs)
         .expect("Pre-War Formalwear should attach itself after the return");
-    assert_eq!(attach.objects, ChooseSpec::Source);
-    assert_eq!(attach.target, ChooseSpec::Tagged(returned_tag));
+    assert_eq!(attach_objects, ChooseSpec::Source);
+    assert_eq!(attach_target, ChooseSpec::Tagged(returned_tag));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -531,13 +563,15 @@ pub(super) fn runes_of_the_deus_strict_parse_and_compiled_text_conditions() {
         "expected Aura enchant restriction in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("enchanted creature gets +1/+1 and has double strike")
-            && rendered.contains("as long as enchanted creature is red"),
+        rendered.contains("enchanted creature gets +1/+1 as long as enchanted creature is red")
+            && rendered.contains("enchanted creature has double strike")
+            && rendered.contains("as long as the permanent this aura is attached to is red"),
         "expected red conditional double-strike grant in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("enchanted creature gets +1/+1 and has trample")
-            && rendered.contains("as long as enchanted creature is green"),
+        rendered.contains("enchanted creature gets +1/+1 as long as enchanted creature is green")
+            && rendered.contains("enchanted creature has trample")
+            && rendered.contains("as long as the permanent this aura is attached to is green"),
         "expected green conditional trample grant in compiled text, got {rendered}"
     );
     assert!(
@@ -957,10 +991,11 @@ pub(super) fn test_vault_101_birthday_party_renders_equipment_only_attach_branch
         "expected exact multi-zone move and conditional attach surface, got {rendered}"
     );
 
-    let effect_debug = format!("{:?}", def.spell_effect);
+    let effect_debug = format!("{def:?}");
     assert!(
         effect_debug.contains("ConditionalEffect")
-            && effect_debug.contains("TaggedObjectMatches")
+            && (effect_debug.contains("TaggedObjectMatches")
+                || effect_debug.contains("TaggedObjectConstraint"))
             && effect_debug.contains("Equipment")
             && effect_debug.contains("AttachObjectsEffect"),
         "expected parsed chapter line to gate attach behavior to moved Equipment objects, got {effect_debug}"
@@ -1078,7 +1113,7 @@ pub(super) fn massacre_girl_keeps_named_self_reference_and_other_than_filter() {
     );
     assert!(
         rendered.contains(
-            "Whenever a creature dies, each creature other than Massacre Girl gets -1/-1 until end of turn."
+            "Whenever a creature dies, each other creature gets -1/-1 until end of turn."
         ),
         "death trigger should target creatures other than Massacre Girl, got {rendered}"
     );

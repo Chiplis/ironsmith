@@ -316,9 +316,7 @@ impl crate::effects::SimultaneousEffectProposal for PayAnyLifeProposal {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         if self.amount == 0 {
-            return Ok(
-                EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0))
-            );
+            return Ok(EffectOutcome::count(0).with_execution_fact(ExecutionFact::ChosenNumber(0)));
         }
         if !game.pay_life(self.player, self.amount) {
             return Ok(EffectOutcome::count(0));

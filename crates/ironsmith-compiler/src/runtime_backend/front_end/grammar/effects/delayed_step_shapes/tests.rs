@@ -21,6 +21,16 @@ fn parses_player_and_delayed_sentence_shapes() {
             repeat_if_win: true,
         })
     );
+    assert_eq!(
+        parse_lose_draw_clash_shape(&tokens(
+            "You lose 2 life and draw two cards, then clash with an opponent. If you win, repeat this process."
+        )),
+        Some(LoseDrawClashShape {
+            life_count: 2,
+            draw_count: 2,
+            repeat_if_win: true,
+        })
+    );
 }
 
 #[test]

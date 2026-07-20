@@ -329,6 +329,12 @@ pub enum DelayedTriggerSpec {
         surface: SourceReferenceSurface,
         subject_number: crate::trigger_model::TriggerSubjectNumber,
     },
+    EntersBattlefield {
+        filter: ObjectFilter,
+        cause_filter: Option<crate::cause_model::CauseFilter>,
+        count: crate::trigger_model::CountMode,
+        tapped: Option<bool>,
+    },
     ThisDies,
     ThisLeavesBattlefield,
     ThisAttacksAndIsntBlocked,

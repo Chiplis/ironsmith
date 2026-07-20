@@ -1627,6 +1627,14 @@ fn parse_moved_or_cast_origin_condition(
 pub(crate) fn parse_trigger_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_trigger_clause_lexed_unstacked(tokens)
+    })
+}
+
+fn parse_trigger_clause_lexed_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<TriggerSpec, CardTextError> {
     fn parse_damage_by_dies_trigger_lexed(
         subject_tokens: &[OwnedLexToken],
         other: bool,
@@ -3391,8 +3399,7 @@ pub(crate) fn parse_trigger_clause_lexed(
 
         let object_word_start = counter_word_idx + 2;
         let object_tokens = trigger_counter_recipient_tokens(tokens, object_word_start, &words)?;
-        let (object_tokens, include_players) =
-            split_counter_recipient_or_player(&object_tokens);
+        let (object_tokens, include_players) = split_counter_recipient_or_player(&object_tokens);
         let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported counter recipient filter in trigger clause (clause: '{}')",
@@ -4596,8 +4603,7 @@ pub(crate) fn parse_trigger_clause_lexed(
 
         let object_word_start = counter_word_idx + 4;
         let object_tokens = trigger_counter_recipient_tokens(tokens, object_word_start, &words)?;
-        let (object_tokens, include_players) =
-            split_counter_recipient_or_player(&object_tokens);
+        let (object_tokens, include_players) = split_counter_recipient_or_player(&object_tokens);
         let filter = parse_object_filter_lexed(object_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
                 "unsupported counter recipient filter in trigger clause (clause: '{}')",
@@ -5131,12 +5137,9 @@ fn parse_ability_of_object_trigger_tail_lexed(
     Ok(Some((filter, tail.non_mana_only)))
 }
 
-
 /// Split a trailing "or (a) player(s)" from a counter-recipient phrase
 /// ("Whenever you put one or more counters on a permanent or player").
-fn split_counter_recipient_or_player(
-    tokens: &[OwnedLexToken],
-) -> (&[OwnedLexToken], bool) {
+fn split_counter_recipient_or_player(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     let words = crate::runtime_backend::token_word_refs(tokens);
     if words.len() != tokens.len() {
         return (tokens, false);

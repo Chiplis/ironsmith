@@ -271,6 +271,12 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
             format!("{base}'s")
         }
         PlayerFilter::AliasedTarget(_) => "that player's".to_string(),
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag)) if tag.as_str() == "enchanted" => {
+            "enchanted permanent's controller's".to_string()
+        }
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag)) if tag.as_str() == "equipped" => {
+            "equipped creature's controller's".to_string()
+        }
         PlayerFilter::ControllerOf(ObjectRef::Tagged(_) | ObjectRef::Target) => {
             "its controller's".to_string()
         }
@@ -348,6 +354,12 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         ),
         PlayerFilter::Target(inner) => format!("target {}", describe_player_filter(inner)),
         PlayerFilter::AliasedTarget(_) => "that player".to_string(),
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag)) if tag.as_str() == "enchanted" => {
+            "enchanted permanent's controller".to_string()
+        }
+        PlayerFilter::ControllerOf(ObjectRef::Tagged(tag)) if tag.as_str() == "equipped" => {
+            "equipped creature's controller".to_string()
+        }
         PlayerFilter::ControllerOf(_) => "controller".to_string(),
         PlayerFilter::OwnerOf(_) => "owner".to_string(),
         PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
@@ -472,6 +484,16 @@ pub(super) fn object_has_static_ability_id(object: &Object, ability_id: StaticAb
 }
 
 pub(super) fn object_has_ability_marker(object: &Object, marker: &str) -> bool {
+    if marker.trim().eq_ignore_ascii_case("disturb")
+        && object.alternative_casts.iter().any(|method| {
+            matches!(
+                method,
+                crate::alternative_cast::AlternativeCastingMethod::Disturb { .. }
+            )
+        })
+    {
+        return true;
+    }
     if abilities_have_marker(&object.abilities, marker) {
         return true;
     }

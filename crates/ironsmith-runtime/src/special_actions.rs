@@ -617,9 +617,7 @@ pub fn perform(
         SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => game
             .turn_conspiracy_face_up(player, conspiracy_id)
             .map_err(|_| ActionError::InvalidTarget),
-        SpecialAction::Companion { card_id } => {
-            perform_companion_action(game, player, card_id)
-        }
+        SpecialAction::Companion { card_id } => perform_companion_action(game, player, card_id),
     }
 }
 

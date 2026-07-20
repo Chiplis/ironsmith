@@ -79,7 +79,6 @@ impl EffectExecutor for CreateTokenEffect {
         }))
     }
 
-
     fn execute(
         &self,
         game: &mut GameState,

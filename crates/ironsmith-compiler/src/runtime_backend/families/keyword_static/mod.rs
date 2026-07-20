@@ -261,9 +261,7 @@ fn keyword_static_marker(tokens: &[OwnedLexToken]) -> StaticAbility {
 
 fn parse_companion_ability(tokens: &[OwnedLexToken]) -> Option<StaticAbility> {
     let text = keyword_static_clause_text(tokens);
-    let normalized = text
-        .to_ascii_lowercase()
-        .replace(['—', '–'], "-");
+    let normalized = text.to_ascii_lowercase().replace(['—', '–'], "-");
     let condition_text = normalized
         // The document front end strips a keyword label before routing some
         // labeled lines, so accept either the complete Companion surface or
@@ -1305,6 +1303,20 @@ pub(crate) fn parse_damage_doubling_mana_value_marker_line(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_static_ability_ast_line_lexed_unstacked(tokens)
+    })
+}
+
+fn parse_static_ability_ast_line_lexed_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // Pay-life ETB replacements span two sentences. Parse the complete
+    // compound before the generic sentence splitter can reinterpret the
+    // "if you don't, it enters tapped" suffix as a standalone static line.
+    if let Some(ability) = parse_pay_life_or_enter_tapped_line(tokens)? {
+        return Ok(Some(vec![StaticAbilityAst::Static(ability)]));
+    }
     if let Some(ability) = parse_pregame_reveal_from_opening_hand_line(tokens)? {
         return Ok(Some(vec![ability]));
     }
@@ -2954,12 +2966,9 @@ fn damage_source_filter_from_shape(
         // source you control with an odd mana value"). A bare qualifier has
         // no head noun for the filter grammar, so recognize the parity shape
         // directly and fold anything else into a combined parse.
-        let trailing_words =
-            crate::runtime_backend::token_word_refs(shape.trailing_filter_tokens);
+        let trailing_words = crate::runtime_backend::token_word_refs(shape.trailing_filter_tokens);
         let parity = match trailing_words.as_slice() {
-            ["with", "an", "odd", "mana", "value"] => {
-                Some(ironsmith_core::ParityRequirement::Odd)
-            }
+            ["with", "an", "odd", "mana", "value"] => Some(ironsmith_core::ParityRequirement::Odd),
             ["with", "an", "even", "mana", "value"] => {
                 Some(ironsmith_core::ParityRequirement::Even)
             }

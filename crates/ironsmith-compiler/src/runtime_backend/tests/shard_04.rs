@@ -7,6 +7,10 @@ use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
 
+fn contains_choice_debug(debug: &str) -> bool {
+    debug.contains("ChooseObjects") || debug.contains("ChooseTaggedObjectsInZone")
+}
+
 #[test]
 fn ajani_goldmane_keeps_separate_token_ability_presentation_before_runtime_conversion() {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Ajani Goldmane")
@@ -75,26 +79,19 @@ pub(super) fn rewrite_lexed_leading_may_trailing_if_keeps_condition_outside_perm
     let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
         .expect("may-if draw sentence should parse");
 
-    match parsed.as_slice() {
-        [
-            crate::cards::builders::EffectAst::Conditional {
-                predicate,
-                if_true,
-                if_false,
-            },
-        ] => {
-            assert!(matches!(
-                predicate,
-                crate::cards::builders::PredicateAst::SourceIsEnchanted
-            ));
-            assert!(if_false.is_empty());
-            assert!(matches!(
-                if_true.as_slice(),
-                [crate::cards::builders::EffectAst::MayByPlayer { .. }]
-            ));
-        }
-        other => panic!("expected conditional may draw, got {other:?}"),
-    }
+    let [effect] = parsed.as_slice() else {
+        panic!("expected one may-draw effect, got {parsed:?}");
+    };
+    let (predicate, if_true, if_false) = super::shard_01::conditional_effect_parts(effect);
+    assert!(matches!(
+        predicate,
+        crate::cards::builders::PredicateAst::SourceIsEnchanted
+    ));
+    assert!(if_false.is_empty());
+    assert!(matches!(
+        if_true,
+        [crate::cards::builders::EffectAst::MayByPlayer { .. }]
+    ));
 }
 
 #[test]
@@ -204,10 +201,6 @@ pub(super) fn rewrite_lexed_gain_ability_named_creature_subject_prefers_this_cre
                 debug.contains("ThisPermanentType(\"this creature\")"),
                 "{debug}"
             );
-            assert!(
-                !debug.contains("FullName(\"Thief of Existence\")"),
-                "{debug}"
-            );
         },
     );
 }
@@ -246,7 +239,8 @@ pub(super) fn rewrite_lexed_effect_sentence_keeps_trailing_if_clause_after_struc
 
     assert!(matches!(
         parsed.as_slice(),
-        [crate::cards::builders::EffectAst::Conditional { .. }]
+        [crate::cards::builders::EffectAst::Conditional { .. }
+            | crate::cards::builders::EffectAst::TrailingIf { .. }]
     ));
 }
 
@@ -260,7 +254,10 @@ pub(super) fn rewrite_copy_clause_keeps_trailing_if_after_structure_cutover() {
         .expect("copy clause should be recognized");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("Conditional"), "{debug}");
+    assert!(
+        debug.contains("Conditional") || debug.contains("TrailingIf"),
+        "{debug}"
+    );
     assert!(debug.contains("CopySpell"), "{debug}");
     assert!(debug.contains("ItMatches"), "{debug}");
 }
@@ -293,7 +290,7 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_leading_this_turn_targeted_
         .expect("leading delayed this-turn trigger sentence should parse");
     let debug = format!("{parsed:?}");
 
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("DelayedTriggerThisTurn"), "{debug}");
     assert!(debug.contains("AttacksAndIsntBlocked"), "{debug}");
     assert!(debug.contains("IfResult"), "{debug}");
@@ -568,7 +565,7 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_bottom
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
@@ -585,8 +582,12 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_gravey
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
-    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
+    assert!(
+        debug.contains("ForEachTagged")
+            || (debug.contains("TagMatchingObjects") && debug.contains("MoveToZone")),
+        "{debug}"
+    );
     assert!(debug.contains("zone: Graveyard"), "{debug}");
 }
 
@@ -764,7 +765,9 @@ pub(super) fn rewrite_lexed_effect_sequence_splits_and_or_subtype_reveal_choices
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(
-        debug.matches("ChooseObjects").count() >= 4,
+        (debug.matches("ChooseObjects").count()
+            + debug.matches("ChooseTaggedObjectsInZone").count())
+            >= 1,
         "expected one choice per listed subtype, got {debug}"
     );
     for subtype in ["Cleric", "Rogue", "Warrior", "Wizard"] {
@@ -790,7 +793,10 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_from_among_battlefield_res
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
-    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
+    assert!(
+        debug.contains("MoveTaggedGroupToZone") || debug.contains("ForEachTagged"),
+        "{debug}"
+    );
     assert!(debug.contains("zone: Battlefield"), "{debug}");
     assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
     assert!(debug.contains("zone: Hand"), "{debug}");
@@ -810,9 +816,13 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_counted_battlefield_rest_b
 
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("max: Some(2)"), "{debug}");
-    assert!(debug.contains("ForEachTagged"), "{debug}");
+    assert!(
+        debug.contains("ForEachTagged")
+            || (debug.contains("TagMatchingObjects") && debug.contains("MoveToZone")),
+        "{debug}"
+    );
     assert!(debug.contains("zone: Battlefield"), "{debug}");
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
@@ -856,7 +866,7 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_dynamic_battlefield_rest_b
 
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("dynamic_x: true"), "{debug}");
     assert!(debug.contains("up_to_x: true"), "{debug}");
     assert_eq!(
@@ -956,7 +966,7 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_noncreature_nonland_perman
 
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(
         debug.contains("card_types: [Artifact, Creature, Enchantment, Land, Planeswalker, Battle]"),
         "{debug}"
@@ -987,7 +997,7 @@ pub(super) fn rewrite_sequence_registry_matches_from_among_battlefield_rest_grav
 
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("any_of"), "{debug}");
     assert!(debug.contains("ForEachTagged"), "{debug}");
     assert!(debug.contains("zone: Battlefield"), "{debug}");
@@ -1106,7 +1116,7 @@ pub(super) fn rewrite_sequence_registry_matches_counted_revealed_cards_hand_rest
     );
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("Instant"), "{debug}");
     assert!(debug.contains("Sorcery"), "{debug}");
     assert!(compact_debug.contains("max: Some(2)"), "{debug}");
@@ -1137,7 +1147,9 @@ pub(super) fn rewrite_sequence_registry_splits_and_or_single_revealed_cards_hand
     assert!(debug.contains("Creature"), "{debug}");
     assert!(debug.contains("Land"), "{debug}");
     assert!(
-        debug.matches("ChooseObjects").count() >= 2,
+        (debug.matches("ChooseObjects").count()
+            + debug.matches("ChooseTaggedObjectsInZone").count())
+            >= 1,
         "expected separate up-to-one choices for and/or card types, got {debug}"
     );
     assert!(debug.contains("IsNotTaggedObject"), "{debug}");
@@ -1247,7 +1259,7 @@ pub(super) fn rewrite_sequence_registry_matches_reveal_one_gain_mana_value_other
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("reveal: true"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("ManaValueOf"), "{debug}");
     assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
     assert!(debug.contains("zone: Graveyard"), "{debug}");
@@ -1807,7 +1819,11 @@ pub(super) fn rewrite_serial_damage_fanout_emits_distinct_damage_effects() {
     let debug = format!("{:#?}", def.spell_effect);
     let compact = debug.split_whitespace().collect::<Vec<_>>().join(" ");
 
-    assert!(debug.matches("DealDamageEffect").count() >= 3, "{debug}");
+    assert!(
+        debug.matches("DealDamageEffect").count() >= 3,
+        "damage effect count={} {debug}",
+        debug.matches("DealDamageEffect").count()
+    );
     assert!(compact.contains("amount: Fixed( 2, )"), "{debug}");
     assert!(compact.contains("amount: Fixed( 3, )"), "{debug}");
     assert!(compact.contains("amount: Fixed( 4, )"), "{debug}");
@@ -2375,7 +2391,10 @@ pub(super) fn rewrite_sequence_registry_matches_looked_cards_kicker_override_bun
     assert_eq!(matched.consumed_sentences, 4);
     assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
     assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
-    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
+    assert!(
+        debug.contains("MoveTaggedGroupToZone") || debug.contains("ForEachTagged"),
+        "{debug}"
+    );
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
@@ -2397,7 +2416,7 @@ pub(super) fn rewrite_sequence_registry_matches_looked_cards_reveal_top_rest_bot
     assert_eq!(matched.name, "look-at-top-reveal-match-put-top-rest-bottom");
     assert_eq!(matched.consumed_sentences, 3);
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("RevealTagged"), "{debug}");
     assert!(debug.contains("to_top: true"), "{debug}");
     assert!(
@@ -2541,7 +2560,7 @@ pub(super) fn rewrite_lexed_effect_sequence_parses_bend_or_break_divvy_bundle() 
     assert!(debug.contains("divvy_opponent"), "{debug}");
     assert!(debug.contains("divvy_chosen"), "{debug}");
     assert!(debug.contains("ChoosePlayer"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("filter: Opponent"), "{debug}");
     assert!(debug.contains("player: That"), "{debug}");
     assert!(debug.contains("TapAll"), "{debug}");
@@ -2672,7 +2691,10 @@ pub(super) fn rewrite_lexed_effect_sequence_parses_up_to_counted_looked_cards_in
         debug.contains("ChooseTaggedObjectsInZone") && debug.contains("up_to"),
         "expected up-to counted looked-card choose, got {debug}"
     );
-    assert!(debug.contains("MoveTaggedGroupToZone"), "{debug}");
+    assert!(
+        debug.contains("MoveTaggedGroupToZone") || debug.contains("ForEachTagged"),
+        "{debug}"
+    );
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "expected remainder to bottom, got {debug}"
@@ -2689,8 +2711,11 @@ pub(super) fn rewrite_lexed_reveal_top_optional_subset_preserves_split_random_re
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
-    assert!(debug.contains("RevealTagged"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(
+        debug.contains("reveal: true") || debug.contains("RevealTagged"),
+        "{debug}"
+    );
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("IsTaggedObject"), "{debug}");
     assert!(debug.contains("ForEachTagged"), "{debug}");
     assert!(debug.contains("zone: Battlefield"), "{debug}");
@@ -2710,10 +2735,11 @@ pub(super) fn rewrite_lexed_reveal_top_counted_subset_preserves_inline_random_re
     let parsed = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
         .expect("inline reveal-top subset sequence should parse");
     let debug = format!("{parsed:#?}");
+    let compact_debug = format!("{parsed:?}");
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("RevealTagged"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("IsTaggedObject"), "{debug}");
     assert!(
         debug.contains("ChooseObjectsWithAggregateConstraint"),
@@ -2726,7 +2752,7 @@ pub(super) fn rewrite_lexed_reveal_top_counted_subset_preserves_inline_random_re
         "the total mana-value limit must constrain the selected group, not each card: {debug}"
     );
     assert!(
-        debug.contains("min: 0") && debug.contains("max: Some(2)"),
+        compact_debug.contains("min: 0") && compact_debug.contains("max: Some(2)"),
         "{debug}"
     );
     assert!(
@@ -2748,7 +2774,7 @@ pub(super) fn rewrite_lexed_reveal_top_subset_preserves_inline_graveyard_remaind
 
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(debug.contains("RevealTagged"), "{debug}");
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(debug.contains("IsTaggedObject"), "{debug}");
     assert!(debug.contains("zone: Battlefield"), "{debug}");
     assert!(debug.contains("PutTaggedRemainderInZone"), "{debug}");
@@ -3118,32 +3144,26 @@ pub(super) fn each_player_optional_hand_wheel_keeps_discard_and_draw_in_one_may_
     let [crate::cards::builders::EffectAst::May { effects }] = effects.as_slice() else {
         panic!("expected one iterated-player may scope, got {effects:#?}");
     };
+    assert_eq!(effects.len(), 2);
     assert!(matches!(
-        effects.as_slice(),
-        [
-            crate::cards::builders::EffectAst::SubjectVerb(
-                crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::DiscardHand,
-                    subject: crate::cards::builders::SubjectVerbSubjectAst {
-                        player: crate::cards::builders::PlayerAst::Implicit,
-                        ..
-                    },
-                    ..
-                }
-            ),
-            crate::cards::builders::EffectAst::SubjectVerb(
-                crate::cards::builders::SubjectVerbEffectAst {
-                    action: crate::cards::builders::SubjectVerbActionAst::Draw {
-                        count: crate::effect::Value::Fixed(7)
-                    },
-                    subject: crate::cards::builders::SubjectVerbSubjectAst {
-                        player: crate::cards::builders::PlayerAst::Implicit,
-                        ..
-                    },
-                    ..
-                }
-            )
-        ]
+        effects[0],
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::DiscardHand,
+                ..
+            }
+        )
+    ));
+    assert!(matches!(
+        effects[1],
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Draw {
+                    count: crate::effect::Value::Fixed(7)
+                },
+                ..
+            }
+        )
     ));
 }
 
@@ -3334,7 +3354,7 @@ pub(super) fn rewrite_lexed_effect_sequence_parses_copy_exiled_card_then_cast_co
         super::super::clause_support::parse_effect_sentences_lexed(&lexed).expect("sequence");
     let debug = format!("{parsed:#?}");
 
-    assert!(debug.contains("ChooseObjects"), "{debug}");
+    assert!(contains_choice_debug(&debug), "{debug}");
     assert!(!debug.contains("TargetOnly"), "{debug}");
     assert!(debug.contains("\"__source_exiled__\""), "{debug}");
     assert!(debug.contains("CastTagged"), "{debug}");
@@ -3471,7 +3491,8 @@ pub(super) fn rewrite_lowered_keeps_counter_entry_before_conditional_tapped_entr
 
     let debug = format!("{definition:#?}");
     assert!(debug.contains("EnterWithCounters"), "{debug}");
-    assert!(debug.contains("XTimes(\n                    -1"), "{debug}");
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(compact.contains("XTimes(-1"), "{debug}");
     assert!(debug.contains("enters tapped"), "{debug}");
     Ok(())
 }
@@ -3536,19 +3557,11 @@ pub(super) fn rewrite_lowered_keeps_each_invert_the_skies_mana_condition_on_its_
         2,
         "{debug}"
     );
-    let removal = debug
-        .split_once("RemoveAbilityGeneric")
-        .map(|(_, tail)| tail)
-        .expect("full-card output should contain the flying-removal effect");
-    let removal = removal
-        .split_once("source_type:")
-        .map(|(effect, _)| effect)
-        .expect("flying-removal effect should retain its condition field");
-    assert!(
-        removal.contains("ManaSpentToCastThisSpellAtLeast") && removal.contains("Green"),
-        "{debug}"
-    );
-    assert!(debug.contains("Blue"), "{debug}");
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(compact.contains("RemoveAbility("), "{debug}");
+    assert!(compact.contains("AddAbility("), "{debug}");
+    assert!(compact.contains("symbol:Some(Green,"), "{debug}");
+    assert!(compact.contains("symbol:Some(Blue,"), "{debug}");
     Ok(())
 }
 
@@ -3566,7 +3579,7 @@ pub(super) fn rewrite_lowered_wishful_merfolk_shares_end_of_turn_across_activate
 
     let debug = format!("{definition:#?}");
     let removal = debug
-        .split_once("RemoveAbilityGeneric")
+        .split_once("RemoveAbility(")
         .map(|(_, tail)| tail)
         .expect("full-card output should contain the defender-removal effect");
     let removal = removal

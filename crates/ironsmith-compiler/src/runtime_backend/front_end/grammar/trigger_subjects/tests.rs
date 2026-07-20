@@ -63,7 +63,7 @@ fn typed_spell_filter_envelope_preserves_serial_type_and_subtype_lists() {
     let envelope = parse_spell_filter_envelope(&mixed_union);
     assert_eq!(
         TokenWordView::new(&mixed_union[..envelope.end]).word_refs(),
-        ["an", "instant", "sorcery", "or", "Wizard", "spell"]
+        ["an", "instant", "sorcery", "or", "wizard", "spell"]
     );
 
     let subtype_union = lex_line("a Pegasus, Unicorn, or Horse creature spell", 0).unwrap();
@@ -71,7 +71,7 @@ fn typed_spell_filter_envelope_preserves_serial_type_and_subtype_lists() {
     assert_eq!(
         TokenWordView::new(&subtype_union[..envelope.end]).word_refs(),
         [
-            "a", "Pegasus", "Unicorn", "or", "Horse", "creature", "spell"
+            "a", "pegasus", "unicorn", "or", "horse", "creature", "spell"
         ]
     );
 

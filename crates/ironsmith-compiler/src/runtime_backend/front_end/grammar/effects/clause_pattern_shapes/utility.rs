@@ -251,7 +251,10 @@ fn parse_can_block_additional_lexed<'a>(
     .void()
     .parse_next(input)?;
     primitives::phrase(&["this", "turn"]).parse_next(input)?;
-    primitives::sentence_end().parse_next(input)?;
+    // Sentence dispatch commonly strips the terminal period before handing
+    // a clause to the effect grammar.  Accept either representation while
+    // still requiring the parser to consume the entire token stream.
+    opt(primitives::sentence_end()).parse_next(input)?;
     let additional = count_tokens
         .last()
         .and_then(|token| {

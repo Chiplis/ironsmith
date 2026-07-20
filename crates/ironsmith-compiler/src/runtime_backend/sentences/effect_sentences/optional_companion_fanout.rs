@@ -306,14 +306,11 @@ mod tests {
         let parsed = parse_optional_companion_fanout_sentence(&tokens)
             .unwrap()
             .unwrap();
-        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
-            panic!("expected coordinated restrictions: {parsed:#?}");
+        let effects = match parsed.as_slice() {
+            [EffectAst::Coordinated { effects, .. }] => effects.as_slice(),
+            effects => effects,
         };
         let [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::TargetOnly { .. },
-                ..
-            }),
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::Cant { .. },
                 ..
@@ -326,9 +323,9 @@ mod tests {
                 action: SubjectVerbActionAst::Cant { .. },
                 ..
             }),
-        ] = effects.as_slice()
+        ] = effects
         else {
-            panic!("expected target/restriction pairs: {effects:#?}");
+            panic!("expected source restriction and optional target pair: {effects:#?}");
         };
         let (_, count) = optional_target(target).expect("optional unblockable companion");
         assert_eq!((count.min, count.max), (0, Some(1)));

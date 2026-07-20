@@ -443,7 +443,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
             ContinuousEffect::new(
                 source,
                 controller,
-                EffectTarget::Filter(self.filter.clone()),
+                effect_target_for_filter(source, &self.filter),
                 Modification::AddAbilityGeneric(self.ability.clone()),
             )
             .with_source_type(EffectSourceType::StaticAbility),
@@ -454,7 +454,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
                 ContinuousEffect::new(
                     source,
                     controller,
-                    EffectTarget::Filter(self.filter.clone()),
+                    effect_target_for_filter(source, &self.filter),
                     Modification::AddAbilityGeneric(ability),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),

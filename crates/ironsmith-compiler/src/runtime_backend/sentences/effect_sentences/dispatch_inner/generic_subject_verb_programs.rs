@@ -1087,6 +1087,18 @@ fn parse_any_player_may_have_source_deal_damage(
 pub(crate) fn parse_top_level_subject_verb_recognition(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<(&'static str, Vec<EffectAst>)>, CardTextError> {
+    // Copular animation clauses such as "those permanents are 4/4 creatures
+    // in addition to their other types" are effect-backed state changes. They
+    // must reach the generic animation parser before the broad `are`/`get`
+    // subject-verb recognizers reinterpret the type and power text as a
+    // granted static ability.
+    if effect_grammar::clause_dispatch_shapes::parse_copular_animation_shape(tokens).is_some() {
+        let effect = super::clause_dispatch::parse_effect_clause(tokens)?;
+        return Ok(Some((
+            "subject-verb verb=Become subject=explicit recognizer=copular-animation",
+            vec![effect],
+        )));
+    }
     if let Some(effects) = parse_any_player_may_have_source_deal_damage(tokens)? {
         return Ok(Some((
             "subject-verb verb=Deal subject=source recognizer=any-player-may-have-source-damage",
@@ -1869,13 +1881,15 @@ fn parse_generic_consult_reveal_until_subject_verb(
         };
         parts
     };
-    if !matches!(
-        parts.effects.last(),
-        Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
-            ..
-        }))
-    ) {
+    if !parts.effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+                ..
+            })
+        )
+    }) {
         return Ok(None);
     }
     apply_lesser_mana_value_consult_constraint(&sentence_tokens, &mut parts.effects);
@@ -2164,7 +2178,7 @@ fn parse_generic_control_combat_choices_subject_verb(
     }
 }
 
-fn parse_generic_damage_replacement_counters_subject_verb(
+pub(crate) fn parse_generic_damage_replacement_counters_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
@@ -3855,5 +3869,21 @@ mod generic_subject_verb_program_tests {
         assert!(debug.contains("Target") && debug.contains("Any"), "{debug}");
         assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
         assert!(debug.contains("Haste"), "{debug}");
+    }
+
+    #[test]
+    fn result_gated_sacrificed_card_type_consult_uses_typed_traversal() {
+        let tokens = crate::runtime_backend::lex_line(
+            "they reveal cards from the top of their library until they reveal a permanent card that shares a card type with the sacrificed permanent, put that card onto the battlefield, then shuffle",
+            0,
+        )
+        .expect("consult sentence should lex");
+        let effects = parse_generic_consult_reveal_until_subject_verb(&tokens)
+            .expect("consult parser should not error")
+            .expect("consult parser should match");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+        assert!(debug.contains("SharesCardType"), "{debug}");
+        assert!(debug.contains("sacrificed_0"), "{debug}");
     }
 }

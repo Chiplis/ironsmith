@@ -499,7 +499,24 @@ pub(crate) fn parse_attack_or_block_this_turn_if_able_clause(
     };
     let abilities = vec![GrantedAbilityAst::MustAttack, GrantedAbilityAst::MustBlock];
 
-    if subject_clause.is_empty() || starts_with_target_indicator(subject_clause.tokens()) {
+    // A demonstrative subject ("that creature") is a back-reference, not a
+    // filtered requirement over every creature. The dealt-damage-this-way
+    // subjects keep their filtered form.
+    let demonstrative_backref = result_filter.is_none()
+        && subject_clause
+            .tokens()
+            .first()
+            .and_then(crate::runtime_backend::lexer::OwnedLexToken::as_word)
+            .is_some_and(|word| matches!(word, "that" | "it"));
+    if subject_clause.is_empty()
+        || starts_with_target_indicator(subject_clause.tokens())
+        || demonstrative_backref
+    {
+        let target = if demonstrative_backref {
+            TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+        } else {
+            target
+        };
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             abilities,
@@ -544,7 +561,24 @@ pub(crate) fn parse_attack_this_turn_if_able_clause(
     };
     let ability = GrantedAbilityAst::MustAttack;
 
-    if subject_clause.is_empty() || starts_with_target_indicator(subject_clause.tokens()) {
+    // A demonstrative subject ("that creature") is a back-reference, not a
+    // filtered requirement over every creature. The dealt-damage-this-way
+    // subjects keep their filtered form.
+    let demonstrative_backref = result_filter.is_none()
+        && subject_clause
+            .tokens()
+            .first()
+            .and_then(crate::runtime_backend::lexer::OwnedLexToken::as_word)
+            .is_some_and(|word| matches!(word, "that" | "it"));
+    if subject_clause.is_empty()
+        || starts_with_target_indicator(subject_clause.tokens())
+        || demonstrative_backref
+    {
+        let target = if demonstrative_backref {
+            TargetAst::Tagged(TagKey::from(IT_TAG), clause.span())
+        } else {
+            target
+        };
         return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
             target,
             vec![ability],
@@ -619,6 +653,21 @@ pub(crate) fn parse_must_be_blocked_if_able_clause(
                 ),
             ],
         }));
+    }
+
+    // A demonstrative subject ("that creature") back-references the tagged
+    // antecedent rather than restricting a filtered set.
+    if subject_clause
+        .tokens()
+        .first()
+        .and_then(crate::runtime_backend::lexer::OwnedLexToken::as_word)
+        .is_some_and(|word| matches!(word, "that" | "it"))
+    {
+        return Ok(Some(EffectAst::subject_verb_cant(
+            crate::effect::Restriction::must_be_blocked(ObjectFilter::tagged(IT_TAG)),
+            Until::EndOfTurn,
+            None,
+        )));
     }
 
     let attacker_target = parse_target_phrase(subject_clause.tokens())?;

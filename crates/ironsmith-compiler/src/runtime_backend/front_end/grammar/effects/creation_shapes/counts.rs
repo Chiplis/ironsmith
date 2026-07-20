@@ -141,6 +141,16 @@ fn parse_static_abilities_among(tokens: &[OwnedLexToken]) -> Option<Value> {
 pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
+    // Keep the canonical exact surface on the dedicated value.  The shared
+    // turn-history parser also understands the broader `... that died this
+    // turn` family, but creation counts use this value directly in lowering
+    // and runtime metrics.
+    let token_surface = CreationTokens::new(tokens);
+    let words = token_surface.words();
+    let surface = CreationWords::new(&words);
+    if surface.starts(CreationPhrase::CreatureDiedThisTurn) {
+        return Some(Value::CreaturesDiedThisTurn.with_surface_hint(ValueSurfaceHint::ForEach));
+    }
     if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
     {
         return Some(value.with_surface_hint(ValueSurfaceHint::ForEach));
@@ -211,9 +221,6 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
         return Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::ForEach));
-    }
-    if surface.starts(CreationPhrase::CreatureDiedThisTurn) {
-        return Some(Value::CreaturesDiedThisTurn.with_surface_hint(ValueSurfaceHint::ForEach));
     }
     if surface.starts(CreationPhrase::RegeneratedThisTurn) {
         return Some(

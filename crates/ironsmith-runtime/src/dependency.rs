@@ -3284,7 +3284,10 @@ mod tests {
         cda_b.source_type = EffectSourceType::CharacteristicDefining;
 
         let effects = vec![&cda_a, &cda_b];
-        assert!(!needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
+        assert!(!needs_baseline_dependency_sort(
+            &effects,
+            &GameState::new(vec!["Test".to_string()], 20)
+        ));
     }
 
     #[test]
@@ -3396,7 +3399,10 @@ mod tests {
         cda_fixed.source_type = EffectSourceType::CharacteristicDefining;
 
         let effects = vec![&cda_source_power, &cda_fixed];
-        assert!(needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
+        assert!(needs_baseline_dependency_sort(
+            &effects,
+            &GameState::new(vec!["Test".to_string()], 20)
+        ));
     }
 
     #[test]
@@ -3422,7 +3428,10 @@ mod tests {
         );
 
         let effects = vec![&cda, &modifier];
-        assert!(!needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
+        assert!(!needs_baseline_dependency_sort(
+            &effects,
+            &GameState::new(vec!["Test".to_string()], 20)
+        ));
     }
 
     #[test]
@@ -3454,6 +3463,9 @@ mod tests {
         };
 
         let effects = vec![&first, &second];
-        assert!(!needs_baseline_dependency_sort(&effects, &GameState::new(vec!["Test".to_string()], 20)));
+        assert!(!needs_baseline_dependency_sort(
+            &effects,
+            &GameState::new(vec!["Test".to_string()], 20)
+        ));
     }
 }

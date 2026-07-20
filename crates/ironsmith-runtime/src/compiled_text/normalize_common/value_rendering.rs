@@ -2321,9 +2321,26 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
 pub(crate) fn is_artifact_non_aura_enchantment_mana_value_filter(filter: &ObjectFilter) -> bool {
     let has_artifact_enchantment_types = filter.card_types.len() == 2
         && filter.card_types.contains(&CardType::Artifact)
-        && filter.card_types.contains(&CardType::Enchantment);
-    if !has_artifact_enchantment_types
-        || filter.excluded_subtypes != [Subtype::Aura]
+        && filter.card_types.contains(&CardType::Enchantment)
+        && filter.excluded_subtypes == [Subtype::Aura];
+    let has_artifact_enchantment_union = filter.card_types.is_empty()
+        && filter.excluded_subtypes.is_empty()
+        && filter.any_of.len() == 2
+        && filter.any_of.iter().any(|branch| {
+            branch.card_types == [CardType::Artifact] && branch.excluded_subtypes.is_empty()
+        })
+        && filter.any_of.iter().any(|branch| {
+            branch.card_types == [CardType::Enchantment]
+                && branch.excluded_subtypes == [Subtype::Aura]
+        })
+        && filter.any_of.iter().all(|branch| {
+            let mut remaining = branch.clone();
+            remaining.card_types.clear();
+            remaining.excluded_subtypes.clear();
+            remaining.union_surface = Default::default();
+            remaining == ObjectFilter::default()
+        });
+    if (!has_artifact_enchantment_types && !has_artifact_enchantment_union)
         || filter.mana_value.is_none()
     {
         return false;
@@ -2336,6 +2353,8 @@ pub(crate) fn is_artifact_non_aura_enchantment_mana_value_filter(filter: &Object
     remaining.card_types.clear();
     remaining.excluded_subtypes.clear();
     remaining.mana_value = None;
+    remaining.any_of.clear();
+    remaining.union_surface = Default::default();
     remaining == ObjectFilter::default()
 }
 
@@ -2351,9 +2370,13 @@ pub(crate) fn render_artifact_non_aura_enchantment_text(
         return text.to_string();
     };
     let mana_value_text = mana_value_text.trim();
-    if text.contains("artifacts or enchantment cards with mana value") {
+    if text.contains("artifacts or enchantment cards with mana value")
+        || text.contains("artifact and/or non-aura enchantment cards with mana value")
+    {
         format!("artifact and/or non-Aura enchantment cards each with mana value {mana_value_text}")
-    } else if text.contains("artifact or enchantment card with mana value") {
+    } else if text.contains("artifact or enchantment card with mana value")
+        || text.contains("artifact and/or non-aura enchantment card with mana value")
+    {
         format!("artifact and/or non-Aura enchantment card with mana value {mana_value_text}")
     } else {
         text.to_string()
@@ -2374,6 +2397,10 @@ pub(crate) fn render_counted_artifact_non_aura_enchantment_text(
         "artifact and/or non-Aura enchantment cards with mana value",
         "artifact and/or non-Aura enchantment cards each with mana value",
     )
+    .replace(
+        "artifact and/or non-aura enchantment cards with mana value",
+        "artifact and/or non-Aura enchantment cards each with mana value",
+    )
 }
 
 pub(crate) fn describe_choice_count(count: &ChoiceCount) -> String {
@@ -2384,6 +2411,7 @@ pub(crate) fn describe_choice_count(count: &ChoiceCount) -> String {
     } else {
         match (count.min, count.max) {
             (0, None) => "any number".to_string(),
+            (1, None) => "one or more".to_string(),
             (min, None) => format!("at least {min}"),
             (0, Some(max)) => format!("up to {max}"),
             (min, Some(max)) if min == max => format!("exactly {min}"),

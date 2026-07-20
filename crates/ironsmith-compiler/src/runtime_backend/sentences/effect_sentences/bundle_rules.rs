@@ -138,9 +138,11 @@ fn parse_inline_mill_then_put_from_among_bundle(
 fn parse_exile_top_library_then_play_bundle(
     first_sentence: &[OwnedLexToken],
     second_sentence: &[OwnedLexToken],
+    third_sentence: Option<&[OwnedLexToken]>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     use crate::runtime_backend::front_end::grammar::primitives as grammar;
 
+    let permission_sentence = third_sentence.unwrap_or(second_sentence);
     let mut leading_effects = Vec::new();
     let mut exile_sentence = first_sentence.to_vec();
     if let Some((prefix, suffix)) =
@@ -176,9 +178,10 @@ fn parse_exile_top_library_then_play_bundle(
         Some(parse_subject(&trim_commas(&exile_sentence[..verb_idx])))
     };
     let mut exile_tokens = trim_commas(&exile_sentence[verb_idx + 1..]);
-    let mut inline_choice_tokens = None;
-    if let Some((before_then, after_then)) =
-        grammar::split_lexed_once_on_separator(&exile_tokens, || grammar::kw("then").void())
+    let mut inline_choice_tokens = third_sentence.map(|_| trim_commas(second_sentence));
+    if inline_choice_tokens.is_none()
+        && let Some((before_then, after_then)) =
+            grammar::split_lexed_once_on_separator(&exile_tokens, || grammar::kw("then").void())
     {
         let after_then = trim_commas(after_then);
         if matches!(
@@ -247,18 +250,21 @@ fn parse_exile_top_library_then_play_bundle(
         effect
     };
     let permission_effect = if let Some(effect) =
-        parse_during_counter_on_source_turn_play_permission(second_sentence)
+        parse_during_counter_on_source_turn_play_permission(permission_sentence)
     {
         effect
-    } else if let Some(effect) = parse_until_end_of_turn_may_play_tagged_clause(second_sentence)? {
-        effect
-    } else if let Some(effect) = parse_until_your_next_turn_may_play_tagged_clause(second_sentence)?
+    } else if let Some(effect) =
+        parse_until_end_of_turn_may_play_tagged_clause(permission_sentence)?
     {
         effect
-    } else if let Some(effect) = parse_cast_or_play_tagged_clause(second_sentence)? {
+    } else if let Some(effect) =
+        parse_until_your_next_turn_may_play_tagged_clause(permission_sentence)?
+    {
+        effect
+    } else if let Some(effect) = parse_cast_or_play_tagged_clause(permission_sentence)? {
         effect
     } else {
-        let effects = effect_sentences::parse_effect_sentence_lexed(second_sentence)?;
+        let effects = effect_sentences::parse_effect_sentence_lexed(permission_sentence)?;
         let [effect] = effects.as_slice() else {
             return Ok(None);
         };
@@ -1761,7 +1767,20 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     }
     if sentences.len() == 2
         && let Ok(Some(effects)) =
-            parse_exile_top_library_then_play_bundle(sentences[0], sentences[1])
+            parse_exile_top_library_then_play_bundle(sentences[0], sentences[1], None)
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 3
+        && matches!(
+            words(sentences[1]).as_slice(),
+            ["choose", "one", "of", "them"]
+                | ["you", "choose", "one", "of", "them"]
+                | ["choose", "one", "of", "those", "cards"]
+                | ["you", "choose", "one", "of", "those", "cards"]
+        )
+        && let Ok(Some(effects)) =
+            parse_exile_top_library_then_play_bundle(sentences[0], sentences[1], Some(sentences[2]))
     {
         return Some(effects);
     }

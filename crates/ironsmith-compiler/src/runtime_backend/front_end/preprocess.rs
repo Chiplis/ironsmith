@@ -815,7 +815,6 @@ fn rewrite_vote_count_followups_line(text: &str) -> String {
     }
 }
 
-
 fn resized_char_map_for_rewrite(original_map: &[usize], normalized: &str) -> Vec<usize> {
     let target_len = normalized.chars().count();
     if target_len == original_map.len() {

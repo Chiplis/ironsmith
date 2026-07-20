@@ -165,6 +165,12 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     if prefix_one_of(slice, &[&["opponent"], &["opponents"], &["an", "opponent"]]) {
         return SubjectAst::Player(PlayerAst::Opponent);
     }
+    if prefix_one_of(
+        slice,
+        &[&["enchanted", "player"], &["enchanted", "players"]],
+    ) {
+        return SubjectAst::Player(PlayerAst::Enchanted);
+    }
     if prefix_one_of(slice, &[&["other", "player"], &["other", "players"]]) {
         return SubjectAst::Player(PlayerAst::NotYou);
     }
@@ -431,6 +437,8 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
     }
     if permission_shapes::exact_words(words, &["decayed"]) {
         Some(Marker("decayed"))
+    } else if permission_shapes::exact_words(words, &["disturb"]) {
+        Some(Marker("disturb"))
     } else if permission_shapes::exact_words(words, &["mutate"]) {
         // Costed keyword markers retain their full printed surface (for
         // example, `Mutate {4}{B}`), while ObjectFilter marker matching is

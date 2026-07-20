@@ -73,7 +73,6 @@ impl EffectExecutor for ReturnFromGraveyardToHandEffect {
         }))
     }
 
-
     fn execute(
         &self,
         game: &mut GameState,

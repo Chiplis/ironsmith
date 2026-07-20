@@ -32,6 +32,7 @@ use super::super::util::{
     parse_target_phrase, remove_first_may_word as remove_first_may_word_tokens,
     remove_through_first_may_word as remove_through_first_may_word_tokens,
 };
+use super::clause_pattern_helpers::parse_keyword_mechanic_clause;
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
     find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
@@ -77,6 +78,24 @@ fn leading_have_introduces_causative_player(tokens: &[OwnedLexToken]) -> bool {
 
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
+}
+
+fn parse_harness_without_terminal_punctuation(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("harness")) {
+        return Ok(None);
+    }
+
+    // Chain segments are split before the sentence terminator is retained,
+    // while the keyword-mechanic grammar intentionally owns the complete
+    // sentence shape. Reattach a synthetic terminator so named-source tails
+    // such as `Harness this` use the same typed parser as standalone text.
+    let mut terminated = tokens.to_vec();
+    if !terminated.last().is_some_and(|token| token.is_period()) {
+        terminated.push(OwnedLexToken::period(TextSpan::synthetic()));
+    }
+    parse_keyword_mechanic_clause(&terminated)
 }
 
 fn parse_quantified_participant_subject_effect(
@@ -309,6 +328,40 @@ pub(crate) fn parse_reveal_source_exiled_permanents_sentence_lexed(
 pub(crate) fn parse_effect_chain_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Chain parsing recursively re-enters the sentence dispatcher for
+    // nested clauses and quoted/conditional payloads.  The public chain
+    // entrypoint is also used directly by compiler tests and lower-level
+    // callers, so it needs the same stack growth protection as the sentence
+    // entrypoint.
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_effect_chain_lexed_inner(tokens)
+    })
+}
+
+fn parse_effect_chain_lexed_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);
+    let pair_tokens = leading_duration_shape
+        .as_ref()
+        .map_or(tokens, |shape| shape.rest);
+    if let Some(mut effect) = super::clause_dispatch::parse_conditional_become_pair(pair_tokens)? {
+        if let Some(shape) = leading_duration_shape {
+            super::dispatch_entry::apply_leading_duration_to_become_effect(
+                &mut effect,
+                &shape.duration,
+            );
+        }
+        return Ok(vec![effect]);
+    }
+    // Conditional consequence parsing can call the chain entrypoint directly
+    // before the ordinary uncoordinated dispatcher gets a chance to inspect
+    // the complete `for each ..., effect` shape. Keep that grammar atomic at
+    // this boundary so the iterator's subject is not sent to the generic
+    // subject/verb parser as an orphaned clause.
+    if let Some(effects) = parse_for_each_object_effect_chain_shape(tokens)? {
+        return Ok(effects);
+    }
     let effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
     Ok(preserve_coordinated_effect_chain_surface(tokens, effects))
 }
@@ -535,6 +588,52 @@ fn shared_trailing_continuous_effect_duration(effects: &[EffectAst]) -> Option<U
     .then(|| second_duration.clone())
 }
 
+fn parse_for_each_object_effect_chain_shape(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(tokens) else {
+        return Ok(None);
+    };
+
+    let mut count_words = vec!["for", "each"];
+    count_words.extend(crate::runtime_backend::token_word_refs(shape.filter_tokens));
+    let effect_words = crate::runtime_backend::token_word_refs(shape.effect_tokens);
+    let has_that_player_payload = effect_words
+        .windows(2)
+        .any(|window| window == ["that", "player"]);
+    if let Some((count, used)) =
+        crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
+        && used == count_words.len()
+        && !matches!(count.unhinted(), Value::Count(_))
+        && !(has_that_player_payload
+            && matches!(
+                count.unhinted(),
+                Value::PendingPriorEffectMetric(query)
+                    if query.action == Some(ironsmith_core::PriorEffectAction::Tapped)
+            ))
+    {
+        let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(
+                "for-each scalar sentence missing effect payload".to_string(),
+            ));
+        }
+        return Ok(Some(vec![EffectAst::RepeatEffects {
+            count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+            effects,
+        }]));
+    }
+
+    let filter = parse_object_filter(shape.filter_tokens, false)?;
+    let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
+    if effects.is_empty() {
+        return Err(CardTextError::ParseError(
+            "for-each object sentence missing effect payload".to_string(),
+        ));
+    }
+    Ok(Some(vec![EffectAst::ForEachObject { filter, effects }]))
+}
+
 fn parse_effect_chain_uncoordinated_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -556,43 +655,8 @@ fn parse_effect_chain_uncoordinated_lexed(
         return Ok(effects);
     }
 
-    if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(tokens) {
-        let mut count_words = vec!["for", "each"];
-        count_words.extend(crate::runtime_backend::token_word_refs(shape.filter_tokens));
-        let effect_words = crate::runtime_backend::token_word_refs(shape.effect_tokens);
-        let has_that_player_payload = effect_words
-            .windows(2)
-            .any(|window| window == ["that", "player"]);
-        if let Some((count, used)) =
-            crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
-            && used == count_words.len()
-            && !matches!(count.unhinted(), Value::Count(_))
-            && !(has_that_player_payload
-                && matches!(
-                    count.unhinted(),
-                    Value::PendingPriorEffectMetric(query)
-                        if query.action == Some(ironsmith_core::PriorEffectAction::Tapped)
-                ))
-        {
-            let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
-            if effects.is_empty() {
-                return Err(CardTextError::ParseError(
-                    "for-each scalar sentence missing effect payload".to_string(),
-                ));
-            }
-            return Ok(vec![EffectAst::RepeatEffects {
-                count: count.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
-                effects,
-            }]);
-        }
-        let filter = parse_object_filter(shape.filter_tokens, false)?;
-        let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
-        if effects.is_empty() {
-            return Err(CardTextError::ParseError(
-                "for-each object sentence missing effect payload".to_string(),
-            ));
-        }
-        return Ok(vec![EffectAst::ForEachObject { filter, effects }]);
+    if let Some(effects) = parse_for_each_object_effect_chain_shape(tokens)? {
+        return Ok(effects);
     }
 
     // A phase-insertion clause has no ordinary subject/verb head ("there is
@@ -625,6 +689,10 @@ fn parse_effect_chain_uncoordinated_lexed(
         let mut effects = vec![EffectAst::subject_verb_tap_all(union)];
         effects.extend(parse_effect_chain_lexed(shape.followup_tokens)?);
         return Ok(effects);
+    }
+
+    if let Some(effect) = parse_may_have_any_number_tagged_phase_out_lexed(tokens) {
+        return Ok(vec![effect]);
     }
 
     if let Some(effects) = parse_destroy_then_temporary_cant_attack_block_chain_lexed(tokens)? {
@@ -767,6 +835,14 @@ fn parse_effect_chain_uncoordinated_lexed(
         return Ok(vec![EffectAst::May { effects }]);
     }
 
+    // Consult traversal has a `reveal` verb, but its `until` stop rule is
+    // what gives the sentence its semantics.  Claim the complete traversal
+    // before the ordinary subject/verb registry lowers only the leading
+    // reveal as a plain top-of-library effect.
+    if let Some(parts) = super::consult_family::parse_consult_traversal_sentence(tokens)? {
+        return Ok(parts.effects);
+    }
+
     if chain_grammar::parse_tap_or_untap_all_choice_tokens(tokens) {
         return parse_effect_chain_with_subject_verb_primitives_lexed(tokens);
     }
@@ -779,6 +855,21 @@ fn parse_effect_chain_uncoordinated_lexed(
         && let Some(effect) = parse_cast_or_play_tagged_clause(tokens)?
     {
         return Ok(vec![effect]);
+    }
+
+    // Some specialized subject/verb parsers accept a valid leading clause
+    // without requiring end-of-input. Split a genuine top-level conjunction
+    // before entering that registry, otherwise a first arm such as `copy that
+    // spell` or `deals damage` can silently consume the whole sentence and
+    // drop the following action.
+    let split_segments = split_effect_chain_on_and_lexed(tokens);
+    if split_leading_result_prefix_lexed(tokens).is_none()
+        && split_segments.len() > 1
+        && split_segments
+            .iter()
+            .all(|segment| super::lex_chain_helpers::segment_has_effect_head_lexed(segment))
+    {
+        return parse_effect_chain_inner_lexed(tokens);
     }
 
     parse_effect_chain_with_subject_verb_primitives_lexed(tokens)
@@ -955,6 +1046,14 @@ mod tests;
 pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(tokens)
+    })
+}
+
+fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(rest) = chain_grammar::strip_leading_and_tokens(tokens) {
         return parse_effect_chain_with_subject_verb_primitives_lexed(rest);
     }
@@ -976,14 +1075,46 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
         return Ok(effects);
     }
 
-    if let Some(effects) = run_subject_verb_primitives_lexed(
+    // Copular animation clauses are complete state changes, not ordinary
+    // subject/verb ability grants.  The pre-conditional primitive registry
+    // also recognizes `are`/`get`, so claim the typed animation shape before
+    // that broad registry can reinterpret its P/T and type words.
+    if super::super::grammar::effects::clause_dispatch_shapes::parse_copular_animation_shape(tokens)
+        .is_some()
+    {
+        return Ok(vec![parse_effect_clause_lexed(tokens)?]);
+    }
+
+    // Result-prefixed clauses own the entire comma-separated body.  Route
+    // them through the conditional family before the broad pre-conditional
+    // subject/verb registry, whose `draw ... and gain ...` matcher can consume
+    // only the first arm and leave the second arm outside the When/If result.
+    if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
+        let body = parse_effect_chain_lexed(prefix.trailing_tokens)?;
+        let mut effects = vec![match prefix.kind {
+            LeadingResultPrefixKind::If => EffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects: body,
+            },
+            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects: body,
+            },
+        }];
+        preserve_leading_result_coordination_lexed(tokens, &mut effects);
+        return Ok(effects);
+    }
+
+    let pre_conditional_effects = run_subject_verb_primitives_lexed(
         tokens,
         PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
         &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
-    )? {
+    )?;
+    if let Some(effects) = pre_conditional_effects {
         return Ok(effects);
     }
-    if let Some(effects) = parse_subject_verb_extension_sentence(tokens)? {
+    let extension_effects = parse_subject_verb_extension_sentence(tokens)?;
+    if let Some(effects) = extension_effects {
         return Ok(effects);
     }
     if chain_grammar::starts_with_unless_tokens(tokens)
@@ -991,9 +1122,9 @@ pub(crate) fn parse_effect_chain_with_subject_verb_primitives_lexed(
     {
         return Ok(effects);
     }
-    if let Some(mut effects) =
-        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?
-    {
+    let conditional_effects =
+        parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)?;
+    if let Some(mut effects) = conditional_effects {
         preserve_leading_result_coordination_lexed(tokens, &mut effects);
         return Ok(effects);
     }
@@ -1045,8 +1176,35 @@ pub(crate) fn append_missing_coordinated_return_discard_tail(
 pub(crate) fn parse_effect_chain_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_effect_chain_inner_lexed_unstacked(tokens)
+    })
+}
+
+fn parse_effect_chain_inner_lexed_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) = parse_harness_without_terminal_punctuation(tokens)? {
+        return Ok(vec![effect]);
+    }
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
         return parse_effect_chain_inner_lexed(stripped);
+    }
+
+    // Preserve coordinated conditional animations before the generic `and`
+    // splitter turns the second branch into an orphaned follow-up clause.
+    let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);
+    let pair_tokens = leading_duration_shape
+        .as_ref()
+        .map_or(tokens, |shape| shape.rest);
+    if let Some(mut effect) = super::clause_dispatch::parse_conditional_become_pair(pair_tokens)? {
+        if let Some(shape) = leading_duration_shape {
+            super::dispatch_entry::apply_leading_duration_to_become_effect(
+                &mut effect,
+                &shape.duration,
+            );
+        }
+        return Ok(vec![effect]);
     }
 
     // Keep the duration attached while recognizing a base-P/T clause. The
@@ -1060,10 +1218,26 @@ pub(crate) fn parse_effect_chain_inner_lexed(
         return Ok(vec![effect]);
     }
 
+    // This mechanic is a single authored process even though the generic
+    // conjunction splitter sees `lose ... and draw ...` and would otherwise
+    // send the draw/clash tail through the ordinary draw parser. Claim the
+    // complete shape before splitting coordinated verbs.
+    if let Some(effects) =
+        super::subject_verb_primitives::parse_sentence_lose_draw_clash_repeat_process(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+
     if chain_grammar::starts_with_unless_tokens(tokens)
         && let Some(effects) = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
     {
         return Ok(effects);
+    }
+
+    if let Some(parts) = super::consult_family::parse_consult_traversal_sentence(tokens)? {
+        return Ok(parts.effects);
     }
 
     if let Some(effects) = parse_search_library_sentence_lexed(tokens)? {
@@ -1089,7 +1263,6 @@ pub(crate) fn parse_effect_chain_inner_lexed(
     }
 
     let choose_then_exile_reference = parse_choose_then_exile_reference_shape(tokens).is_some();
-    let leading_duration_shape = chain_grammar::parse_carry_duration_prefix_tokens(tokens);
     let (effect_chain_tokens, leading_duration) = match leading_duration_shape.as_ref() {
         Some(shape) => (shape.rest, Some(shape.duration.clone())),
         None => (tokens, None),
@@ -1266,6 +1439,22 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             previous_segment = Some(segment);
             continue;
         }
+        if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(&segment) {
+            let filter = parse_object_filter(shape.filter_tokens, false)?;
+            let nested_effects = parse_effect_chain_lexed(shape.effect_tokens)?;
+            if nested_effects.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "for-each object sentence missing effect payload".to_string(),
+                ));
+            }
+            let effect = EffectAst::ForEachObject {
+                filter,
+                effects: nested_effects,
+            };
+            effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            previous_segment = Some(segment);
+            continue;
+        }
         if let Some(segment_effects) = parse_subject_verb_extension_sentence(&segment)? {
             for mut effect in segment_effects {
                 if let Some(context) = carried_context {
@@ -1345,6 +1534,23 @@ pub(crate) fn parse_effect_chain_inner_lexed(
             let mut gain_tokens = Vec::new();
             gain_tokens.push(synthetic_lexed_word("it"));
             gain_tokens.extend(gain_tail.iter().cloned());
+            if let Some(mut effect) = parse_simple_gain_ability_clause_lexed(&gain_tokens)? {
+                if let Some(duration) = &carried_duration {
+                    apply_carried_effect_duration(&mut effect, duration);
+                }
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+                previous_segment = Some(segment);
+                continue;
+            }
+        }
+        // Coordinated ability lists commonly omit the repeated "gains":
+        // `gains flying, double strike, and vigilance until end of turn`.
+        // The comma splitter leaves the later arms as bare keyword phrases;
+        // feed those through the same typed gain parser with an implicit
+        // `it gains` subject instead of treating them as effect clauses.
+        if find_verb_lexed(&segment).is_none() {
+            let mut gain_tokens = vec![synthetic_lexed_word("it"), synthetic_lexed_word("gains")];
+            gain_tokens.extend(segment.iter().cloned());
             if let Some(mut effect) = parse_simple_gain_ability_clause_lexed(&gain_tokens)? {
                 if let Some(duration) = &carried_duration {
                     apply_carried_effect_duration(&mut effect, duration);
@@ -1704,6 +1910,48 @@ fn parse_tap_those_then_unattach_equipment_lexed(
     ]))
 }
 
+pub(crate) fn parse_may_have_any_number_tagged_phase_out_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    if token_word_refs(tokens).as_slice()
+        != [
+            "you", "may", "have", "any", "number", "of", "them", "phase", "out",
+        ]
+    {
+        return None;
+    }
+
+    let chosen_tag = TagKey::from("phase_out_selection");
+    let mut available = ObjectFilter::default().in_zone(Zone::Battlefield);
+    available
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from(IT_TAG),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let mut phase_out_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    phase_out_filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: chosen_tag.clone(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+
+    Some(EffectAst::MayByPlayer {
+        player: PlayerAst::You,
+        effects: vec![
+            EffectAst::ChooseObjects {
+                filter: available,
+                count: ChoiceCount::any_number(),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen_tag,
+            },
+            EffectAst::subject_verb_phase_out_all(phase_out_filter),
+        ],
+    })
+}
+
 pub(crate) fn parse_return_it_then_loses_all_abilities_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1947,6 +2195,15 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
             if_true, if_false, ..
         } => {
             for nested in if_true.iter_mut().chain(if_false.iter_mut()) {
+                apply_carried_effect_duration(nested, duration);
+            }
+        }
+        // A compound continuous clause ("has base power and toughness 4/4
+        // and gains flying") parses into a coordinated wrapper; the carried
+        // duration scopes every member. The Forever guard above keeps
+        // authored member durations intact.
+        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
+            for nested in effects.iter_mut() {
                 apply_carried_effect_duration(nested, duration);
             }
         }

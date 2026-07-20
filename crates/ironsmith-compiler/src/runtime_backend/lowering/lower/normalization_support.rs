@@ -21,6 +21,34 @@ impl RewriteNormalizationState {
 fn normalize_rewrite_parsed_ability(
     parsed: ParsedAbility,
 ) -> Result<NormalizedParsedAbility, CardTextError> {
+    fn cost_removes_source_counters(cost: &crate::costs::Cost) -> bool {
+        matches!(
+            cost,
+            crate::costs::Cost::RemoveCounters { .. }
+                | crate::costs::Cost::RemoveAnyCountersFromSource { .. }
+        ) || cost.effect_ref().is_some_and(|effect| {
+            effect
+                .downcast_ref::<crate::effects::RemoveCountersEffect>()
+                .is_some()
+                || effect
+                    .downcast_ref::<crate::effects::RemoveAnyCountersFromSourceEffect>()
+                    .is_some()
+                || effect
+                    .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()
+                    .is_some()
+        })
+    }
+
+    fn total_cost_removes_source_counters(
+        cost: &ironsmith_core::TotalCost<crate::costs::Cost>,
+    ) -> bool {
+        cost.as_all()
+            .is_some_and(|costs| costs.iter().any(cost_removes_source_counters))
+            || cost
+                .as_one_of()
+                .is_some_and(|branches| branches.iter().any(total_cost_removes_source_counters))
+    }
+
     let prepared = match parsed.effects_ast.as_ref() {
         None => None,
         Some(_)
@@ -50,13 +78,21 @@ fn normalize_rewrite_parsed_ability(
                 )?;
                 Some(NormalizedPreparedAbility::Triggered { trigger, prepared })
             }
-            (AbilityKind::Activated(_), _) => Some(NormalizedPreparedAbility::Activated(
-                rewrite_prepare_effects_with_trigger_context_for_lowering(
-                    None,
-                    effects_ast,
-                    parsed.reference_imports.clone(),
-                )?,
-            )),
+            (AbilityKind::Activated(activated), _) => {
+                let mut effects = effects_ast.clone();
+                if total_cost_removes_source_counters(&activated.mana_cost) {
+                    super::super::lowering_support::replace_pending_removed_counter_metrics_with_x(
+                        &mut effects,
+                    );
+                }
+                Some(NormalizedPreparedAbility::Activated(
+                    rewrite_prepare_effects_with_trigger_context_for_lowering(
+                        None,
+                        &effects,
+                        parsed.reference_imports.clone(),
+                    )?,
+                ))
+            }
             _ => None,
         },
     };

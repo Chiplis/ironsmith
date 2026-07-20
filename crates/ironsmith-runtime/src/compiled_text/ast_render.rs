@@ -1130,7 +1130,6 @@ fn describe_cross_segment_look_optional_payment_disposition_window(
     ))
 }
 
-
 /// Rejoin a will-of-the-council vote with its option conditionals when
 /// sentence lowering placed each result sentence in its own resolution
 /// segment. The named-vote helper still proves every option/condition edge.

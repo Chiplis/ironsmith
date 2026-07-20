@@ -2085,15 +2085,28 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     // "this source" is NOT safe here: enchantment self-animations (the
     // Hidden/Opal cycles) pass it too, and those keep the creature noun.
     let target_lower = target_text.to_ascii_lowercase();
-    let pronoun_creature_backref = matches!(target_lower.as_str(), "it" | "this")
-        && effect.type_retention_surface.is_none()
-        && !preserves_land_types;
+    // "this permanent" is the compound joiner's source-reference surface
+    // (put-a-counter-and-becomes); enchantment self-animations pass their
+    // typed noun ("this enchantment") and keep the creature noun via the
+    // exclusion list below. "this source" is NOT safe here — real
+    // Hidden-family lines still pass it and keep their noun.
+    let pronoun_creature_backref =
+        matches!(target_lower.as_str(), "it" | "this" | "this permanent")
+            && effect.type_retention_surface.is_none()
+            && !preserves_land_types;
     let redundant_creature_noun = !subtypes.is_empty()
         && extra_card_types.is_empty()
         && (target_lower.contains("creature") || pronoun_creature_backref)
-        && !["land", "artifact", "enchantment", "planeswalker", "permanent"]
+        && (pronoun_creature_backref
+            || ![
+                "land",
+                "artifact",
+                "enchantment",
+                "planeswalker",
+                "permanent",
+            ]
             .iter()
-            .any(|noun| target_lower.contains(noun));
+            .any(|noun| target_lower.contains(noun)));
     if !omit_creature_type_noun && !redundant_creature_noun {
         descriptor.push(if plural_target {
             "creatures".to_string()

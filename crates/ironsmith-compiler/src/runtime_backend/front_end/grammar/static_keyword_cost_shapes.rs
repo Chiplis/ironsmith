@@ -233,10 +233,7 @@ fn first_token_word(tokens: &[OwnedLexToken], expected: &[&str]) -> Option<Token
         let token = initial_len.saturating_sub(input.len());
         let parsed: WResult<&OwnedLexToken> = any.parse_next(&mut input);
         let candidate = parsed.ok()?;
-        let Some(candidate_word) = candidate.as_word() else {
-            continue;
-        };
-        if expected.iter().any(|word| candidate_word == *word) {
+        if expected.iter().any(|word| candidate.is_word(word)) {
             return Some(TokenBoundary { token });
         }
     }

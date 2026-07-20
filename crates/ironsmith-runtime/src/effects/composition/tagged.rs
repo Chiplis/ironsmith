@@ -55,38 +55,38 @@ fn apply_outcome_tags(
     outcome: &EffectOutcome,
     runtime: TaggedRuntimeState,
 ) {
-        for damage in outcome.events_of_type::<DamageEvent>() {
-            if damage.amount == 0 {
-                continue;
+    for damage in outcome.events_of_type::<DamageEvent>() {
+        if damage.amount == 0 {
+            continue;
+        }
+        match damage.target {
+            DamageTarget::Player(player_id) => {
+                ctx.tag_player(effect.tag.clone(), player_id);
+                if effect.tag.as_str() != "__it__"
+                    && effect.tag.as_str() != "__copied_stack_object__"
+                {
+                    ctx.tag_player(TagKey::from("__it__"), player_id);
+                }
             }
-            match damage.target {
-                DamageTarget::Player(player_id) => {
-                    ctx.tag_player(effect.tag.clone(), player_id);
+            DamageTarget::Object(object_id) => {
+                if let Some(snapshot) = damage.target_snapshot.clone().or_else(|| {
+                    game.object(object_id)
+                        .map(|obj| ObjectSnapshot::from_object(obj, game))
+                }) {
+                    ctx.tag_object(effect.tag.clone(), snapshot.clone());
                     if effect.tag.as_str() != "__it__"
                         && effect.tag.as_str() != "__copied_stack_object__"
                     {
-                        ctx.tag_player(TagKey::from("__it__"), player_id);
-                    }
-                }
-                DamageTarget::Object(object_id) => {
-                    if let Some(snapshot) = damage.target_snapshot.clone().or_else(|| {
-                        game.object(object_id)
-                            .map(|obj| ObjectSnapshot::from_object(obj, game))
-                    }) {
-                        ctx.tag_object(effect.tag.clone(), snapshot.clone());
-                        if effect.tag.as_str() != "__it__"
-                            && effect.tag.as_str() != "__copied_stack_object__"
-                        {
-                            ctx.tag_object(TagKey::from("__it__"), snapshot);
-                        }
+                        ctx.tag_object(TagKey::from("__it__"), snapshot);
                     }
                 }
             }
         }
-        apply_tagged_runtime_state(game, ctx, effect.tag.clone(), outcome, runtime.clone());
-        if effect.tag.as_str() != "__it__" && effect.tag.as_str() != "__copied_stack_object__" {
-            apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), outcome, runtime);
-        }
+    }
+    apply_tagged_runtime_state(game, ctx, effect.tag.clone(), outcome, runtime.clone());
+    if effect.tag.as_str() != "__it__" && effect.tag.as_str() != "__copied_stack_object__" {
+        apply_tagged_runtime_state(game, ctx, TagKey::from("__it__"), outcome, runtime);
+    }
 }
 
 /// A tagged wrapper around another effect's simultaneous proposal: committing
@@ -164,7 +164,10 @@ impl EffectExecutor for TaggedEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
         let runtime = capture_tagged_runtime_state(game, &self.effect, ctx);
-        let inner = self.effect.0.prepare_simultaneous_player_action(game, ctx)?;
+        let inner = self
+            .effect
+            .0
+            .prepare_simultaneous_player_action(game, ctx)?;
         Ok(Box::new(TaggedProposal {
             effect: self.clone(),
             inner,

@@ -631,7 +631,7 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
         &normalized,
         &["it", "deals", "excess", "damage", "this", "way"],
     ) {
-        return Some(IfResultPredicate::Did);
+        return Some(IfResultPredicate::ExcessDamageDealt);
     }
     if word_count == 6
         && (starts_with_phrase(&normalized, &["its", "power", "becomes"])
@@ -694,7 +694,15 @@ mod tests {
                 "they searched their library this way",
                 IfResultPredicate::SearchedLibrary,
             ),
-            ("it connives this way", IfResultPredicate::Did),
+            (
+                "it connives this way",
+                IfResultPredicate::PriorEffectResult(PriorEffectResultSurface::new(
+                    PriorEffectAction::Connived,
+                    crate::target::ObjectFilter::default(),
+                    PriorEffectResultActor::It,
+                    PriorEffectResultQuantifier::ActionOnly,
+                )),
+            ),
             (
                 "one or more cards are exiled this way",
                 IfResultPredicate::Did,
@@ -707,13 +715,24 @@ mod tests {
             ("that player doesn't", IfResultPredicate::DidNot),
             ("its power becomes 3 this way", IfResultPredicate::Did),
             ("you milled a card this way", IfResultPredicate::Did),
-            ("you reveal a nonland card this way", IfResultPredicate::Did),
+            (
+                "you reveal a nonland card this way",
+                IfResultPredicate::PriorEffectResult({
+                    let mut filter = crate::target::ObjectFilter::default();
+                    filter.excluded_card_types = vec![crate::types::CardType::Land];
+                    filter.set_explicit_card_noun(true);
+                    PriorEffectResultSurface::new(
+                        PriorEffectAction::Revealed,
+                        filter,
+                        PriorEffectResultActor::You,
+                        PriorEffectResultQuantifier::One,
+                    )
+                }),
+            ),
         ] {
             let tokens = lex_line(raw, 0).unwrap();
-            assert_eq!(
-                parse_if_result_predicate_lexed_tokens(&tokens),
-                Some(expected)
-            );
+            let actual = parse_if_result_predicate_lexed_tokens(&tokens);
+            assert_eq!(actual, Some(expected));
         }
     }
 }

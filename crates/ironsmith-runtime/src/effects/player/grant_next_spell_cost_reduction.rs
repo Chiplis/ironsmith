@@ -91,7 +91,7 @@ fn lock_target_player_filters_for_player(
 
 fn lock_target_player_filter(filter: &mut crate::target::PlayerFilter, player: PlayerId) {
     match filter {
-        crate::target::PlayerFilter::Target(_) => {
+        crate::target::PlayerFilter::Target(_) | crate::target::PlayerFilter::AliasedTarget(_) => {
             *filter = crate::target::PlayerFilter::Specific(player);
         }
         crate::target::PlayerFilter::CardsInHandAtLeastMoreThanYou { base, .. }

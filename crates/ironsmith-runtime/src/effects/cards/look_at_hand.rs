@@ -60,10 +60,11 @@ impl EffectExecutor for LookAtHandEffect {
                     .unwrap_or_default();
                 for card_id in cards.iter().copied() {
                     if let Some(object) = game.object(card_id)
-                        && revealed.iter().all(|snapshot| snapshot.object_id != card_id)
+                        && revealed
+                            .iter()
+                            .all(|snapshot| snapshot.object_id != card_id)
                     {
-                        revealed
-                            .push(crate::snapshot::ObjectSnapshot::from_object(object, game));
+                        revealed.push(crate::snapshot::ObjectSnapshot::from_object(object, game));
                     }
                 }
                 ctx.set_tagged_objects(

@@ -1518,7 +1518,18 @@ pub(super) fn apply_reference_and_tag_stage(
             },
         });
     }
-    if has_same_mana_value && references_additional_cost_object {
+    let references_sacrificed_cost_object = all_words.windows(2).any(|window| {
+        matches!(
+            window,
+            ["sacrificed", "creature"]
+                | ["sacrificed", "artifact"]
+                | ["sacrificed", "enchantment"]
+                | ["sacrificed", "permanent"]
+        )
+    });
+    if has_same_mana_value
+        && (references_additional_cost_object || references_sacrificed_cost_object)
+    {
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from(ADDITIONAL_COST_OBJECT_TAG),
             relation: TaggedOpbjectRelation::SameManaValueAsTagged,

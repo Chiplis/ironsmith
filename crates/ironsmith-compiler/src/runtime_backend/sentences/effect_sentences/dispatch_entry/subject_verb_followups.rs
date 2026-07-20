@@ -1155,6 +1155,9 @@ fn pre_rule_declined_tagged_battlefield_move_followup(
         EffectAst::Conditional {
             if_true, if_false, ..
         } if if_false.is_empty() && if_true.len() == 1 => tagged_may_battlefield_move(&if_true[0]),
+        EffectAst::TrailingIf { effects, .. } if effects.len() == 1 => {
+            tagged_may_battlefield_move(&effects[0])
+        }
         _ => None,
     }) else {
         return Ok(None);
@@ -1168,6 +1171,15 @@ fn pre_rule_declined_tagged_battlefield_move_followup(
     let explicit_target = TargetAst::Tagged(tag, span_from_tokens(condition_tokens));
     replace_it_target_in_effects(&mut fallback, &explicit_target);
 
+    if let Some(EffectAst::TrailingIf { predicate, effects }) = state.effects.last_mut() {
+        let predicate = predicate.clone();
+        let if_true = std::mem::take(effects);
+        *state.effects.last_mut().expect("trailing-if still present") = EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false: Vec::new(),
+        };
+    }
     let Some(EffectAst::Conditional {
         if_true, if_false, ..
     }) = state.effects.last_mut()

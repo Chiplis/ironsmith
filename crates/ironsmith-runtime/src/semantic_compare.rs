@@ -500,6 +500,12 @@ fn normalize_leading_until_end_of_turn_animation(text: &str) -> String {
         }
     }
 
+    // The duration scopes the animation sentence, not any following
+    // sentence rendered on the same line ("... 4/5. Draw a card.").
+    if let Some(idx) = rest.find(". ") {
+        let (first, tail) = rest.split_at(idx);
+        return format!("{first} until end of turn{tail}");
+    }
     format!("{rest} until end of turn")
 }
 
@@ -651,6 +657,11 @@ fn normalize_carried_target_player_references(text: &str) -> String {
     let tail = tail
         .replace("That player's", "Their")
         .replace("that player's", "their")
+        // A repeated possessive or damage-recipient mention of the already-
+        // introduced target is the same back-reference.
+        .replace("Target player's", "Their")
+        .replace("target player's", "their")
+        .replace("damage to target player", "damage to them")
         .replace("That player’s", "Their")
         .replace("that player’s", "their")
         .replace("That player controls", "They control")
@@ -1454,9 +1465,192 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("don't control a", "control no"),
         ("doesn't control an", "controls no"),
         ("doesn't control a", "controls no"),
+        // After a choose, "the rest" and "all other <noun>s" name the same
+        // complement set.
+        ("Destroy all other creatures", "Destroy the rest"),
+        ("destroy all other creatures", "destroy the rest"),
+        // The enchanted permanent is named by its printed type in oracle and
+        // by the generic noun in the renderer — same object either way.
+        (
+            "enchanted land's controller",
+            "enchanted permanent's controller",
+        ),
+        (
+            "enchanted enchantment's controller",
+            "enchanted permanent's controller",
+        ),
+        (
+            "enchanted artifact's controller",
+            "enchanted permanent's controller",
+        ),
+        // The upkeep-damage back-reference: "its controller" and "that
+        // player" name the same player after an of-controller trigger.
+        // Anchored on the full trigger context so mass-damage clauses
+        // ("Each enchantment deals 2 damage to its controller" — Aura
+        // Barbs) are untouched even after the that-creature's→its rewrite
+        // above cascades.
+        (
+            "controller, this deals 1 damage to its controller",
+            "controller, this deals 1 damage to that player",
+        ),
+        (
+            "controller, this deals 2 damage to its controller",
+            "controller, this deals 2 damage to that player",
+        ),
+        (
+            "controller, this deals 3 damage to its controller",
+            "controller, this deals 3 damage to that player",
+        ),
+        (
+            "defending player is the monarch",
+            "that player is the monarch",
+        ),
+        // Choosing from a looked-at set: the renderer's bare pronoun and
+        // oracle's partitive name the same single pick.
+        ("put one of them into your hand", "put it into your hand"),
+        ("Put one of them into your hand", "Put it into your hand"),
+        (
+            "put one of those cards into your hand",
+            "put it into your hand",
+        ),
+        (
+            "Put one of those cards into your hand",
+            "Put it into your hand",
+        ),
+        // The renderer's articleless "from graveyard" is an artifact; the
+        // source zone of a dies-return is implicit in oracle.
+        (
+            "return it from graveyard to the battlefield",
+            "return it to the battlefield",
+        ),
+        // A single-copy token cleanup is back-referenced with "it".
+        (
+            "Exile those tokens at end of combat",
+            "Exile it at end of combat",
+        ),
+        // A kicked-damage "instead" rider back-references the spell's only
+        // target; the repeated target phrase is the same object.
+        ("damage to target creature instead", "damage to it instead"),
+        // The renderer names the linked damage amount "X"; oracle back-
+        // references it as "the damage dealt this way" — same quantity.
+        ("life equal to the damage dealt this way", "life equal to X"),
+        // A commander is necessarily a permanent in these choose contexts;
+        // the renderer's extra noun is redundant.
+        ("commander permanent", "commander"),
         // "each player's end step" is the pre-2023 templating of
         // "each end step" — the same trigger event.
         ("each player's end step", "each end step"),
+        // The damage recipient back-reference: "that player" and "them" are
+        // the same antecedent.
+        ("damage to that player", "damage to them"),
+        // The reveal-top ability names its target either way.
+        (
+            "Target player reveals the top card",
+            "They reveal the top card",
+        ),
+        // A Curse's controller scope: "enchanted player" is the carried
+        // player the renderer pronominalizes.
+        (
+            "Creatures enchanted player controls",
+            "Creatures they control",
+        ),
+        (
+            "creatures enchanted player controls",
+            "creatures they control",
+        ),
+        // Both templatings of a token's entry recency appear across eras.
+        (
+            "token that entered the battlefield this turn",
+            "token that entered this turn",
+        ),
+        // The attack-rider set is the damaged group either way.
+        (
+            "Each creature dealt damage this way attacks this turn if able",
+            "Each creature attacks this turn if able",
+        ),
+        // The battlefield zone is implicit for the permanent half of a
+        // battlefield-and-graveyard mass return.
+        (
+            "creatures on the battlefield and all creature cards",
+            "creatures and all creature cards",
+        ),
+        // A single pick from a looked-at set: pronoun vs partitive-noun.
+        ("choose one of those cards", "choose one of them"),
+        ("Choose one of those cards", "Choose one of them"),
+        // The source-excluding target is templated both ways.
+        ("target creature other than this", "another target creature"),
+        // A two-card look's complement is "the other"; the renderer's
+        // general form spells out "the rest ... in any order".
+        (
+            "and the other on the bottom of your library",
+            "and the rest on the bottom of your library in any order",
+        ),
+        // A random pick from a tagged set back-references either way.
+        (
+            "Destroy it chosen at random",
+            "Destroy one of them chosen at random",
+        ),
+        // The optional phase-out of a chosen set: causative vs imperative.
+        (
+            "You may have any number of them phase out",
+            "You may phase out any number of them",
+        ),
+        // The whole-hand shuffle is templated both ways across eras.
+        (
+            "shuffle all cards in your hand into your library",
+            "shuffle the cards from your hand into your library",
+        ),
+        // A chosen set's iteration back-reference.
+        ("For each of those objects", "For each of them"),
+        ("for each of those objects", "for each of them"),
+        // Choose-as-target vs plain choose over your own permanents is the
+        // same selection.
+        (
+            "any number of target creatures you control",
+            "any number of creatures you control",
+        ),
+        (
+            "up to that many target creatures you control",
+            "up to that many creatures you control",
+        ),
+        // The All-quantifier is implicit for restriction statics.
+        ("All creatures can't block", "Creatures can't block"),
+        ("All creatures can't attack", "Creatures can't attack"),
+        // Self-name normalization inside a target phrase leaves "Target
+        // this"; the self-reference already carries the meaning.
+        ("Target this gets", "This gets"),
+        ("target this gets", "this gets"),
+        ("Target this deals", "This deals"),
+        ("target this deals", "this deals"),
+        // The face-down hand exile names its actor either way; the renderer
+        // folds the subject into the carried player.
+        (
+            "Target player exiles all cards from their hand face down",
+            "Exile all cards from their hand face down",
+        ),
+        (
+            "that player returns those cards to their hand",
+            "return those cards to their hand",
+        ),
+        // A repeated "target player controls" scope inside a later clause is
+        // the same back-reference as the renderer's "they control".
+        ("creature target player controls", "creature they control"),
+        ("creatures target player controls", "creatures they control"),
+        ("permanent target player controls", "permanent they control"),
+        (
+            "permanents target player controls",
+            "permanents they control",
+        ),
+        (
+            "creature another target player controls",
+            "other creature they control",
+        ),
+        // "If the player does" (older templating) and "If they do" name the
+        // same antecedent; the renderer emits the pronoun form.
+        ("If the player does", "If they do"),
+        ("if the player does", "if they do"),
+        ("If the player doesn't", "If they don't"),
+        ("if the player doesn't", "if they don't"),
         // Whole-graveyard shuffles are templated with and without the
         // explicit card enumeration across eras; canonicalize to the modern
         // short form.
@@ -1585,6 +1779,25 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ),
         ("for each creature on the battlefield", "for each creature"),
         ("For each creature on the battlefield", "For each creature"),
+        // Mass counter targets and battlefield-implying constraints
+        // (attached, attacking, crewed) leave the zone implicit in oracle.
+        (
+            "counters on each creature on the battlefield",
+            "counters on each creature",
+        ),
+        (
+            "counter on each creature on the battlefield",
+            "counter on each creature",
+        ),
+        (" attached to it on the battlefield", " attached to it"),
+        (
+            "attacking creatures on the battlefield",
+            "attacking creatures",
+        ),
+        (
+            " crewed it this turn on the battlefield",
+            " crewed it this turn",
+        ),
         ("for each land on the battlefield", "for each land"),
         ("For each land on the battlefield", "For each land"),
         ("for each artifact on the battlefield", "for each artifact"),
@@ -1638,6 +1851,86 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
     )
 }
 
+/// "If a <type> card was exiled/revealed this way" and the renderer's
+/// "If it's a <type> card" test the same just-moved card; canonicalize the
+/// oracle event-phrasing to the predicate form.
+fn normalize_card_moved_this_way_condition(text: &str) -> String {
+    const SUFFIXES: &[&str] = &[
+        " was exiled this way",
+        " is exiled this way",
+        " was revealed this way",
+        " is revealed this way",
+        " was milled this way",
+        " is milled this way",
+    ];
+    const PREFIXES: &[(&str, &str)] = &[
+        ("If a ", "If it's a "),
+        ("if a ", "if it's a "),
+        ("If an ", "If it's an "),
+        ("if an ", "if it's an "),
+        ("If at least one ", "If it's a "),
+        ("if at least one ", "if it's a "),
+    ];
+    let mut normalized = text.to_string();
+    for suffix in SUFFIXES {
+        loop {
+            let Some(suffix_idx) = normalized.find(suffix) else {
+                break;
+            };
+            let before = &normalized[..suffix_idx];
+            let Some((prefix_idx, (prefix, replacement))) = PREFIXES
+                .iter()
+                .filter_map(|(p, r)| before.rfind(p).map(|i| (i, (*p, *r))))
+                .max_by_key(|(i, _)| *i)
+            else {
+                break;
+            };
+            // The phrase between prefix and suffix must be a short noun
+            // phrase ending in "card" — not a whole extra clause.
+            let noun = &normalized[prefix_idx + prefix.len()..suffix_idx];
+            if !noun.ends_with(" card") || noun.contains(',') || noun.len() > 40 {
+                break;
+            }
+            normalized = format!(
+                "{}{replacement}{noun}{}",
+                &normalized[..prefix_idx],
+                &normalized[suffix_idx + suffix.len()..]
+            );
+        }
+    }
+    normalized
+}
+
+/// Oracle templating is inconsistent about spelling out the battlefield zone
+/// in choose instructions ("Choose a creature on the battlefield" vs "Choose
+/// up to one creature"); the zone is implicit either way, so strip it from
+/// choose sentences on both sides.
+fn strip_choose_battlefield_zone(text: &str) -> String {
+    const ZONE: &str = " on the battlefield";
+    if !text.contains(ZONE) {
+        return text.to_string();
+    }
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(ZONE) {
+        let before = &rest[..idx];
+        let sentence_start = before
+            .rfind(". ")
+            .into_iter()
+            .chain(before.rfind(": "))
+            .max()
+            .map_or(0, |i| i + 2);
+        let chooses = before[sentence_start..].contains("hoose");
+        result.push_str(before);
+        if !chooses {
+            result.push_str(ZONE);
+        }
+        rest = &rest[idx + ZONE.len()..];
+    }
+    result.push_str(rest);
+    result
+}
+
 fn normalize_repeated_you_after_draw(text: &str) -> String {
     fn collapse_marker(segment: &mut String, marker: &str, replacement: &str) {
         let lower = segment.to_ascii_lowercase();
@@ -1675,6 +1968,106 @@ fn normalize_repeated_you_after_draw(text: &str) -> String {
         .join(". ")
 }
 
+/// ", then <verb>s ..." continues its sentence's subject. The generic
+/// ", then " → ". " split below would orphan that clause (a subjectless
+/// "exiles a card from their hand"), so restore a subject into the split
+/// when both the subject phrase and the continuation verb are recognized.
+/// The restored subject is always the back-reference "That player" — the
+/// carried-player pass later unifies it with the renderer's pronoun choice.
+/// Bare imperatives ("then shuffle") keep their implicit "you" untouched.
+fn carry_subject_through_then_splits(text: &str) -> String {
+    const SUBJECTS: &[&str] = &[
+        "Target player ",
+        "Target opponent ",
+        "That player ",
+        "That opponent ",
+        "The player ",
+        "Defending player ",
+    ];
+    const THIRD_PERSON_VERBS: &[&str] = &[
+        "exiles",
+        "discards",
+        "sacrifices",
+        "reveals",
+        "shuffles",
+        "draws",
+        "gains",
+        "loses",
+        "puts",
+        "mills",
+        "creates",
+        "returns",
+        "destroys",
+        "chooses",
+        "scries",
+        "surveils",
+    ];
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find(", then ") {
+        let after = &rest[idx + ", then ".len()..];
+        let word = after
+            .split(|c: char| !c.is_ascii_alphabetic())
+            .next()
+            .unwrap_or("");
+        let sentence_start = rest[..idx]
+            .rfind(". ")
+            .into_iter()
+            .chain(rest[..idx].rfind(": "))
+            .max()
+            .map_or(0, |i| i + 2);
+        let subject = SUBJECTS
+            .iter()
+            .find(|s| rest[sentence_start..].starts_with(**s));
+        if subject.is_some() && THIRD_PERSON_VERBS.contains(&word) {
+            result.push_str(&rest[..idx]);
+            result.push_str(". That player ");
+        } else {
+            result.push_str(&rest[..idx + ", then ".len()]);
+        }
+        rest = after;
+    }
+    result.push_str(rest);
+    result
+}
+
+/// A second sentence that re-states "Target player"/"Target opponent" as its
+/// subject is a back-reference to the target introduced by the first; oracle
+/// and the renderer disagree about whether to repeat the phrase or use
+/// "that player"/"they". Demote the repeats so both sides converge on the
+/// back-reference surface.
+fn demote_repeated_player_subjects(text: &str) -> String {
+    let mut normalized = text.to_string();
+    for (subject, demoted) in [
+        ("Target player ", "That player "),
+        ("Target opponent ", "That player "),
+        ("target player ", "that player "),
+        ("target opponent ", "that player "),
+    ] {
+        let Some(first) = normalized
+            .to_ascii_lowercase()
+            .find(&subject.to_ascii_lowercase())
+        else {
+            continue;
+        };
+        let scan_from = first + subject.len();
+        let mut result = normalized[..scan_from].to_string();
+        let mut rest = &normalized[scan_from..];
+        while let Some(idx) = rest.find(subject) {
+            let boundary = rest[..idx].ends_with(". ")
+                || rest[..idx].ends_with(": ")
+                || rest[..idx].ends_with(", ")
+                || rest[..idx].ends_with("then ");
+            result.push_str(&rest[..idx]);
+            result.push_str(if boundary { demoted } else { subject });
+            rest = &rest[idx + subject.len()..];
+        }
+        result.push_str(rest);
+        normalized = result;
+    }
+    normalized
+}
+
 fn split_common_clause_conjunctions(text: &str) -> String {
     let mut normalized = text.to_string();
 
@@ -1707,6 +2100,41 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = normalize_carried_target_player_references(&normalized);
     normalized = normalize_repeated_filtered_set_coreferences(&normalized);
     normalized = normalize_anaphoric_object_surfaces(&normalized);
+    normalized = strip_choose_battlefield_zone(&normalized);
+    normalized = normalize_card_moved_this_way_condition(&normalized);
+    // "exile target player's graveyard" repeats an already-introduced
+    // target; oracle back-references it ("exile their graveyard"). Only
+    // rewrite when another mention keeps the target tokens in the text —
+    // for a first mention (Identity Crisis) the phrase IS the introduction.
+    for needle in [
+        "Exile target player's graveyard",
+        "exile target player's graveyard",
+    ] {
+        if let Some(idx) = normalized.find(needle) {
+            let has_other_mention = normalized[..idx].contains("arget player")
+                || normalized[idx + needle.len()..].contains("arget player");
+            if has_other_mention {
+                let replacement = if needle.starts_with('E') {
+                    "Exile their graveyard"
+                } else {
+                    "exile their graveyard"
+                };
+                normalized = normalized.replacen(needle, replacement, 1);
+            }
+        }
+    }
+    // "Each X you control enters with ..." and the plural "Xs you control
+    // enter with ..." are the same replacement effect; number agreement and
+    // pronouns are already normalized, so dropping the quantifier aligns
+    // the token sets.
+    if normalized.starts_with("Each ")
+        && (normalized.contains(" enters with an additional")
+            || normalized.contains(" enter with an additional")
+            || normalized.contains(" enters with a number of additional")
+            || normalized.contains(" enter with a number of additional"))
+    {
+        normalized = normalized["Each ".len()..].to_string();
+    }
     normalized = normalized
         // A single prison sentence and the renderer's two static-ability
         // sentences describe the same pair of restrictions.
@@ -2867,6 +3295,38 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             .replace(" and create ", ". Create ")
             .replace(" and create", ". Create");
     }
+    // "draw X cards and lose X life, where X is <basis>" splits into two
+    // clauses that EACH carry the basis — matching the renderer's joined
+    // form, which is also split below.
+    for needle in [
+        " draw X cards and lose X life, where X is ",
+        " draw X cards and you lose X life, where X is ",
+    ] {
+        if let Some((head, tail)) = normalized.split_once(needle) {
+            let (basis, rest) = match tail.split_once(". ") {
+                Some((basis, rest)) => (basis.trim_end_matches('.'), Some(rest.to_string())),
+                None => (tail.trim_end_matches('.'), None),
+            };
+            let mut rebuilt = format!(
+                "{head} draw X cards, where X is {basis}. You lose X life, where X is {basis}."
+            );
+            if let Some(rest) = rest {
+                rebuilt.push(' ');
+                rebuilt.push_str(&rest);
+            }
+            normalized = rebuilt;
+        }
+    }
+    normalized = normalized.replace(
+        " and you lose X life, where X is ",
+        ". You lose X life, where X is ",
+    );
+    normalized = normalized.replace(
+        " and lose X life, where X is ",
+        ". You lose X life, where X is ",
+    );
+    normalized = carry_subject_through_then_splits(&normalized);
+    normalized = demote_repeated_player_subjects(&normalized);
     normalized = normalized
         .replace(", then ", ". ")
         .replace(", Then ", ". ")

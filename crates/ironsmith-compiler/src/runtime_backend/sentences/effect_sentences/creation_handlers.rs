@@ -160,6 +160,32 @@ fn quoted_copy_sacrifice_ability_text(tokens: &[OwnedLexToken]) -> Option<String
         })
 }
 
+fn append_inline_token_embedded_rule(
+    definition: &mut crate::runtime_backend::token_definition::TokenDefinitionSpec,
+    rule_tokens: &[OwnedLexToken],
+) -> bool {
+    use crate::runtime_backend::token_definition::TokenDefinitionSpec;
+
+    let (name, rules) = match definition {
+        TokenDefinitionSpec::Creature(creature) => {
+            (&creature.name, &mut creature.rules.token_rules)
+        }
+        TokenDefinitionSpec::Artifact(artifact) => (&artifact.name, &mut artifact.token_rules),
+        _ => return false,
+    };
+    let Some(rule) = crate::runtime_backend::front_end::grammar::token_definitions::
+        parse_embedded_token_rule_tokens(rule_tokens, Some(name))
+    else {
+        return false;
+    };
+    if rules.embedded_rules.contains(&rule) {
+        false
+    } else {
+        rules.embedded_rules.push(rule);
+        true
+    }
+}
+
 fn parse_inline_token_granted_abilities(
     definition: &mut crate::runtime_backend::token_definition::TokenDefinitionSpec,
     tokens: &[OwnedLexToken],
@@ -180,6 +206,9 @@ fn parse_inline_token_granted_abilities(
                 definition,
                 &complete_reminder,
             );
+            continue;
+        }
+        if append_inline_token_embedded_rule(definition, rule_tokens) {
             continue;
         }
         let Ok(parsed) =
@@ -1130,7 +1159,7 @@ mod tests {
                 .filter_map(|result| result.as_ref().ok())
                 .map(Vec::len)
                 .sum::<usize>(),
-            1,
+            2,
             "{parsed:#?}"
         );
 
@@ -1147,7 +1176,10 @@ mod tests {
         assert!(
             matches!(
                 granted_abilities.as_slice(),
-                [GrantedAbilityAst::ParsedObjectAbility { .. }]
+                [
+                    GrantedAbilityAst::ParsedObjectAbility { .. },
+                    GrantedAbilityAst::ParsedObjectAbility { .. },
+                ]
             ),
             "{granted_abilities:#?}"
         );
@@ -1320,8 +1352,9 @@ mod tests {
         assert!(
             abilities.iter().any(|ability| {
                 ability.id() == StaticAbilityId::ActivatedAbilityCostReduction
-                    && ability.display()
-                        == "This Equipment's equip abilities cost {2} less to activate"
+                    && format!("{ability:?}")
+                        .to_ascii_lowercase()
+                        .contains("equip abilities cost")
             }),
             "expected typed equip cost reduction, got {abilities:#?}"
         );

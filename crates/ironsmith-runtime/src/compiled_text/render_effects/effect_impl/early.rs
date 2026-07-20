@@ -792,9 +792,11 @@
             Zone::OutsideGame => ("outside the game", "outside"),
         };
         let filter_lower = filter_text.to_ascii_lowercase();
+        // Oracle leaves the battlefield implicit for permanent choices
+        // regardless of a controller constraint ("Choose up to one
+        // creature", not "... on the battlefield").
         let controlled_battlefield_choice = choose_primary_zone(choose) == Some(Zone::Battlefield)
             && choose.filter.zone == Some(Zone::Battlefield)
-            && choose.filter.controller.is_some()
             && !choose.count.random;
         let suppress_location_suffix =
             revealed_keyword_choice_label(choose).is_some() || controlled_battlefield_choice;
@@ -819,8 +821,23 @@
             let (zone_phrase, zone_keyword) = choose_primary_zone(choose)
                 .map(zone_location)
                 .unwrap_or(("in an unspecified zone", ""));
-            let includes_zone_already =
-                zone_keyword.is_empty() || filter_lower.contains(zone_keyword);
+            // For graveyard chooses, check the actual selection text —
+            // describe_choose_selection may have stripped the zone that
+            // filter_text still mentions, and oracle spells it out. Hand and
+            // library chooses keep the filter-based check: their downstream
+            // reveal-compaction gates ("You choose ... from it") key on the
+            // suffix-free surface.
+            let includes_zone_already = if choose_primary_zone(choose) == Some(Zone::Graveyard) {
+                let choice_lower = choice_text.to_ascii_lowercase();
+                zone_keyword.is_empty()
+                    || choice_lower.contains(zone_keyword)
+                    || choice_lower.contains("from it")
+                    || choice_lower.contains("from among")
+                    || choice_lower.contains("of them")
+                    || choice_lower.contains("in it")
+            } else {
+                zone_keyword.is_empty() || filter_lower.contains(zone_keyword)
+            };
             if includes_zone_already {
                 String::new()
             } else {
@@ -4981,6 +4998,28 @@
         return text;
     }
     if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+        // "untap this creature and remove it from combat" is one optional
+        // instruction (Gustcloak); a period join would read the removal as
+        // mandatory. Checked before the compact helpers so none of them
+        // claims the untap half alone.
+        if may.effects.len() == 1
+            && let Some(seq) = may.effects[0].downcast_ref::<crate::effects::SequenceEffect>()
+            && let [untap_effect, remove_effect] = seq.effects.as_slice()
+            && untap_effect
+                .downcast_ref::<crate::effects::UntapEffect>()
+                .is_some()
+            && remove_effect
+                .downcast_ref::<crate::effects::RemoveFromCombatEffect>()
+                .is_some()
+        {
+            let untap = lowercase_may_clause(&describe_effect_list(std::slice::from_ref(
+                untap_effect,
+            )));
+            let remove = lowercase_may_clause(&describe_effect_list(std::slice::from_ref(
+                remove_effect,
+            )));
+            return format!("You may {untap} and {remove}");
+        }
         if let Some(compact) = describe_may_compound_payment(may) {
             return compact;
         }

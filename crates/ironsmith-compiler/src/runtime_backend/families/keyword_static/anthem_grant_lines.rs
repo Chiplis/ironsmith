@@ -1797,6 +1797,31 @@ pub(crate) fn parse_anthem_subject(
     if let Some(filter) = parse_best_object_filter_suffix(tokens) {
         return Ok(AnthemSubjectAst::Filter(filter));
     }
+    // A named permanent can be the grammatical source of a static ability
+    // even when no card definition has installed a source-reference alias for
+    // the name yet (for example, "Balan has double strike ...").
+    if tokens.iter().all(|token| token.as_word().is_some())
+        && !subject_words.iter().any(|word| {
+            matches!(
+                *word,
+                "a" | "an"
+                    | "another"
+                    | "each"
+                    | "all"
+                    | "any"
+                    | "target"
+                    | "you"
+                    | "your"
+                    | "opponent"
+                    | "opponents"
+                    | "this"
+                    | "that"
+                    | "it"
+            )
+        })
+    {
+        return Ok(AnthemSubjectAst::Source);
+    }
     if find_source_reference_start(tokens).is_some() {
         return Ok(AnthemSubjectAst::Source);
     }

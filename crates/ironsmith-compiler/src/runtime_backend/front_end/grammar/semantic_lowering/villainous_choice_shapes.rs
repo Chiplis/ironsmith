@@ -87,9 +87,11 @@ fn parse_choice_separator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
 }
 
 fn parse_mode_separator<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    (primitives::comma(), primitives::kw("or"))
-        .void()
-        .parse_next(input)
+    alt((
+        (primitives::comma(), primitives::kw("or")).void(),
+        primitives::kw("or").void(),
+    ))
+    .parse_next(input)
 }
 
 fn parse_mode_action_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -106,15 +108,21 @@ fn parse_mode_action_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
             primitives::kw("draw"),
         )),
         alt((
-            primitives::kw("draws"),
-            primitives::kw("gain"),
-            primitives::kw("gains"),
-            primitives::kw("get"),
-            primitives::kw("gets"),
-            primitives::kw("lose"),
-            primitives::kw("loses"),
-            primitives::kw("sacrifice"),
-            primitives::kw("sacrifices"),
+            alt((
+                primitives::kw("draws"),
+                primitives::kw("gain"),
+                primitives::kw("gains"),
+                primitives::kw("get"),
+                primitives::kw("gets"),
+            )),
+            alt((
+                primitives::kw("lose"),
+                primitives::kw("loses"),
+                primitives::kw("put"),
+                primitives::kw("puts"),
+                primitives::kw("sacrifice"),
+                primitives::kw("sacrifices"),
+            )),
         )),
     ))
     .void()
@@ -183,7 +191,7 @@ fn parse_villainous_choice_statement_lexed<'a>(
         .take()
         .parse_next(input)?;
     primitives::phrase(&["faces", "a", "villainous", "choice"]).parse_next(input)?;
-    parse_choice_separator.parse_next(input)?;
+    opt(parse_choice_separator).parse_next(input)?;
 
     let first_mode_tokens =
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_mode_separator))
@@ -223,7 +231,7 @@ fn parse_villainous_choice_player_statement_lexed<'a>(
         .take()
         .parse_next(input)?;
     primitives::phrase(&["faces", "a", "villainous", "choice"]).parse_next(input)?;
-    parse_choice_separator.parse_next(input)?;
+    opt(parse_choice_separator).parse_next(input)?;
 
     let first_mode_tokens =
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(parse_mode_separator))

@@ -451,4 +451,17 @@ mod tests {
             },
         );
     }
+
+    #[test]
+    fn exile_creature_you_control_is_a_typed_activation_cost() {
+        let parsed = parse("{6}{B}, {T}, Exile a creature you control");
+        assert!(matches!(
+            parsed.segments.as_slice(),
+            [
+                ActivationCostSegmentCst::Mana(_),
+                ActivationCostSegmentCst::Tap,
+                ActivationCostSegmentCst::ExileChosen { .. }
+            ]
+        ));
+    }
 }

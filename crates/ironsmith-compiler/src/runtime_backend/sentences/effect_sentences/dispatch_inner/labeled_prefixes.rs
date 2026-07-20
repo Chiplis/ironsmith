@@ -26,8 +26,9 @@ fn parse_player_villainous_choice_mode_program(
 fn parse_player_villainous_choice_statement(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    let Some(shape) = crate::runtime_backend::grammar::semantic_lowering::parse_villainous_choice_player_statement_tokens(tokens)
-    else {
+    let shape =
+        crate::runtime_backend::grammar::semantic_lowering::parse_villainous_choice_player_statement_tokens(tokens);
+    let Some(shape) = shape else {
         return Ok(None);
     };
     let first_mode_effects = parse_player_villainous_choice_mode_program(shape.first_mode_program)?;
@@ -59,8 +60,59 @@ fn parse_player_villainous_choice_statement(
 pub(crate) fn parse_effect_sentence_inner_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_effect_sentence_inner_lexed_unstacked(tokens)
+    })
+}
+
+fn parse_effect_sentence_inner_lexed_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::dispatch_entry::parse_if_you_dont_sentence(tokens)? {
+        return Ok(vec![EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::DidNot,
+            effects,
+        }]);
+    }
     let dispatch_shape = effect_grammar::labeled_dispatch::parse_labeled_dispatch_shape(tokens);
-    if let Some(effects) = parse_player_villainous_choice_statement(tokens)? {
+
+    if let Some(effect_grammar::SentencePreludeShape::RollDiceChooseOneResult {
+        count,
+        sides,
+        die_text,
+    }) = effect_grammar::parse_sentence_prelude_shape_tokens(tokens)
+    {
+        return Ok(vec![
+            EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
+                PlayerAst::Implicit,
+                count,
+                sides,
+                Some(die_text),
+            ),
+        ]);
+    }
+
+    if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
+        let trailing_effects = super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        let mut result = vec![match prefix.kind {
+            LeadingResultPrefixKind::If => EffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects: trailing_effects,
+            },
+            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects: trailing_effects,
+            },
+        }];
+        super::preserve_leading_result_coordination_lexed(tokens, &mut result);
+        return Ok(result);
+    }
+
+    let villainous_tokens = tokens
+        .first()
+        .filter(|token| token.is_word("then"))
+        .map_or(tokens, |_| &tokens[1..]);
+    if let Some(effects) = parse_player_villainous_choice_statement(villainous_tokens)? {
         return Ok(effects);
     }
     if is_activate_only_restriction_sentence_lexed(tokens) {
@@ -68,6 +120,19 @@ pub(crate) fn parse_effect_sentence_inner_lexed(
     }
     if is_trigger_only_restriction_sentence_lexed(tokens) {
         return Ok(Vec::new());
+    }
+    // Choice-complement clauses begin with the same `each player chooses`
+    // surface as several generic mechanic markers. Give the typed choice
+    // grammar first refusal so the broad subject/verb extension cannot turn
+    // the `then sacrifices the rest` tail into an unsupported marker.
+    if dispatch_shape.each_player_choose
+        && let Some(effect) = parse_choice_complement_subject_verb(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
+    {
+        return Ok(effects);
     }
     if dispatch_shape.round_up_each_time {
         return Ok(Vec::new());

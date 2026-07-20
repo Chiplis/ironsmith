@@ -5,9 +5,7 @@ use crate::cards::CardDefinition;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
 use crate::object::Object;
-use crate::static_abilities::{
-    CompanionDeckCardFacts, CompanionDeckCondition, StaticAbilityId,
-};
+use crate::static_abilities::{CompanionDeckCardFacts, CompanionDeckCondition, StaticAbilityId};
 use crate::zone::Zone;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -63,9 +61,7 @@ fn companion_object_condition(object: &Object) -> Option<&CompanionDeckCondition
     })
 }
 
-pub fn companion_deck_facts_from_definition(
-    definition: &CardDefinition,
-) -> CompanionDeckCardFacts {
+pub fn companion_deck_facts_from_definition(definition: &CardDefinition) -> CompanionDeckCardFacts {
     CompanionDeckCardFacts {
         name: definition.card.name.clone(),
         mana_cost: definition.card.mana_cost.clone(),

@@ -712,7 +712,7 @@ pub(super) fn valiant_endeavor_strict_parser_and_text_regression() {
     assert_eq!(
         rendered_lines,
         vec![
-            "Roll two d6 and choose one result. Destroy each creature with power greater than or equal to that result. Then create a number of 2/2 white Knight creature tokens with vigilance equal to the other result.".to_string(),
+            "Roll two d6 and choose one result. Destroy each creature with power greater than or equal to that result. Create a number of 2/2 white Knight creature tokens with vigilance equal to the other result.".to_string(),
         ],
         "Valiant Endeavor should render the dice choice, destroy threshold, and other-result token count"
     );

@@ -365,7 +365,9 @@ pub(crate) fn parse_assigns_no_combat_damage_shape(
         return Some(AssignsNoCombatDamageShape::Unsupported);
     };
     let subject_tokens = trim_lexed_commas(subject_tokens);
+    let subject_words = crate::runtime_backend::lexer::parser_token_word_refs(subject_tokens);
     let source = if subject_tokens.is_empty()
+        || matches!(subject_words.as_slice(), ["this"] | ["this", "creature"])
         || exact(
             subject_tokens,
             primitives::any_phrase(&[&["this"], &["this", "creature"]]).void(),

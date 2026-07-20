@@ -667,7 +667,18 @@ pub(crate) fn parse_source_keyword_condition_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
     let relation = parse_has_relation_clauses(tokens)?;
-    if !is_source_reference_clause(relation.subject_clause) {
+    let subject_words = relation.subject_clause.words().word_refs();
+    let explicit_this_type = matches!(
+        subject_words.as_slice(),
+        ["this", "creature"]
+            | ["this", "permanent"]
+            | ["this", "artifact"]
+            | ["this", "enchantment"]
+            | ["this", "land"]
+            | ["this", "spell"]
+            | ["this", "source"]
+    );
+    if !is_source_reference_clause(relation.subject_clause) && !explicit_this_type {
         return None;
     }
     let (constraint, consumed) =
@@ -1028,6 +1039,7 @@ fn parse_source_negative_copula_state_shape(tokens: &[OwnedLexToken]) -> Option<
 
 fn is_source_state_subject_clause(clause: LexedClause<'_>) -> bool {
     is_source_reference_clause(clause)
+        || this_source_surface_for_words(&clause.word_refs()).is_some()
 }
 
 fn source_state_predicate_from_clause(
@@ -1117,7 +1129,7 @@ fn parse_source_has_counter_predicate(tokens: &[OwnedLexToken]) -> Option<Predic
         WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
-    if !is_source_reference_clause(relation.subject_clause) {
+    if !is_source_state_subject_clause(relation.subject_clause) {
         return None;
     }
     let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
@@ -1182,7 +1194,7 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
         WinnowSequence::modifier("target", WinnowCaptureKind::Rest),
     ];
     let relation = parse_has_relation_clauses(tokens)?;
-    if !is_source_reference_clause(relation.subject_clause) {
+    if !is_source_state_subject_clause(relation.subject_clause) {
         return None;
     }
     let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
@@ -1206,7 +1218,12 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
             right: Value::Fixed(count as i32),
         });
     }
-    if operator == crate::effect::ValueComparisonOperator::GreaterThanOrEqual {
+    let source_count = match operator {
+        crate::effect::ValueComparisonOperator::GreaterThanOrEqual => Some(count),
+        crate::effect::ValueComparisonOperator::Equal if count > 0 => Some(count),
+        _ => None,
+    };
+    if let Some(count) = source_count {
         return Some(PredicateAst::SourceHasCounterAtLeast {
             counter_type,
             count: count.try_into().ok()?,
@@ -2143,53 +2160,34 @@ fn parse_you_control_conjoined_predicate(
     Some(result)
 }
 
-fn matching_tail_phrase_len(
-    clause: LexedClause<'_>,
-    filter_start: usize,
-    filter_end: usize,
-    phrases: &[&[&str]],
-) -> Option<usize> {
-    phrases.iter().find_map(|phrase| {
-        let len = phrase.len();
-        (filter_end >= filter_start + len)
-            .then(|| clause.between_word_range(filter_end - len, filter_end))
-            .flatten()
-            .is_some_and(|tail| surface::exact(tail, phrase))
-            .then_some(len)
-    })
-}
-
 fn comparative_power_toughness_tail(
     clause: LexedClause<'_>,
     filter_start: usize,
     filter_end: usize,
 ) -> Option<(crate::filter::PowerToughnessRelation, usize)> {
-    matching_tail_phrase_len(
-        clause,
-        filter_start,
-        filter_end,
-        TOUGHNESS_GREATER_THAN_POWER_TAIL_PHRASES,
-    )
-    .map(|len| {
-        (
-            crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower,
-            len,
-        )
-    })
-    .or_else(|| {
-        matching_tail_phrase_len(
-            clause,
-            filter_start,
-            filter_end,
-            POWER_GREATER_THAN_TOUGHNESS_TAIL_PHRASES,
-        )
-        .map(|len| {
+    let words = clause.words().word_refs();
+    let find_phrase = |phrases: &[&[&str]]| {
+        phrases.iter().find_map(|phrase| {
+            let end = filter_end.min(words.len());
+            (filter_start..=end.saturating_sub(phrase.len()))
+                .find(|start| words.get(*start..(*start + phrase.len())) == Some(*phrase))
+        })
+    };
+    find_phrase(TOUGHNESS_GREATER_THAN_POWER_TAIL_PHRASES)
+        .map(|start| {
             (
-                crate::filter::PowerToughnessRelation::PowerGreaterThanToughness,
-                len,
+                crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower,
+                start,
             )
         })
-    })
+        .or_else(|| {
+            find_phrase(POWER_GREATER_THAN_TOUGHNESS_TAIL_PHRASES).map(|start| {
+                (
+                    crate::filter::PowerToughnessRelation::PowerGreaterThanToughness,
+                    start,
+                )
+            })
+        })
 }
 
 fn parse_player_controls_predicate(
@@ -2200,23 +2198,29 @@ fn parse_player_controls_predicate(
     allow_outlaw_shorthand: bool,
     allow_different_powers: bool,
 ) -> Result<Option<PredicateAst>, CardTextError> {
-    if let Some(control_condition) =
-        crate::runtime_backend::grammar::conditions::parse_control_condition(
-            tokens,
-            crate::runtime_backend::grammar::conditions::ControlConditionOptions {
-                allow_that_player: player == PlayerAst::That,
-                allow_opponent_players: false,
-                allow_defending_player: false,
-                bind_filter_controller_to_subject: controller.is_some(),
-                allow_different_powers_tail: allow_different_powers,
-                default_filter_zone: None,
-            },
-        )
-    {
-        return Ok(Some(predicate_from_control_condition(control_condition)));
+    let clause = LexedClause::new(tokens);
+    let has_power_toughness_relation = TOUGHNESS_GREATER_THAN_POWER_TAIL_PHRASES
+        .iter()
+        .chain(POWER_GREATER_THAN_TOUGHNESS_TAIL_PHRASES)
+        .any(|phrase| surface::contains(clause, phrase));
+    if !has_power_toughness_relation {
+        if let Some(control_condition) =
+            crate::runtime_backend::grammar::conditions::parse_control_condition(
+                tokens,
+                crate::runtime_backend::grammar::conditions::ControlConditionOptions {
+                    allow_that_player: player == PlayerAst::That,
+                    allow_opponent_players: false,
+                    allow_defending_player: false,
+                    bind_filter_controller_to_subject: controller.is_some(),
+                    allow_different_powers_tail: allow_different_powers,
+                    default_filter_zone: None,
+                },
+            )
+        {
+            return Ok(Some(predicate_from_control_condition(control_condition)));
+        }
     }
 
-    let clause = LexedClause::new(tokens);
     let words_view = clause.words();
     let words = words_view.word_refs();
     let (min_count, exact_count, filter_start) =
@@ -2232,7 +2236,7 @@ fn parse_player_controls_predicate(
         comparative_power_toughness_tail(clause, filter_start, filter_end)
     {
         power_toughness_relation = Some(relation);
-        filter_end = filter_end.saturating_sub(tail_len);
+        filter_end = tail_len;
     }
     if allow_different_powers
         && filter_end >= filter_start + 3

@@ -668,7 +668,49 @@ fn contains_characteristic_equal_to_shape(tokens: &[OwnedLexToken]) -> bool {
 }
 
 fn parse_modeled_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
-    parse_predicate_with_grammar_entrypoint_lexed(tokens).ok()
+    // Intervening-if clauses may list several complete predicates separated by
+    // commas, with the final item introduced by "and". Preserve those clauses
+    // as one conjunction instead of parsing only the final predicate fragment.
+    let mut parts = Vec::new();
+    let mut start = 0;
+    let mut inside_quotes = false;
+    for (index, token) in tokens.iter().enumerate() {
+        if is_sentence_quote(token) {
+            inside_quotes = !inside_quotes;
+        } else if !inside_quotes && token.is_comma() {
+            let part = trim_lexed_commas(&tokens[start..index]);
+            if !part.is_empty() {
+                parts.push(part);
+            }
+            start = index + 1;
+        }
+    }
+    let tail = trim_lexed_commas(&tokens[start..]);
+    if !tail.is_empty() {
+        parts.push(tail);
+    }
+    if parts.len() < 2 {
+        return parse_predicate_with_grammar_entrypoint_lexed(tokens).ok();
+    }
+
+    let mut predicates = Vec::with_capacity(parts.len());
+    for mut part in parts {
+        if part
+            .first()
+            .is_some_and(|token| structure_token_is(token, "and"))
+        {
+            part = trim_lexed_commas(&part[1..]);
+        }
+        let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(&part) else {
+            return parse_predicate_with_grammar_entrypoint_lexed(tokens).ok();
+        };
+        predicates.push(predicate);
+    }
+    let mut predicates = predicates.into_iter();
+    let first = predicates.next()?;
+    Some(predicates.fold(first, |left, right| {
+        PredicateAst::And(Box::new(left), Box::new(right))
+    }))
 }
 
 pub(crate) fn parse_if_result_predicate(tokens: &[OwnedLexToken]) -> Option<IfResultPredicate> {
@@ -1523,7 +1565,12 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         comma_indices.push(comma_idx);
     }
 
-    for comma_idx in comma_indices.into_iter().rev() {
+    // The first comma after `if` is normally the predicate/effect boundary;
+    // later commas belong to the coordinated effect body.  Prefer that
+    // boundary so an effect such as `copy ..., you may ..., and ...` cannot be
+    // absorbed into the predicate merely because its final tail happens to
+    // look like a valid split.
+    for &comma_idx in &comma_indices {
         let predicate_tokens = trim_lexed_commas(&after_if[..comma_idx]);
         let effects_tokens = trim_lexed_commas(&after_if[comma_idx + 1..]);
         if predicate_tokens.is_empty() || effects_tokens.is_empty() {
@@ -1560,6 +1607,22 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
             continue;
         }
         if let Some(predicate) = parse_modeled_predicate(predicate_tokens) {
+            if let Some(next_comma_idx) = comma_indices
+                .iter()
+                .copied()
+                .find(|next_idx| *next_idx > comma_idx)
+            {
+                let mut next_fragment = trim_lexed_commas(&after_if[comma_idx + 1..next_comma_idx]);
+                if next_fragment
+                    .first()
+                    .is_some_and(|token| structure_token_is_any(token, &["and", "or"]))
+                {
+                    next_fragment = trim_lexed_commas(&next_fragment[1..]);
+                }
+                if !next_fragment.is_empty() && parse_modeled_predicate(next_fragment).is_some() {
+                    continue;
+                }
+            }
             return Some(TriggeredConditionalClauseSpec {
                 trigger_tokens,
                 predicate,

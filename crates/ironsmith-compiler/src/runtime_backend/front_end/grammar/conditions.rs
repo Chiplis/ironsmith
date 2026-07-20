@@ -1547,6 +1547,15 @@ fn parse_object_death_amount(tokens: &[OwnedLexToken]) -> Option<Comparison> {
     {
         return Some(Comparison::GreaterThanOrEqual(1));
     }
+    if primitives::parse_all(
+        tokens,
+        primitives::phrase(&["one", "or", "more"]).void(),
+        "death minimum-one quantity",
+    )
+    .is_ok()
+    {
+        return Some(Comparison::GreaterThanOrEqual(1));
+    }
     let (comparison, used) =
         parse_quantity_comparison_prefix(tokens, false, false, "object-death condition").ok()?;
     (used == tokens.len()).then_some(comparison)
@@ -1885,7 +1894,7 @@ mod tests {
         assert_eq!(parsed.comparison, Comparison::GreaterThanOrEqual(1));
         assert_eq!(
             parsed.display,
-            "an equipment named grooms finery is attached to a creature you control"
+            "an Equipment named Groom's Finery is attached to a creature you control"
         );
 
         let tokens = lex_line("two or more Equipment are attached to it", 0)
@@ -2103,6 +2112,13 @@ mod tests {
             parse_battlefield_change_this_turn_condition(&left),
             Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: true })
         );
+    }
+
+    #[test]
+    fn typed_zone_change_shapes_parse_one_or_more_creatures_died() {
+        let death = lex_line("one or more creatures died this turn", 0).expect("lex");
+        let death = parse_object_death_this_turn_condition(&death).expect("death condition");
+        assert_eq!(death.comparison, Comparison::GreaterThanOrEqual(1));
     }
 
     #[test]

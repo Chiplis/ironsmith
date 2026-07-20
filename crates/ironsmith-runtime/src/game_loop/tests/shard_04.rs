@@ -1731,7 +1731,7 @@ pub(super) fn test_pending_zone_change_still_drives_non_delayed_triggered_abilit
 
 #[cfg(ironsmith_runtime_parser_tests)]
 pub(super) fn matter_reshaper_definition() -> crate::cards::CardDefinition {
-    CardDefinitionBuilder::new(CardId::from_raw(72_806), "Matter Reshaper")
+    let def = CardDefinitionBuilder::new(CardId::from_raw(72_806), "Matter Reshaper")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::Generic(2)],
             vec![ManaSymbol::Colorless],
@@ -1743,7 +1743,8 @@ pub(super) fn matter_reshaper_definition() -> crate::cards::CardDefinition {
             "({C} represents colorless mana.)\n\
              When this creature dies, reveal the top card of your library. You may put that card onto the battlefield if it's a permanent card with mana value 3 or less. Otherwise, put that card into your hand.",
         )
-        .expect("Matter Reshaper should parse for runtime tests")
+        .expect("Matter Reshaper should parse for runtime tests");
+    def
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

@@ -252,14 +252,11 @@ pub(crate) fn describe_for_players_reveal_top_mana_value_life_then_put_into_hand
     let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTopEffect>()?;
     // The reveal's tag may live on the effect itself or on a Tagged/WithId
     // wrapper the sentence lowering added around it.
-    let reveal_tag = reveal
-        .tag
-        .as_ref()
-        .or_else(|| {
-            crate::compiled_text::render_effects::sequences_and_votes::wrapped_effect_tag(
-                &for_players.effects[0],
-            )
-        })?;
+    let reveal_tag = reveal.tag.as_ref().or_else(|| {
+        crate::compiled_text::render_effects::sequences_and_votes::wrapped_effect_tag(
+            &for_players.effects[0],
+        )
+    })?;
     if reveal.player != PlayerFilter::IteratedPlayer
         || !(reveal_tag.as_str().starts_with("revealed_")
             || crate::cards::is_sentence_helper_tag(reveal_tag.as_str(), "revealed"))
@@ -788,6 +785,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay) {
         return Some("card drawn this way".to_string());
     }
+    if value.has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay) {
+        return Some("card discarded this way".to_string());
+    }
     // Let typed prior-effect metrics render their own filter below.  A broad
     // "cards revealed this way" hint is useful for an unfiltered reveal, but
     // it must not erase distinctions such as "nonland card revealed this
@@ -832,7 +832,9 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         {
             Some(describe_prior_effect_metric_basis(query, false))
         }
-        Value::BasicLandTypesAmong(filter) => Some(describe_basic_land_types_among(filter)),
+        Value::BasicLandTypesAmong(filter) => Some(
+            describe_basic_land_types_among(filter).replace("basic land types", "basic land type"),
+        ),
         Value::CreatureTypesAmong(filter) => Some(format!(
             "creature type among {}",
             describe_count_filter_value_subject(filter)
@@ -1569,7 +1571,12 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         selection.push_str(&where_x_suffix);
         return selection;
     }
-    let mut selection = describe_plural_selection(describe_choice_count(&choose.count), &card_desc);
+    // A max-one choice keeps its singular noun ("up to one creature").
+    let mut selection = if choose.count.max == Some(1) {
+        format!("{} {}", describe_choice_count(&choose.count), card_desc)
+    } else {
+        describe_plural_selection(describe_choice_count(&choose.count), &card_desc)
+    };
     if let Some(constraint) = &choose.aggregate_constraint {
         let metric = match constraint.metric {
             crate::effect::ChoiceAggregateMetric::Power => "power",

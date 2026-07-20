@@ -661,6 +661,26 @@ impl super::Trigger {
                     .this_surface(surface)
                     .this_subject_number(subject_number),
             ),
+            ironsmith_core::DelayedTriggerSpec::EntersBattlefield {
+                filter,
+                cause_filter,
+                count,
+                tapped,
+            } => match (count, tapped) {
+                (ironsmith_core::trigger_model::CountMode::One, None) => {
+                    Self::enters_battlefield(filter, cause_filter)
+                }
+                (ironsmith_core::trigger_model::CountMode::OneOrMore, None) => {
+                    Self::enters_battlefield_one_or_more(filter, cause_filter)
+                }
+                (ironsmith_core::trigger_model::CountMode::One, Some(true)) => {
+                    Self::enters_battlefield_tapped(filter, cause_filter)
+                }
+                (ironsmith_core::trigger_model::CountMode::One, Some(false)) => {
+                    Self::enters_battlefield_untapped(filter, cause_filter)
+                }
+                _ => Self::enters_battlefield(filter, cause_filter),
+            },
             ironsmith_core::DelayedTriggerSpec::ThisDies => Self::this_dies(),
             ironsmith_core::DelayedTriggerSpec::ThisLeavesBattlefield => {
                 Self::this_leaves_battlefield()

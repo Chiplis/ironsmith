@@ -311,6 +311,9 @@ pub(crate) fn parse_activated_line_with_raw(
     }
     let mut effects_ast = parse_effect_sentences_lexed(&effect_tokens_joined)?;
     effects_ast.extend(inline_effects_ast);
+    for effect in &mut effects_ast {
+        replace_removed_counter_metric_with_x(effect);
+    }
     if effects_ast.is_empty() {
         return Ok(None);
     }
@@ -393,6 +396,12 @@ pub(crate) fn resolve_activated_mana_x_requirements(
         replace_unbound_x_in_effect_anywhere(effect, &where_value, &clause)?;
     }
 
+    // A phrase such as "for each counter removed this way" refers to the
+    // preceding activation cost, not to an EffectAst producer. The cost
+    // executor exposes that count as activation X, so bind the parser's
+    // pending filtered metric before the normal reference pass sees it.
+    replace_removed_counter_metric_with_x(effect);
+
     if mana_effect_contains_unbound_x(effect)
         && !x_defined_by_cost
         && !x_clause.removed_counters_this_way
@@ -404,6 +413,48 @@ pub(crate) fn resolve_activated_mana_x_requirements(
     }
 
     Ok(())
+}
+
+fn replace_removed_counter_metric_with_x(effect: &mut EffectAst) {
+    fn replace_value(value: &mut Value) {
+        let hints = value.surface_hints().to_vec();
+        if matches!(
+            value.unhinted(),
+            Value::PendingPriorEffectMetric(query)
+                if query.action == Some(ironsmith_core::PriorEffectAction::Removed)
+        ) {
+            *value = Value::X.with_surface_hints(hints);
+            return;
+        }
+        match value {
+            Value::Add(left, right) | Value::Min(left, right) => {
+                replace_value(left);
+                replace_value(right);
+            }
+            Value::Scaled(inner, _)
+            | Value::DividedRoundedDown(inner, _)
+            | Value::HalfRoundedDown(inner)
+            | Value::SurfaceHinted { value: inner, .. } => replace_value(inner),
+            _ => {}
+        }
+    }
+
+    if let EffectAst::SubjectVerb(subject_verb) = effect {
+        match &mut subject_verb.action {
+            SubjectVerbActionAst::AddManaScaled { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
+            | SubjectVerbActionAst::AddManaAnyOneColor { amount }
+            | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
+            | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
+            | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => replace_value(amount),
+            _ => {}
+        }
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            replace_removed_counter_metric_with_x(nested_effect);
+        }
+    });
 }
 
 pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {

@@ -199,7 +199,7 @@ pub(crate) fn parse_looked_card_disposition(
     if contains_content_sequence(tokens, OTHER_BOTTOM) && contains_sequence_word(tokens, "library")
     {
         return Some(LookedCardDisposition::HandAndLibraryBottom(
-            parse_bottom_order(tokens)?,
+            parse_bottom_order(tokens).unwrap_or(LibraryBottomOrderAst::ChooserChooses),
         ));
     }
     if contains_content_sequence(tokens, OTHER_GRAVEYARD) {

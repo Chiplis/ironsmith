@@ -248,9 +248,7 @@ pub(crate) fn parse_become_clause(
     if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Colorless) {
         return Ok(EffectAst::subject_verb_make_colorless(target, duration));
     }
-    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Saddled)
-        && duration == Until::EndOfTurn
-    {
+    if become_surface.exact_kind == Some(become_grammar::BecomeExactKind::Saddled) {
         return Ok(EffectAst::subject_verb_become_saddled_until_end_of_turn(
             target,
         ));

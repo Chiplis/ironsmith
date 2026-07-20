@@ -3075,14 +3075,12 @@ pub(super) fn validate_stack_entry_targets_with_view(
                 .any(|legal_targets| legal_targets.contains(target))
         } else {
             match target {
-                Target::Object(obj_id) => game
-                    .object(*obj_id)
-                    .is_some_and(|obj| {
-                        obj.zone == Zone::Battlefield
-                            || (obj.zone == Zone::Stack
-                                && (game.grand_melee().is_none()
-                                    || game.object_is_on_current_stack(*obj_id)))
-                    }),
+                Target::Object(obj_id) => game.object(*obj_id).is_some_and(|obj| {
+                    obj.zone == Zone::Battlefield
+                        || (obj.zone == Zone::Stack
+                            && (game.grand_melee().is_none()
+                                || game.object_is_on_current_stack(*obj_id)))
+                }),
                 Target::Player(player_id) => game
                     .player(*player_id)
                     .map(|p| p.is_in_game())

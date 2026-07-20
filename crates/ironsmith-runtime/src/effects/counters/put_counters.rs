@@ -53,7 +53,6 @@ impl EffectExecutor for PutCountersEffect {
         }))
     }
 
-
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
     }

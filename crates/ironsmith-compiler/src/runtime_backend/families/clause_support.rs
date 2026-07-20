@@ -750,6 +750,25 @@ pub(crate) fn parse_linked_attack_group_combat_triggered_line_lexed(
 pub(crate) fn parse_triggered_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<LineAst, CardTextError> {
+    let (tokens, trailing_cap) = crate::runtime_backend::front_end::grammar::document_shapes::parse_trailing_trigger_cap_suffix_tokens(tokens)
+        .map(|shape| (shape.head_tokens, Some(match shape.cap {
+            crate::runtime_backend::front_end::grammar::document_shapes::TriggerCapSurface::Once => 1,
+            crate::runtime_backend::front_end::grammar::document_shapes::TriggerCapSurface::Twice => 2,
+        })))
+        .unwrap_or((tokens, None));
+    let mut parsed = parse_triggered_line_lexed_inner(tokens)?;
+    if let Some(cap) = trailing_cap
+        && let LineAst::Triggered {
+            max_triggers_per_turn,
+            ..
+        } = &mut parsed
+    {
+        *max_triggers_per_turn = Some(max_triggers_per_turn.unwrap_or(cap).min(cap));
+    }
+    Ok(parsed)
+}
+
+fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst, CardTextError> {
     if let Some(linked) = parse_linked_attack_group_combat_triggered_line_lexed(tokens)? {
         return Ok(linked);
     }
@@ -1230,7 +1249,24 @@ pub(crate) fn parse_trigger_clause_lexed(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    super::keyword_static::parse_static_ability_ast_line_lexed(tokens)
+    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(tokens)?;
+
+    // Bolster has both a static-line spelling and an executable effect
+    // spelling. When this helper is called while splitting a triggered line,
+    // treating a trailing "bolster 2" sentence as static sends it through
+    // static-ability lowering, where it cannot be represented. Keep this
+    // exception limited to the ambiguous keyword action: ordinary static
+    // lines can also be parsed by the effect grammar, but must remain static.
+    let words = TokenWordView::new(tokens).word_refs();
+    if parsed.is_some()
+        && words.first().is_some_and(|word| *word == "bolster")
+        && super::effect_sentences::parse_effect_sentences_lexed(tokens)
+            .is_ok_and(|effects| !effects.is_empty())
+    {
+        return Ok(None);
+    }
+
+    Ok(parsed)
 }
 
 #[cfg(test)]

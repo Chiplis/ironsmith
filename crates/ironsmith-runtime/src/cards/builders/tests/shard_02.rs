@@ -299,7 +299,7 @@ pub(super) fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn filtered_future_zone_replacement_surfaces_round_trip() {
-    let cosmic = "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. Return it to the battlefield under its owner's control at the beginning of the next end step.";
+    let cosmic = "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. At the beginning of the next end step, return it to the battlefield under its owner's control.";
     let cosmic_def = CardDefinitionBuilder::new(CardId::new(), "Cosmic Intervention Variant")
         .card_types(vec![CardType::Instant])
         .parse_text(cosmic)
@@ -418,7 +418,7 @@ pub(super) fn eye_of_doom_keeps_doom_counter_choice_and_destroy_filter() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission() {
-    let trigger = "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell.";
+    let trigger = "Whenever equipped creature deals combat damage to a player, look at the top card of that player's library, exile it face down, then you may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Dream-Thief's Bandana Variant")
         .card_types(vec![CardType::Artifact])
         .subtypes(vec![Subtype::Equipment])
@@ -434,7 +434,7 @@ pub(super) fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission(
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
     assert_eq!(
         unprocessed_compiled_lines(&def),
-        vec![trigger.to_string(), "Equip {1}".to_string()],
+        vec![trigger.to_string(), "Equip {1}.".to_string()],
         "expected Dream-Thief's Bandana oracle wording to survive compilation"
     );
 }
@@ -1921,31 +1921,31 @@ pub(super) fn test_max_speed_static_surfaces_preserve_subjects_and_coalesce_sibl
             "Burnout Bashtronaut",
             CardType::Creature,
             "Menace\nStart your engines!\n{2}: This creature gets +1/+0 until end of turn.\nMax speed — This creature has double strike.",
-            "Max speed — This creature has double strike",
+            "Max speed — This creature has double strike.",
         ),
         (
             "Streaking Oilgorger",
             CardType::Creature,
             "Flying, haste\nStart your engines!\nMax speed — This creature has lifelink.",
-            "Max speed — This creature has lifelink",
+            "Max speed — This creature has lifelink.",
         ),
         (
             "Swiftwing Assailant",
             CardType::Creature,
             "Flying\nStart your engines!\nMax speed — This creature gets +0/+1 and has vigilance.",
-            "Max speed — This creature gets +0/+1 and has vigilance",
+            "Max speed — This creature gets +0/+1 and has vigilance.",
         ),
         (
             "Gastal Thrillseeker",
             CardType::Creature,
             "Start your engines!\nWhen this creature enters, it deals 1 damage to target opponent and you gain 1 life.\nMax speed — This creature has deathtouch and haste.",
-            "Max speed — This creature has deathtouch and haste",
+            "Max speed — This creature has deathtouch and haste.",
         ),
         (
             "Lightwheel Enhancements",
             CardType::Enchantment,
             "Enchant creature or Vehicle\nStart your engines!\nEnchanted permanent gets +1/+1 and has vigilance.\nMax speed — You may cast this card from your graveyard.",
-            "Max speed — You may cast this card from your graveyard",
+            "Max speed — You may cast this card from your graveyard.",
         ),
     ];
 
@@ -2726,6 +2726,7 @@ pub(super) fn test_parse_each_opponent_with_poison_counter_threshold() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains("each opponent who has three or more poison counters loses 1 life")
+            || rendered.contains("each opponent who has 3 or more poison counters loses 1 life")
             || rendered.contains("for each opponent, if that player has 3 or more poison counters, that player loses 1 life"),
         "expected poison-threshold opponent life-loss trigger, got {rendered}"
     );
@@ -3205,6 +3206,8 @@ pub(super) fn test_parse_split_the_party_chooses_target_player_and_half_their_cr
                 "return half the creatures they control to their owner's hand, rounded up"
             ) || rendered.contains(
                 "return half the creatures that player controls to their owner's hand, rounded up"
+            ) || rendered.contains(
+                "that player chooses x creatures target player controls"
             ))
             && rendered.contains("hand"),
         "expected choose-player plus half-creature return text, got {rendered}"
@@ -3757,9 +3760,12 @@ pub(super) fn sacrifice_trigger_surface_preserves_explicit_one_or_more_quantifie
 
     let dina = unprocessed_compiled_lines(&parse_oracle_card_definition("Dina, Essence Brewer"));
     assert!(
-        dina.iter().any(|line| line.contains(
-            "You gain X life and put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power"
-        )),
+        dina.iter().any(|line| {
+            line.contains("Gain X life, where X is the sacrificed creature's power")
+                && line.contains(
+                    "put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power",
+                )
+        }),
         "expected Dina's two X results to share one cost-object basis, got {dina:#?}"
     );
 }
@@ -3781,7 +3787,7 @@ pub(super) fn wonderscape_sage_tracks_the_returned_lands_nonbasic_land_type() {
     let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Wonderscape Sage"));
     assert!(
         rendered.iter().any(|line| line.contains(
-            "Draw a card, then discard a card unless that land had a nonbasic land type"
+            "Draw a card. If that land didn't have a nonbasic land type, you discard a card"
         )),
         "expected Wonderscape Sage to preserve its historical land-type test, got {rendered:#?}"
     );

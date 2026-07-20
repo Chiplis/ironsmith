@@ -99,3 +99,12 @@ fn parses_subject_endure_shape() {
         })
     ));
 }
+
+#[test]
+fn parses_harness_with_named_source_tail() {
+    let tokens = lex_line("Harness this.", 0).unwrap();
+    assert!(matches!(
+        parse_keyword_mechanic_tokens(&tokens),
+        Some(KeywordMechanicShape::Harness)
+    ));
+}

@@ -4,7 +4,7 @@ use super::super::lexer::{OwnedLexToken, token_word_refs};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
     helper_tag_for_tokens, parse_number_word_u32, parse_subject, parse_target_phrase,
-    span_from_tokens, strip_leading_token_words_any, trim_commas,
+    span_from_tokens, strip_leading_token_words_any, trim_commas, trim_edge_punctuation,
 };
 use super::parse_effect_chain;
 use super::sentence_helpers::*;
@@ -97,7 +97,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
         SubjectAst::This => return Ok(None),
     };
     let owner_library_destination = shape.owner_library_destination;
-    let trailing_tokens = shape.trailing_tokens.to_vec();
+    let trailing_tokens = trim_edge_punctuation(shape.trailing_tokens);
     let append_trailing =
         |mut effects: Vec<EffectAst>| -> Result<Option<Vec<EffectAst>>, CardTextError> {
             if trailing_tokens.is_empty() {
@@ -137,13 +137,12 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     // whole-zone reading rather than failing the card.
     let whole_graveyard_target = {
         let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-        let rest: &[&str] = if target_words.len() >= 3
-            && target_words[..3] == ["all", "cards", "from"]
-        {
-            &target_words[3..]
-        } else {
-            &target_words[..]
-        };
+        let rest: &[&str] =
+            if target_words.len() >= 3 && target_words[..3] == ["all", "cards", "from"] {
+                &target_words[3..]
+            } else {
+                &target_words[..]
+            };
         matches!(
             rest,
             ["graveyard"]

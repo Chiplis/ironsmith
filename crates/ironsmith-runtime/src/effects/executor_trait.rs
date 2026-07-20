@@ -152,7 +152,6 @@ pub trait SimultaneousEffectProposal: std::fmt::Debug + Send {
     ) -> Result<EffectOutcome, ExecutionError>;
 }
 
-
 /// A proposal that defers a choice-free per-player effect to commit time.
 ///
 /// Correct for effects whose behavior involves no decisions and whose

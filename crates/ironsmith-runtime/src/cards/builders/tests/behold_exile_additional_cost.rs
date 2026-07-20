@@ -66,7 +66,9 @@ fn champion_behold_exile_costs_compile_to_exact_typed_surface() {
             .as_all()
             .expect("Champion additional cost should be a mandatory conjunction");
         let [behold_cost, exile_cost] = costs else {
-            panic!("{name} should have exactly linked Behold and exile cost components: {costs:#?}");
+            panic!(
+                "{name} should have exactly linked Behold and exile cost components: {costs:#?}"
+            );
         };
 
         let behold_effect = unwrap_with_id(
@@ -129,8 +131,7 @@ fn champion_behold_exile_costs_exile_and_return_the_selected_card() {
             .stable_id;
 
         let mut decision_maker = crate::decision::AutoPassDecisionMaker;
-        let mut cost_context =
-            crate::costs::CostContext::new(source, alice, &mut decision_maker);
+        let mut cost_context = crate::costs::CostContext::new(source, alice, &mut decision_maker);
         for cost in definition
             .additional_cost
             .as_all()
@@ -150,7 +151,8 @@ fn champion_behold_exile_costs_exile_and_return_the_selected_card() {
         );
 
         let exiled_snapshot = crate::snapshot::ObjectSnapshot::from_object(
-            game.object(*exiled).expect("linked exiled card should exist"),
+            game.object(*exiled)
+                .expect("linked exiled card should exist"),
             &game,
         );
         let mut tagged_objects = HashMap::new();
@@ -159,9 +161,8 @@ fn champion_behold_exile_costs_exile_and_return_the_selected_card() {
             vec![exiled_snapshot],
         );
         let return_effect = leave_battlefield_return_effect(&definition);
-        let mut return_context =
-            crate::effects::ExecutionContext::new_default(source, alice)
-                .with_tagged_objects(tagged_objects);
+        let mut return_context = crate::effects::ExecutionContext::new_default(source, alice)
+            .with_tagged_objects(tagged_objects);
         crate::effects::execute_effect(
             &mut game,
             &crate::effect::Effect::new(return_effect.clone()),

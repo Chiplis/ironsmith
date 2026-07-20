@@ -116,6 +116,14 @@ pub(crate) fn resolve_tagged_object_id(
     game: &GameState,
     snapshot: &ObjectSnapshot,
 ) -> Option<ObjectId> {
+    // Zone changes create a fresh ObjectId while retaining the stable
+    // identity. Prefer that indexed current object when a tag snapshot is
+    // stale; the old object record may remain available for LKI queries.
+    if let Some(current_id) = game.find_object_by_stable_id(snapshot.stable_id)
+        && current_id != snapshot.object_id
+    {
+        return Some(current_id);
+    }
     if game.object(snapshot.object_id).is_some() {
         return Some(snapshot.object_id);
     }
@@ -2273,6 +2281,25 @@ pub fn resolve_value(
     }
 }
 
+/// Resolve the player affected by the most recent damage effect in the
+/// current resolution path.  References such as "that player" after a spell
+/// deals damage use the prior effect's result, not the spell's triggering
+/// event (which is usually absent for an ordinary spell on the stack).
+fn prior_effect_damaged_player(ctx: &ExecutionContext) -> Option<PlayerId> {
+    let mut outcomes = ctx
+        .effect_outcomes
+        .iter()
+        .filter(|(id, _)| **id != crate::effect::EffectId::TAGGED_COUNT)
+        .collect::<Vec<_>>();
+    outcomes.sort_unstable_by_key(|(id, _)| std::cmp::Reverse(id.0));
+    outcomes.into_iter().find_map(|(_, outcome)| {
+        outcome.events_of_type::<DamageEvent>().find_map(|event| match event.target {
+            DamageTarget::Player(player_id) => Some(player_id),
+            _ => None,
+        })
+    }).or_else(|| ctx.get_tagged_players("__it__").and_then(|players| players.last().copied()))
+}
+
 fn object_lki_snapshot<'a>(
     ctx: &'a ExecutionContext<'_>,
     object_id: ObjectId,
@@ -2718,22 +2745,18 @@ pub fn resolve_player_filter(
             ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
         }),
         PlayerFilter::DamagedPlayer => {
-            let Some(triggering_event) = &ctx.triggering_event else {
-                return Err(ExecutionError::UnresolvableValue(
-                    "DamagedPlayer not set".to_string(),
-                ));
-            };
-            let Some(damage_event) = triggering_event.downcast::<DamageEvent>() else {
-                return Err(ExecutionError::UnresolvableValue(
-                    "DamagedPlayer requires a damage event".to_string(),
-                ));
-            };
-            let DamageTarget::Player(player_id) = damage_event.target else {
-                return Err(ExecutionError::UnresolvableValue(
-                    "DamagedPlayer requires a player damage target".to_string(),
-                ));
-            };
-            Ok(player_id)
+            if let Some(triggering_event) = &ctx.triggering_event {
+                if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
+                    if let DamageTarget::Player(player_id) = damage_event.target {
+                        return Ok(player_id);
+                    }
+                }
+            }
+            prior_effect_damaged_player(ctx).ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "DamagedPlayer requires a player damage event".to_string(),
+                )
+            })
         }
         PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => {
             for target in &ctx.targets {
@@ -2888,6 +2911,15 @@ fn resolve_controller_of(
         ObjectRef::Tagged(tag) => {
             if let Some(snapshot) = ctx.get_tagged(tag) {
                 Ok(snapshot.controller)
+            } else if matches!(tag.as_str(), "enchanted" | "equipped")
+                && let Some(crate::object::AttachmentTarget::Object(host)) = game
+                    .object(ctx.source)
+                    .and_then(|source| source.attached_to)
+                && let Some(host_object) = game.object(host)
+            {
+                // "enchanted creature's controller" resolves through the
+                // source's attachment, not an explicitly bound tag.
+                Ok(game.controller_of(host_object))
             } else {
                 Err(ExecutionError::TagNotFound(tag.to_string()))
             }
@@ -3715,7 +3747,24 @@ pub fn resolve_objects_from_spec(
             }
 
             let filter_ctx = ctx.filter_context(game);
-            let objects: Vec<ObjectId> = candidate_ids_for_filter(game, filter)
+            let mut tagged_candidates = Vec::new();
+            for constraint in &filter.tagged_constraints {
+                if let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) {
+                    for snapshot in snapshots {
+                        if let Some(object_id) = resolve_tagged_object_id(game, snapshot) {
+                            if !tagged_candidates.contains(&object_id) {
+                                tagged_candidates.push(object_id);
+                            }
+                        }
+                    }
+                }
+            }
+            let candidate_ids = if tagged_candidates.is_empty() {
+                candidate_ids_for_filter(game, filter)
+            } else {
+                tagged_candidates
+            };
+            let objects: Vec<ObjectId> = candidate_ids
                 .iter()
                 .filter_map(|&id| game.object(id))
                 .filter(|obj| filter.matches(obj, &filter_ctx, game))
@@ -4158,22 +4207,20 @@ pub(crate) fn resolve_player_filter_to_list(
                 })
         }
         PlayerFilter::DamagedPlayer => {
-            let Some(triggering_event) = &ctx.triggering_event else {
-                return Err(ExecutionError::UnresolvableValue(
-                    "DamagedPlayer not set".to_string(),
-                ));
-            };
-            let Some(damage_event) = triggering_event.downcast::<DamageEvent>() else {
-                return Err(ExecutionError::UnresolvableValue(
-                    "DamagedPlayer requires a damage event".to_string(),
-                ));
-            };
-            let DamageTarget::Player(player_id) = damage_event.target else {
-                return Err(ExecutionError::UnresolvableValue(
-                    "DamagedPlayer requires a player damage target".to_string(),
-                ));
-            };
-            Ok(vec![player_id])
+            if let Some(triggering_event) = &ctx.triggering_event {
+                if let Some(damage_event) = triggering_event.downcast::<DamageEvent>() {
+                    if let DamageTarget::Player(player_id) = damage_event.target {
+                        return Ok(vec![player_id]);
+                    }
+                }
+            }
+            prior_effect_damaged_player(ctx)
+                .map(|player_id| vec![player_id])
+                .ok_or_else(|| {
+                    ExecutionError::UnresolvableValue(
+                        "DamagedPlayer requires a player damage event".to_string(),
+                    )
+                })
         }
         PlayerFilter::IteratedPlayer => ctx
             .iteration

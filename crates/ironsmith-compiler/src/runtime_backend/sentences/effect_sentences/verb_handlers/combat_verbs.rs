@@ -590,9 +590,6 @@ pub(crate) fn parse_deal_damage_with_amount(
                 combat_grammar::CombatDamageTargetShapeError::MissingDamageKeyword => {
                     "missing damage keyword".to_string()
                 }
-                combat_grammar::CombatDamageTargetShapeError::UnsupportedWhereClause => {
-                    format!("unsupported trailing where damage clause (clause: '{clause}')")
-                }
                 combat_grammar::CombatDamageTargetShapeError::UnsupportedTrailingIfClause
                 | combat_grammar::CombatDamageTargetShapeError::UnsupportedEmbeddedIfClause => {
                     format!("unsupported trailing if clause in damage effect (clause: '{clause}')")

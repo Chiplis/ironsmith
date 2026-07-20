@@ -809,7 +809,7 @@ fn set_first_return_set_reference_surface(effects: &mut [EffectAst], surface: &s
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let mut effects = stacker::maybe_grow(8 * 1024 * 1024, 16 * 1024 * 1024, || {
+    let mut effects = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
         parse_effect_sentence_lexed_inner(tokens)
     })?;
     if let Some(surface) = parse_set_quantifier_surface(tokens) {
@@ -873,6 +873,65 @@ fn parse_manifest_dread_graveyard_card_to_hand(tokens: &[OwnedLexToken]) -> Opti
 fn parse_effect_sentence_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_effect_sentence_lexed_inner_unstacked(tokens)
+    })
+}
+
+fn parse_effect_sentence_lexed_inner_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effect) =
+        super::chain_carry::parse_may_have_any_number_tagged_phase_out_lexed(tokens)
+    {
+        return Ok(vec![effect]);
+    }
+    if let Some(effects) = super::dispatch_entry::parse_if_you_dont_sentence(tokens)? {
+        return Ok(vec![EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::DidNot,
+            effects,
+        }]);
+    }
+    if let Some(diag) = super::sentence_unsupported::diagnose_known_partial_parse_lexed(tokens) {
+        return Err(diag);
+    }
+
+    // These shapes must be recognized before the broad sentence-shape
+    // predicates below. Otherwise a result-prefixed sentence can be claimed
+    // by generic target parsing, and a leading roll clause can be reduced to
+    // the unsupported `two d6` fragment.
+    if let Some(effect_grammar::SentencePreludeShape::RollDiceChooseOneResult {
+        count,
+        sides,
+        die_text,
+    }) = effect_grammar::parse_sentence_prelude_shape_tokens(tokens)
+    {
+        return Ok(vec![
+            EffectAst::subject_verb_roll_dice_choose_result_with_die_text(
+                PlayerAst::Implicit,
+                count,
+                sides,
+                Some(die_text),
+            ),
+        ]);
+    }
+
+    if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
+        let trailing_effects = super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        let mut result = vec![match prefix.kind {
+            LeadingResultPrefixKind::If => EffectAst::IfResult {
+                predicate: prefix.predicate,
+                effects: trailing_effects,
+            },
+            LeadingResultPrefixKind::When => EffectAst::WhenResult {
+                predicate: prefix.predicate,
+                effects: trailing_effects,
+            },
+        }];
+        super::preserve_leading_result_coordination_lexed(tokens, &mut result);
+        return Ok(result);
+    }
+
     fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -913,6 +972,135 @@ fn parse_effect_sentence_lexed_inner(
                 }
             }
         }
+    }
+
+    if let Some(effects) = super::fanout_family::parse_compound_damage_fanout_sentence(tokens)? {
+        return Ok(effects);
+    }
+
+    // A comma-following consequence is sometimes presented as `Then if ...`
+    // when it is parsed in isolation from the preceding sentence. Treat the
+    // sequencing marker as surface glue before the conditional grammar runs;
+    // otherwise the generic dispatcher detaches the iterator subject from
+    // its comma-delimited effect payload.
+    let conditional_tokens = if tokens.first().is_some_and(|token| token.is_word("then")) {
+        &tokens[1..]
+    } else {
+        tokens
+    };
+    if let Some(effects) = parse_player_villainous_choice_statement(conditional_tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::bundle_rules::parse_consult_disposition_bundle(tokens) {
+        return Ok(effects);
+    }
+    if let Some(effect) = super::dispatch_entry::future_zone_replacement_from_sentence_tokens(tokens)
+    {
+        return Ok(vec![effect]);
+    }
+    if let Some(schedule) =
+        effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
+        && schedule.step == effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::EndStep
+        && schedule.start_next_turn
+    {
+        let effects = parse_effect_sentence_lexed_inner(schedule.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(
+                "delayed end-step sentence missing effect payload".to_string(),
+            ));
+        }
+        let player = match schedule.player {
+            PlayerAst::You | PlayerAst::Implicit => PlayerAst::You,
+            PlayerAst::That => PlayerAst::That,
+            PlayerAst::Target => PlayerAst::Target,
+            PlayerAst::TargetOpponent => PlayerAst::TargetOpponent,
+            _ => PlayerAst::Any,
+        };
+        return Ok(vec![EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects }]);
+    }
+    if let Some(effects) = super::subject_verb_primitives::
+        parse_sentence_you_and_attacking_player_each_draw_and_lose(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+    if conditional_tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(effects) = super::subject_verb_primitives::
+            parse_if_any_tagged_cards_share_card_type_with_triggering_spell(
+                SubjectVerbPrimitiveClause::new(conditional_tokens),
+            )?
+    {
+        return Ok(effects);
+    }
+    if conditional_tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(effects) = super::subject_verb_primitives::parse_if_enters_with_additional_counter_sentence(
+            SubjectVerbPrimitiveClause::new(conditional_tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+    // The damage-replacement counter form begins with `If`, but its leading
+    // clause describes an event rather than a state predicate. Route the
+    // typed subject/verb recognizer before the generic conditional parser
+    // attempts to interpret that event as a predicate.
+    if let Some(effect) = parse_generic_damage_replacement_counters_subject_verb(tokens)? {
+        return Ok(vec![effect]);
+    }
+    if conditional_tokens.first().is_some_and(|token| token.is_word("if"))
+        && let Some(effects) = parse_conditional_sentence_family_lexed(
+            conditional_tokens,
+            parse_effect_chain_lexed,
+        )?
+    {
+        return Ok(effects);
+    }
+
+    // Redirect clauses begin with an affected-object phrase rather than a
+    // normal subject/verb pair (`All damage ... is dealt ...`). Dispatch the
+    // typed redirect grammar before the generic extension parser reports a
+    // missing verb.
+    if let Some(effects) = super::clause_pattern_helpers::parse_redirect_next_damage_sentence(
+        tokens,
+    )? {
+        return Ok(effects);
+    }
+    if let Some(effects) = super::clause_pattern_helpers::parse_prevent_next_time_damage_sentence(
+        tokens,
+    )? {
+        return Ok(effects);
+    }
+    // Choice-complement sentences also look like ordinary subject/verb
+    // clauses. Route the typed grammar before generic subject recognition can
+    // interpret the `then` complement as a separate mechanic marker.
+    let dispatch_shape = effect_grammar::labeled_dispatch::parse_labeled_dispatch_shape(tokens);
+    if dispatch_shape.each_player_choose
+        && let Some(effect) = parse_choice_complement_subject_verb(tokens)?
+    {
+        return Ok(vec![effect]);
+    }
+
+    if let Some(effect) = crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause(tokens)? {
+        return Ok(vec![effect]);
+    }
+
+    if let Some(effects) =
+        super::subject_verb_special_recognizers::parse_keyword_bundle_pump_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+
+    if let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)? {
+        return Ok(effects);
+    }
+
+    if let Some(effects) = super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+
+    if let Some(effects) = parse_next_spell_grant_sentence_lexed(tokens)? {
+        return Ok(effects);
     }
 
     if let Some(effects) = parse_manifest_dread_graveyard_card_to_hand(tokens) {
@@ -1216,6 +1404,16 @@ fn parse_effect_sentence_lexed_inner(
         return Ok(vec![effect]);
     }
 
+    // Future replacement clauses use an `If ... would ... instead` surface,
+    // but their condition is an event predicate rather than an ordinary
+    // state predicate.  Recognize the typed replacement before the generic
+    // leading-if splitter asks the predicate grammar to parse `would die`.
+    if let Some(effect) =
+        crate::runtime_backend::effect_sentences::dispatch_entry::future_zone_replacement_from_sentence_tokens(tokens)
+    {
+        return Ok(vec![effect]);
+    }
+
     let leading_if_shape = sentence_shapes::parse_leading_if_sentence_tokens(tokens);
     if matches!(
         leading_if_shape,
@@ -1230,12 +1428,17 @@ fn parse_effect_sentence_lexed_inner(
         } else {
             parse_conditional_sentence_family_lexed(tokens, parse_effect_chain_lexed)
         };
-        if let Ok(Some(mut effects)) = conditional
-            && matches!(effects.as_slice(), [EffectAst::Conditional { .. }])
-        {
-            apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
-            normalize_search_followup_shuffles(&mut effects);
-            return Ok(effects);
+        if let Ok(Some(mut effects)) = conditional {
+            if matches!(effects.as_slice(), [EffectAst::Conditional { .. }]) {
+                apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+                normalize_search_followup_shuffles(&mut effects);
+                return Ok(effects);
+            }
+            if matches!(effects.as_slice(), [EffectAst::IfResult { .. }]) {
+                super::preserve_leading_result_coordination_lexed(tokens, &mut effects);
+                normalize_search_followup_shuffles(&mut effects);
+                return Ok(effects);
+            }
         }
     }
 
@@ -1269,7 +1472,10 @@ fn parse_effect_sentence_lexed_inner(
         normalize_search_followup_shuffles(&mut effects);
         return Ok(effects);
     }
-    let mut effects = parse_effect_sentence_inner_lexed(tokens)?;
+    // The sentence dispatcher has exhausted its specialized routes here.
+    // Delegate to the lower-level chain parser; calling this dispatcher again
+    // with the same tokens recurses forever for ordinary subject/verb clauses.
+    let mut effects = super::parse_effect_chain_inner_lexed(tokens)?;
     apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
     normalize_search_followup_shuffles(&mut effects);
     Ok(effects)

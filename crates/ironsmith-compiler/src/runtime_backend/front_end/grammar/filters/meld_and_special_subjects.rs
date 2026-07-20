@@ -928,7 +928,7 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             *constraint
                 == TaggedObjectConstraint {
-                    tag: TagKey::from("sacrifice_cost_0"),
+                    tag: TagKey::from(crate::cards::builders::ADDITIONAL_COST_OBJECT_TAG),
                     relation: TaggedOpbjectRelation::SameManaValueAsTagged,
                 }
         }));
@@ -1021,7 +1021,7 @@ mod tests {
         );
         assert_eq!(
             filter.description(),
-            "a creature put onto the battlefield with this enchantment"
+            "creature put onto the battlefield with this enchantment"
         );
     }
 
@@ -1039,7 +1039,7 @@ mod tests {
                 "this enchantment".to_string()
             ))
         );
-        assert_eq!(filter.description(), "a token created with this enchantment");
+        assert_eq!(filter.description(), "token created with this enchantment");
     }
 
     #[test]

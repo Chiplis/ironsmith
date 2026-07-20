@@ -1520,9 +1520,10 @@ pub(crate) fn parse_where_x_is_fixed_plus_number_of_filter_value(
 pub(crate) fn parse_where_x_is_sum_of_number_of_filter_values(
     tokens: &[OwnedLexToken],
 ) -> Option<Value> {
-    let plus_idx = tokens.iter().position(|token| token.is_word("plus"))?;
+    let words = parser_token_word_refs(tokens);
+    let plus_idx = words.iter().position(|word| *word == "plus")?;
     let prefix = tokens.get(..3)?;
-    if crate::runtime_backend::token_word_refs(prefix) != ["where", "x", "is"] {
+    if parser_token_word_refs(prefix) != ["where", "x", "is"] {
         return None;
     }
     let left_tokens = trim_commas(tokens.get(..plus_idx)?);
@@ -1576,6 +1577,13 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    // A resolution procedure can end with "They enter tapped" (for example,
+    // a face-down pile that is later cloaked).  Its leading action is not an
+    // ETB static ability, even though the broad entry-shape grammar can see
+    // the same noun phrase.  Leave effect-led lines to the effect dispatcher.
+    if clause_words.first().is_some_and(|word| *word == "exile") {
+        return Ok(None);
+    }
     if clause_words
         .first()
         .is_some_and(|word| etb_word_is_any(word, ETB_TRIGGER_INTRO_WORDS))

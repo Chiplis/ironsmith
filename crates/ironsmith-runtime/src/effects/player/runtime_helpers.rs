@@ -20,9 +20,11 @@ pub(super) fn register_effect_driven_spell_cast(
     from_zone: Zone,
     provenance: crate::provenance::ProvNodeId,
 ) -> TriggerEvent {
-    if from_zone == Zone::Command {
-        game.record_commander_cast_from_command_zone(new_id);
-    }
+    // `cast_spell_from_resolving_effect` completes the same CR 601 cast
+    // transaction as a priority cast and records command-zone commander casts
+    // when that transaction is committed.  This helper only publishes the
+    // resulting SpellCastEvent; recording here would count effect-driven
+    // command-zone casts twice.
     let event = if let Some(obj) = game.object(new_id) {
         let snapshot = crate::snapshot::ObjectSnapshot::from_object(obj, game);
         SpellCastEvent::new_with_snapshot(new_id, caster, from_zone, snapshot)

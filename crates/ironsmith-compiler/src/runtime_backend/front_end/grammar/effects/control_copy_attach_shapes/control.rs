@@ -137,8 +137,7 @@ fn has_all_words(tokens: &[OwnedLexToken], words: &[&'static str]) -> bool {
 }
 
 fn counter_duration_type(tokens: &[OwnedLexToken]) -> Option<crate::object::CounterType> {
-    let (has_index, _, after_has) =
-        primitives::find_prefix(tokens, || primitives::kw("has"))?;
+    let (has_index, _, after_has) = primitives::find_prefix(tokens, || primitives::kw("has"))?;
     let _ = has_index;
     let (counter_index, _, _) = primitives::find_prefix(after_has, || {
         alt((primitives::kw("counter"), primitives::kw("counters"))).void()
@@ -189,9 +188,9 @@ fn parse_predicate_control_duration(tokens: &[OwnedLexToken]) -> Option<Until> {
         )));
     }
     if let Some(counter_type) = counter_duration_type(tokens) {
-        return Some(Until::ForAsLongAs(
-            Predicate::affected_object_has_counter(counter_type),
-        ));
+        return Some(Until::ForAsLongAs(Predicate::affected_object_has_counter(
+            counter_type,
+        )));
     }
     if primitives::contains_word(tokens, "tapped") {
         return Some(Until::ForAsLongAs(Predicate::ObjectTapped(
@@ -316,15 +315,13 @@ mod tests {
         );
         assert_eq!(
             parse("for as long as that creature is enchanted"),
-            Until::ForAsLongAs(Predicate::ObjectIsEnchanted(
-                ObjectRef::AffectedObject,
-            ))
+            Until::ForAsLongAs(Predicate::ObjectIsEnchanted(ObjectRef::AffectedObject,))
         );
         assert_eq!(
             parse("for as long as they're the monarch"),
-            Until::ForAsLongAs(Predicate::PlayerIsMonarch(
-                PlayerRef::ControllerOf(ObjectRef::AffectedObject),
-            ))
+            Until::ForAsLongAs(Predicate::PlayerIsMonarch(PlayerRef::ControllerOf(
+                ObjectRef::AffectedObject
+            ),))
         );
         assert_eq!(
             parse("for as long as that Aura is attached to it"),

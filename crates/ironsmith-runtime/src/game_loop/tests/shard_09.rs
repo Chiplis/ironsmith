@@ -2487,6 +2487,7 @@ pub(super) fn riveteers_charm_mode_one_limits_sacrifice_to_greatest_mana_value_t
     let tie_planeswalker = CardBuilder::new(CardId::new(), "Tie Planeswalker")
         .card_types(vec![CardType::Planeswalker])
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(5)]]))
+        .loyalty(5)
         .build();
 
     let low_id = game.create_object_from_card(&low_creature, bob, Zone::Battlefield);

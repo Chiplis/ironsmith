@@ -1267,6 +1267,12 @@ pub(crate) fn cast_spell_from_resolving_effect(
         Ok(progress) => progress,
         Err(error) => {
             state.rollback_action(game);
+            if matches!(
+                error,
+                GameLoopError::ActionCancelled(_) | GameLoopError::InvalidState(_)
+            ) {
+                return Ok(None);
+            }
             return Err(error);
         }
     };
@@ -2589,11 +2595,8 @@ pub(super) fn prompt_spell_mana_ability_window(
     // show, so a player who chose to float mid-window keeps the flow.
     let pool_covers_cost = pending.stage != CastStage::ActivatingManaAbilities
         && pending.mana_cost_to_pay.as_ref().is_some_and(|cost| {
-            game.player(pending.caster).is_some_and(|player| {
-                player
-                    .mana_pool
-                    .can_pay(cost, pending.x_value.unwrap_or(0))
-            })
+            game.player(pending.caster)
+                .is_some_and(|player| player.mana_pool.can_pay(cost, pending.x_value.unwrap_or(0)))
         });
     if mana_abilities.is_empty() || pool_covers_cost {
         pending.mana_ability_window_closed = true;

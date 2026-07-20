@@ -25,6 +25,10 @@ use std::sync::OnceLock;
 
 mod additional_cost_object_provenance;
 mod behold_exile_additional_cost;
+mod consult_result_surfaces;
+mod consult_revealed_collection_counts;
+mod deferred_consult_pair;
+mod identical_cost_activated_abilities;
 mod same_name_search_pipeline;
 mod shard_00;
 mod shard_01;
@@ -72,7 +76,3 @@ mod shard_42;
 mod shard_43;
 mod shard_44;
 mod shard_45;
-mod consult_result_surfaces;
-mod consult_revealed_collection_counts;
-mod deferred_consult_pair;
-mod identical_cost_activated_abilities;

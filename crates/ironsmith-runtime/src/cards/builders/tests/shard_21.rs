@@ -390,8 +390,10 @@ pub(super) fn parse_oracle_akroma_vision_of_ixidor_keyword_bundle_regression() {
         "expected Akroma trigger timing to remain intact, got {rendered}"
     );
     assert!(
-        rendered_lower.contains("other creatures with flying you control get +1/+1")
-            && rendered_lower.contains("other creatures with vigilance you control get +1/+1"),
+        rendered_lower.contains("each other creature with flying you control")
+            && rendered_lower.contains("each other creature with first strike you control")
+            && rendered_lower.contains("each other creature with double strike you control")
+            && rendered_lower.contains("each other creature with vigilance you control"),
         "expected Akroma compiled text to keep the oracle-shaped keyword bundle, got {rendered}"
     );
     assert!(
@@ -1086,7 +1088,7 @@ pub(super) fn parse_oracle_riveteers_charm_strict_regression() {
         "expected sacrifice effect constrained by greatest mana value, got {debug}"
     );
     assert!(
-        debug.contains("UntilYourNextTurnEnd"),
+        debug.contains("UntilYourNextEndStep"),
         "expected timing branch for 'until your next end step', got {debug}"
     );
 }
@@ -1100,13 +1102,13 @@ pub(super) fn parse_oracle_rakdos_the_muscle_strict_and_compiled_text_regression
 
     assert!(
         rendered_lower.contains(
-            "whenever you sacrifice another creature, exile cards equal to its mana value from the top of target player's library"
+            "whenever you sacrifice another creature, exile the top x cards of target player's library, where x is that creature's mana value"
         ),
         "expected dynamic sacrificed-creature mana-value exile clause, got {rendered}"
     );
     assert!(
         rendered_lower.contains(
-            "until your next end step, you may play those cards, and mana of any type can be spent to cast those spells"
+            "you may play those cards until your next end step, and mana of any type can be spent to cast them"
         ),
         "expected next-end-step play permission with any-color mana suffix, got {rendered}"
     );
@@ -1116,7 +1118,7 @@ pub(super) fn parse_oracle_rakdos_the_muscle_strict_and_compiled_text_regression
         debug.contains("ExileTopOfLibraryEffect")
             && debug.contains("ManaValueOf")
             && debug.contains("GrantPlayTaggedEffect")
-            && debug.contains("UntilYourNextTurnEnd")
+            && debug.contains("UntilYourNextEndStep")
             && debug.contains("allow_any_color_for_cast: true"),
         "expected Rakdos trigger to lower to dynamic top-library exile plus next-end-step any-color play grant, got {debug}"
     );

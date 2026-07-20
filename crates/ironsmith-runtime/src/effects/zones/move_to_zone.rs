@@ -370,8 +370,13 @@ impl EffectExecutor for MoveToZoneEffect {
 
     fn supports_simultaneous_player_action(&self) -> bool {
         // Moving the source itself ("exile ~") involves no player choices;
-        // broader targets can prompt and are left to the baseline gate.
-        matches!(self.target.base(), ChooseSpec::Source)
+        // tagged objects selected by a preceding read-only choice are also
+        // fully determined before the simultaneous commit.  Broader target
+        // specs can still prompt and remain outside this path.
+        matches!(
+            self.target.base(),
+            ChooseSpec::Source | ChooseSpec::Tagged(_)
+        )
     }
 
     fn prepare_simultaneous_player_action(

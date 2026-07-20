@@ -2824,9 +2824,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     describe_spell_cast_condition_object(filter)
                 );
             }
-            if matches!(left.unhinted(), Value::PowerOf(_) | Value::ToughnessOf(_))
-                && let Value::Fixed(count) = right.unhinted()
-            {
+            // A literal bound reads as "N or less"/"N or greater" in oracle
+            // regardless of what quantity is being compared.
+            if let Value::Fixed(count) = right.unhinted() {
                 match operator {
                     crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
                         return format!("{} is {count} or greater", describe_value(left));
@@ -3140,6 +3140,13 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     &description,
                 ));
                 format!("all {objects} you control are {}", color.name())
+            } else if let Condition::PlayerControls { player, filter } = inner.as_ref()
+                && *player == PlayerFilter::You
+                && filter.zone == Some(Zone::Battlefield)
+                && filter.card_types == [CardType::Creature]
+                && filter.ability_markers == ["decayed"]
+            {
+                "you control no creatures with decayed".to_string()
             } else if let Condition::PlayerControls { player, filter } = inner.as_ref() {
                 if let Some(text) =
                     describe_player_controls_only_implicit_tagged_object(player, filter, true)

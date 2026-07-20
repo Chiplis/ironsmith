@@ -83,6 +83,13 @@ pub(super) fn singularize_plural_object_phrase(phrase: &str) -> String {
             if matches!(core, "and" | "or") {
                 return word.to_string();
             }
+            // This helper is used for the object phrase before appending a
+            // controller tail.  `controls` is a verb here, not a plural
+            // noun, so stripping its final `s` produces "they control" in
+            // the wrong grammatical context ("that player control").
+            if core == "controls" {
+                return word.to_string();
+            }
             let singular = if let Some(stem) = core.strip_suffix("ies") {
                 format!("{stem}y")
             } else if let Some(stem) = core.strip_suffix('s') {

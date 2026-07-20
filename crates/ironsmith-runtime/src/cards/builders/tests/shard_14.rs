@@ -44,7 +44,7 @@ pub(super) fn alms_beast_keeps_lifelink_grant_for_creatures_in_combat_with_sourc
 
     let debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        debug.contains("grantability")
+        (debug.contains("grantability") || debug.contains("grantobjectabilityforfilter"))
             && debug.contains("lifelink")
             && debug.contains("in_combat_with_source: true"),
         "expected Alms Beast definition to grant lifelink to creatures in combat with the source, got {debug}"

@@ -55,6 +55,27 @@ fn apply_sacrificed_as_it_entered_relation(
     filter
 }
 
+fn apply_sacrificed_card_type_relation(
+    mut filter: ObjectFilter,
+    tokens: &[OwnedLexToken],
+) -> ObjectFilter {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let shares_card_type = words.windows(4).any(|window| {
+        matches!(window, ["shares", "a", "card", "type"])
+            || matches!(window, ["shares", "card", "type", "with"])
+    });
+    let references_sacrificed_permanent = words.windows(3).any(|window| {
+        matches!(window, ["sacrificed", "permanent", _])
+            || matches!(window, ["the", "sacrificed", "permanent"])
+    }) || words
+        .windows(2)
+        .any(|window| matches!(window, ["sacrificed", "permanent"]));
+    if shares_card_type && references_sacrificed_permanent {
+        filter = filter.match_tagged("sacrificed_0", TaggedOpbjectRelation::SharesCardType);
+    }
+    filter
+}
+
 fn original_printing_set_word_span(words: &[&str]) -> Option<(usize, std::ops::Range<usize>)> {
     if words.last().copied() != Some("expansion") {
         return None;
@@ -327,6 +348,7 @@ pub(crate) fn parse_object_filter(
     preserve_union_surface(&mut filter, tokens);
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     normalize_generic_card_ability_tail(tokens, &mut filter);
+    let filter = apply_sacrificed_card_type_relation(filter, tokens);
     Ok(apply_sacrificed_as_it_entered_relation(
         apply_original_printing_set(filter, original_printing_set),
         sacrificed_as_it_entered,
@@ -685,7 +707,7 @@ mod tests {
         );
         assert_eq!(
             filter.description(),
-            "a nontoken permanent with a name originally printed in the Antiquities expansion"
+            "nontoken permanent with a name originally printed in the Antiquities expansion"
         );
     }
 
@@ -772,12 +794,11 @@ mod tests {
         assert!(!filter.card_types.contains(&CardType::Creature));
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Graveyard));
-        assert_eq!(
-            filter.mana_value,
-            Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
-                crate::effect::Value::SourcePower
-            )))
-        );
+        assert!(matches!(
+            filter.mana_value.as_ref(),
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if value.unhinted() == &crate::effect::Value::SourcePower
+        ));
     }
 
     #[test]
@@ -804,7 +825,7 @@ mod tests {
             assert_eq!(filter.card_types, vec![CardType::Land], "{filter:#?}");
             assert!(filter.has_basic_land_type, "{filter:#?}");
             assert!(filter.supertypes.is_empty(), "{filter:#?}");
-            assert_eq!(filter.description(), "land with a basic land type");
+            assert_eq!(filter.description(), "land card with a basic land type");
         }
     }
 

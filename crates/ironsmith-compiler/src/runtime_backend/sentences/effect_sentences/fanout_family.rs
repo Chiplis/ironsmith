@@ -5,14 +5,15 @@ use super::super::lexer::{OwnedLexToken, TokenKind, find_token_word_sequence_spa
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     is_source_reference_words, non_article_token_word_refs, parse_target_phrase, span_from_tokens,
-    trim_commas,
+    trim_commas, trim_edge_punctuation,
 };
+use super::sentence_helpers::parse_predicate_lexed;
 use super::zone_counter_helpers::{split_until_source_leaves_tail, target_object_filter_mut};
 use super::zone_handlers::collapse_leading_signed_pt_modifier_tokens;
 use super::{apply_where_x_to_damage_amounts, find_verb, parse_simple_gain_ability_clause};
 use crate::cards::builders::{
-    CardTextError, EffectAst, IT_TAG, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
-    TargetAst, Verb,
+    CardTextError, EffectAst, IT_TAG, PredicateAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    TagKey, TargetAst, Verb,
 };
 use crate::effect::{Until, Value};
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
@@ -697,7 +698,8 @@ fn parse_damage_part(
     let Some(shape) = fanout_grammar::parse_damage_part_shape(tokens, false) else {
         return Ok(None);
     };
-    lower_damage_part_shape(shape, player_context)
+    let result = lower_damage_part_shape(shape, player_context);
+    result
 }
 
 fn damage_player_iteration_effect(filter: PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
@@ -748,9 +750,93 @@ fn compound_damage_effects(
     }
 }
 
+fn is_mana_spent_predicate(predicate: &PredicateAst) -> bool {
+    matches!(
+        predicate,
+        PredicateAst::ManaSpentToCastThisSpellAtLeast { .. }
+            | PredicateAst::ColoredManaSpentToCastThisSpellAtLeast(_)
+            | PredicateAst::SameColorManaSpentToCastThisSpellAtLeast(_)
+    )
+}
+
+fn parse_conditional_damage_pair_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let if_indices = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.is_word("if").then_some(idx))
+        .collect::<Vec<_>>();
+    if if_indices.len() != 2 {
+        return Ok(None);
+    }
+
+    let first_if = if_indices[0];
+    let second_if = if_indices[1];
+    let Some(and_idx) = tokens[first_if + 1..second_if]
+        .iter()
+        .position(|token| token.is_word("and"))
+        .map(|idx| first_if + 1 + idx)
+    else {
+        return Ok(None);
+    };
+
+    let first_condition_tokens = trim_edge_punctuation(&tokens[first_if + 1..and_idx]);
+    let second_condition_tokens = trim_edge_punctuation(&tokens[second_if + 1..]);
+    let Ok(first_predicate) = parse_predicate_lexed(&first_condition_tokens) else {
+        return Ok(None);
+    };
+    let Ok(second_predicate) = parse_predicate_lexed(&second_condition_tokens) else {
+        return Ok(None);
+    };
+    if !is_mana_spent_predicate(&first_predicate) || !is_mana_spent_predicate(&second_predicate) {
+        return Ok(None);
+    }
+
+    let first_effect_tokens = trim_edge_punctuation(&tokens[..first_if]);
+    let second_effect_tokens = trim_edge_punctuation(&tokens[and_idx + 1..second_if]);
+    let Some((_, verb_idx)) = find_verb(&first_effect_tokens) else {
+        return Ok(None);
+    };
+    let Ok(first_effects) = super::parse_effect_sentence_lexed(&first_effect_tokens) else {
+        return Ok(None);
+    };
+
+    // Coordinated clauses omit the repeated subject and verb. Restore that
+    // prefix for the second clause so it can use the ordinary damage parser,
+    // then wrap each clause independently in its own condition.
+    let subject_and_verb = &first_effect_tokens[..=verb_idx];
+    let mut second_effect_with_prefix = subject_and_verb.to_vec();
+    second_effect_with_prefix.extend_from_slice(&second_effect_tokens);
+    let Ok(second_effects) = super::parse_effect_sentence_lexed(&second_effect_with_prefix) else {
+        return Ok(None);
+    };
+
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects: vec![
+            EffectAst::Conditional {
+                predicate: first_predicate,
+                if_true: first_effects,
+                if_false: Vec::new(),
+            },
+            EffectAst::Conditional {
+                predicate: second_predicate,
+                if_true: second_effects,
+                if_false: Vec::new(),
+            },
+        ],
+        leading_duration: false,
+        result_conjunction: true,
+    }]))
+}
+
 pub(crate) fn parse_compound_damage_fanout_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(conditional_pair) = parse_conditional_damage_pair_sentence(tokens)? {
+        return Ok(Some(conditional_pair));
+    }
+
     if let Some(serial) = parse_serial_damage_fanout_tokens(tokens)? {
         let source_words = non_article_token_word_refs(&serial.source);
         if !serial.source.is_empty() && !is_source_reference_words(&source_words) {

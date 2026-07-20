@@ -488,120 +488,117 @@ fn sacrifice_selected_objects(
     to_sacrifice: Vec<ObjectId>,
 ) -> Result<EffectOutcome, ExecutionError> {
     let chosen_to_sacrifice = to_sacrifice.clone();
-        let chosen_memory: Vec<_> = chosen_to_sacrifice
-            .iter()
-            .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
-            .collect();
-        let mut sacrificed_count = 0;
-        let mut sacrificed_objects = Vec::new();
-        let mut sacrificed_memory = Vec::new();
-        let mut sacrifice_events = Vec::new();
+    let chosen_memory: Vec<_> = chosen_to_sacrifice
+        .iter()
+        .filter_map(|id| OutcomeObjectMemory::from_object_id(game, *id))
+        .collect();
+    let mut sacrificed_count = 0;
+    let mut sacrificed_objects = Vec::new();
+    let mut sacrificed_memory = Vec::new();
+    let mut sacrifice_events = Vec::new();
 
-        for id in to_sacrifice {
-            let pre_snapshot = game
-                .object(id)
-                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
-            let source_snapshot_for_event = if event_source_tags.is_empty() {
-                None
-            } else if pre_snapshot
-                .as_ref()
-                .is_some_and(|snapshot| snapshot.object_id == ctx.source)
-            {
-                pre_snapshot.clone()
-            } else {
-                game.object(ctx.source)
-                    .map(|obj| {
-                        ObjectSnapshot::from_object_with_calculated_characteristics(obj, game)
-                    })
-                    .or_else(|| ctx.source_snapshot.clone())
-            };
-            let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
-            let additional_effects = ctx.additional_replacement_effects_snapshot();
+    for id in to_sacrifice {
+        let pre_snapshot = game
+            .object(id)
+            .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game));
+        let source_snapshot_for_event = if event_source_tags.is_empty() {
+            None
+        } else if pre_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.object_id == ctx.source)
+        {
+            pre_snapshot.clone()
+        } else {
+            game.object(ctx.source)
+                .map(|obj| ObjectSnapshot::from_object_with_calculated_characteristics(obj, game))
+                .or_else(|| ctx.source_snapshot.clone())
+        };
+        let sacrificing_player = pre_snapshot.as_ref().map(|snapshot| snapshot.controller);
+        let additional_effects = ctx.additional_replacement_effects_snapshot();
 
-            // Process each sacrifice through replacement effects with decision maker
-            let result = apply_zone_change_with_additional_effects(
-                game,
-                id,
-                Zone::Battlefield,
-                Zone::Graveyard,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-                &additional_effects,
-            );
+        // Process each sacrifice through replacement effects with decision maker
+        let result = apply_zone_change_with_additional_effects(
+            game,
+            id,
+            Zone::Battlefield,
+            Zone::Graveyard,
+            ctx.cause.clone(),
+            &mut *ctx.decision_maker,
+            &additional_effects,
+        );
 
-            match result {
-                EventOutcome::Prevented => {
-                    // Sacrifice was prevented (unusual but possible)
-                    continue;
+        match result {
+            EventOutcome::Prevented => {
+                // Sacrifice was prevented (unusual but possible)
+                continue;
+            }
+            EventOutcome::Proceed(result) => {
+                tag_sacrifice_zone_change_event(
+                    game,
+                    id,
+                    event_object_tags,
+                    event_source_tags,
+                    pre_snapshot.as_ref(),
+                    source_snapshot_for_event.as_ref(),
+                );
+                if let Some(snapshot) = pre_snapshot.clone() {
+                    ctx.refresh_target_snapshot(snapshot);
                 }
-                EventOutcome::Proceed(result) => {
-                    tag_sacrifice_zone_change_event(
-                        game,
-                        id,
-                        event_object_tags,
-                        event_source_tags,
-                        pre_snapshot.as_ref(),
-                        source_snapshot_for_event.as_ref(),
-                    );
-                    if let Some(snapshot) = pre_snapshot.clone() {
-                        ctx.refresh_target_snapshot(snapshot);
-                    }
-                    if let Some(snapshot) = pre_snapshot.clone()
-                        && snapshot.object_id == ctx.source
-                    {
-                        ctx.refresh_source_snapshot(snapshot);
-                    }
-                    sacrificed_count += 1;
-                    let _ = result;
-                    sacrificed_objects.push(id);
-                    if let Some(snapshot) = pre_snapshot.as_ref() {
-                        sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                    }
-                    sacrifice_events.push(TriggerEvent::new_with_provenance(
-                        SacrificeEvent::new(id, Some(ctx.source))
-                            .with_snapshot(pre_snapshot, sacrificing_player),
-                        ctx.provenance,
-                    ));
+                if let Some(snapshot) = pre_snapshot.clone()
+                    && snapshot.object_id == ctx.source
+                {
+                    ctx.refresh_source_snapshot(snapshot);
                 }
-                EventOutcome::Replaced => {
-                    // Replacement effects already executed by process_zone_change
-                    tag_sacrifice_zone_change_event(
-                        game,
-                        id,
-                        event_object_tags,
-                        event_source_tags,
-                        pre_snapshot.as_ref(),
-                        source_snapshot_for_event.as_ref(),
-                    );
-                    sacrificed_count += 1;
-                    sacrificed_objects.push(id);
-                    if let Some(snapshot) = pre_snapshot.as_ref() {
-                        sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
-                    }
-                    sacrifice_events.push(TriggerEvent::new_with_provenance(
-                        SacrificeEvent::new(id, Some(ctx.source))
-                            .with_snapshot(pre_snapshot, sacrificing_player),
-                        ctx.provenance,
-                    ));
+                sacrificed_count += 1;
+                let _ = result;
+                sacrificed_objects.push(id);
+                if let Some(snapshot) = pre_snapshot.as_ref() {
+                    sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
                 }
-                EventOutcome::NotApplicable => {
-                    // Object no longer exists or isn't applicable
-                    continue;
+                sacrifice_events.push(TriggerEvent::new_with_provenance(
+                    SacrificeEvent::new(id, Some(ctx.source))
+                        .with_snapshot(pre_snapshot, sacrificing_player),
+                    ctx.provenance,
+                ));
+            }
+            EventOutcome::Replaced => {
+                // Replacement effects already executed by process_zone_change
+                tag_sacrifice_zone_change_event(
+                    game,
+                    id,
+                    event_object_tags,
+                    event_source_tags,
+                    pre_snapshot.as_ref(),
+                    source_snapshot_for_event.as_ref(),
+                );
+                sacrificed_count += 1;
+                sacrificed_objects.push(id);
+                if let Some(snapshot) = pre_snapshot.as_ref() {
+                    sacrificed_memory.push(OutcomeObjectMemory::from_snapshot(snapshot));
                 }
+                sacrifice_events.push(TriggerEvent::new_with_provenance(
+                    SacrificeEvent::new(id, Some(ctx.source))
+                        .with_snapshot(pre_snapshot, sacrificing_player),
+                    ctx.provenance,
+                ));
+            }
+            EventOutcome::NotApplicable => {
+                // Object no longer exists or isn't applicable
+                continue;
             }
         }
-
-        let mut outcome = EffectOutcome::count(sacrificed_count)
-            .with_events(sacrifice_events)
-            .with_execution_fact(ExecutionFact::ChosenObjects(chosen_to_sacrifice))
-            .with_chosen_object_memory(chosen_memory);
-        if !sacrificed_objects.is_empty() {
-            outcome =
-                outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
-            outcome = outcome.with_affected_object_memory(sacrificed_memory);
-        }
-        Ok(outcome)
     }
+
+    let mut outcome = EffectOutcome::count(sacrificed_count)
+        .with_events(sacrifice_events)
+        .with_execution_fact(ExecutionFact::ChosenObjects(chosen_to_sacrifice))
+        .with_chosen_object_memory(chosen_memory);
+    if !sacrificed_objects.is_empty() {
+        outcome = outcome.with_execution_fact(ExecutionFact::AffectedObjects(sacrificed_objects));
+        outcome = outcome.with_affected_object_memory(sacrificed_memory);
+    }
+    Ok(outcome)
+}
 
 impl CostExecutableEffect for SacrificeEffect {
     fn can_execute_as_cost_with_reason(

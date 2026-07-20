@@ -2263,10 +2263,12 @@ pub(super) fn the_sixth_doctor_copies_historic_spells_without_legendary_and_only
     game.create_object_from_definition(&doctor, alice, Zone::Battlefield);
 
     let first_relic = CardBuilder::new(CardId::from_raw(81_611), "Legendary Relic")
+        .mana_cost(ManaCost::new())
         .card_types(vec![CardType::Artifact])
         .supertypes(vec![crate::types::Supertype::Legendary])
         .build();
     let second_relic = CardBuilder::new(CardId::from_raw(81_612), "Second Relic")
+        .mana_cost(ManaCost::new())
         .card_types(vec![CardType::Artifact])
         .supertypes(vec![crate::types::Supertype::Legendary])
         .build();

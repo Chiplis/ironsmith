@@ -6,6 +6,7 @@ use crate::effect::{EventValueSpec, Restriction, Value};
 use crate::filter::{Comparison, ObjectFilter, ObjectRef, PlayerFilter, TaggedOpbjectRelation};
 use crate::target::{ChooseSpec, ChooseSpecSurfaceHint, SourceReferenceSurface};
 use crate::zone::Zone;
+use ironsmith_core::TurnHistoryCount;
 
 use super::reference_model::ReferenceEnv;
 
@@ -93,6 +94,7 @@ pub(crate) fn resolve_non_target_player_filter(
             "target player requires explicit targeting".to_string(),
         )),
         PlayerAst::Opponent => Ok(PlayerFilter::Opponent),
+        PlayerAst::Enchanted => Ok(PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))),
         PlayerAst::NotYou => {
             if let Some(excluded) = refs.known_last_player_filter()
                 && !is_you_player_filter(excluded)
@@ -377,6 +379,99 @@ fn resolve_object_filter_comparison(
     })
 }
 
+fn replace_it_tag_in_value(value: &mut Value, tag: &TagKey) {
+    match value {
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => replace_it_tag_in_value(value, tag),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            replace_it_tag_in_value(left, tag);
+            replace_it_tag_in_value(right, tag);
+        }
+        Value::Count(filter)
+        | Value::CountScaled(filter, _)
+        | Value::GreatestCount(filter)
+        | Value::TotalPower(filter)
+        | Value::TotalToughness(filter)
+        | Value::TotalManaValue(filter)
+        | Value::GreatestPower(filter)
+        | Value::GreatestToughness(filter)
+        | Value::GreatestManaValue(filter)
+        | Value::LeastPower(filter)
+        | Value::LeastToughness(filter)
+        | Value::LeastManaValue(filter)
+        | Value::BasicLandTypesAmong(filter)
+        | Value::CreatureTypesAmong(filter)
+        | Value::CardTypesAmong(filter)
+        | Value::ColorsAmong(filter)
+        | Value::DistinctNames(filter)
+        | Value::DistinctPowers(filter) => replace_it_tag_in_filter(filter, tag),
+        Value::StaticAbilitiesAmong { filter, .. } => replace_it_tag_in_filter(filter, tag),
+        Value::TurnHistoryCount(query) => match query {
+            TurnHistoryCount::Died(filter)
+            | TurnHistoryCount::EnteredBattlefield(filter)
+            | TurnHistoryCount::MovedZones { filter, .. }
+            | TurnHistoryCount::Sacrificed { filter, .. }
+            | TurnHistoryCount::CountersPutOn { filter, .. }
+            | TurnHistoryCount::CreaturesAttackedWith { filter, .. } => {
+                replace_it_tag_in_filter(filter, tag)
+            }
+            _ => {}
+        },
+        Value::SpellsCastThisTurnMatching { filter, .. } => replace_it_tag_in_filter(filter, tag),
+        Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
+            replace_it_tag_in_filter(source_filter, tag)
+        }
+        Value::PendingPriorEffectMetric(query) | Value::PriorEffectMetric { query, .. } => {
+            if let Some(filter) = query.filter.as_mut() {
+                replace_it_tag_in_filter(filter, tag);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn replace_it_tag_in_filter(filter: &mut ObjectFilter, tag: &TagKey) {
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == IT_TAG {
+            constraint.tag = tag.clone();
+        }
+    }
+    for comparison in [
+        filter.power.as_mut(),
+        filter.toughness.as_mut(),
+        filter.mana_value.as_mut(),
+        filter.color_count.as_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Comparison::EqualExpr(value)
+        | Comparison::NotEqualExpr(value)
+        | Comparison::LessThanExpr(value)
+        | Comparison::LessThanOrEqualExpr(value)
+        | Comparison::GreaterThanExpr(value)
+        | Comparison::GreaterThanOrEqualExpr(value) = comparison
+        {
+            replace_it_tag_in_value(value, tag);
+        }
+    }
+    for nested in [
+        filter.attached_to_object.as_deref_mut(),
+        filter.targets_object.as_deref_mut(),
+        filter.targets_only_object.as_deref_mut(),
+    ]
+    .into_iter()
+    .flatten()
+    {
+        replace_it_tag_in_filter(nested, tag);
+    }
+    for branch in &mut filter.any_of {
+        replace_it_tag_in_filter(branch, tag);
+    }
+}
+
 fn resolve_object_filter_player_refs(
     filter: &ObjectFilter,
     refs: &ReferenceEnv,
@@ -443,7 +538,29 @@ pub(crate) fn resolve_it_tag(
     filter: &ObjectFilter,
     refs: &ReferenceEnv,
 ) -> Result<ObjectFilter, CardTextError> {
-    let mut resolved = resolve_object_filter_player_refs(filter, refs)?;
+    // Search filters such as "a creature with exactly that many colors plus
+    // one" carry the sacrificial object as an outer constraint, while the
+    // aggregate value is initially parsed with the generic `it` marker. Bind
+    // that nested marker to the same sacrifice-cost object before the normal
+    // reference pass can discard an otherwise unbound `it` filter.
+    let mut filter_with_context = filter.clone();
+    if let Some(cost_tag) = filter.tagged_constraints.iter().find_map(|constraint| {
+        (constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str().starts_with("sacrifice_cost_"))
+        .then(|| constraint.tag.clone())
+    }) && let Some(color_count) = filter_with_context.color_count.as_mut()
+    {
+        if let Comparison::EqualExpr(value)
+        | Comparison::NotEqualExpr(value)
+        | Comparison::LessThanExpr(value)
+        | Comparison::LessThanOrEqualExpr(value)
+        | Comparison::GreaterThanExpr(value)
+        | Comparison::GreaterThanOrEqualExpr(value) = color_count
+        {
+            replace_it_tag_in_value(value, &cost_tag);
+        }
+    }
+    let mut resolved = resolve_object_filter_player_refs(&filter_with_context, refs)?;
     if let Some(attached_to_object) = resolved.attached_to_object.as_mut() {
         **attached_to_object = resolve_it_tag(attached_to_object, refs)?;
     }
@@ -1324,6 +1441,23 @@ pub(crate) fn resolve_target_spec_with_choices(
         }
         _ => choose_spec_for_target(target),
     };
+    if let TargetAst::Object(_filter, explicit_target_span, reference_span) = target
+        && refs.iterated_object
+        && explicit_target_span.is_none()
+        && reference_span.is_some()
+    {
+        // An implicit demonstrative inside a `for each ...` object loop (for
+        // example, "attach ... to that creature") denotes the current
+        // iteration object.  The grammar may retain only the descriptive
+        // filter, so resolve that reference from the loop's stable tag rather
+        // than lowering it as an unresolvable object filter.  Explicit
+        // `target ...` phrases intentionally remain ordinary target choices.
+        let tag = refs
+            .known_last_object_tag()
+            .cloned()
+            .unwrap_or_else(|| TagKey::from(IT_TAG));
+        spec = ChooseSpec::Tagged(tag);
+    }
     if let TargetAst::Player(filter, explicit_target_span) = target
         && explicit_target_span.is_none()
         && matches!(filter, PlayerFilter::Target(_))

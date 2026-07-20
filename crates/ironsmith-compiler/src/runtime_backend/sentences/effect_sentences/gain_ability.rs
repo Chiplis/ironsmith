@@ -62,17 +62,22 @@ type SharedSubjectGrant = (Vec<GrantedAbilityAst>, bool);
 
 fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let mut tokens = trim_edge_punctuation(tokens);
-    while tokens
-        .first()
-        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-    {
-        tokens = trim_edge_punctuation(&tokens[1..]);
-    }
-    while tokens
-        .last()
-        .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-    {
-        tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
+    loop {
+        if tokens
+            .first()
+            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+        {
+            tokens = trim_edge_punctuation(&tokens[1..]);
+            continue;
+        }
+        if tokens
+            .last()
+            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+        {
+            tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
+            continue;
+        }
+        break;
     }
     tokens
 }
@@ -546,6 +551,19 @@ fn parse_granted_ability_component_for_gain(
         ));
     }
 
+    if let Some(parsed) =
+        crate::runtime_backend::families::activation_and_restrictions::parse_equip_line_lexed(
+            &ability_tokens,
+        )?
+    {
+        return Ok(Some(vec![GrantedAbilityAst::ParsedObjectAbility {
+            display: parsed.text.clone().unwrap_or_else(|| {
+                crate::runtime_backend::lexer::token_word_refs(&ability_tokens).join(" ")
+            }),
+            ability: parsed,
+        }]));
+    }
+
     if let Some(abilities) = parse_static_ability_ast_line_lexed(&ability_tokens)? {
         return Ok(Some(parsed_static_granted_abilities(
             &ability_tokens,
@@ -592,11 +610,50 @@ fn granted_ability_conjunction_is_keyword_list(abilities: &[GrantedAbilityAst]) 
             .all(|ability| matches!(ability, GrantedAbilityAst::KeywordAction(_)))
 }
 
+fn split_quoted_granted_ability_list<'a>(
+    tokens: &'a [OwnedLexToken],
+) -> Option<Vec<&'a [OwnedLexToken]>> {
+    let open = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Quote)?;
+    let close = tokens
+        .iter()
+        .enumerate()
+        .skip(open + 1)
+        .find_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index))?;
+    let tail_start = close + 1;
+    if tokens.get(tail_start).and_then(OwnedLexToken::as_word) != Some("and") {
+        return None;
+    }
+    let prefix = trim_lexed_commas(tokens.get(..open)?);
+    let quoted = tokens.get(open..=close)?;
+    let tail = trim_lexed_commas(tokens.get(tail_start + 1..)?);
+    if prefix.is_empty() || quoted.is_empty() || tail.is_empty() {
+        return None;
+    }
+    Some(vec![prefix, quoted, tail])
+}
+
 pub(crate) fn parse_granted_abilities_for_gain_clause(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
     allow_choice: bool,
 ) -> Result<(Vec<GrantedAbilityAst>, bool), CardTextError> {
+    if let Some(segments) = split_quoted_granted_ability_list(ability_tokens) {
+        let mut abilities = Vec::new();
+        for segment in segments {
+            let parsed = parse_granted_ability_component_for_gain(segment, clause_words)?;
+            let Some(parsed) = parsed else {
+                abilities.clear();
+                break;
+            };
+            abilities.extend(parsed);
+        }
+        if !abilities.is_empty() {
+            return Ok((abilities, false));
+        }
+    }
+
     let comma_segments = split_lexed_slices_on_comma(ability_tokens);
     if comma_segments.len() > 1 {
         // Parse every comma-delimited item independently before trying the
@@ -785,7 +842,15 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
     ability_tokens: &[OwnedLexToken],
 ) -> Result<Vec<GrantedAbilityAst>, CardTextError> {
     let (name, card_types, subtypes) = token_definition_source_identity(definition);
-    if token_rule_is_already_lowered_by_specialized_shape(definition, ability_tokens, &name) {
+    // A quoted token ability may carry its normal rules-text label (for
+    // example, `Landfall — Whenever ...`). The label is presentation, while
+    // the trigger body is the executable ability that the nested parser must
+    // see.
+    let ability_tokens = crate::runtime_backend::front_end::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(ability_tokens)
+        .map_or(ability_tokens, |shape| shape.body_tokens);
+    let specialized =
+        token_rule_is_already_lowered_by_specialized_shape(definition, ability_tokens, &name);
+    if specialized {
         return Ok(Vec::new());
     }
     let clause_words = crate::runtime_backend::token_word_refs(ability_tokens);
@@ -800,9 +865,9 @@ pub(crate) fn parse_granted_abilities_for_token_definition(
             // incomplete trigger (for example, `Whenever this token blocks a
             // creature`) to triggered-line parsing and discard the rule.
             let starts_triggered_rule = ability_tokens.first().is_some_and(|token| {
-                token.as_word().is_some_and(|word| {
-                    gain_shapes::gain_word_is_when_intro(word)
-                        || (gain_shapes::gain_word_is_trigger_intro(word)
+                token.parser_word_pieces().first().is_some_and(|word| {
+                    gain_shapes::gain_word_is_when_intro(&word.text)
+                        || (gain_shapes::gain_word_is_trigger_intro(&word.text)
                             && ability_tokens
                                 .get(1)
                                 .is_some_and(|next| next.parser_text() == THE_WORD))
@@ -1321,6 +1386,22 @@ fn parse_simple_ability_modifier_clause_lexed(
             return Ok(player_effects.pop());
         }
         return Ok(None);
+    }
+
+    // "The chosen creature gains ..." names the accumulated chosen set, not
+    // a filtered grant over every creature.
+    if crate::runtime_backend::grammar::targets::parse_chosen_object_target(subject_tokens)
+        .is_some()
+    {
+        let target = parse_target_phrase(subject_tokens)?;
+        if losing {
+            return Ok(Some(EffectAst::subject_verb_remove_abilities_from_target(
+                target, abilities, duration,
+            )));
+        }
+        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
+            target, abilities, duration,
+        )));
     }
 
     let filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -2074,6 +2155,39 @@ fn parse_gain_ability_sentence_with_subject(
         return Ok(Some(effects));
     }
 
+    // "The chosen creature gains ..." names the accumulated chosen set, not
+    // a filtered grant over every creature.
+    if leading_become_effect.is_none()
+        && leading_base_pt_effect.is_none()
+        && pump_effect.is_none()
+        && following_grant.is_none()
+        && crate::runtime_backend::grammar::targets::parse_chosen_object_target(
+            &real_subject_tokens,
+        )
+        .is_some()
+    {
+        let target = parse_target_phrase(&real_subject_tokens)?;
+        let mut effects = effects;
+        if losing {
+            effects.push(EffectAst::subject_verb_remove_abilities_from_target(
+                target,
+                abilities,
+                duration.clone(),
+            ));
+        } else {
+            effects.push(
+                subject_verb_grant_abilities_to_target_with_optional_condition(
+                    target,
+                    abilities,
+                    duration.clone(),
+                    &duration_condition,
+                ),
+            );
+        }
+        effects = append_gain_ability_trailing_effects(effects, &trailing_tail_tokens)?;
+        return Ok(Some(effects));
+    }
+
     let filter =
         if let Some(filter) = parse_bare_card_type_subtype_union_filter(&real_subject_tokens) {
             filter
@@ -2342,11 +2456,10 @@ fn parse_granted_triggered_otherwise_ability(
     ability_tokens: &[OwnedLexToken],
     display: &str,
 ) -> Result<Option<ParsedAbility>, CardTextError> {
-    let start_idx = if ability_tokens.first().is_some_and(|token| {
-        token
-            .as_word()
-            .is_some_and(gain_shapes::gain_word_is_trigger_intro)
-    }) {
+    let start_idx = if ability_tokens
+        .first()
+        .is_some_and(|token| gain_shapes::gain_word_is_trigger_intro(token.parser_text()))
+    {
         1
     } else {
         0
@@ -2371,18 +2484,28 @@ fn parse_granted_triggered_otherwise_ability(
         return Ok(None);
     }
 
-    let mut conditional = parse_single_effect_sentence_for_granted_otherwise(&true_tokens)?;
-    let EffectAst::Conditional { if_false, .. } = &mut conditional else {
-        return Ok(None);
+    let true_effect = parse_single_effect_sentence_for_granted_otherwise(&true_tokens)?;
+    let mut conditional = match true_effect {
+        EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        } if if_false.is_empty() => EffectAst::Conditional {
+            predicate,
+            if_true,
+            if_false,
+        },
+        EffectAst::TrailingIf { predicate, effects } => EffectAst::Conditional {
+            predicate,
+            if_true: effects,
+            if_false: Vec::new(),
+        },
+        _ => return Ok(None),
     };
-    if !if_false.is_empty() {
-        return Ok(None);
-    }
-    *if_false = vec![parse_single_effect_sentence_for_granted_otherwise(
-        &false_tokens,
-    )?];
-    if if_false.is_empty() {
-        return Ok(None);
+    if let EffectAst::Conditional { if_false, .. } = &mut conditional {
+        *if_false = vec![parse_single_effect_sentence_for_granted_otherwise(
+            &false_tokens,
+        )?];
     }
 
     Ok(Some(parsed_triggered_ability(
@@ -2522,7 +2645,9 @@ mod tests {
         let debug = format!("{abilities:#?}");
         assert!(debug.contains("Indestructible"), "{debug}");
         assert!(
-            debug.contains("Equipped creature gets +5/+5 and has double strike"),
+            debug
+                .to_ascii_lowercase()
+                .contains("equipped creature gets +5/+5 and has double strike"),
             "{debug}"
         );
         assert!(debug.contains("Equip {0}"), "{debug}");
@@ -2582,7 +2707,15 @@ mod tests {
             .expect("leading-duration mixed grant should lower to runtime effects");
         let compiled_debug = format!("{compiled:#?}");
         assert!(compiled_debug.contains("Trample"), "{compiled_debug}");
-        assert!(compiled_debug.contains("Annihilator"), "{compiled_debug}");
+        // Annihilator is a keyword action in the AST, but lowers to its
+        // trigger-and-sacrifice runtime representation rather than retaining
+        // the keyword name in the compiled debug form.
+        assert!(
+            compiled_debug.contains("SacrificePlayerEffect"),
+            "{compiled_debug}"
+        );
+        let compact_debug: String = compiled_debug.split_whitespace().collect();
+        assert!(compact_debug.contains("count:Fixed(2"), "{compiled_debug}");
         assert!(compiled_debug.contains("Haste"), "{compiled_debug}");
     }
 
@@ -2992,22 +3125,30 @@ mod tests {
             .expect("conditional mass ability loss should produce effects");
 
         let [
-            EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action:
-                    SubjectVerbActionAst::RemoveAbilitiesAll {
-                        condition:
-                            Some(crate::ConditionExpr::ManaSpentToCastThisSpellAtLeast {
-                                amount: 1,
-                                symbol: Some(crate::mana::ManaSymbol::Green),
-                            }),
-                        ..
-                    },
-                ..
-            }),
+            EffectAst::Conditional {
+                predicate,
+                if_true,
+                if_false,
+            },
         ] = effects.as_slice()
         else {
-            panic!("expected condition on the mass ability-removal AST, got {effects:#?}");
+            panic!("expected conditional mass ability removal, got {effects:#?}");
         };
+        assert!(matches!(
+            predicate,
+            PredicateAst::ManaSpentToCastThisSpellAtLeast {
+                amount: 1,
+                symbol: Some(crate::mana::ManaSymbol::Green),
+            }
+        ));
+        assert!(matches!(
+            if_true.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RemoveAbilitiesAll { .. },
+                ..
+            })]
+        ));
+        assert!(if_false.is_empty());
 
         let compiled = compile_statement_effects(&effects)
             .expect("conditional mass ability loss should lower");
@@ -3266,8 +3407,7 @@ mod tests {
             assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
             assert!(debug.contains("ParsedObjectAbility"), "{debug}");
             assert!(
-                debug.contains("ForAsLongAs")
-                    && normalized_debug.contains(counter_name),
+                debug.contains("ForAsLongAs") && normalized_debug.contains(counter_name),
                 "{debug}"
             );
         }

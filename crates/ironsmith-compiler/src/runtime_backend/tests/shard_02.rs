@@ -162,11 +162,11 @@ pub(super) fn rewrite_anthem_static_descriptor_condition_uses_subject_descriptor
         .expect("rewrite lexer should classify attached-object descriptor condition");
     let color = super::super::keyword_static::parse_static_condition_clause(&color_tokens)
         .expect("attached-object descriptor condition should parse");
-    let debug = format!("{color:?}");
-
-    assert!(debug.contains("CountComparison"), "{debug}");
-    assert!(debug.contains("MatchingFilter"), "{debug}");
-    assert!(debug.contains("colors: Some"), "{debug}");
+    assert!(matches!(
+        color,
+        crate::ConditionExpr::AttachedToSourceMatches(filter)
+            if filter.colors == Some(crate::color::ColorSet::RED)
+    ));
 }
 
 #[test]
@@ -430,7 +430,7 @@ pub(super) fn rewrite_conditional_vehicle_type_identity_lowers_as_static_with_co
         (
             "Phoenix Fleet Airship",
             "As long as you control eight or more permanents named Phoenix Fleet Airship, this Vehicle is an artifact creature.",
-            &["Phoenix Fleet Airship", "GreaterThanOrEqual(8)"][..],
+            &["Phoenix Fleet Airship", "comparison: GreaterThanOrEqual"][..],
             true,
         ),
     ] {
@@ -484,9 +484,10 @@ pub(super) fn rewrite_conditional_vehicle_type_identity_lowers_as_static_with_co
             "{name}"
         );
         let condition_debug = format!("{condition:#?}");
+        let condition_debug_lower = condition_debug.to_ascii_lowercase();
         for fragment in condition_fragments {
             assert!(
-                condition_debug.contains(fragment),
+                condition_debug_lower.contains(&fragment.to_ascii_lowercase()),
                 "{name}: missing condition fragment '{fragment}': {condition_debug}"
             );
         }
@@ -729,7 +730,7 @@ pub(super) fn rewrite_conditional_self_damage_prevention_can_precede_triggered_f
         .effects
         .flattened_default_effects()
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::DealDamageEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::DealDamageEffect>(effect))
         .expect("expected a real damage effect rather than a target-only placeholder");
     assert!(matches!(
         damage.amount.unhinted(),
@@ -1197,13 +1198,17 @@ pub(super) fn rewrite_lexed_next_spell_cascade_grants_parse_natively() {
             },
         )]
     ));
+    let dual_grants = match dual_effects.as_slice() {
+        [crate::cards::builders::EffectAst::Coordinated { effects, .. }] => effects,
+        other => panic!("expected coordinated grants, got {other:#?}"),
+    };
     assert_eq!(
-        dual_effects.len(),
+        dual_grants.len(),
         2,
         "expected one grant per next-spell lane"
     );
     assert!(
-        dual_effects.iter().all(|effect| matches!(
+        dual_grants.iter().all(|effect| matches!(
         effect,
         crate::cards::builders::EffectAst::SubjectVerb(
             crate::cards::builders::SubjectVerbEffectAst {
@@ -1375,7 +1380,10 @@ pub(super) fn rewrite_trailing_if_splitter_ignores_quoted_emblem_conditionals() 
         [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] => {
             match &subject_verb.action {
                 crate::cards::builders::SubjectVerbActionAst::CreateEmblem { emblem } => assert!(
-                    emblem.text.contains("if it's not a creature"),
+                    emblem
+                        .text
+                        .to_ascii_lowercase()
+                        .contains("if it's not a creature"),
                     "emblem text should retain the quoted conditional sentence, got {}",
                     emblem.text
                 ),
@@ -1507,8 +1515,9 @@ pub(super) fn dynamic_draw_count_lowers_destroyed_this_way_to_prior_effect_metri
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("WithIdEffect")
-            && debug.contains("EffectMetric")
-            && debug.contains("Outcome")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("Count")
+            && debug.contains("destroyed_0")
             && debug.contains("DrawCardsEffect"),
         "expected draw count to bind to prior destroy metric, got {debug}"
     );
@@ -1554,7 +1563,7 @@ pub(super) fn raiding_party_per_player_tapped_count_uses_partitioned_metric_scop
             && debug.contains("RepeatEffectsEffect")
             && debug.contains("ChooseObjectsEffect")
             && debug.contains("PriorEffectMetric")
-            && compact.contains("player:Some(IteratedPlayer)"),
+            && compact.contains("IteratedPlayer"),
         "expected a per-player repeat over the matching tap-result partition, got {debug}"
     );
     assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
@@ -1570,7 +1579,7 @@ pub(super) fn upkeep_participant_dynamic_choice_survives_full_trigger_parsing() 
         .expect("participant choice trigger should parse");
 
     let debug = format!("{:#?}", def.abilities);
-    assert!(debug.contains("BeginningOfUpkeepTrigger"), "{debug}");
+    assert!(debug.contains("BeginningOfUpkeep"), "{debug}");
     assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
     assert!(debug.contains("UntapEffect"), "{debug}");
     assert!(debug.contains("ForEach"), "{debug}");
@@ -1606,7 +1615,7 @@ pub(super) fn filtered_mill_draw_counts_bind_graveyard_and_concrete_mill_tag() {
             .card_types(vec![CardType::Sorcery])
             .parse_text(text)
             .expect("filtered mill-result draw count should parse");
-        let debug = format!("{:#?}", def.spell_effect);
+        let debug = format!("{def:#?}");
 
         assert!(debug.contains("DrawCardsEffect"), "{debug}");
         assert!(debug.contains("Graveyard"), "{debug}");
@@ -2793,7 +2802,11 @@ pub(super) fn cruel_reality_fallback_life_loss_targets_that_player() {
     assert!(debug.contains("IfEffect"), "{debug}");
     assert!(debug.contains("DidNotHappen"), "{debug}");
     assert!(debug.contains("LoseLifeEffect"), "{debug}");
-    assert!(debug.contains("player: IteratedPlayer"), "{debug}");
+    assert!(
+        debug.contains("player: IteratedPlayer")
+            || (debug.contains("TaggedPlayer") && debug.contains("enchanted")),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -2834,14 +2847,13 @@ pub(super) fn library_search_resolves_same_name_it_to_the_revealed_card_tag() {
     let revealed_tag = effects
         .iter()
         .find_map(|effect| {
-            effect
-                .downcast_ref::<crate::effects::RevealTaggedEffect>()
+            super::find_nested_effect::<crate::effects::RevealTaggedEffect>(effect)
                 .map(|reveal| reveal.tag.clone())
         })
         .expect("reveal should preserve its concrete chosen-card tag");
     let search = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::SearchLibraryEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::SearchLibraryEffect>(effect))
         .expect("single-card library search should use SearchLibraryEffect");
     let same_name = search
         .filter

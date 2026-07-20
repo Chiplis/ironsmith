@@ -475,6 +475,12 @@ fn compile_effect_inner(
     if let EffectAst::Sequence { effects } = effect {
         return compile_effects(effects, ctx);
     }
+    if let EffectAst::SourceSentence { effects } = effect {
+        // SourceSentence is compiler-only provenance used to keep one Oracle
+        // sentence together while references are resolved. It has no
+        // separate runtime effect; lower its typed children in order.
+        return compile_effects(effects, ctx);
+    }
     if let EffectAst::Coordinated {
         effects,
         leading_duration,

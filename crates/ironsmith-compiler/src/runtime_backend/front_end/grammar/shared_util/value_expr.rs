@@ -356,6 +356,8 @@ pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
         let rhs = if permission_shapes::exact_words(&[operator], &["minus"]) {
             match rhs {
                 Value::Fixed(fixed) => Value::Fixed(-fixed),
+                Value::X => Value::XTimes(-1),
+                Value::XTimes(multiplier) => Value::XTimes(-multiplier),
                 _ => return None,
             }
         } else {
@@ -481,6 +483,7 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
             ],
             &["the", "excess", "damage", "dealt", "this", "way"],
             &["excess", "damage", "dealt", "this", "way"],
+            &["that", "amount", "of", "excess", "damage"],
         ],
     ) {
         return Some((

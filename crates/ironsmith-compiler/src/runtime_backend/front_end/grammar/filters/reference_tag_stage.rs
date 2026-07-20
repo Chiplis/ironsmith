@@ -136,6 +136,19 @@ fn filter_comparison_rhs_ranges(
             if parse_phrase_at_head(&words[idx..], MANA_VALUE_PREFIX).is_some() {
                 ("mana value", MANA_VALUE_PREFIX.len())
             } else if words[idx] == POWER_WORD {
+                // In "total power and toughness N or less", `power` is
+                // part of the compound axis, not the start of an ordinary
+                // power comparison.  Treating the following `and` as the
+                // comparison operand produces a misleading dynamic-value
+                // error before the dedicated total-PT pass can handle it.
+                if idx > 0
+                    && words[idx - 1] == "total"
+                    && words.get(idx + 1) == Some(&"and")
+                    && words.get(idx + 2) == Some(&"toughness")
+                {
+                    idx += 1;
+                    continue;
+                }
                 ("power", 1)
             } else if words[idx] == TOUGHNESS_WORD {
                 ("toughness", 1)
@@ -143,6 +156,21 @@ fn filter_comparison_rhs_ranges(
                 idx += 1;
                 continue;
             };
+
+        // Relational P/T phrases such as "toughness greater than their
+        // power" are handled by the dedicated relation pass below.  Do not
+        // send their pronoun operand through the generic scalar-comparison
+        // parser, which quite reasonably rejects `their` as a dynamic value.
+        if (axis == "toughness"
+            && parse_phrase_choice_at_head(&words[idx..], TOUGHNESS_GREATER_THAN_POWER_PHRASES)
+                .is_some())
+            || (axis == "power"
+                && parse_phrase_choice_at_head(&words[idx..], POWER_GREATER_THAN_TOUGHNESS_PHRASES)
+                    .is_some())
+        {
+            idx += axis_word_count;
+            continue;
+        }
 
         let rhs_start = idx + axis_word_count;
         let Some((_, consumed)) = parse_filter_comparison_tokens(axis, &words[rhs_start..], words)?
@@ -591,9 +619,11 @@ pub(super) fn parse_object_filter_inner(
         // control" constrains what is targeted, never how many targets the
         // spell has. Only an explicit count ("that targets two ...") narrows
         // the relation's target count.
-        let leading_article = target_tokens
-            .first()
-            .is_some_and(|token| token.as_word().is_some_and(|word| word == "a" || word == "an"));
+        let leading_article = target_tokens.first().is_some_and(|token| {
+            token
+                .as_word()
+                .is_some_and(|word| word == "a" || word == "an")
+        });
         if !leading_article
             && let Some((count, rest)) = primitives::parse_prefix(
                 target_tokens,
@@ -749,7 +779,19 @@ pub(super) fn parse_object_filter_inner(
                     attached_to_words[0].to_string(),
                 ))
             } else {
-                parse_object_filter_permissive(&attached_to_tokens, false)?
+                let mut attached = parse_object_filter_permissive(&attached_to_tokens, false)?;
+                // `this creature` is both a source identity reference and a
+                // typed object selector. Preserve the noun on the nested
+                // filter so attachment legality does not widen to every
+                // source object.
+                if attached.source
+                    && attached.card_types.is_empty()
+                    && attached_to_words.len() == 2
+                    && let Some(card_type) = parse_card_type(attached_to_words[1])
+                {
+                    attached.card_types.push(card_type);
+                }
+                attached
             };
             filter.attached_to_object = Some(Box::new(attached_to));
         }
@@ -1070,11 +1112,7 @@ pub(super) fn parse_object_filter_inner(
     // Token provenance is a source-instance relationship. Consume the source
     // noun before the ordinary type pass can misread "this enchantment" as a
     // requirement that the selected token itself be an enchantment.
-    try_apply_created_with_source_clause(
-        &mut filter,
-        &mut all_words,
-        &mut segment_tokens,
-    );
+    try_apply_created_with_source_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // "... entered the battlefield ... this turn" marks a battlefield entry this turn.
     try_apply_entered_battlefield_this_turn_clause(
@@ -1551,6 +1589,19 @@ pub(super) fn parse_object_filter_inner(
                 &all_words[idx - 3..idx],
                 ["total", "power", "and"] | ["base", "power", "and"] | ["power", "and", "base"]
             )
+        {
+            idx += 1;
+            continue;
+        }
+        if (axis == TOUGHNESS_WORD
+            && parse_phrase_choice_at_head(&all_words[idx..], TOUGHNESS_GREATER_THAN_POWER_PHRASES)
+                .is_some())
+            || (axis == POWER_WORD
+                && parse_phrase_choice_at_head(
+                    &all_words[idx..],
+                    POWER_GREATER_THAN_TOUGHNESS_PHRASES,
+                )
+                .is_some())
         {
             idx += 1;
             continue;

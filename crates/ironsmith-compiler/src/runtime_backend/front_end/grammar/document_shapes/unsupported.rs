@@ -20,7 +20,6 @@ pub(crate) enum UnsupportedRewriteLineKind {
     SameNameDiscard,
     MixedEntersTappedUntap,
     PreventCombatDamageTail,
-    AssignsNoCombatDamage,
     DefendingPlayerChoice,
     SacrificeIslandThisWay,
     AuraCopyAttachment,
@@ -58,7 +57,6 @@ impl UnsupportedRewriteLineKind {
                 "unsupported mixed enters-tapped and negated-untap clause"
             }
             Self::PreventCombatDamageTail => "unsupported prevent-all-combat-damage clause tail",
-            Self::AssignsNoCombatDamage => "unsupported assigns-no-combat-damage clause",
             Self::DefendingPlayerChoice => "unsupported defending-players-choice clause",
             Self::SacrificeIslandThisWay => {
                 "unsupported if-you-sacrifice-an-island-this-way clause"
@@ -221,22 +219,6 @@ const RULES: &[UnsupportedRule] = &[
             "power",
         ],
         kind: UnsupportedRewriteLineKind::PreventCombatDamageTail,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "assigns",
-            "no",
-            "combat",
-            "damage",
-            "this",
-            "turn",
-            "and",
-            "defending",
-            "player",
-            "loses",
-        ],
-        kind: UnsupportedRewriteLineKind::AssignsNoCombatDamage,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,

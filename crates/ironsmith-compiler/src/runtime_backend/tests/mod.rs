@@ -30,6 +30,21 @@ use super::{
 };
 use crate::runtime_backend::util::parse_value_expr_words;
 
+fn find_nested_effect<'a, T: 'static>(effect: &'a crate::effect::Effect) -> Option<&'a T> {
+    if let Some(found) = effect.downcast_ref::<T>() {
+        return Some(found);
+    }
+    let mut found: Option<*const T> = None;
+    effect.visit_child_effects(&mut |child| {
+        if found.is_none() {
+            found = find_nested_effect::<T>(child).map(|value| value as *const T);
+        }
+    });
+    // The child effects are owned by `effect` for the duration of this call,
+    // so the pointer remains valid for the returned borrow.
+    unsafe { found.map(|pointer| &*pointer) }
+}
+
 fn rewrite_parsed_line(item: &RewriteSemanticItem) -> Option<&ParsedLineAst> {
     match item {
         RewriteSemanticItem::ParsedLine(line) => Some(line),

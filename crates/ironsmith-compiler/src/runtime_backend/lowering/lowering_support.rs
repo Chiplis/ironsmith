@@ -44,6 +44,98 @@ use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, Ref
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
 use super::static_ability_helpers::executable_object_abilities_for_keyword_action;
 
+pub(crate) fn replace_pending_removed_counter_metrics_with_x(effects: &mut [EffectAst]) {
+    fn replace_value(value: &mut Value) {
+        let hints = value.surface_hints().to_vec();
+        if matches!(
+            value.unhinted(),
+            Value::PendingPriorEffectMetric(query)
+                if query.action == Some(ironsmith_core::PriorEffectAction::Removed)
+        ) {
+            *value = Value::X.with_surface_hints(hints);
+            return;
+        }
+        match value {
+            Value::Add(left, right) | Value::Min(left, right) => {
+                replace_value(left);
+                replace_value(right);
+            }
+            Value::Scaled(inner, _)
+            | Value::DividedRoundedDown(inner, _)
+            | Value::HalfRoundedDown(inner)
+            | Value::SurfaceHinted { value: inner, .. } => replace_value(inner),
+            _ => {}
+        }
+    }
+
+    fn replace_effect(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect {
+            match &mut subject_verb.action {
+                SubjectVerbActionAst::AddManaScaled { amount, .. }
+                | SubjectVerbActionAst::AddManaAnyColor { amount, .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { amount }
+                | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
+                | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
+                    replace_value(amount)
+                }
+                _ => {}
+            }
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                replace_effect(nested_effect);
+            }
+        });
+    }
+
+    for effect in effects {
+        replace_effect(effect);
+    }
+}
+
+fn predicate_counts_creature_deaths(predicate: &PredicateAst) -> bool {
+    match predicate {
+        PredicateAst::CreatureDiedThisTurn | PredicateAst::CreatureDiedThisTurnOrMore(_) => true,
+        PredicateAst::And(left, right) | PredicateAst::Or(left, right) => {
+            predicate_counts_creature_deaths(left) || predicate_counts_creature_deaths(right)
+        }
+        PredicateAst::Not(inner) => predicate_counts_creature_deaths(inner),
+        PredicateAst::ValueComparison { left, right, .. } => {
+            fn value_counts_creature_deaths(value: &Value) -> bool {
+                match value {
+                    Value::CreaturesDiedThisTurn
+                    | Value::CreaturesDiedThisTurnControlledBy(_)
+                    | Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(_)) => true,
+                    Value::SurfaceHinted { value, .. }
+                    | Value::Scaled(value, _)
+                    | Value::DividedRoundedDown(value, _)
+                    | Value::HalfRoundedDown(value) => value_counts_creature_deaths(value),
+                    Value::Add(left, right) | Value::Min(left, right) => {
+                        value_counts_creature_deaths(left) || value_counts_creature_deaths(right)
+                    }
+                    _ => false,
+                }
+            }
+            value_counts_creature_deaths(left) || value_counts_creature_deaths(right)
+        }
+        _ => false,
+    }
+}
+
+fn trigger_allows_event_derived_life_value(trigger: &TriggerSpec) -> bool {
+    trigger_supports_event_value(trigger, &EventValueSpec::Amount)
+        || match trigger {
+            TriggerSpec::WithIntro { trigger, .. } => {
+                trigger_allows_event_derived_life_value(trigger)
+            }
+            TriggerSpec::StateBased { condition, .. } => {
+                predicate_counts_creature_deaths(condition)
+            }
+            _ => false,
+        }
+}
+
 fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
     match target {
         TargetAst::Tagged(_, _)
@@ -60,6 +152,103 @@ fn target_can_establish_local_object_reference(target: &TargetAst) -> bool {
         | TargetAst::AttackedPlayerOrPlaneswalker(_)
         | TargetAst::Spell(_) => false,
     }
+}
+
+fn replace_creature_death_event_amounts(effects: &mut [EffectAst]) {
+    fn replace_value(value: &mut Value) {
+        let hints = value.surface_hints().to_vec();
+        if matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount)) {
+            *value = Value::CreaturesDiedThisTurn.with_surface_hints(hints);
+        }
+    }
+
+    fn replace_effect(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect {
+            match &mut subject_verb.action {
+                SubjectVerbActionAst::Draw { count }
+                | SubjectVerbActionAst::Mill { count }
+                | SubjectVerbActionAst::ExileTopOfLibrary { count, .. }
+                | SubjectVerbActionAst::Scry { count }
+                | SubjectVerbActionAst::Surveil { count }
+                | SubjectVerbActionAst::Proliferate { count }
+                | SubjectVerbActionAst::Investigate { count }
+                | SubjectVerbActionAst::Discover { count }
+                | SubjectVerbActionAst::Fateseal { count }
+                | SubjectVerbActionAst::Populate { count, .. }
+                | SubjectVerbActionAst::Connive { count, .. }
+                | SubjectVerbActionAst::CreateTokenCopy { count, .. }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource { count, .. }
+                | SubjectVerbActionAst::CreateTokenWithMods { count, .. }
+                | SubjectVerbActionAst::Incubate { amount: count, .. }
+                | SubjectVerbActionAst::Monstrosity { amount: count }
+                | SubjectVerbActionAst::LoseLife { amount: count }
+                | SubjectVerbActionAst::PayLife { amount: count }
+                | SubjectVerbActionAst::GainLife { amount: count }
+                | SubjectVerbActionAst::DealDamage { amount: count, .. }
+                | SubjectVerbActionAst::DealDamageEqualToPower { amount: count, .. }
+                | SubjectVerbActionAst::DealDistributedDamage { amount: count, .. }
+                | SubjectVerbActionAst::DealDamageEach { amount: count, .. }
+                | SubjectVerbActionAst::PreventDamage { amount: count, .. }
+                | SubjectVerbActionAst::PreventDamageEach { amount: count, .. }
+                | SubjectVerbActionAst::CopySpell { count, .. }
+                | SubjectVerbActionAst::PutCounters { count, .. }
+                | SubjectVerbActionAst::PutCounterChoice { count, .. }
+                | SubjectVerbActionAst::PutCountersAll { count, .. }
+                | SubjectVerbActionAst::RemoveUpToAnyCounters { amount: count, .. }
+                | SubjectVerbActionAst::RemoveCountersAll { amount: count, .. }
+                | SubjectVerbActionAst::Discard { count, .. }
+                | SubjectVerbActionAst::PoisonCounters { count }
+                | SubjectVerbActionAst::EnergyCounters { count }
+                | SubjectVerbActionAst::ExperienceCounters { count }
+                | SubjectVerbActionAst::TicketCounters { count }
+                | SubjectVerbActionAst::PayEnergy { amount: count }
+                | SubjectVerbActionAst::SetLifeTotal { amount: count }
+                | SubjectVerbActionAst::AddManaScaled { amount: count, .. }
+                | SubjectVerbActionAst::AddManaAnyColor { amount: count, .. }
+                | SubjectVerbActionAst::AddManaAnyOneColor { amount: count }
+                | SubjectVerbActionAst::AddManaChosenColor { amount: count, .. }
+                | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount: count, .. }
+                | SubjectVerbActionAst::AddManaCommanderIdentity { amount: count }
+                | SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
+                    amount: count,
+                    ..
+                }
+                | SubjectVerbActionAst::LookAtTopCards { count, .. }
+                | SubjectVerbActionAst::MoveToLibraryNthFromTop {
+                    position: count, ..
+                }
+                | SubjectVerbActionAst::AdditionalLandPlays { count, .. }
+                | SubjectVerbActionAst::HealDamage {
+                    amount: Some(count),
+                    ..
+                } => replace_value(count),
+                _ => {}
+            }
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                replace_effect(nested_effect);
+            }
+        });
+    }
+
+    for effect in effects {
+        replace_effect(effect);
+    }
+}
+
+fn effects_have_creature_death_gate(effects: &[EffectAst]) -> bool {
+    effects.iter().any(|effect| {
+        let mut found = matches!(
+            effect,
+            EffectAst::Conditional { predicate, .. }
+                if predicate_counts_creature_deaths(predicate)
+        );
+        for_each_nested_effects(effect, true, |nested| {
+            found |= effects_have_creature_death_gate(nested);
+        });
+        found
+    })
 }
 
 fn damaged_death_condition_target_filter(condition: &Condition) -> Option<ObjectFilter> {
@@ -796,7 +985,11 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
     let mut helper_choices = std::collections::HashMap::<String, (usize, bool)>::new();
     let mut last_aggregate_exile = None;
 
-    for effect in effects {
+    fn collect(
+        effect: &EffectAst,
+        helper_choices: &mut std::collections::HashMap<String, (usize, bool)>,
+        last_aggregate_exile: &mut Option<crate::cards::builders::TagKey>,
+    ) {
         if let EffectAst::ChooseObjects { tag, count, .. } = effect
             && is_sentence_helper_exiled_collection_tag(tag.as_str())
         {
@@ -806,19 +999,30 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
             entry.0 += 1;
             entry.1 |= count.max.map_or(true, |max| max > 1);
         }
-
         if let EffectAst::SubjectVerb(subject_verb) = effect
             && let SubjectVerbActionAst::Exile { target, .. } = &subject_verb.action
             && let Some(tag) = tagged_target_key(target)
             && let Some((choice_count, explicitly_plural)) = helper_choices.get(tag.as_str())
             && (*choice_count > 1 || *explicitly_plural)
         {
-            last_aggregate_exile = Some(tag.clone());
+            *last_aggregate_exile = Some(tag.clone());
         }
+        for_each_nested_effects(effect, true, |nested| {
+            for child in nested {
+                collect(child, helper_choices, last_aggregate_exile);
+            }
+        });
+    }
 
-        if let Some(tag) = last_aggregate_exile.as_ref()
-            && let EffectAst::SubjectVerb(subject_verb) = effect
-        {
+    for effect in effects.iter() {
+        collect(effect, &mut helper_choices, &mut last_aggregate_exile);
+    }
+
+    let Some(tag) = last_aggregate_exile else {
+        return;
+    };
+    fn rewrite(effect: &mut EffectAst, tag: &crate::cards::builders::TagKey) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect {
             let replacement = match &subject_verb.action {
                 SubjectVerbActionAst::ReturnToBattlefield {
                     target,
@@ -851,8 +1055,14 @@ fn rebind_aggregate_source_exiled_returns(effects: &mut [EffectAst]) {
                 subject_verb.action = replacement;
             }
         }
-
-        for_each_nested_effects_mut(effect, true, rebind_aggregate_source_exiled_returns);
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for child in nested {
+                rewrite(child, tag);
+            }
+        });
+    }
+    for effect in effects {
+        rewrite(effect, &tag);
     }
 }
 
@@ -868,7 +1078,17 @@ fn rewrite_prepare_effects_from_normalized(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let (flattened_effects, source_sentence_effect_counts) =
         flatten_top_level_source_sentences(semantic_effects);
-    semantic_effects = flattened_effects;
+    // Source-sentence flattening can expose a cross-sentence construct that
+    // was not visible when the individual sentence wrappers were normalized
+    // (notably `... If you do, repeat this process`). The special shared
+    // lowering paths return no sentence counts, so normalize those flattened
+    // sequences again without disturbing the counts used by ordinary source
+    // sentence segmentation.
+    semantic_effects = if source_sentence_effect_counts.is_empty() {
+        normalize_effects_ast(&flattened_effects)
+    } else {
+        flattened_effects
+    };
     rebind_aggregate_source_exiled_returns(&mut semantic_effects);
     let mut prelude = Vec::new();
     for tag in ["equipped", "enchanted"] {
@@ -980,12 +1200,29 @@ fn source_sentence_boundary_continues_repeat_process(
     effects: &[EffectAst],
     boundary: usize,
 ) -> bool {
-    boundary + 1 == effects.len()
-        && matches!(
-            effects.get(boundary),
-            Some(EffectAst::IfResult { effects, .. })
-                if matches!(effects.last(), Some(EffectAst::RepeatThisProcess))
+    if boundary + 1 != effects.len() {
+        return false;
+    }
+    if matches!(
+        effects.get(boundary),
+        Some(
+            EffectAst::RepeatThisProcess
+                | EffectAst::RepeatThisProcessOnce
+                | EffectAst::RepeatThisProcessMay
         )
+    ) {
+        return true;
+    }
+    let Some(EffectAst::IfResult { effects, .. }) = effects.get(boundary) else {
+        return false;
+    };
+    match effects.last() {
+        Some(EffectAst::RepeatThisProcess) => true,
+        Some(EffectAst::Coordinated { effects, .. }) => {
+            matches!(effects.last(), Some(EffectAst::RepeatThisProcess))
+        }
+        _ => false,
+    }
 }
 
 fn push_unique_source_sentence_hand_tag(tags: &mut Vec<TagKey>, tag: &TagKey) {
@@ -1175,6 +1412,9 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let mut normalized = normalize_effects_ast(effects);
+    if effects_have_creature_death_gate(&normalized) {
+        replace_creature_death_event_amounts(&mut normalized);
+    }
     if let Some(antecedent_tag) = trigger.and_then(default_trigger_last_object_tag) {
         bind_trigger_antecedent_after_top_library_observation(
             &mut normalized,
@@ -1221,9 +1461,8 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
         &normalized,
         imports,
         EffectReferenceResolutionConfig {
-            allow_life_event_value: trigger
-                .map(|t| trigger_supports_event_value(t, &EventValueSpec::Amount))
-                .unwrap_or(false),
+            allow_life_event_value: trigger.is_some_and(trigger_allows_event_derived_life_value)
+                || effects_have_creature_death_gate(&normalized),
             ..Default::default()
         },
         trigger.and_then(inferred_trigger_player_filter),
@@ -1412,6 +1651,12 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             replace_exile_top_event_count_with_triggering_counter_count(effect);
         }
     }
+    if intervening_if
+        .as_ref()
+        .is_some_and(predicate_counts_creature_deaths)
+    {
+        replace_creature_death_event_amounts(&mut body_effects);
+    }
     imports.source_object_antecedent |= intervening_if
         .as_ref()
         .is_some_and(PredicateAst::establishes_source_object_antecedent);
@@ -1506,12 +1751,16 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         (None, None)
     };
 
+    let allow_life_event_value = trigger_allows_event_derived_life_value(&trigger)
+        || intervening_if
+            .as_ref()
+            .is_some_and(predicate_counts_creature_deaths);
     let prepared = rewrite_prepare_effects_from_normalized(
         body_effects,
         &normalized,
         imports,
         EffectReferenceResolutionConfig {
-            allow_life_event_value: trigger_supports_event_value(&trigger, &EventValueSpec::Amount),
+            allow_life_event_value,
             ..Default::default()
         },
         inferred_trigger_player_filter(&trigger),
@@ -1901,6 +2150,8 @@ pub(crate) fn rewrite_static_ability_for_keyword_action(
         KeywordAction::Phasing => Some(StaticAbility::phasing()),
         KeywordAction::Indestructible => Some(StaticAbility::indestructible()),
         KeywordAction::Shroud => Some(StaticAbility::shroud()),
+        KeywordAction::Daybound => Some(StaticAbility::daybound()),
+        KeywordAction::Nightbound => Some(StaticAbility::nightbound()),
         KeywordAction::Ward(amount) => u8::try_from(amount).ok().map(|generic| {
             StaticAbility::ward(crate::cost::TotalCost::mana(ManaCost::from_symbols(vec![
                 ManaSymbol::Generic(generic),

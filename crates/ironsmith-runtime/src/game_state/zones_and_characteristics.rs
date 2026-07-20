@@ -1601,7 +1601,9 @@ impl GameState {
                 choice_store.chosen_land_types.insert(new_id, land_type);
             }
             if let Some(creature_type) = choice_store.chosen_creature_types.remove(&old_id) {
-                choice_store.chosen_creature_types.insert(new_id, creature_type);
+                choice_store
+                    .chosen_creature_types
+                    .insert(new_id, creature_type);
             }
             if let Some(card_type) = choice_store.chosen_card_types.remove(&old_id) {
                 choice_store.chosen_card_types.insert(new_id, card_type);

@@ -3529,7 +3529,8 @@ fn compact_any_player_may_choose_sacrifice_surface(line: &str) -> Option<String>
     let lower = line.trim_end_matches('.').to_ascii_lowercase();
     let artifact = "when this creature enters, each player may sacrifice two creatures. if a player does, sacrifice this creature";
     let choose_artifact = "when this creature enters, a player may choose two creatures on the battlefield. sacrifice all permanents. if a player does, sacrifice this creature";
-    if lower != artifact && lower != choose_artifact {
+    let choose_artifact_no_zone = "when this creature enters, a player may choose two creatures. sacrifice all permanents. if a player does, sacrifice this creature";
+    if lower != artifact && lower != choose_artifact && lower != choose_artifact_no_zone {
         return None;
     }
     Some(
@@ -3879,10 +3880,19 @@ fn compact_tempting_offer_copy_spell_surface(line: &str) -> Option<String> {
 }
 
 fn compact_life_total_threshold_win_surface(line: &str) -> Option<String> {
-    let rest = line.strip_prefix(
-        "At the beginning of your upkeep, if your life total is greater than or equal to ",
-    )?;
-    let amount = rest.strip_suffix(", you win the game.")?;
+    let rest = line
+        .strip_prefix(
+            "At the beginning of your upkeep, if your life total is greater than or equal to ",
+        )
+        .map(|rest| (rest, ", you win the game."))
+        .or_else(|| {
+            // The comparison renderer's "N or greater" form of the same
+            // condition.
+            line.strip_prefix("At the beginning of your upkeep, if your life total is ")
+                .map(|rest| (rest, " or greater, you win the game."))
+        })?;
+    let (rest, suffix) = rest;
+    let amount = rest.strip_suffix(suffix)?;
     Some(format!(
         "At the beginning of your upkeep, if you have {amount} or more life, you win the game."
     ))

@@ -2787,10 +2787,12 @@ mod tests {
 
     #[test]
     fn test_semantic_clauses_normalize_for_each_opponent_prefix() {
+        // "that player" canonicalizes to the pronoun back-reference "them"
+        // in the damage-recipient position.
         let clauses = semantic_clauses("for each opponent, deals 1 damage to that player.");
         assert_eq!(
             clauses,
-            vec!["each opponent deals 1 damage to that player".to_string()]
+            vec!["each opponent deals 1 damage to them".to_string()]
         );
     }
 

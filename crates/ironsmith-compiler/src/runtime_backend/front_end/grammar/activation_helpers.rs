@@ -254,6 +254,23 @@ pub(crate) fn parse_any_combination_mana_colors(
     Ok(Some(colors))
 }
 
+pub(crate) fn parse_any_combination_mana_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let words = TokenWordView::new(tokens).word_refs();
+    let offset = phrase_offset(&words, ANY_COMBINATION_OF_PHRASE)?;
+    let where_word = words
+        .iter()
+        .enumerate()
+        .skip(offset + 3)
+        .find_map(|(index, word)| (*word == "where").then_some(index))?;
+    let where_token = TokenWordView::new(tokens)
+        .token_start_indices()
+        .get(where_word)
+        .copied()?;
+    tokens.get(where_token..)
+}
+
 pub(crate) fn is_mana_pool_tail(tokens: &[OwnedLexToken]) -> bool {
     let words = TokenWordView::new(tokens).word_refs();
     phrase_is_prefix(&words, &["to"])

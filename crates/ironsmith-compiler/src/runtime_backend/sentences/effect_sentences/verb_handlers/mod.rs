@@ -33,7 +33,7 @@ use super::super::object_filters::parse_object_filter;
 use super::super::util::{
     mana_pips_from_token, parse_choice_count_before_target_prefix, parse_mana_symbol, parse_number,
     parse_target_phrase, parse_value, replace_unbound_x_with_value, span_from_tokens, trim_commas,
-    value_contains_unbound_x, wrap_target_count,
+    trim_edge_punctuation, value_contains_unbound_x, wrap_target_count,
 };
 use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};

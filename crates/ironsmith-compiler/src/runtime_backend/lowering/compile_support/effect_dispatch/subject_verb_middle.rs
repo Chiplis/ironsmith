@@ -1851,6 +1851,38 @@ pub(super) fn compile_subject_verb_middle(
                 })
                 .map(Some);
             };
+
+            // The generic granted-ability parser can represent
+            // "spells with the chosen name cost ... less to cast this turn"
+            // as a cost-reduction ability aimed at the synthetic chosen-name
+            // tag. This is a resolving, turn-long effect, so lower it to the
+            // temporary reduction model rather than installing a permanent
+            // static ability on the source.
+            if matches!(
+                target,
+                TargetAst::Tagged(tag, _)
+                    if tag.as_str() == "__chosen_name__" || tag.as_str() == "__it__"
+            )
+                && modifications.len() == 1
+                && matches!(duration, Until::Forever)
+                && let crate::continuous::Modification::AddAbility(ability) = first_modification
+                && let crate::static_abilities::StaticAbilityPayload::CostReduction(reduction) =
+                    &ability.payload
+            {
+                let mut filter = reduction.filter.clone();
+                filter.name = Some("{chosen name}".to_string());
+                return Ok(Some((
+                    vec![Effect::new(
+                        crate::effects::GrantNextSpellCostReductionEffect::all_matching_until(
+                            PlayerFilter::Any,
+                            filter,
+                            reduction.amount.clone(),
+                            Until::EndOfTurn,
+                        ),
+                    )],
+                    Vec::new(),
+                )));
+            }
             let resolved_condition = condition
                 .as_ref()
                 .map(|condition| resolve_tagged_top_library_condition(condition, ctx))

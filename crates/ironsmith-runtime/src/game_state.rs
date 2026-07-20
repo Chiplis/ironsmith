@@ -61,9 +61,7 @@ mod vanguard;
 mod zones_and_characteristics;
 pub use alternating_teams::AlternatingTeamsState;
 pub use attack_direction::AttackDirection;
-pub use commander_draft::{
-    CommanderDraftBooster, CommanderDraftProduct, CommanderDraftState,
-};
+pub use commander_draft::{CommanderDraftBooster, CommanderDraftProduct, CommanderDraftState};
 pub use conspiracy::{
     ConspiracyDraftState, DraftCard, DraftCardView, DraftSelection, DraftVisibility,
 };

@@ -995,6 +995,42 @@ fn preserve_triggered_effect_surfaces(
     parsed
 }
 
+fn full_text_has_non_mana_activated_ability_qualifier(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    words.windows(6).any(|window| {
+        window[0] == "if"
+            && window[1] == "it"
+            && matches!(window[2], "isnt" | "isn't" | "not")
+            && window[3] == "a"
+            && window[4] == "mana"
+            && window[5] == "ability"
+    })
+}
+
+fn mark_non_mana_activated_trigger(trigger: &mut TriggerSpec) {
+    match trigger {
+        TriggerSpec::AbilityActivated { non_mana_only, .. } => *non_mana_only = true,
+        TriggerSpec::WithIntro { trigger, .. } => mark_non_mana_activated_trigger(trigger),
+        TriggerSpec::Either(left, right) => {
+            mark_non_mana_activated_trigger(left);
+            mark_non_mana_activated_trigger(right);
+        }
+        _ => {}
+    }
+}
+
+fn mark_non_mana_activated_line(line: &mut LineAst) {
+    match line {
+        LineAst::Multiple(chunks) => {
+            for chunk in chunks {
+                mark_non_mana_activated_line(chunk);
+            }
+        }
+        LineAst::Triggered { trigger, .. } => mark_non_mana_activated_trigger(trigger),
+        _ => {}
+    }
+}
+
 fn parse_triggered_ability_line_impl(
     line: &RewriteTriggeredLine,
     full_parse_tokens: &[OwnedLexToken],
@@ -1280,7 +1316,12 @@ fn parse_triggered_ability_line_impl(
         && !full_text_facts.has_if_you_dont
         && !effect_text_facts.starts_with_if
     {
-        let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens);
+        let direct_trigger = parse_trigger_clause_lexed(trigger_parse_tokens).map(|mut trigger| {
+            if full_text_has_non_mana_activated_ability_qualifier(full_parse_tokens) {
+                mark_non_mana_activated_trigger(&mut trigger);
+            }
+            trigger
+        });
         let direct_effects =
             parse_effect_sentences_preserving_source_boundaries(effect_parse_tokens)
                 .map(|effects| wrap_future_draw_replacement_effects(full_parse_tokens, effects));
@@ -1305,10 +1346,13 @@ fn parse_triggered_ability_line_impl(
         }
     }
 
-    let parsed = apply_explicit_intervening_if_to_triggered_chunk(
+    let mut parsed = apply_explicit_intervening_if_to_triggered_chunk(
         parse_triggered_line_lexed(full_parse_tokens)?,
         line.intervening_if.clone(),
     )?;
+    if full_text_has_non_mana_activated_ability_qualifier(full_parse_tokens) {
+        mark_non_mana_activated_line(&mut parsed);
+    }
     apply_chosen_option_to_triggered_chunk(
         parsed,
         trigger_surface_text,

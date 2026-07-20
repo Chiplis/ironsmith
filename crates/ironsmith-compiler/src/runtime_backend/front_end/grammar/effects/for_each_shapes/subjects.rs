@@ -162,8 +162,20 @@ pub(crate) fn parse_for_each_target_players_shape(
         after_target,
         alt((primitives::kw("player"), primitives::kw("players"))).void(),
     )?;
-    let (each_index, _, effect_tokens) =
-        primitives::find_prefix(after_player, || primitives::kw("each"))?;
+    // Do not mistake the counted-set suffix in an ordinary action such as
+    // "target player creates ... for each card ..." for the iterator marker.
+    // A qualifier between the player phrase and `each` remains supported.
+    let (each_index, effect_tokens) =
+        after_player.iter().enumerate().find_map(|(index, token)| {
+            if !token.is_word("each")
+                || after_player
+                    .get(index.saturating_sub(1))
+                    .is_some_and(|previous| previous.is_word("for"))
+            {
+                return None;
+            }
+            Some((index, trim_lexed_commas(after_player.get(index + 1..)?)))
+        })?;
     let target_len = after_count.len().checked_sub(after_player.len())? + each_index;
     let target_tokens = trim_lexed_commas(after_count.get(..target_len)?);
     let effect_tokens = trim_lexed_commas(effect_tokens);

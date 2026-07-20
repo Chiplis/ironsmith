@@ -359,7 +359,7 @@ pub(crate) fn parse_shuffle(
 ) -> Result<EffectAst, CardTextError> {
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
 
-    if tokens.is_empty() {
+    if trim_edge_punctuation(tokens).is_empty() {
         // Support standalone "Shuffle." clauses. If the sentence includes an explicit player
         // subject, use it; otherwise return an implicit player that can be filled in by the
         // carry-context logic (and compiles to "you" by default).

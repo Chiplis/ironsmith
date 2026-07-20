@@ -187,7 +187,11 @@ impl TriggerMatcher for CounterPutOnTrigger {
             format!("{article} {description}")
         }
 
-        let player_suffix = if self.include_players { " or player" } else { "" };
+        let player_suffix = if self.include_players {
+            " or player"
+        } else {
+            ""
+        };
         if let Some(source_controller) = &self.source_controller {
             let (subject, verb) = if source_controller == &PlayerFilter::You {
                 ("you".to_string(), "put")

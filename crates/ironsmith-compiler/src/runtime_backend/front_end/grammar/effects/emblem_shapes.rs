@@ -69,7 +69,12 @@ fn quoted_emblem_payload<'a>(
     // sentence whose real terminator lives inside the closing quote. Accept
     // only that optional terminator here; an unquoted continuation (for
     // example Kiora's `Then create ...`) must remain outside the emblem.
-    primitives::sentence_end().parse_next(input)?;
+    // Subject/verb dispatch hands `parse_get` the action tail without the
+    // sentence terminator (and, for quoted text, without the synthetic outer
+    // period).  The whole-sentence entry point still supplies that period.
+    // Both are complete emblem payloads; only an unquoted continuation must
+    // be rejected by the outer shape.
+    alt((primitives::sentence_end().void(), eof.void())).parse_next(input)?;
     Ok(groups)
 }
 

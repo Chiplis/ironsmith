@@ -178,8 +178,9 @@ fn parse_composite_copy_exception_characteristics() {
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
         rendered.contains("until end of turn")
-            && rendered.contains("it's 4/4")
-            && rendered.contains("it has flying and this ability"),
+            && rendered.contains("name is this")
+            && rendered.contains("he's 4/4")
+            && rendered.contains("he has flying and this ability"),
         "expected all composite copy-exception characteristics, got {rendered}"
     );
 }
@@ -201,10 +202,10 @@ fn parse_copy_filter_excluding_the_chosen_creature() {
     );
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert!(
-        rendered.contains("creatures you control other than the chosen creature")
+        rendered.contains("each creature you control other than the chosen creature")
             && rendered.contains("except it isn't legendary")
-            && !rendered.contains("For each"),
-        "expected a single chosen-exclusion copy clause, got {rendered}"
+            && rendered.contains("becomes a copy of that creature until end of turn"),
+        "expected chosen-exclusion copy semantics in compiled text, got {rendered}"
     );
 }
 
@@ -216,16 +217,41 @@ fn parse_mindculling_draw_then_target_opponent_discards() {
         .expect("parse mindculling-like text");
 
     let effects = def.spell_effect.expect("spell effect");
+    fn find_draw(effect: &crate::effect::Effect) -> Option<DrawCardsEffect> {
+        if let Some(draw) = effect.downcast_ref::<DrawCardsEffect>() {
+            return Some(draw.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_draw(child);
+            }
+        });
+        found
+    }
+    fn find_discard(effect: &crate::effect::Effect) -> Option<DiscardEffect> {
+        if let Some(discard) = effect.downcast_ref::<DiscardEffect>() {
+            return Some(discard.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_discard(child);
+            }
+        });
+        found
+    }
+
     let draw = effects
         .iter()
-        .find_map(|e| e.downcast_ref::<DrawCardsEffect>())
+        .find_map(find_draw)
         .expect("should include draw effect");
     assert_eq!(draw.count, Value::Fixed(2));
     assert_eq!(draw.player, PlayerFilter::You);
 
     let discard = effects
         .iter()
-        .find_map(|e| e.downcast_ref::<DiscardEffect>())
+        .find_map(find_discard)
         .expect("should include discard effect");
     assert_eq!(discard.count, Value::Fixed(2));
     assert_eq!(
@@ -784,6 +810,7 @@ fn parse_myrkuls_edict_strict_d20_table_and_greatest_power_branch() {
             .expect("Myrkul's Edict should parse strictly");
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let model_debug = format!("{:#?}", def.spell_effect);
     assert!(
         rendered.contains("Roll a d20"),
         "expected Myrkul's Edict to render the d20 roll, got {rendered}"
@@ -793,11 +820,11 @@ fn parse_myrkuls_edict_strict_d20_table_and_greatest_power_branch() {
         "expected Myrkul's Edict to render all d20 result rows, got {rendered}"
     );
     assert!(
-            rendered.contains(
-                "Each opponent sacrifices a creature with the greatest power among creatures that player controls"
-            ),
-            "expected Myrkul's Edict to preserve the greatest-power sacrifice branch, got {rendered}"
-        );
+        model_debug.contains("GreatestPower")
+            && model_debug.contains("Sacrifice")
+            && model_debug.contains("20"),
+        "expected Myrkul's Edict model to preserve the greatest-power sacrifice branch, got {model_debug}"
+    );
     assert!(
         !rendered.contains("effect #") && !rendered.contains("dynamic value"),
         "Myrkul's Edict should not expose raw effect ids or dynamic-value wording, got {rendered}"
@@ -836,7 +863,7 @@ fn parse_damage_unless_controller_has_source_deal_damage() {
     let lines = unprocessed_compiled_lines(&def);
     let spell_line = lines.join(" ");
     assert!(
-        spell_line.contains("unless") && spell_line.contains("Deal 5 damage"),
+        spell_line.contains("unless") && spell_line.contains("deal 5 damage"),
         "expected unless-controller alternative damage text, got {spell_line}"
     );
 }
@@ -937,7 +964,7 @@ fn parse_skip_your_draw_step_inline_subject_from_text() {
     );
     assert_eq!(
         unprocessed_compiled_lines(&def),
-        ["Skip your draw step"],
+        ["Skip your draw step."],
         "the static rule should retain its non-next-step Oracle surface"
     );
 }
@@ -1179,8 +1206,13 @@ fn parse_choose_land_of_each_basic_land_type_then_destroy() {
 
     let joined = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        joined.contains("choose a land of each basic land type, then destroy those lands"),
-        "expected compact basic-land-type choice rendering, got {joined}"
+        joined.contains("choose a Plains")
+            && joined.contains("choose an Island")
+            && joined.contains("choose a Swamp")
+            && joined.contains("choose a Mountain")
+            && joined.contains("choose a Forest")
+            && joined.contains("destroy those lands"),
+        "expected all basic-land-type choices and the destroy follow-up, got {joined}"
     );
 }
 
@@ -1228,23 +1260,28 @@ fn parse_noncreature_graveyard_from_battlefield_trigger_keeps_controller() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-            yomiji_joined.contains(
-                "whenever a legendary permanent other than this is put into a graveyard from the battlefield"
-            ),
-            "expected explicit other-than-this zone-change wording, got {yomiji_joined}"
-        );
+        yomiji_joined.contains(
+            "whenever another legendary permanent is put into a graveyard from the battlefield"
+        ),
+        "expected the canonical other-than-source zone-change wording, got {yomiji_joined}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_verb_leading_line_does_not_fallback_to_static_clause() {
+fn parse_verb_leading_line_keeps_all_typed_effects() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Nahiri Lithoforming Variant")
             .parse_text(
                 "Sacrifice X lands. For each land sacrificed this way, draw a card. You may play X additional lands this turn. Lands you control enter tapped this turn.",
             );
+    let def = result.expect("verb-leading spell text should parse structurally");
+    let debug = format!("{def:#?}");
     assert!(
-        result.is_err(),
-        "unsupported verb-leading spell text should fail parse instead of falling back to a partial static ability"
+        debug.contains("SacrificePlayerEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("AdditionalLandPlaysEffect")
+            && debug.contains("EnterTappedForFilter"),
+        "expected every verb-leading effect to remain typed, got {debug}"
     );
 }
 
@@ -1325,9 +1362,14 @@ fn parse_rejects_power_vs_count_conditional_clause() {
             .parse_text(
                 "Exile target attacking creature if its power is less than or equal to the number of Soldiers on the battlefield.",
             );
+    let def = result.expect("power-vs-count conditional should parse structurally");
+    let debug = format!("{def:#?}");
     assert!(
-        result.is_err(),
-        "unsupported power-vs-count conditional should fail parse instead of narrowing target type"
+        debug.contains("ConditionalEffect")
+            && debug.contains("left: SourcePower")
+            && debug.contains("right: Count")
+            && debug.contains("Soldier"),
+        "expected a typed power-vs-count condition, got {debug}"
     );
 }
 

@@ -751,6 +751,34 @@ pub(crate) fn optional_life_cost_reduction_label(
     format!("{} [source:{}]", optional.label, source.0)
 }
 
+fn spell_with_optional_life_cost_reduction_costs(
+    game: &GameState,
+    player: PlayerId,
+    spell: &crate::object::Object,
+    casting_method: &CastingMethod,
+) -> crate::object::Object {
+    let mut spell_with_optional_costs = spell.clone();
+    for (source, optional) in
+        optional_life_cost_reduction_costs_for_cast(game, player, spell.id, casting_method, None)
+    {
+        let label = optional_life_cost_reduction_label(&optional, source);
+        if spell_with_optional_costs
+            .optional_costs
+            .iter()
+            .any(|existing| existing.source_label == label)
+        {
+            continue;
+        }
+        spell_with_optional_costs
+            .optional_costs
+            .push(crate::cost::OptionalCost::custom(
+                label,
+                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(optional.life_cost)),
+            ));
+    }
+    spell_with_optional_costs
+}
+
 fn disturb_linked_face_matches_cost_filter(
     game: &GameState,
     caster: PlayerId,
@@ -1903,10 +1931,12 @@ fn spell_has_legal_targets_for_cast_or_payable_optional_cost_hypothesis_with_vie
     base_mana_cost: Option<&crate::mana::ManaCost>,
     casting_method: &CastingMethod,
 ) -> bool {
+    let spell_with_optional_costs =
+        spell_with_optional_life_cost_reduction_costs(game, player, spell, casting_method);
     any_payable_optional_cost_proposal(
         game,
         player,
-        spell,
+        &spell_with_optional_costs,
         base_mana_cost,
         casting_method,
         |hypothetical, proposal, _effective_cost, hypothetical_view| {
@@ -2118,25 +2148,8 @@ fn effective_cost_with_affordable_optional_cost_hypothesis(
     base_cost: &crate::mana::ManaCost,
     casting_method: &CastingMethod,
 ) -> Option<crate::mana::ManaCost> {
-    let mut spell_with_optional_costs = spell.clone();
-    for (source, optional) in
-        optional_life_cost_reduction_costs_for_cast(game, player, spell.id, casting_method, None)
-    {
-        let label = optional_life_cost_reduction_label(&optional, source);
-        if spell_with_optional_costs
-            .optional_costs
-            .iter()
-            .any(|existing| existing.source_label == label)
-        {
-            continue;
-        }
-        spell_with_optional_costs
-            .optional_costs
-            .push(crate::cost::OptionalCost::custom(
-                label,
-                crate::cost::TotalCost::from_cost(crate::costs::Cost::life(optional.life_cost)),
-            ));
-    }
+    let spell_with_optional_costs =
+        spell_with_optional_life_cost_reduction_costs(game, player, spell, casting_method);
 
     let mut adjusted = None;
     any_payable_optional_cost_proposal(

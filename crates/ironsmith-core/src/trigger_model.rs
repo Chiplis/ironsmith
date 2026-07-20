@@ -491,6 +491,18 @@ impl Trigger {
         self
     }
 
+    /// Preserve the authored trigger wording while retaining the typed matcher.
+    ///
+    /// Most trigger constructors use an internal label because their display
+    /// is reconstructed elsewhere.  Front-end lowering sometimes has a more
+    /// precise authored surface (for example, a zone-change provenance clause
+    /// or an object/player damage union), so let it attach that presentation
+    /// without replacing the runtime trigger kind.
+    pub fn with_display_label(mut self, label: impl Into<String>) -> Self {
+        self.label = label.into();
+        self
+    }
+
     pub fn this_attacks() -> Self {
         Self::typed("this_attacks", TriggerKind::ThisAttacks)
     }

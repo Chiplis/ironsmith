@@ -333,20 +333,28 @@ fn spell_filter(
     subject_tokens: &[OwnedLexToken],
     cast_by: PlayerFilter,
 ) -> Result<ObjectFilter, CardTextError> {
-    let mut filter = super::super::filters::parse_simple_object_filter_lexed(subject_tokens, false)
-        .ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "unsupported next-spell subject filter (clause: '{}')",
-                super::super::super::lexer::render_token_slice(subject_tokens)
-            ))
-        })?;
+    let subject_words = crate::runtime_backend::token_word_refs(subject_tokens);
+    let mut filter =
+        super::super::filters::parse_spell_filter_with_grammar_entrypoint_lexed(subject_tokens);
     // A subject such as "an instant or sorcery spell from your hand" carries
     // two pieces of information: it will be a spell when the one-shot grant
     // is consumed, and its cast origin is the hand.  Keep an explicit origin
     // zone from the parsed subject; the runtime's temporary-spell matcher
     // compares such filters against the authoritative cast-origin snapshot.
     // Subjects with no origin clause still match the spell on the stack.
-    if filter.zone.is_none() {
+    if subject_words
+        .windows(3)
+        .any(|window| window == ["from", "your", "hand"])
+    {
+        filter.zone = Some(Zone::Hand);
+        filter.owner = Some(PlayerFilter::You);
+    } else if subject_words
+        .windows(3)
+        .any(|window| window == ["from", "your", "graveyard"])
+    {
+        filter.zone = Some(Zone::Graveyard);
+        filter.owner = Some(PlayerFilter::You);
+    } else if filter.zone.is_none() {
         filter.zone = Some(Zone::Stack);
     }
     filter.stack_kind = Some(StackObjectKind::Spell);

@@ -1435,7 +1435,23 @@ impl GameState {
                 continue;
             }
 
-            for (unit_index, unit) in units.iter().enumerate() {
+            // Preserve colored mana for later colored pips when paying a
+            // generic pip in an earlier, separately staged cost. A payment
+            // plan for a combined cost already visits colored pips first;
+            // this ordering covers effects such as "pay {2}" followed by a
+            // spell whose printed cost still needs {U}{U}.
+            let mut unit_indices = units
+                .iter()
+                .enumerate()
+                .filter(|(_, unit)| unit.symbol == ManaSymbol::Colorless)
+                .collect::<Vec<_>>();
+            unit_indices.extend(
+                units
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, unit)| unit.symbol != ManaSymbol::Colorless),
+            );
+            for (unit_index, unit) in unit_indices {
                 if used[unit_index]
                     || !self.mana_unit_can_pay(
                         payer,
@@ -2116,6 +2132,11 @@ impl GameState {
                 .commander_casts_from_command_zone
                 .entry(identity)
                 .or_insert(0) += 1;
+            // Commander-cast counts are read by dynamic continuous effects
+            // (for example Commander's Insignia).  They do not change an
+            // object's characteristics directly, so invalidate the cached
+            // static effects explicitly when the count changes.
+            self.mark_continuous_state_dirty();
         }
     }
 

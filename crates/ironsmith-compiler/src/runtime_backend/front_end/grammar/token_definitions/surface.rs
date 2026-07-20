@@ -172,9 +172,12 @@ pub(super) fn creature_rules(
     let dies_create = all(&[
         "when", "token", "dies", "create", "2/2", "red", "dragon", "flying", "r", "+1/+0",
     ]);
-    let dies_damage = all(&["when", "token", "dies", "deals", "damage", "target"])
-        .then_some(damage)
-        .flatten();
+    let dies_damage = (all(&["when", "token", "dies", "deals", "damage", "target"])
+        || all(&[
+            "when", "this", "token", "dies", "it", "deals", "damage", "target",
+        ]))
+    .then_some(damage)
+    .flatten();
     let leaves_damage = all(&[
         "when",
         "token",
@@ -597,7 +600,7 @@ mod tests {
             panic!("expected creature token shape");
         };
         assert_eq!(creature.name, "The Tiger God");
-        assert_eq!(creature.subtypes, vec![Subtype::Cat, Subtype::God]);
+        assert_eq!(creature.subtypes, vec![Subtype::God, Subtype::Cat]);
         assert_eq!(creature.power_toughness, (4, 4));
         assert_eq!(creature.colors, ColorSet::GREEN);
         assert!(creature.legendary);

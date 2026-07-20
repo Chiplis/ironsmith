@@ -1044,10 +1044,14 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
             tokens,
         );
     for effect in effects.iter_mut().rev() {
-        if append_token_granted_ability_to_effect(Some(effect), tokens)? {
+        // Specialized reminder facts must win over the generic granted-ability
+        // parser. Otherwise a quoted rule such as "When this token dies ..."
+        // is retained as an opaque granted ability and its typed token rule is
+        // lost before the merge path gets a chance to install it.
+        if append_token_reminder_to_effect(Some(effect), &reminder) {
             return Ok(true);
         }
-        if append_token_reminder_to_effect(Some(effect), &reminder) {
+        if append_token_granted_ability_to_effect(Some(effect), tokens)? {
             return Ok(true);
         }
     }
@@ -1204,9 +1208,10 @@ pub(crate) fn append_token_reminder_to_effect(
                     *dynamic_power_toughness = Some((power.clone(), toughness.clone()));
                     return true;
                 }
-                crate::runtime_backend::grammar::token_definitions::merge_token_reminder_definition(
-                    definition, reminder,
-                );
+                let merged_definition =
+                    crate::runtime_backend::grammar::token_definitions::merge_token_reminder_definition(
+                        definition, reminder,
+                    );
                 if reminder.sacrifice_at_next_end_step {
                     *sacrifice_at_next_end_step = true;
                     *next_end_step_player = reminder.next_end_step_player.clone();
@@ -1221,7 +1226,11 @@ pub(crate) fn append_token_reminder_to_effect(
                 if reminder.sacrifice_at_end_of_combat {
                     *sacrifice_at_end_of_combat = true;
                 }
-                true
+                merged_definition
+                    || reminder.sacrifice_at_next_end_step
+                    || reminder.exile_at_next_end_step
+                    || reminder.exile_at_end_of_combat
+                    || reminder.sacrifice_at_end_of_combat
             }
             _ => false,
         },

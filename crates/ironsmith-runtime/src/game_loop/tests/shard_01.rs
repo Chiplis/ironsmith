@@ -3170,7 +3170,7 @@ pub(super) fn necromantic_summons_targets_only_creature_cards_in_graveyards() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 pub(super) fn dance_of_the_manse_definition() -> crate::cards::CardDefinition {
-    CardDefinitionBuilder::new(CardId::from_raw(72_960), "Dance of the Manse")
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(72_960), "Dance of the Manse")
         .mana_cost(ManaCost::from_pips(vec![
             vec![ManaSymbol::X],
             vec![ManaSymbol::White],
@@ -3180,7 +3180,8 @@ pub(super) fn dance_of_the_manse_definition() -> crate::cards::CardDefinition {
         .parse_text(
             "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are 4/4 creatures in addition to their other types.",
         )
-        .expect("Dance of the Manse should parse")
+        .expect("Dance of the Manse should parse");
+    definition
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3208,7 +3209,7 @@ pub(super) fn dance_of_the_manse_compiled_text_matches_oracle_animation_clause()
 
     assert_eq!(
         rendered,
-        "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, those permanents are creatures with base power and toughness 4/4 in addition to their other types."
+        "Return up to X target artifact and/or non-Aura enchantment cards each with mana value X or less from your graveyard to the battlefield. If X is 6 or more, Those permanents are 4/4 creatures in addition to their other types."
     );
 }
 

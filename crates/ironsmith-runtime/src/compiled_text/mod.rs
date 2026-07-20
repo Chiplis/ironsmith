@@ -75,6 +75,7 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let lines = compact_post_substitution_surface_lines(lines)
         .into_iter()
         .map(normalize_unprocessed_compiled_line)
+        .map(|line| normalize_duplicate_optional_subject(&line))
         .collect();
     prefix_attraction_visit_surface(def, lines)
 }
@@ -409,6 +410,10 @@ fn station_threshold_body(body: &str) -> String {
 }
 
 fn normalize_scored_compiled_line(line: String) -> String {
+    // Effect-list renderers intentionally lowercase clauses when composing
+    // them into a larger sentence. At the card-line boundary, restore normal
+    // sentence capitalization before applying the surface normalizers.
+    let line = normalize_duplicate_optional_subject(&capitalize_sentence_boundaries(&line));
     let lower_for_common = line.to_ascii_lowercase();
     let line = if lower_for_common.contains("you search your library")
         || lower_for_common.contains("choose an other card")
@@ -442,6 +447,7 @@ fn normalize_scored_compiled_line(line: String) -> String {
         || lower_for_common.contains("effect #0")
         || lower_for_common.contains("copy that spell the number of spells time")
         || lower_for_common.contains("life total is greater than or equal")
+        || lower_for_common.contains("if your life total is ")
         || lower_for_common.contains("gain control of each other creature until end of turn")
         || lower_for_common.contains("exactly 3 cards")
         || lower_for_common.contains("choose any number white cards")
@@ -630,6 +636,7 @@ fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> 
 }
 
 fn normalize_unprocessed_compiled_line(line: String) -> String {
+    let line = normalize_duplicate_optional_subject(&capitalize_sentence_boundaries(&line));
     let lower = line.to_ascii_lowercase();
     if lower.contains("whenever a land you control enters")
         && lower.contains("if it's a mountain, this creature deals")
@@ -681,6 +688,15 @@ fn normalize_unprocessed_compiled_line(line: String) -> String {
             );
     }
     line
+}
+
+fn normalize_duplicate_optional_subject(line: &str) -> String {
+    replace_ascii_case_insensitive_once(
+        line.to_string(),
+        "you may you attach ",
+        "You may attach ",
+        "you may attach ",
+    )
 }
 
 fn remove_redundant_period_after_terminal_quote(line: &str) -> String {
@@ -1733,15 +1749,47 @@ fn normalize_choose_rest_count(chosen: &str) -> String {
 }
 
 fn normalize_for_each_number_surface(line: &str) -> String {
-    line.replace("for each the number of cards", "for each card")
-        .replace(
-            "for each the number of +1/+1 counters",
-            "for each +1/+1 counter",
-        )
-        .replace(
-            "for each the number of lore counters",
-            "for each lore counter",
-        )
+    let mut normalized = line.to_string();
+    // "for each the number of <plural noun>" is a doubled count surface;
+    // oracle says "for each <singular noun>". Generalized over any counter
+    // or object kind by singularizing the plural noun in place.
+    const MARKER: &str = "for each the number of ";
+    let mut search_from = 0;
+    while let Some(rel) = normalized[search_from..].find(MARKER) {
+        let start = search_from + rel;
+        let noun_start = start + MARKER.len();
+        // The counted noun phrase runs to the next connective/preposition.
+        let tail = &normalized[noun_start..];
+        let end_rel = tail
+            .find(" on ")
+            .into_iter()
+            .chain(tail.find(" in "))
+            .chain(tail.find(" you "))
+            .chain(tail.find(" among "))
+            .min();
+        let Some(end_rel) = end_rel else {
+            break;
+        };
+        let noun = normalized[noun_start..noun_start + end_rel].to_string();
+        let singular = singularize_counted_noun(&noun);
+        let replacement = format!("for each {singular}");
+        normalized.replace_range(start..noun_start + end_rel, &replacement);
+        search_from = start + replacement.len();
+    }
+    normalized
+}
+
+fn singularize_counted_noun(noun: &str) -> String {
+    // Only the head noun ("counters"/"cards") pluralizes; adjectives before
+    // it ("wind", "+1/+1") stay. Strip a trailing plural "s" from the last
+    // word, leaving already-singular or irregular forms alone.
+    match noun.rsplit_once(' ') {
+        Some((head, last)) => {
+            let last = last.strip_suffix('s').unwrap_or(last);
+            format!("{head} {last}")
+        }
+        None => noun.strip_suffix('s').unwrap_or(noun).to_string(),
+    }
 }
 
 fn normalize_temporary_trample_pump_surface(line: &str) -> String {

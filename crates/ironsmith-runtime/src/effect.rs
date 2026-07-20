@@ -896,6 +896,17 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::Succeeded => outcome.status.is_success(),
             Self::Failed => outcome.status.is_failure(),
             Self::Happened => {
+                if let Some(coin_flip) = outcome.execution_facts.iter().find_map(|fact| {
+                    let ExecutionFact::CoinFlip {
+                        winner, loser, ..
+                    } = fact
+                    else {
+                        return None;
+                    };
+                    Some(winner.is_some() && loser.is_none())
+                }) {
+                    return coin_flip;
+                }
                 if !outcome.events.is_empty() {
                     return true;
                 }

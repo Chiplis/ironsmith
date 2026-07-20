@@ -23,8 +23,8 @@ use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
     AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectFilterUnionConnective,
     ObjectFilterUnionSurface, ObjectRef, ParityRequirement, PlayerFilter, PowerToughnessRelation,
-    PtReference, SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
-    TaggedOpbjectRelation, TargetabilityConstraint,
+    PtReference, SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind,
+    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
 };
 
 mod descriptions;
@@ -667,9 +667,12 @@ fn tagged_constraint_matches_subject(
 ) -> bool {
     match relation {
         TaggedOpbjectRelation::IsTaggedObject
-        | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => tagged_snapshots
-            .iter()
-            .any(|snapshot| snapshot.object_id == subject.subject_object_id()),
+        | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
+            tagged_snapshots.iter().any(|snapshot| {
+                snapshot.object_id == subject.subject_object_id()
+                    || snapshot.stable_id == subject.subject_stable_id()
+            })
+        }
         TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SharesPermanentType => {
             let tagged_types: std::collections::HashSet<CardType> = tagged_snapshots
                 .iter()
@@ -3872,6 +3875,11 @@ impl ObjectFilterExt for ObjectFilter {
     fn description(&self) -> String {
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
+        if let Some(description) =
+            ironsmith_core::filter_model::describe_owner_scoped_zone_union(self)
+        {
+            return description;
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let descriptions = self
                 .any_of
@@ -3921,6 +3929,13 @@ impl ObjectFilterExt for ObjectFilter {
         if has_target_tag {
             parts.push("target".to_string());
         }
+        let has_chosen_tag = self.tagged_constraints.iter().any(|constraint| {
+            matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+                && constraint.tag.as_str() == "__chosen_objects__"
+        });
+        if has_chosen_tag {
+            parts.push("the chosen".to_string());
+        }
         if self.source {
             parts.push("this".to_string());
         }
@@ -3928,7 +3943,7 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("modified".to_string());
         }
 
-        let has_leading_determiner = self.other || has_target_tag || self.source;
+        let has_leading_determiner = self.other || has_target_tag || has_chosen_tag || self.source;
 
         // Handle controller
         if let Some(ref ctrl) = self.controller {

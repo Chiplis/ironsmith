@@ -3,12 +3,12 @@ use crate::PtValue;
 use crate::ability::{Ability, AbilityKind, ActivatedAbility, ActivationTiming};
 use crate::alternative_cast::AlternativeCastingMethod;
 use crate::cards::TextSpan;
+#[cfg(test)]
+use crate::cards::builders::PlayerAst;
 use crate::cards::builders::{
     AdditionalCostChoiceOptionAst, CardTextError, KeywordAction, ParsedAbility, ReferenceImports,
     TargetAst,
 };
-#[cfg(test)]
-use crate::cards::builders::{IT_TAG, PlayerAst};
 use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
 use crate::costs::Cost;
@@ -1226,15 +1226,13 @@ mod tests {
             parse_for_each_count_value_words(&words).expect("count phrase should parse");
 
         assert_eq!(used_words, words.len());
-        let Value::Count(filter) = value else {
-            panic!("expected a counted object filter, got {value:?}");
-        };
         assert!(
-            filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
-                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-            }),
-            "expected the revealed-this-way count to bind to IT_TAG, got {filter:?}"
+            matches!(
+                value.unhinted(),
+                Value::PendingPriorEffectMetric(query)
+                    if query.action == Some(ironsmith_core::PriorEffectAction::Revealed)
+            ),
+            "expected a typed revealed-this-way metric, got {value:?}"
         );
     }
 

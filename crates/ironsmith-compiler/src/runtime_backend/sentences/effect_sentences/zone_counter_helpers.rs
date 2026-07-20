@@ -722,11 +722,29 @@ mod filtered_prior_action_counter_tests {
     #[test]
     fn counter_count_preserves_exiled_creature_filter() {
         let tokens = lex_line("creature card exiled this way", 0).unwrap();
-        let expected = Value::Count(
-            ObjectFilter::creature()
-                .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject),
+        let Some(Value::PendingPriorEffectMetric(query)) =
+            parse_create_for_each_dynamic_count(&tokens)
+        else {
+            panic!("expected a typed prior-effect metric");
+        };
+        assert_eq!(
+            query.source,
+            ironsmith_core::EffectMetricSource::AffectedObjects
         );
-        assert_eq!(parse_create_for_each_dynamic_count(&tokens), Some(expected));
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Exiled)
+        );
+        let filter = query
+            .filter
+            .expect("metric should retain its object filter");
+        assert!(
+            filter
+                .card_types
+                .contains(&crate::types::CardType::Creature)
+        );
+        assert!(filter.union_surface.explicit_card_noun());
     }
 
     #[test]

@@ -157,8 +157,8 @@ fn parse_requirement_lexed(
         ))
         .parse_next(input),
         AttackUnlessScope::AttackOrBlock => alt((
-            parse_there_are_exile_count,
             parse_counted_controller_control_requirement,
+            parse_there_are_exile_count,
         ))
         .parse_next(input),
     }
@@ -688,6 +688,10 @@ mod tests {
             (
                 "This creature can't attack or block unless there are seven or more cards in exile.",
                 AttackUnlessSurface::CardsInExile,
+            ),
+            (
+                "This creature can't attack or block unless you control seven or more lands.",
+                AttackUnlessSurface::ControllerControlCondition,
             ),
             (
                 "This creature can't attack unless defending player is poisoned.",

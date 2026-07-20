@@ -728,7 +728,9 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_effects_vec(if_true);
             normalize_effects_vec(if_false);
         }
-        EffectAst::TrailingIf { effects, .. }
+        EffectAst::Sequence { effects }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::TrailingIf { effects, .. }
         | EffectAst::TrailingUnless { effects, .. }
         | EffectAst::SourceSentence { effects }
         | EffectAst::UnlessPays { effects, .. }
@@ -810,16 +812,25 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     else {
         return None;
     };
-    if !matches!(tail_effects.last(), Some(EffectAst::RepeatThisProcess)) {
+    let marker_is_direct = matches!(tail_effects.last(), Some(EffectAst::RepeatThisProcess));
+    let marker_is_coordinated = matches!(
+        tail_effects.last(),
+        Some(EffectAst::Coordinated { effects, .. })
+            if matches!(effects.last(), Some(EffectAst::RepeatThisProcess))
+    );
+    if !marker_is_direct && !marker_is_coordinated {
         return None;
     }
-
     let continue_effect_index = last_index.saturating_sub(1);
     let mut body = effects.to_vec();
     let EffectAst::IfResult { effects, .. } = &mut body[last_index] else {
         return None;
     };
-    effects.pop();
+    if marker_is_direct {
+        effects.pop();
+    } else if let Some(EffectAst::Coordinated { effects, .. }) = effects.last_mut() {
+        effects.pop();
+    }
     if effects.is_empty() {
         body.pop();
     }

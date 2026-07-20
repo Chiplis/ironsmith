@@ -2091,7 +2091,10 @@ fn render_same_name_reference_search_tail(
                 describe_search_choose_then_move(choose, Some(reveal), move_to_zone, Some(shuffle))
             } else if same_name_search_for_each_consumes_tag(move_effect, &choose.tag) {
                 Some(describe_effect_list(
-                    &tail.iter().map(|effect| (*effect).clone()).collect::<Vec<_>>(),
+                    &tail
+                        .iter()
+                        .map(|effect| (*effect).clone())
+                        .collect::<Vec<_>>(),
                 ))
             } else {
                 None
@@ -2117,7 +2120,10 @@ fn render_same_name_reference_search_tail(
                 describe_search_choose_then_move(choose, None, move_to_zone, Some(shuffle))
             } else if same_name_search_for_each_consumes_tag(move_effect, &choose.tag) {
                 Some(describe_effect_list(
-                    &tail.iter().map(|effect| (*effect).clone()).collect::<Vec<_>>(),
+                    &tail
+                        .iter()
+                        .map(|effect| (*effect).clone())
+                        .collect::<Vec<_>>(),
                 ))
             } else {
                 None
@@ -6540,10 +6546,11 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
             split_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
         && let Some(choice_for_players) =
             choice_effect.downcast_ref::<crate::effects::ForPlayersEffect>()
-        && let Some(compact) = super::costs_and_triggers::describe_for_players_split_piles_then_choose_sacrifice_pair(
-            split_for_players,
-            choice_for_players,
-        )
+        && let Some(compact) =
+            super::costs_and_triggers::describe_for_players_split_piles_then_choose_sacrifice_pair(
+                split_for_players,
+                choice_for_players,
+            )
     {
         return Some(compact);
     }
@@ -6846,6 +6853,52 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
         unwrap_tag_wrapped_effect(effect).downcast_ref()
     }
 
+    fn early_dynamic_token_where_x(value: &Value) -> String {
+        let (filter, multiplier) = match value.unhinted() {
+            Value::Count(filter) => (filter, 1),
+            Value::CountScaled(filter, multiplier) => (filter, *multiplier),
+            _ => return describe_value(value),
+        };
+        let action = filter.tagged_constraints.iter().find_map(|constraint| {
+            if constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject {
+                return None;
+            }
+            let tag = constraint.tag.as_str();
+            let base = tag.split('_').next().unwrap_or(tag);
+            match base {
+                "exile" => Some("exiled"),
+                "discard" => Some("discarded"),
+                "sacrifice" => Some("sacrificed"),
+                _ => None,
+            }
+        });
+        let Some(action) = action else {
+            return describe_value(value);
+        };
+        let mut subject = describe_count_filter_value_subject(filter);
+        if subject == "those cards" {
+            subject = "cards".to_string();
+        }
+        for suffix in [
+            " in exile",
+            " in all graveyards",
+            " in a graveyard",
+            " in graveyard",
+            " on the battlefield",
+        ] {
+            if let Some(stripped) = subject.strip_suffix(suffix) {
+                subject = stripped.to_string();
+                break;
+            }
+        }
+        let basis = format!("{subject} {action} this way");
+        match multiplier {
+            1 => format!("the number of {basis}"),
+            2 => format!("twice the number of {basis}"),
+            multiplier => format!("{multiplier} times the number of {basis}"),
+        }
+    }
+
     fn early_clean_count_subject(filter: &ObjectFilter) -> String {
         let mut subject = describe_count_filter_value_subject(filter);
         for suffix in [
@@ -6982,7 +7035,10 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
         } else {
             &set_pt.power
         };
-        let where_x = describe_where_x_basis(basis)?;
+        // Preserve scalar multipliers such as Corpseweft's "twice the
+        // number" when compacting a token's dynamic base P/T.  The generic
+        // where-X helper intentionally describes only the underlying count.
+        let where_x = early_dynamic_token_where_x(basis);
         early_dynamic_token_phrase(create_effect, set_pt_effect, where_x)
             .map(|text| capitalize_first(&text))
     }

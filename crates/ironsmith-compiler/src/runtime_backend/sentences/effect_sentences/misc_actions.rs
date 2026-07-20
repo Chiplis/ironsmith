@@ -444,6 +444,9 @@ pub(crate) fn parse_get(
     if let Some(effect) = parse_emblem_action(tokens, subject) {
         return Ok(effect);
     }
+    if let Some(effect) = parse_unquoted_emblem_action(tokens, subject) {
+        return Ok(effect);
+    }
 
     let modifier_start =
         if let Some((prefix, _)) = grammar::match_any_word_prefix(tokens, ADDITIONAL_PREFIXES) {
@@ -654,10 +657,18 @@ pub(crate) fn parse_pay(
         return Ok(compound);
     }
     if let Some(repeated) = misc_action_shapes::parse_repeated_tagged_mana_payment_tokens(tokens) {
+        // In a clause such as "that player may choose ... and pay {2} for
+        // each creature chosen this way", the omitted subject of the payment
+        // is the iterated player, not the resolving ability's controller.
+        let payer = if player == PlayerAst::Implicit {
+            PlayerAst::That
+        } else {
+            player
+        };
         return Ok(EffectAst::ForEachTagged {
             tag: TagKey::from(IT_TAG),
             effects: vec![EffectAst::subject_verb_pay_mana(
-                player,
+                payer,
                 ManaCost::from_pips(repeated.pip_groups),
             )],
         });

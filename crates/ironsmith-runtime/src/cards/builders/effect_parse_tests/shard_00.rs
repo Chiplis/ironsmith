@@ -1044,12 +1044,14 @@ fn parse_gruesome_menagerie_from_text() {
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-            rendered.contains(
-                "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3."
-            ) && rendered.contains("Return those cards to the battlefield."),
-            "expected oracle-like compiled text, got {rendered}"
-        );
+        rendered_lower.contains("choose a creature card with mana value 1 in a graveyard")
+            && rendered_lower.contains("choose a creature card with mana value 2 in a graveyard")
+            && rendered_lower.contains("choose a creature card with mana value 3 in a graveyard")
+            && rendered_lower.contains("return it from graveyard to the battlefield"),
+        "expected canonical compiled text for the three choices and shared return, got {rendered}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1240,7 +1242,7 @@ fn parse_draw_for_each_tapped_creature_target_opponent_controls() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<DrawCardsEffect>())
         .expect("expected draw cards effect");
-    match &draw.count {
+    match draw.count.unhinted() {
         Value::Count(filter) => {
             assert!(
                 filter.card_types.contains(&CardType::Creature),
@@ -1768,7 +1770,7 @@ fn parse_shaleskin_bruiser_style_scaling_attack_trigger() {
         .expect("trigger should include ModifyPowerToughnessForEachEffect");
     assert_eq!(modify.power_per, 3);
     assert_eq!(modify.toughness_per, 0);
-    let Value::Count(filter) = &modify.count else {
+    let Value::Count(filter) = modify.count.unhinted() else {
         panic!("expected count-based scaling");
     };
     assert!(filter.other, "filter should require other permanents");
@@ -2584,7 +2586,7 @@ fn parse_add_black_for_each_creature_in_graveyard_compiles_scaled_mana() {
     assert_eq!(add_scaled.mana, vec![ManaSymbol::Black]);
     assert_eq!(add_scaled.player, PlayerFilter::You);
 
-    match &add_scaled.amount {
+    match add_scaled.amount.unhinted() {
         Value::Count(filter) => {
             assert_eq!(filter.zone, Some(Zone::Graveyard));
             assert_eq!(filter.owner, Some(PlayerFilter::You));
@@ -2626,7 +2628,7 @@ fn parse_activated_add_for_each_creature_compiles_scaled_mana() {
         .expect("expected AddScaledManaEffect");
     assert_eq!(add_scaled.mana, vec![ManaSymbol::Green]);
     assert_eq!(add_scaled.player, PlayerFilter::You);
-    match &add_scaled.amount {
+    match add_scaled.amount.unhinted() {
         Value::Count(filter) => {
             assert!(
                 filter.card_types.contains(&CardType::Creature),
@@ -2694,7 +2696,7 @@ fn parse_activated_add_for_each_swamp_compiles_scaled_mana() {
         .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
         .expect("expected AddScaledManaEffect");
     assert_eq!(add_scaled.mana, vec![ManaSymbol::Black]);
-    match &add_scaled.amount {
+    match add_scaled.amount.unhinted() {
         Value::Count(filter) => {
             assert!(
                 filter.subtypes.contains(&Subtype::Swamp),
@@ -2820,7 +2822,7 @@ fn parse_add_equal_to_sacrificed_creature_mana_value_uses_sacrifice_cost_tag() {
         .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
         .expect("expected AddScaledManaEffect");
     assert_eq!(add_scaled.mana, vec![ManaSymbol::Black]);
-    match &add_scaled.amount {
+    match add_scaled.amount.unhinted() {
         Value::ManaValueOf(spec) => match spec.as_ref() {
             ChooseSpec::Tagged(tag) => assert_eq!(tag.as_str(), "sacrifice_cost_0"),
             other => panic!("expected sacrifice-cost tag reference, got {other:?}"),
@@ -2958,7 +2960,7 @@ fn parse_add_any_combination_of_two_colors_keeps_amount_and_restriction() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
         .expect("expected AddManaOfAnyColorEffect");
-    assert_eq!(add_any.amount, Value::Fixed(3));
+    assert_eq!(add_any.amount.unhinted(), &Value::Fixed(3));
     let colors = add_any
         .available_colors
         .as_ref()
@@ -3000,7 +3002,7 @@ fn parse_add_or_mana_colors_compiles_single_restricted_choice_ability() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
         .expect("expected AddManaOfAnyColorEffect");
-    assert_eq!(add_any.amount, Value::Fixed(1));
+    assert_eq!(add_any.amount.unhinted(), &Value::Fixed(1));
 
     let colors = add_any
         .available_colors
@@ -3038,7 +3040,7 @@ fn parse_add_any_combination_of_colors_expands_to_five_colors() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
         .expect("expected AddManaOfAnyColorEffect");
-    assert_eq!(add_any.amount, Value::Fixed(2));
+    assert_eq!(add_any.amount.unhinted(), &Value::Fixed(2));
     let colors = add_any
         .available_colors
         .as_ref()
@@ -3092,8 +3094,8 @@ fn parse_add_any_combination_with_where_tail_keeps_color_choices() {
         "compiled text should describe the X value, got: {mana_line}"
     );
     assert!(
-        !mana_line.contains("Add X mana in any combination"),
-        "compiled text should not leave X unresolved, got: {mana_line}"
+        mana_line.contains("where X is"),
+        "compiled text should retain the binding for X, got: {mana_line}"
     );
 }
 
@@ -3164,7 +3166,7 @@ fn parse_add_any_color_that_opponent_land_could_produce_compiles_restricted_mana
         .iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfLandProducedTypesEffect>())
         .expect("expected AddManaOfLandProducedTypesEffect");
-    assert_eq!(restricted.amount, Value::Fixed(1));
+    assert_eq!(restricted.amount.unhinted(), &Value::Fixed(1));
     assert_eq!(restricted.player, PlayerFilter::You);
     assert!(
         !restricted.allow_colorless,
@@ -3261,7 +3263,7 @@ fn parse_triggering_land_produced_types_uses_actual_mana_event() {
         .into_iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfLandProducedTypesEffect>())
         .expect("expected produced-types mana effect");
-    assert_eq!(restricted.amount, Value::Fixed(1));
+    assert_eq!(restricted.amount.unhinted(), &Value::Fixed(1));
     assert_eq!(restricted.player, PlayerFilter::IteratedPlayer);
     assert!(restricted.allow_colorless);
     assert_eq!(

@@ -718,6 +718,13 @@ mod tests {
         ])
         .expect("player-partitioned tapped count retains legacy form");
         assert_eq!(used, 10);
-        assert!(!matches!(partitioned, Value::PendingPriorEffectMetric(_)));
+        let Value::PendingPriorEffectMetric(query) = partitioned else {
+            panic!("expected typed player-partitioned prior-effect metric");
+        };
+        assert_eq!(query.player, None);
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Tapped)
+        );
     }
 }

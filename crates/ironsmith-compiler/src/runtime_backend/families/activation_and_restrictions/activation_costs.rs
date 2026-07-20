@@ -223,6 +223,11 @@ fn block_cost_static_ability(
     let action_tokens = trim_edge_punctuation_tokens(&tokens[cant_index + 1..unless_index]);
     let action_words = crate::runtime_backend::token_word_refs(action_tokens);
     let attackers = match action_words.as_slice() {
+        // A number of cards use the combined restriction wording even when
+        // the declaration-time cost is the CR 509.1d blocking cost.  Keep the
+        // typed BlockCost lowering for that shared wording; the attack-side
+        // restriction is handled by the ordinary cant/attack parser when it
+        // has its own semantics.
         ["block"] | ["attack", "or", "block"] => ObjectFilter::creature(),
         ["block", ..] => {
             let Some(block_token_index) = action_tokens
@@ -299,6 +304,18 @@ fn block_cost_static_ability(
 pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    // A leading duration belongs to the effect sentence parser.  If this
+    // rule claims it as a static restriction, the duration is lost and
+    // temporary spell effects such as "Until end of turn, players can't gain
+    // life" compile without a spell effect at all.
+    if crate::runtime_backend::front_end::token_primitives::parse_simple_restriction_duration_prefix(
+        tokens,
+    )
+    .is_some()
+    {
+        return Ok(None);
+    }
+
     if cant_shapes::parse_multi_sentence_cant_decline_tokens(tokens).is_some() {
         return Ok(None);
     }
@@ -319,6 +336,14 @@ pub(crate) fn parse_cant_clauses(
             })
             .collect::<Vec<_>>();
         return Ok(Some(conditioned));
+    }
+
+    // The combined attack-or-block wording is also superficially a blocking
+    // payment clause. Claim its typed attack-unless meaning first so the
+    // blocking-cost parser does not reinterpret the condition as a payment
+    // segment (for example, `control seven or more lands`).
+    if let Some(ability) = attack_unless_static_ability(tokens) {
+        return Ok(Some(vec![ability]));
     }
 
     if let Some(ability) = block_cost_static_ability(tokens)? {
@@ -505,11 +530,11 @@ pub(crate) fn parse_cant_clause(
         ));
     }
 
-    if let Some(ability) = blocking_cant_static_ability(tokens) {
+    if let Some(ability) = attack_unless_static_ability(tokens) {
         return Ok(Some(ability));
     }
 
-    if let Some(ability) = attack_unless_static_ability(tokens) {
+    if let Some(ability) = blocking_cant_static_ability(tokens) {
         return Ok(Some(ability));
     }
 
@@ -643,6 +668,22 @@ mod tests {
                     .contains("cant attack or block unless there are seven or more cards in exile"),
             "expected original conditional attack/block restriction text, got {display}"
         );
+    }
+
+    #[test]
+    fn parse_direct_attack_or_block_tap_cost_with_combatant_exclusion() {
+        let tokens = tokenize_line(
+            "This creature can't attack or block unless you tap an untapped creature you control not declared as an attacking or blocking creature this combat.",
+            0,
+        );
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("direct attack-or-block tap cost should not error")
+            .expect("direct attack-or-block tap cost should parse");
+        assert_eq!(abilities.len(), 1, "{abilities:#?}");
+        assert!(matches!(
+            abilities[0].payload,
+            crate::static_abilities::StaticAbilityPayload::BlockCost { .. }
+        ));
     }
 
     #[test]

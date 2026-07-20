@@ -162,7 +162,6 @@ fn twohg_shared_action_players(
     Ok(shared)
 }
 
-
 /// True when this effect (or a nested child) selects objects through the
 /// given context tag, i.e. it consumes what an earlier tagged effect binds.
 fn effect_consumes_tag(effect: &Effect, tag: &crate::tag::TagKey) -> bool {
