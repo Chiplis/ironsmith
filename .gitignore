@@ -33,4 +33,7 @@ pkg/
 *.swp
 *.swo
 **/*/target
-**/*/ironsmith_bg.wasm
+# Generated Ironsmith WebAssembly build artifacts
+**/ironsmith_bg*.wasm
+**/ironsmith_bg*.wasm.gz
+**/ironsmith_bg*.wasm.br
