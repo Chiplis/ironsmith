@@ -618,6 +618,7 @@ pub(super) fn lowercase_may_clause(text: &str) -> String {
             | "Discard"
             | "Draw"
             | "Exile"
+            | "Exchange"
             | "Fight"
             | "Flip"
             | "Gain"
@@ -1426,6 +1427,14 @@ fn normalize_token_self_reference_in_quoted_ability(text: &str) -> String {
     ] {
         normalized = normalized.replace(&format!("This {source_type}"), "This token");
         normalized = normalized.replace(&format!("this {source_type}"), "this token");
+    }
+    let had_period = normalized.ends_with('.');
+    let bare = normalized.trim_end_matches('.');
+    if bare.eq_ignore_ascii_case("attacks each combat if able") {
+        return format!(
+            "This token attacks each combat if able{}",
+            if had_period { "." } else { "" }
+        );
     }
     normalized
         .replace("Sacrifice this token, Add ", "Sacrifice this token: Add ")
@@ -2773,7 +2782,7 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
     if (lower.contains("search your library and/or graveyard")
         || lower.contains("search your library, hand")
         || lower.contains("search your graveyard, hand"))
-        && lower.contains("if you do, shuffle your library")
+        && lower.contains("if you do, shuffle")
     {
         normalized = normalized
             .replace(
@@ -2781,7 +2790,15 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
                 ". If you search your library this way, shuffle",
             )
             .replace(
+                ". If you do, shuffle",
+                ". If you search your library this way, shuffle",
+            )
+            .replace(
                 ". if you do, shuffle your library",
+                ". if you search your library this way, shuffle",
+            )
+            .replace(
+                ". if you do, shuffle",
                 ". if you search your library this way, shuffle",
             );
     }
@@ -2833,12 +2850,11 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
         let Some((prefix, rest)) = line.split_once(needle) else {
             continue;
         };
+        let rest = rest.trim_end_matches('.');
         let Some(name) = rest
             .strip_suffix(", reveal it, and put it into your hand. If you do, shuffle your library")
             .or_else(|| {
-                rest.strip_suffix(
-                    ", reveal it, and put it into your hand. If you do, shuffle your library.",
-                )
+                rest.strip_suffix(", reveal it, and put it into your hand. If you do, shuffle")
             })
         else {
             continue;
@@ -2856,13 +2872,14 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
         "Search your library for a basic land card, put it onto the battlefield tapped. Search your library and/or graveyard for a card named ",
     ];
     let (prefix, rest) = needles.iter().find_map(|needle| line.split_once(needle))?;
+    let rest = rest.trim_end_matches('.');
     let name = rest
         .strip_suffix(
             ", reveal it, put it into your hand. If you search your library this way, shuffle your library",
         )
         .or_else(|| {
             rest.strip_suffix(
-                ", reveal it, put it into your hand. If you search your library this way, shuffle your library.",
+                ", reveal it, put it into your hand. If you search your library this way, shuffle",
             )
         })
         .or_else(|| {
@@ -2870,17 +2887,7 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
         })
         .or_else(|| {
             rest.strip_suffix(
-                ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle.",
-            )
-        })
-        .or_else(|| {
-            rest.strip_suffix(
                 ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library",
-            )
-        })
-        .or_else(|| {
-            rest.strip_suffix(
-                ". Reveal it. Put it into your hand. Then if you search your library this way, shuffle your library.",
             )
         })
         .or_else(|| {
@@ -2890,7 +2897,7 @@ fn compact_named_library_graveyard_search_to_hand_surface(line: &str) -> Option<
         })
         .or_else(|| {
             rest.strip_suffix(
-                ". Reveal it. Put it into your hand. If you search your library this way, shuffle.",
+                ". Reveal it. Put it into your hand. If you search your library this way, shuffle your library",
             )
         })
         ?;
@@ -3004,8 +3011,13 @@ fn compact_multi_zone_named_search_to_battlefield_surface(line: &str) -> Option<
 
 fn normalize_untap_target_creature_gets_and_gains_split(line: &str) -> Option<String> {
     let rest = line.strip_prefix("untap target creature, it gets ")?;
-    let (pt_delta, tail) = rest.split_once(" until end of turn, then it gains ")?;
-    let keyword = tail.strip_suffix(" until end of turn")?;
+    let (pt_delta, keyword) =
+        if let Some((pt_delta, tail)) = rest.split_once(" until end of turn, then it gains ") {
+            (pt_delta, tail.strip_suffix(" until end of turn")?)
+        } else {
+            let (pt_delta, tail) = rest.split_once(" and gains ")?;
+            (pt_delta, tail.strip_suffix(" until end of turn")?)
+        };
     if pt_delta.is_empty() || keyword.is_empty() {
         return None;
     }
@@ -3449,8 +3461,13 @@ fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<St
 }
 
 fn compact_three_way_looked_card_distribution(line: &str) -> Option<String> {
-    let suffix = ", choose a card, choose an other card, choose an other other card, return it to its owner's hand, put it on the bottom of its owner's library, exile it, then you may play those cards this turn";
-    let head = line.trim_end_matches('.').strip_suffix(suffix)?;
+    let trimmed = line.trim_end_matches('.');
+    let head = [
+        ", choose a card, choose an other card, choose an other other card, return it to its owner's hand, put it on the bottom of its owner's library, exile it, then you may play those cards this turn",
+        ", choose a card, choose another card, choose another other card, return it to its owner's hand, put it on the bottom of its owner's library, exile it, then you may play those cards this turn",
+    ]
+    .iter()
+    .find_map(|suffix| trimmed.strip_suffix(suffix))?;
     if !head.contains("Look at the top three cards of your library") {
         return None;
     }
@@ -3473,25 +3490,33 @@ fn compact_looked_card_battlefield_rest_bottom(line: &str) -> Option<String> {
 }
 
 fn compact_delirium_same_name_search_exile(line: &str) -> Option<String> {
-    let artifact = "If there are four or more card types among cards in your graveyard, you search its controller's graveyard, hand, and library for any number permanents with the same name as that object that object's controller owns. For each card searched for this way, exile them. If you searched your library this way, shuffle its controller's library. Shuffle their library";
-    if !line.contains(artifact) {
-        return None;
+    for artifact in [
+        "If there are four or more card types among cards in your graveyard, you search its controller's graveyard, hand, and library for any number permanents with the same name as that object that object's controller owns. For each card searched for this way, exile them. If you searched your library this way, shuffle its controller's library. Shuffle their library",
+        "If there are four or more card types among cards in your graveyard, you search its controller's graveyard, hand, and library for any number of permanents with the same name as that object that object's controller owns. For each card searched for this way, exile them. If you searched your library this way, shuffle its controller's library. Then that player shuffles",
+    ] {
+        if line.contains(artifact) {
+            return Some(line.replace(
+                artifact,
+                "Delirium — If there are four or more card types among cards in your graveyard, search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles",
+            ));
+        }
     }
-    Some(line.replace(
-        artifact,
-        "Delirium — If there are four or more card types among cards in your graveyard, search the graveyard, hand, and library of that spell's controller for any number of cards with the same name as that spell, exile those cards, then that player shuffles",
-    ))
+    None
 }
 
 fn compact_delirium_exiled_card_same_name_search_exile(line: &str) -> Option<String> {
-    let artifact = "If there are four or more card types among cards in your graveyard, target opponent chooses a card exiled with this source. You search target opponent's graveyard, hand, and library for any number permanents with the same name as that object target opponent owns. For each card searched for this way, exile them. If you searched your library this way, shuffle target opponent's library. Shuffle target opponent's library";
-    if !line.contains(artifact) {
-        return None;
+    for artifact in [
+        "If there are four or more card types among cards in your graveyard, target opponent chooses a card exiled with this source. You search target opponent's graveyard, hand, and library for any number permanents with the same name as that object target opponent owns. For each card searched for this way, exile them. If you searched your library this way, shuffle target opponent's library. Shuffle target opponent's library",
+        "If there are four or more card types among cards in your graveyard, target opponent chooses a card exiled with this source. You search target opponent's graveyard, hand, and library for any number of permanents with the same name as that object target opponent owns. For each card searched for this way, exile them. If you searched your library this way, shuffle target opponent's library. Shuffle target opponent's library",
+    ] {
+        if line.contains(artifact) {
+            return Some(line.replace(
+                artifact,
+                "Delirium — If there are four or more card types among cards in your graveyard, search that player's graveyard, hand, and library for any number of cards with the same name as the exiled card, exile those cards, then that player shuffles",
+            ));
+        }
     }
-    Some(line.replace(
-        artifact,
-        "Delirium — If there are four or more card types among cards in your graveyard, search that player's graveyard, hand, and library for any number of cards with the same name as the exiled card, exile those cards, then that player shuffles",
-    ))
+    None
 }
 
 fn compact_count_based_power_boost(line: &str) -> Option<String> {

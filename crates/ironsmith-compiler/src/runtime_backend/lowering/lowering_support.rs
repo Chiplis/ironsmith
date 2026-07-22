@@ -25,7 +25,7 @@ use super::compile_support::{
 };
 use super::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    bind_condition_counter_antecedent_in_effects,
+    bind_condition_collection_antecedent_in_effects, bind_condition_counter_antecedent_in_effects,
     bind_random_count_condition_antecedent_in_effects,
     bind_trigger_antecedent_after_top_library_observation, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent, retarget_it_animations_to_source,
@@ -1344,9 +1344,9 @@ fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst
             return (normalize_effects_ast(&flattened), Vec::new());
         }
         if splits_hand_pipeline {
-            // Hand reveal/look, choice, and dependent discard effects form a
-            // typed tag pipeline. Keep that pipeline in one lowering slice so
-            // its specialist can see the complete operation.
+            // Hand producers, choices, and dependent moves form a typed tag
+            // pipeline. Keep that pipeline in one lowering slice so its
+            // specialist can see the complete operation.
             return (flattened, Vec::new());
         }
         if splits_shared_lowering_followup {
@@ -1671,6 +1671,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
         );
     }
     if let Some(predicate) = intervening_if.as_ref() {
+        bind_condition_collection_antecedent_in_effects(&mut body_effects, predicate);
         bind_random_count_condition_antecedent_in_effects(&mut body_effects, predicate);
     }
     retarget_source_damage_attack_followups_to_source(&mut body_effects);

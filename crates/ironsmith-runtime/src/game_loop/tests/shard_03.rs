@@ -262,6 +262,7 @@ pub(super) fn guild_artisan_does_not_trigger_when_attacked_player_is_not_the_lif
     game.player_mut(bob).expect("bob exists").life = 19;
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
+
     game.turn.phase = Phase::Combat;
     game.turn.step = Some(crate::game_state::Step::DeclareAttackers);
 
@@ -1928,6 +1929,13 @@ pub(super) fn all_hallows_eve_sees_creatures_put_into_opponents_graveyard_by_sba
     game.turn.active_player = alice;
     game.turn.priority_player = Some(alice);
 
+    // Yawgmoth's activated ability draws a card. Keep this scenario focused on
+    // the SBA/stack ordering instead of making Alice lose to an empty library.
+    let draw_fodder = CardBuilder::new(CardId::from_raw(99_312), "Yawgmoth Draw Fodder")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    game.create_object_from_card(&draw_fodder, alice, Zone::Library);
+
     let all_hallows_eve = CardDefinitionBuilder::new(CardId::from_raw(99_310), "All Hallow's Eve")
         .card_types(vec![CardType::Sorcery])
         .parse_text(
@@ -1984,7 +1992,7 @@ pub(super) fn all_hallows_eve_sees_creatures_put_into_opponents_graveyard_by_sba
         .expect("priority loop should resolve Yawgmoth and then All Hallow's Eve");
     assert!(
         matches!(result, crate::decision::GameProgress::Continue),
-        "priority loop should finish the upkeep priority window"
+        "priority loop should finish the upkeep priority window, got {result:?}"
     );
     assert!(dm.activated, "the test should activate Yawgmoth once");
 

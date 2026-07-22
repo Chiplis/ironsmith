@@ -1978,7 +1978,7 @@ const PRE_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbFollowupRuleDef] = &[
     SubjectVerbFollowupRuleDef {
         id: "copy-and-cast",
         priority: 40,
-        heads: &["copy", "that"],
+        heads: &["copy", "that", "you", "the"],
         run: pre_rule_copy_and_cast_followups,
     },
     SubjectVerbFollowupRuleDef {
@@ -2171,6 +2171,31 @@ mod retained_land_followup_tests {
 
 #[cfg(test)]
 mod copy_cast_followup_tests {
+    use super::*;
+
+    #[test]
+    fn immediate_exiled_card_cast_keeps_its_may_scope() {
+        let lexed = crate::runtime_backend::lex_line("You may cast the exiled card.", 0)
+            .expect("optional tagged cast should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("optional tagged cast should parse");
+
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [EffectAst::May { effects }]
+                    if matches!(
+                        effects.as_slice(),
+                        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::CastTagged { .. },
+                            ..
+                        })]
+                    )
+            ),
+            "expected immediate cast inside a may scope, got {parsed:#?}"
+        );
+    }
+
     #[test]
     fn copy_card_then_may_cast_copy_uses_prior_moved_tag_without_copying_source() {
         let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Copy Variant")
@@ -2268,6 +2293,33 @@ mod damage_self_replacement_followup_tests {
         assert!(!debug.contains("ForEachObject"), "{debug}");
         assert!(!debug.contains("counters_0"), "{debug}");
     }
+
+    #[test]
+    fn omitted_damage_target_reuses_the_default_target() {
+        let lexed = crate::runtime_backend::lex_line(
+            "This deals 3 damage to target creature. It deals 5 damage instead if you control an artifact.",
+            0,
+        )
+        .expect("damage self-replacement should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("damage self-replacement should parse");
+        let [EffectAst::SelfReplacement { if_true, .. }] = parsed.as_slice() else {
+            panic!("expected one typed self-replacement: {parsed:#?}");
+        };
+        assert!(
+            matches!(
+                if_true.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::DealDamageEqualToPower {
+                        target: TargetAst::Object(_, Some(_), _),
+                        ..
+                    },
+                    ..
+                })]
+            ),
+            "the omitted replacement target should reuse the default creature target: {if_true:#?}"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -2326,9 +2378,13 @@ mod targeted_search_self_replacement_followup_tests {
                     PlayerAst::That,
                     Some(PlayerFilter::target_player()),
                 ),
-                (PlayerAst::Implicit, PlayerAst::That, None),
+                (
+                    PlayerAst::Implicit,
+                    PlayerAst::That,
+                    Some(PlayerFilter::IteratedPlayer),
+                ),
             ],
-            "the default branch carries the target-qualified library; the replacement resolves its demonstrative owner from the retained target declaration"
+            "the default branch carries the target-qualified library; the replacement keeps a demonstrative owner for reference resolution"
         );
 
         let lowered =

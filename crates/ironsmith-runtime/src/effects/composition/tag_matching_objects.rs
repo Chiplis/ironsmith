@@ -28,6 +28,9 @@ fn effect_zones(effect: &TagMatchingObjectsEffect) -> Vec<Zone> {
 
 impl EffectExecutor for TagMatchingObjectsEffect {
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
+        if !self.source_tags.is_empty() {
+            return Vec::new();
+        }
         effect_zones(self)
             .into_iter()
             .map(|zone| {
@@ -43,6 +46,26 @@ impl EffectExecutor for TagMatchingObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if !self.source_tags.is_empty() {
+            let mut snapshots = Vec::new();
+            for source_tag in &self.source_tags {
+                for snapshot in ctx.get_tagged_all(source_tag).into_iter().flatten() {
+                    if !snapshots
+                        .iter()
+                        .any(|existing: &ObjectSnapshot| existing.stable_id == snapshot.stable_id)
+                    {
+                        snapshots.push(snapshot.clone());
+                    }
+                }
+            }
+            let object_ids = snapshots
+                .iter()
+                .map(|snapshot| snapshot.object_id)
+                .collect::<Vec<_>>();
+            ctx.set_tagged_objects(self.tag.clone(), snapshots);
+            return Ok(EffectOutcome::with_objects(object_ids));
+        }
+
         let mut object_ids = Vec::new();
         for zone in effect_zones(self) {
             let mut filter = self.filter.clone();

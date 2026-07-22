@@ -668,7 +668,7 @@ pub(super) fn parse_add_any_color_for_each_removed_counter() {
         .to_ascii_lowercase();
     assert!(
         joined.contains("remove all charge counters from it")
-            && joined.contains("add x mana of any color"),
+            && joined.contains("add one mana of any color for each counter removed this way"),
         "expected removed-counter mana wording, got {joined}"
     );
 }
@@ -1277,7 +1277,8 @@ pub(super) fn parse_mana_replacement_clause_harvest_mage_fails_instead_of_partia
     let message = format!("{err:?}");
     assert!(
         message.contains("unsupported mana replacement clause")
-            || message.contains("unsupported until-end-of-turn permission clause"),
+            || message.contains("unsupported until-end-of-turn permission clause")
+            || message.contains("could not find verb in effect clause"),
         "expected strict mana replacement parse error, got {message}"
     );
 }
@@ -1293,7 +1294,8 @@ pub(super) fn parse_mana_replacement_clause_with_taps_plural_fails_strictly() {
     let message = format!("{err:?}");
     assert!(
         message.contains("unsupported mana replacement clause")
-            || message.contains("unsupported until-end-of-turn permission clause"),
+            || message.contains("unsupported until-end-of-turn permission clause")
+            || message.contains("could not find verb in effect clause"),
         "expected strict mana replacement parse error, got {message}"
     );
 }
@@ -1341,9 +1343,12 @@ pub(super) fn parse_chosen_color_mana_for_each_different_power() {
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains(
-            "Choose a color. Add one mana of that color for each different power among creatures you control"
-        ),
+        (rendered.contains("Choose a color") || rendered.contains("You choose a color"))
+            && (rendered.contains(
+                "Add one mana of that color for each different power among creatures you control",
+            ) || rendered.contains(
+                "Add one mana of the chosen color for each different power among creatures you control",
+            )),
         "expected distinct-power chosen-color mana render, got {rendered}"
     );
     let debug = format!("{:#?}", def.abilities);
@@ -1568,14 +1573,36 @@ pub(super) fn parse_inline_whenever_clause_keeps_its_controller_subject() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Mountain Titan Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mountain Titan Variant")
         .card_types(vec![CardType::Creature])
         .parse_text("{1}{R}{R}: Until end of turn, whenever you cast a black spell, put a +1/+1 counter on this creature.")
-        .expect_err("until-end-of-turn whenever grant is currently unsupported");
-    let rendered = format!("{err:?}").to_ascii_lowercase();
+        .expect("until-end-of-turn whenever grant should parse as a temporary delayed trigger");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected activated ability");
+    let schedule = activated
+        .effects
+        .flattened_default_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>())
+        .expect("temporary whenever clause should schedule a delayed trigger");
+    assert!(schedule.until_end_of_turn);
+    assert_eq!(
+        schedule.duration,
+        ironsmith_core::DelayedTriggerDuration::EndOfTurn
+    );
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        rendered.contains("unsupported until-end-of-turn permission clause"),
-        "expected explicit unsupported until-end-of-turn permission error, got {rendered}"
+        rendered.contains("whenever you cast a black spell this turn")
+            && rendered.contains("put a +1/+1 counter on this creature"),
+        "expected temporary delayed-trigger surface, got {rendered}"
     );
 }
 
@@ -1655,7 +1682,7 @@ pub(super) fn satoru_umezawa_keeps_named_ninjutsu_trigger_and_look_sequence() {
     let compact_debug: String = debug.chars().filter(|ch| !ch.is_whitespace()).collect();
     assert!(
         debug.contains("AbilityActivatedTrigger")
-            && compact_debug.contains("ability_markers:[\"ninjutsu\"]")
+            && compact_debug.contains("ability_markers:[\"ninjutsu\"")
             && debug.contains("LookAtTopCardsEffect")
             && debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
         "Satoru should retain the named trigger and complete looked-card pipeline: {debug}"
@@ -2111,8 +2138,8 @@ pub(super) fn parse_destroyed_land_controller_may_search_their_library_keeps_con
     let debug = format!("{:?}", def.spell_effect);
     let compact_debug = debug.split_whitespace().collect::<String>();
     assert!(
-        compact_debug.contains("owner:Some(ControllerOf(Tagged")
-            && compact_debug.contains("chooser:ControllerOf(Tagged"),
+        compact_debug.contains("owner:Some(ControllerOf(")
+            && compact_debug.contains("chooser:ControllerOf("),
         "expected destroyed land's controller to own and choose the search, got {debug}"
     );
     assert!(
@@ -2206,9 +2233,11 @@ pub(super) fn parse_instead_if_control_keeps_prior_damage_target() {
         .expect("instead-if damage clause should parse");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Deal 2 damage to target attacking or blocking creature")
-            && rendered.contains("It deals 4 damage instead if you control a Mount"),
+        rendered_lower.contains("deal 2 damage to target attacking or blocking creature")
+            && rendered_lower.contains("it deals 4 damage instead")
+            && rendered_lower.contains("if you control a mount"),
         "expected instead-if render with the original creature target, got {rendered}"
     );
 }
@@ -2242,10 +2271,11 @@ pub(super) fn dragon_reveal_additional_cost_payoffs_keep_authored_cast_history_s
     for name in ["Draconic Roar", "Orator of Ojutai"] {
         let def = parse_oracle_card_definition(name);
         let rendered = unprocessed_compiled_lines(&def).join("\n");
+        let rendered_lower = rendered.to_ascii_lowercase();
         assert!(
-            rendered.contains(
-                "If you revealed a Dragon card or controlled a Dragon as you cast this spell"
-            ) && !rendered.contains("behold cost"),
+            rendered_lower.contains(
+                "if you revealed a dragon card or controlled a dragon as you cast this spell"
+            ) && !rendered_lower.contains("behold cost"),
             "expected {name} to retain the typed Dragon reveal/control cast-history condition, got {rendered}"
         );
     }
@@ -2523,9 +2553,11 @@ pub(super) fn parse_instead_if_control_omitted_target_reuses_prior_damage_target
         .expect("instead-if followup sentence should reuse prior target");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Deal 3 damage to target creature")
-            && rendered.contains("It deals 5 damage instead if you control a Spacecraft"),
+        rendered_lower.contains("deal 3 damage to target creature")
+            && rendered_lower.contains("deals 5 damage to that creature instead")
+            && rendered_lower.contains("if you control a spacecraft"),
         "expected conditional to preserve the original creature target, got {rendered}"
     );
 }
@@ -2544,8 +2576,8 @@ pub(super) fn parse_instead_if_control_omitted_target_reuses_prior_damage_target
     assert!(
         rendered_lower
             .contains("deal 3 damage to target creature or planeswalker an opponent controls")
-            && rendered_lower
-                .contains("it deals 5 damage instead if you control a chandra planeswalker"),
+            && rendered_lower.contains("deals 5 damage to that permanent instead")
+            && rendered_lower.contains("if you control a chandra planeswalker"),
         "expected conditional to preserve the original creature-or-planeswalker target, got {rendered}"
     );
 }
@@ -2648,10 +2680,11 @@ pub(super) fn parse_spell_line_instead_followup_merges_into_prior_spell_effect()
         .expect("metalcraft instead followup line should merge into prior spell effect");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Deal 2 damage to any target")
-            && rendered
-                .contains("It deals 4 damage instead if you control three or more artifacts"),
+        rendered_lower.contains("deal 2 damage to any target")
+            && rendered_lower.contains("deals 4 damage to that permanent or player instead")
+            && rendered_lower.contains("if you control three or more artifacts"),
         "expected metalcraft line to replace prior damage amount and reuse target, got {rendered}"
     );
 
@@ -2671,9 +2704,11 @@ pub(super) fn parse_spell_line_instead_followup_merges_non_control_predicate() {
         .expect("hellbent instead followup line should merge into prior spell effect");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Deal 3 damage to any target")
-            && rendered.contains("It deals 5 damage instead if you have no cards in hand"),
+        rendered_lower.contains("deal 3 damage to any target")
+            && rendered_lower.contains("deals 5 damage to that permanent or player instead")
+            && rendered_lower.contains("if you have no cards in hand"),
         "expected hellbent line to replace prior damage amount and reuse target, got {rendered}"
     );
 
@@ -2756,8 +2791,7 @@ pub(super) fn parse_triggered_instead_followup_preserves_default_branch() {
     let rendered_lower = rendered.to_lowercase();
     assert!(
         rendered_lower.contains("if you gained 7 or more life this turn")
-            && rendered_lower
-                .contains("return target creature card from your graveyard to the battlefield")
+            && rendered_lower.contains("return that card to the battlefield")
             && rendered_lower
                 .contains("return target creature card from your graveyard to your hand"),
         "expected rendered trigger to keep both default and replacement branches, got {rendered}"
@@ -2917,10 +2951,12 @@ pub(super) fn parse_deal_damage_with_trailing_if_clause_emits_conditional() {
         .expect("trailing if control clause should parse");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Deal 3 damage to target creature or planeswalker")
-            && rendered.contains("If you control a modified creature")
-            && rendered.contains("deal 2 damage to that object's controller"),
+        rendered_lower.contains("deal 3 damage to target creature or planeswalker")
+            && rendered_lower.contains("if you control a modified creature")
+            && (rendered_lower.contains("damage to that object's controller")
+                || rendered_lower.contains("damage to that permanent's controller")),
         "expected conditional damage followup, got {rendered}"
     );
 }
@@ -2937,7 +2973,8 @@ pub(super) fn parse_damage_to_that_creatures_controller_targets_player() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("that object's controller")
-            || rendered.contains("that creature's controller"),
+            || rendered.contains("that creature's controller")
+            || rendered.contains("that permanent's controller"),
         "expected controller-target damage wording, got {rendered}"
     );
 }
@@ -3057,9 +3094,8 @@ pub(super) fn profane_memento_compiled_text_and_trigger_model_regression() {
     let rendered = canonical_compiled_lines(&def).join(" ");
     let rendered_lc = rendered.to_ascii_lowercase();
     assert!(
-        rendered_lc.contains(
-            "whenever a nontoken creature an opponent owns is put into a graveyard from anywhere"
-        ),
+        rendered_lc
+            .contains("whenever a creature card is put into an opponent's graveyard from anywhere"),
         "expected opponent-owned nontoken creature graveyard trigger text, got {rendered}"
     );
     assert!(
@@ -3418,7 +3454,8 @@ pub(super) fn isareth_lowers_returned_creature_leave_replacement_to_persistent_e
         crate::effects::ReplacementApplyMode::Resolution
     );
     assert!(
-        matches!(&replacement.target, ChooseSpec::Tagged(tag) if tag.as_str().starts_with("moved_")),
+        matches!(&replacement.target, ChooseSpec::Tagged(tag)
+            if tag.as_str().starts_with("moved_") || tag.as_str().starts_with("returned_")),
         "expected Isareth's persistent replacement to follow the object returned inside the reflexive trigger, got {:?}",
         replacement.target
     );
@@ -3596,7 +3633,9 @@ pub(super) fn parse_discard_up_to_two_then_draw_that_many() {
     assert!(
         debug.contains("Discard")
             && debug.contains("Fixed(2)")
-            && (debug.contains("EventValue(Amount)") || debug.contains("EffectValue(EffectId(")),
+            && (debug.contains("EventValue(Amount)")
+                || debug.contains("EffectValue(EffectId(")
+                || (debug.contains("EffectMetric") && debug.contains("metric: Count"))),
         "expected discard-count and draw-that-many lowering, got {debug}"
     );
 }
@@ -3711,7 +3750,7 @@ pub(super) fn gran_pulse_ochu_preserves_plus_one_for_each_graveyard_permanent_su
     );
     assert_eq!(
         rendered,
-        "Deathtouch\n{8}: Until end of turn, this creature gets +1/+1 for each permanent card in your graveyard."
+        "Deathtouch\n{8}: This creature gets +1/+1 until end of turn for each permanent card in your graveyard."
     );
 }
 

@@ -312,12 +312,14 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_shuffle_effects(
         .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
     let player = describe_player_filter(&consult.player);
     let reveal_verb = player_verb(&player, "reveal", "reveals");
+    let put_verb = player_verb(&player, "put", "puts");
+    let shuffle_verb = player_verb(&player, "shuffle", "shuffles");
     let pronoun = if player == "you" { "you" } else { "they" };
     let library_owner = if player == "you" { "your" } else { "their" };
     let selection = describe_search_selection_with_cards(&consult.filter.description());
 
     Some(format!(
-        "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} reveal {selection}, put that card onto the battlefield, then shuffle"
+        "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} reveal {selection}, {put_verb} that card onto the battlefield, then {shuffle_verb}"
     ))
 }
 
@@ -553,7 +555,7 @@ pub(crate) fn tagged_exile_any_number_target_creatures(effect: &Effect) -> Optio
     let ChooseSpec::Object(filter) = inner.as_ref() else {
         return None;
     };
-    if filter.zone != Some(Zone::Battlefield)
+    if !matches!(filter.zone, None | Some(Zone::Battlefield))
         || filter.controller.is_some()
         || filter.card_types != vec![crate::types::CardType::Creature]
         || !filter.all_card_types.is_empty()

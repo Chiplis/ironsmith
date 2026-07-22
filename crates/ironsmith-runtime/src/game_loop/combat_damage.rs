@@ -827,7 +827,8 @@ fn plan_unblocked_player_damage(
     // continuous state dirty.  Rebuild the view from current effects here so
     // granted combat abilities (such as first strike) cannot come from a stale
     // cache.
-    let view = crate::derived_view::DerivedGameView::from_effects(game, game.all_continuous_effects());
+    let view =
+        crate::derived_view::DerivedGameView::from_effects(game, game.all_continuous_effects());
     view.prewarm_characteristics(&game.battlefield);
     let toughness_sources = ToughnessCombatDamageSources::from_view(game, &view);
     let mut planned = Vec::with_capacity(combat.attackers.len());

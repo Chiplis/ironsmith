@@ -511,7 +511,7 @@ pub(super) fn test_parse_characteristic_power_equal_greatest_mana_value() {
         panic!("expected SetPowerToughness modification");
     };
 
-    let crate::effect::Value::GreatestManaValue(filter) = power else {
+    let crate::effect::Value::GreatestManaValue(filter) = power.unhinted() else {
         panic!("expected greatest mana value power");
     };
     assert!(filter.card_types.contains(&CardType::Creature));
@@ -896,7 +896,7 @@ pub(super) fn test_parse_target_player_may_copy_this_spell_and_choose_new_target
     let lines = unprocessed_compiled_lines(&def);
     let joined = lines.join(" ").to_ascii_lowercase();
     assert!(
-        joined.contains("target player may copy this spell")
+        joined.contains("that player may copy this spell")
             && !joined.contains("you may copy this spell"),
         "expected copy permission to stay linked to targeted player, got {joined}"
     );
@@ -919,14 +919,17 @@ pub(super) fn test_parse_then_controller_may_copy_spell_and_choose_new_targets()
     let joined = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
+    let debug = format!("{:#?}", def.spell_effect);
     assert!(
-        (joined.contains("that object's controller may copy this spell")
+        (joined.contains("its controller may copy this spell")
+            || joined.contains("that object's controller may copy this spell")
             || joined.contains("that permanent's controller may copy this spell"))
             && !joined.contains("you may copy this spell"),
-        "expected copy permission to stay linked to referenced controller, got {joined}"
+        "expected copy permission to stay linked to referenced controller, got {joined}\n{debug}"
     );
     assert!(
-        joined.contains("that object's controller may copy this spell")
+        joined.contains("its controller may copy this spell")
+            || joined.contains("that object's controller may copy this spell")
             || joined.contains("that permanent's controller may copy this spell"),
         "expected copy permission to stay linked to referenced controller, got {joined}"
     );
@@ -1217,7 +1220,7 @@ pub(super) fn test_parse_krark_coin_flip_trigger_keeps_both_flip_branches() {
     assert!(debug.contains("FlipCoinEffect"), "{debug}");
     assert!(debug.contains("ReturnToHandEffect"), "{debug}");
     assert!(debug.contains("CopySpellEffect"), "{debug}");
-    assert!(debug.contains("ChooseNewTargetsEffect"), "{debug}");
+    assert!(debug.contains("RetargetStackObjectEffect"), "{debug}");
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

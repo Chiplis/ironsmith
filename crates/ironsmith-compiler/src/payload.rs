@@ -475,7 +475,7 @@ impl KeywordAction {
             Self::ProtectionFromEachManaValueAmong(filter) => {
                 format!(
                     "Protection from each mana value among {}",
-                    filter.description()
+                    describe_protection_mana_value_scope(filter)
                 )
             }
             Self::ProtectionFromCardType(card_type) => {
@@ -514,6 +514,30 @@ impl KeywordAction {
             Self::MarkerText(text) => text.clone(),
         }
     }
+}
+
+fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {
+    let description = filter.description();
+    let without_article = description
+        .strip_prefix("an ")
+        .or_else(|| description.strip_prefix("a "))
+        .unwrap_or(&description);
+    for (singular, plural) in [
+        ("artifact", "artifacts"),
+        ("creature", "creatures"),
+        ("enchantment", "enchantments"),
+        ("land", "lands"),
+        ("permanent", "permanents"),
+        ("spell", "spells"),
+    ] {
+        if without_article == singular {
+            return plural.to_string();
+        }
+        if let Some(rest) = without_article.strip_prefix(&format!("{singular} ")) {
+            return format!("{plural} {rest}");
+        }
+    }
+    description
 }
 
 #[derive(Debug, Clone, PartialEq)]

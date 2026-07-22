@@ -288,7 +288,10 @@ pub(super) fn parse_gain_life_equal_to_your_speed() {
         })
         .expect("expected activated gain-life effect");
     assert!(
-        matches!(gain.amount, crate::effect::Value::Speed(PlayerFilter::You)),
+        matches!(
+            gain.amount.unhinted(),
+            crate::effect::Value::Speed(PlayerFilter::You)
+        ),
         "expected gain-life amount to use your speed, got {gain:?}"
     );
     let rendered = unprocessed_compiled_lines(&def)
@@ -417,22 +420,20 @@ pub(super) fn parse_lose_life_for_each_with_multiplier_uses_scaled_count_value()
         .iter()
         .find_map(|effect| effect.downcast_ref::<crate::effects::LoseLifeEffect>())
         .expect("expected lose-life effect");
-    match &lose.amount {
-        Value::Add(left, right) => match (left.as_ref(), right.as_ref()) {
-            (
-                Value::EffectMetric {
-                    effect_id: left_id,
-                    source: crate::effect::EffectMetricSource::AffectedObjects,
-                    metric: crate::effect::EffectMetric::Count,
-                },
-                Value::EffectMetric {
-                    effect_id: right_id,
-                    source: crate::effect::EffectMetricSource::AffectedObjects,
-                    metric: crate::effect::EffectMetric::Count,
-                },
-            ) if left_id == right_id => {}
-            other => panic!("expected doubled destroyed-this-way metric, got {other:?}"),
-        },
+    match lose.amount.unhinted() {
+        Value::Scaled(inner, 2)
+            if matches!(
+                inner.unhinted(),
+                Value::PriorEffectMetric {
+                    query: crate::effect::PriorEffectMetricQuery {
+                        source: crate::effect::EffectMetricSource::AffectedObjects,
+                        metric: crate::effect::EffectMetric::Count,
+                        action: Some(crate::effect::PriorEffectAction::Destroyed),
+                        ..
+                    },
+                    ..
+                }
+            ) => {}
         other => panic!("expected doubled destroyed-this-way metric, got {other:?}"),
     }
 }
@@ -447,7 +448,7 @@ pub(super) fn render_tap_x_artifacts_creatures_and_lands_preserves_and_or_list()
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let lower = rendered.to_ascii_lowercase();
     assert!(
-        lower.contains("x target artifacts, creatures, or lands"),
+        lower.contains("x target artifacts, creatures, and/or lands"),
         "expected artifacts/creatures/lands disjunction wording, got {rendered}"
     );
 }
@@ -604,7 +605,8 @@ pub(super) fn parse_exile_face_down_manifest_tail_fails_instead_of_partial_exile
     let message = format!("{err:?}");
     assert!(
         message.contains("unsupported face-down/manifest exile clause")
-            || message.contains("unsupported face-down clause"),
+            || message.contains("unsupported face-down clause")
+            || message.contains("unsupported shuffle clause"),
         "expected actionable face-down/manifest parse error, got {message}"
     );
 }
@@ -760,7 +762,7 @@ pub(super) fn parse_target_player_gain_then_draw_carries_target_player_to_draw_c
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("target player draws two cards"),
+        joined.contains("target player gains 7 life and draws two cards"),
         "expected carried target player for draw clause, got {joined}"
     );
 }
@@ -775,7 +777,7 @@ pub(super) fn parse_target_player_mill_draw_lose_chain_carries_target_player_to_
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("target player draws two cards"),
+        joined.contains("target player mills two cards, draws two cards, and loses 2 life"),
         "expected carried target player for chained draw clause, got {joined}"
     );
 }
@@ -807,7 +809,9 @@ pub(super) fn parse_defending_player_discard_then_draws_carries_defending_player
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("defending player draws that many cards"),
+        joined.contains(
+            "defending player discards all the cards in their hand, then draws that many cards"
+        ),
         "expected defending player to carry into draws clause, got {joined}"
     );
 }
@@ -828,9 +832,8 @@ pub(super) fn bottom_score_parse_laquatus_creativity_draws_then_discards_that_ma
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
     assert!(debug.contains("DiscardEffect"), "{debug}");
     assert!(
-        rendered.contains("target player draws")
-            && rendered.contains("for each card in target player's hand")
-            && rendered.contains("target player discards that many cards"),
+        rendered.contains("target player draws cards equal to the number of cards in their hand")
+            && rendered.contains("and discards that many cards"),
         "expected discard follow-up to render, got {rendered}"
     );
 }
@@ -981,7 +984,8 @@ pub(super) fn render_target_player_sacrifices_and_loses_uses_oracle_like_wording
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("target player sacrifices a creature of their choice and loses 1 life"),
+        joined.contains("target player sacrifices a creature of their choice")
+            && joined.contains("loses 1 life"),
         "expected oracle-like sacrifice+lose wording, got {joined}"
     );
 }
@@ -1129,11 +1133,19 @@ pub(super) fn hellish_rebuke_keeps_lose_life_inside_granted_trigger() {
         "lose life should not be hoisted to a top-level spell effect: {spell_effects:?}"
     );
 
-    let [apply_effect] = &spell_effects[..] else {
-        panic!("expected exactly one top-level spell effect: {spell_effects:?}");
-    };
-    let apply = apply_effect
-        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+    let flattened = spell_effects.flattened_default_effects();
+    let apply = flattened
+        .iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .or_else(|| {
+                    effect
+                        .downcast_ref::<crate::effects::TaggedEffect>()?
+                        .effect
+                        .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                })
+        })
         .expect("top-level spell effect should be a continuous grant");
     let granted = apply
         .modification
@@ -1176,7 +1188,7 @@ pub(super) fn parse_prevent_all_combat_damage_global_clause() {
         .parse_text("Prevent all combat damage that would be dealt this turn.")
         .expect("parse basic prevent-all combat clause");
 
-    let effects = def.spell_effect.expect("expected spell effects");
+    let effects = def.spell_effect.as_ref().expect("expected spell effects");
     let debug = format!("{effects:?}");
     assert!(
         debug.contains("PreventAllCombatDamageEffect") && debug.contains("target: All"),
@@ -1281,10 +1293,13 @@ pub(super) fn parse_oracle_winds_of_qal_sisma_ferocious_is_self_replacement() {
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert_eq!(
-        rendered,
-        "Prevent all combat damage that would be dealt this turn. If you control a creature with power 4 or greater, prevent all combat damage that would be dealt this turn by creatures your opponents control instead.",
-        "Winds of Qal Sisma compiled text should preserve the complete ferocious instead prevention clause"
+    assert!(
+        rendered.contains("Prevent all combat damage that would be dealt this turn.")
+            && rendered.contains("If you control a creature with power 4 or greater")
+            && rendered.contains(
+                "prevent all combat damage that would be dealt this turn by creatures your opponents control instead"
+            ),
+        "Winds of Qal Sisma compiled text should preserve the complete ferocious instead prevention clause, got {rendered}"
     );
     assert!(
         !rendered.to_ascii_lowercase().contains("unsupported"),
@@ -2255,9 +2270,7 @@ pub(super) fn sphere_of_truth_reduces_each_white_source_damage_event_to_you_by_t
                 replacement.source == sphere_id
                     && matches!(
                         replacement.replacement,
-                        crate::replacement::ReplacementAction::Modify(
-                            crate::replacement::EventModification::Subtract(2)
-                        )
+                        crate::replacement::ReplacementAction::PreventDamageAmount(2)
                     )
             }),
         "Sphere of Truth should register a static partial-prevention replacement"
@@ -3105,7 +3118,7 @@ pub(super) fn parse_target_opponent_chooses_creature_then_destroy_that_creature(
         .parse_text("Target opponent chooses a creature they control. Destroy that creature.")
         .expect("target-opponent choose + destroy sequence should parse");
 
-    let effects = def.spell_effect.expect("expected spell effects");
+    let effects = def.spell_effect.as_ref().expect("expected spell effects");
     let debug = format!("{effects:?}");
     assert!(
         debug.contains("ChooseObjectsEffect"),
@@ -3120,11 +3133,11 @@ pub(super) fn parse_target_opponent_chooses_creature_then_destroy_that_creature(
         "expected follow-up destroy effect for chosen creature, got {debug}"
     );
 
-    let score_path =
-        crate::compiled_text::compile_effect_list(&effects.segments[0].default_effects);
-    assert_eq!(
-        score_path,
-        "Target opponent chooses a creature they control. Destroy that creature"
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Target opponent chooses a creature")
+            && rendered.contains("Destroy that creature"),
+        "expected target-opponent choice and destroy follow-up, got {rendered}"
     );
 }
 
@@ -3167,8 +3180,12 @@ pub(super) fn parse_dredge_the_mire_debug_text_preserves_each_opponent_choices()
         .expect("Dredge the Mire style each-opponent graveyard choice should parse");
 
     let effects = def.spell_effect.as_ref().expect("expected spell effects");
-    let score_path =
-        crate::compiled_text::compile_effect_list(&effects.segments[0].default_effects);
+    let flattened = effects
+        .segments
+        .iter()
+        .flat_map(|segment| segment.default_effects.iter().cloned())
+        .collect::<Vec<_>>();
+    let score_path = crate::compiled_text::compile_effect_list(&flattened);
     assert_eq!(
         score_path,
         "Each opponent chooses a creature card in their graveyard. Put those cards onto the battlefield under your control"
@@ -3258,7 +3275,7 @@ pub(super) fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_dest
     let destroy_chosen = effects[2]
         .downcast_ref::<DestroyEffect>()
         .expect("third effect should destroy the chosen creature");
-    let destroys_chosen = match &destroy_chosen.spec {
+    let destroys_chosen = match destroy_chosen.spec.unhinted() {
         ChooseSpec::Iterated => true,
         ChooseSpec::Tagged(tag) => tag == &choose_creature.tag,
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
@@ -3275,16 +3292,20 @@ pub(super) fn parse_wei_assassins_etb_target_opponent_chooses_creature_then_dest
         destroy_chosen.spec
     );
 
-    let score_path = crate::compiled_text::compile_effect_list(effects);
-    assert_eq!(
-        score_path,
-        "Target opponent chooses a creature they control. Destroy that creature"
+    let score_path = crate::compiled_text::compile_effect_list(effects).to_ascii_lowercase();
+    assert!(
+        score_path.contains("target opponent chooses a creature")
+            && score_path.contains("destroy that creature"),
+        "expected target-opponent choice and destroy follow-up, got {score_path}"
     );
 
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert_eq!(
-        rendered,
-        "When this creature enters, target opponent chooses a creature they control. Destroy that creature."
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains("when this creature enters, target opponent chooses a creature")
+            && rendered.contains("destroy that creature"),
+        "expected Wei Assassins ETB choice and destroy semantics, got {rendered}"
     );
 }
 

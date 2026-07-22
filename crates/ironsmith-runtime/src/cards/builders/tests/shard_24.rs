@@ -6,7 +6,7 @@ pub(super) fn opening_hand_reveal_cards_compile_to_typed_pregame_actions() {
     let cases = [
         (
             "Chancellor of the Annex",
-            "You may reveal this card from your opening hand. If you do, when each opponent casts their first spell of the game, counter that spell unless that player pays {1}.",
+            "You may reveal this card from your opening hand. If you do, when each opponent casts their first spell of the game, counter it unless its controller pays {1}.",
         ),
         (
             "Chancellor of the Forge",
@@ -145,7 +145,7 @@ pub(super) fn eumidian_wastewaker_preserves_both_players_choice_and_shared_grave
     let rendered = canonical_compiled_lines(&definition).join("\n");
     assert!(
         rendered.contains(
-            "Whenever this creature attacks, you and defending player each discard a card or sacrifice a permanent. You draw a card for each land card put into a graveyard this way."
+            "Whenever this creature attacks, you and defending player each discard a card or sacrifice a permanent. Draw a card for each land card put into a graveyard this way."
         ),
         "{rendered}"
     );

@@ -679,7 +679,7 @@ pub(super) fn covert_technician_combat_damage_trigger_puts_only_artifact_with_ma
         .to_ascii_lowercase();
     assert!(
         rendered.contains(
-            "you may put an artifact card with mana value that damage or less from your hand onto the battlefield"
+            "you may put an artifact card with mana value less than or equal to that damage from your hand onto the battlefield"
         ),
         "compiled text should keep the dynamic damage mana-value gate, got {rendered}"
     );
@@ -1714,7 +1714,7 @@ pub(super) fn tom_bombadil_strict_parser_and_compiled_text_regression() {
     );
     assert!(
         rendered.contains(
-            "Whenever the final chapter ability of a Saga you control resolves, you reveal cards from the top of your library until you reveal a Saga card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. This ability triggers only once each turn."
+            "Whenever the final chapter ability of a Saga you control resolves, reveal cards from the top of your library until you reveal a Saga card. Put that card onto the battlefield and the rest on the bottom of your library in a random order. This ability triggers only once each turn."
         ),
         "Tom Bombadil should render the final-Saga-chapter trigger and once-per-turn cap, got:\n{rendered}"
     );

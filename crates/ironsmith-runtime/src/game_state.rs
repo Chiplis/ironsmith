@@ -1470,6 +1470,7 @@ pub struct RestrictionEffectInstance {
     pub controller: PlayerId,
     pub source: ObjectId,
     pub iterated_player: Option<PlayerId>,
+    pub starts_next_turn_of: Option<PlayerId>,
     pub tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     pub duration: crate::effect::Until,
     pub expires_end_of_turn: u32,
@@ -1477,6 +1478,10 @@ pub struct RestrictionEffectInstance {
 }
 
 impl RestrictionEffectInstance {
+    pub fn is_pending(&self) -> bool {
+        self.starts_next_turn_of.is_some()
+    }
+
     pub fn is_expired(&self, current_turn: u32) -> bool {
         if matches!(
             self.duration,
@@ -1490,7 +1495,7 @@ impl RestrictionEffectInstance {
     }
 
     pub fn is_active(&self, game: &GameState, current_turn: u32) -> bool {
-        if self.is_expired(current_turn) {
+        if self.is_pending() || self.is_expired(current_turn) {
             return false;
         }
 
@@ -4289,10 +4294,37 @@ impl GameState {
         iterated_player: Option<PlayerId>,
         tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
     ) {
-        let expires_end_of_turn = match duration {
-            crate::effect::Until::EndOfTurn => self.turn.turn_number,
-            crate::effect::Until::Forever => u32::MAX,
-            _ => self.turn.turn_number,
+        self.add_restriction_effect_with_start_and_tagged_objects(
+            restriction,
+            duration,
+            source,
+            controller,
+            iterated_player,
+            None,
+            tagged_objects,
+        );
+    }
+
+    pub(crate) fn add_restriction_effect_with_start_and_tagged_objects(
+        &mut self,
+        restriction: crate::effect::Restriction,
+        duration: crate::effect::Until,
+        source: ObjectId,
+        controller: PlayerId,
+        iterated_player: Option<PlayerId>,
+        starts_next_turn_of: Option<PlayerId>,
+        tagged_objects: HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>>,
+    ) {
+        let expires_end_of_turn = if starts_next_turn_of.is_some()
+            && matches!(&duration, crate::effect::Until::EndOfTurn)
+        {
+            u32::MAX
+        } else {
+            match &duration {
+                crate::effect::Until::EndOfTurn => self.turn.turn_number,
+                crate::effect::Until::Forever => u32::MAX,
+                _ => self.turn.turn_number,
+            }
         };
 
         self.effect_store
@@ -4302,11 +4334,32 @@ impl GameState {
                 controller,
                 source,
                 iterated_player,
+                starts_next_turn_of,
                 tagged_objects,
                 duration,
                 expires_end_of_turn,
                 consumed_next_untap: false,
             });
+    }
+
+    pub(crate) fn activate_restrictions_starting_this_turn(&mut self) {
+        let active_players = self.turn_players();
+        let current_turn = self.turn.turn_number;
+        let had_restrictions = !self.effect_store.restriction_effects.is_empty();
+        for effect in &mut self.effect_store.restriction_effects {
+            if effect
+                .starts_next_turn_of
+                .is_some_and(|player| active_players.contains(&player))
+            {
+                effect.starts_next_turn_of = None;
+                if matches!(effect.duration, crate::effect::Until::EndOfTurn) {
+                    effect.expires_end_of_turn = current_turn;
+                }
+            }
+        }
+        if had_restrictions {
+            self.update_cant_effects();
+        }
     }
 
     pub fn add_goad_effect(

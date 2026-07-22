@@ -1771,10 +1771,13 @@ impl ObjectFilter {
     }
 
     pub fn match_tagged(mut self, tag: impl Into<TagKey>, relation: TaggedOpbjectRelation) -> Self {
-        self.tagged_constraints.push(TaggedObjectConstraint {
+        let constraint = TaggedObjectConstraint {
             tag: tag.into(),
             relation,
-        });
+        };
+        if !self.tagged_constraints.contains(&constraint) {
+            self.tagged_constraints.push(constraint);
+        }
         self
     }
 
@@ -4115,6 +4118,13 @@ fn describe_comparison(cmp: &Comparison) -> String {
         Comparison::LessThanOrEqualExpr(value) => {
             if value.has_surface_hint(crate::ValueSurfaceHint::ExplicitComparison)
                 || matches!(value.unhinted(), Value::CountersOnSource(_))
+                || matches!(
+                    value.unhinted(),
+                    Value::EffectMetric {
+                        metric: EffectMetric::OtherNumber,
+                        ..
+                    }
+                )
             {
                 format!("less than or equal to {}", describe_value_expr(value))
             } else {
@@ -4127,6 +4137,13 @@ fn describe_comparison(cmp: &Comparison) -> String {
         Comparison::GreaterThanOrEqualExpr(value) => {
             if value.has_surface_hint(crate::ValueSurfaceHint::ExplicitComparison)
                 || matches!(value.unhinted(), Value::CountersOnSource(_))
+                || matches!(
+                    value.unhinted(),
+                    Value::EffectMetric {
+                        metric: EffectMetric::OtherNumber,
+                        ..
+                    }
+                )
             {
                 format!("greater than or equal to {}", describe_value_expr(value))
             } else {

@@ -91,12 +91,12 @@ fn parse_prior_effect_count_value(tokens: &[OwnedLexToken]) -> Option<Value> {
 }
 
 pub(crate) fn parse_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
-    if let Some(value) = parse_prior_effect_count_value(tokens) {
-        return Some(value.with_surface_hint(ValueSurfaceHint::WhereXIs));
-    }
     if let Some((value, used)) = parse_value_prefix_lexed(tokens)
         && trim_lexed_commas(tokens.get(used..)?).is_empty()
     {
+        return Some(value.with_surface_hint(ValueSurfaceHint::WhereXIs));
+    }
+    if let Some(value) = parse_prior_effect_count_value(tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::WhereXIs));
     }
 
@@ -134,14 +134,15 @@ pub(crate) fn parse_top_cards_view_shape(tokens: &[OwnedLexToken]) -> Option<Top
     if count != Value::X {
         return None;
     }
+    let (_, value_tokens) =
+        primitives::parse_prefix(remainder, primitives::phrase(&["where", "x", "is"]).void())?;
+    let where_x_value = parse_where_x_value(trim_lexed_commas(value_tokens));
     let typed_binding =
         crate::runtime_backend::keyword_static::parse_value_binding_clause(remainder)
             .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs));
-    let (_, value_tokens) =
-        primitives::parse_prefix(remainder, primitives::phrase(&["where", "x", "is"]).void())?;
     Some(TopCardsViewShape {
         revealed,
-        count: typed_binding.or_else(|| parse_where_x_value(trim_lexed_commas(value_tokens)))?,
+        count: where_x_value.or(typed_binding)?,
     })
 }
 
@@ -165,6 +166,27 @@ mod tests {
         let shape = parse_top_cards_view_shape(&tokens).unwrap();
         assert!(shape.revealed);
         assert!(shape.count.has_surface_hint(ValueSurfaceHint::WhereXIs));
+
+        let tokens = lex_line(
+            "Reveal the top X cards of your library, where X is the number of lands sacrificed this way",
+            0,
+        )
+        .unwrap();
+        let shape = parse_top_cards_view_shape(&tokens).unwrap();
+        let Value::PendingPriorEffectMetric(query) = shape.count.unhinted() else {
+            panic!("expected typed prior-effect count, got {:?}", shape.count);
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Sacrificed)
+        );
+        assert_eq!(
+            query
+                .filter
+                .as_ref()
+                .map(|filter| filter.card_types.as_slice()),
+            Some(&[crate::types::CardType::Land][..])
+        );
 
         let tokens = lex_line("Look at that many cards from the top of your library", 0).unwrap();
         let shape = parse_top_cards_view_shape(&tokens).unwrap();

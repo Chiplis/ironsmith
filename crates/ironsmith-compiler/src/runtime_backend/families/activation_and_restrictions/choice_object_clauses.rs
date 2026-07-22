@@ -183,6 +183,20 @@ pub(crate) fn parse_you_choose_objects_clause_with_count_value(
         ChoiceClauseActor::You => PlayerAst::You,
     };
 
+    if references_it
+        && !choose_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        choose_filter
+            .tagged_constraints
+            .push(TaggedObjectConstraint {
+                tag: TagKey::from(IT_TAG),
+                relation: TaggedOpbjectRelation::IsTaggedObject,
+            });
+    }
+
     if !references_it
         && chooser == PlayerAst::You
         && choose_filter.controller.is_none()

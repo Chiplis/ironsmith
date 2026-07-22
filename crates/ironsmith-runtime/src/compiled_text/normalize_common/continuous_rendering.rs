@@ -686,6 +686,9 @@ pub(crate) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
         let inner = describe_put_counter_phrase(value, counter_type);
         return format!("up to {inner}");
     }
+    if let Some(amount) = describe_effect_count_backref(count) {
+        return format!("{amount} {counter_name} counters");
+    }
     if count.has_surface_hint(ValueSurfaceHint::EqualTo) {
         let amount = count
             .clone()
@@ -1357,7 +1360,10 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     prohibition_suffix(&ability_text)
                 ));
             } else {
-                let ability_text = describe_inline_ability_with_self_subject(ability, self_subject);
+                let ability_text = lowercase_first(&describe_inline_ability_with_self_subject(
+                    ability,
+                    self_subject,
+                ));
                 clauses.push(format!(
                     "{loses} {ability_text}{}",
                     prohibition_suffix(&ability_text)
@@ -1630,11 +1636,11 @@ pub(crate) fn describe_copy_exception_tail(
 ) -> Option<String> {
     let mut parts = Vec::new();
     let mut granted_abilities = Vec::new();
-    if let Some(name) = name_override_surface
-        .as_ref()
-        .map(crate::target::SourceReferenceSurface::display_text)
-        .or_else(|| name_override.clone())
-    {
+    if let Some(name) = name_override.clone().or_else(|| {
+        name_override_surface
+            .as_ref()
+            .map(crate::target::SourceReferenceSurface::display_text)
+    }) {
         parts.push(format!("its name is {name}"));
     }
     for supertype in add_supertypes {
@@ -2178,6 +2184,11 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 )
             };
             if returned_permanent_animation {
+                let pt_noun_phrase = if plural_target {
+                    pt_noun_phrase
+                } else {
+                    with_indefinite_article(&pt_noun_phrase)
+                };
                 format!("{target_text} {returned_copula} {pt_noun_phrase}")
             } else if plural_target {
                 format!("{target_text} become {pt_noun_phrase}")
@@ -2193,6 +2204,11 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 describe_value(power)
             );
             if returned_permanent_animation {
+                let pt_noun_phrase = if plural_target {
+                    pt_noun_phrase
+                } else {
+                    with_indefinite_article(&pt_noun_phrase)
+                };
                 format!("{target_text} {returned_copula} {pt_noun_phrase}")
             } else if plural_target {
                 format!("{target_text} become {pt_noun_phrase}")
@@ -2217,6 +2233,13 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
                 format!("{noun_phrase} with base power and toughness {pt}")
             };
             if returned_permanent_animation {
+                let pt_noun_phrase = if plural_target {
+                    pt_noun_phrase
+                } else {
+                    fixed_pt_indefinite_article(power)
+                        .map(|article| format!("{article} {pt_noun_phrase}"))
+                        .unwrap_or_else(|| with_indefinite_article(&pt_noun_phrase))
+                };
                 format!("{target_text} {returned_copula} {pt_noun_phrase}")
             } else if plural_target {
                 format!("{target_text} become {pt_noun_phrase}")
@@ -2322,6 +2345,30 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
     })
 }
 
+fn is_source_controlled_and_tapped_duration(until: &Until) -> bool {
+    use ironsmith_core::{
+        ContinuousDurationObject as ObjectRef, ContinuousDurationPlayer as PlayerRef,
+        ContinuousDurationPredicate as Predicate,
+    };
+
+    let Until::ForAsLongAs(Predicate::All(predicates)) = until else {
+        return false;
+    };
+    predicates.len() == 2
+        && predicates.iter().any(|predicate| {
+            matches!(
+                predicate,
+                Predicate::ObjectControlledBy {
+                    object: ObjectRef::Source,
+                    player: PlayerRef::EffectController,
+                }
+            )
+        })
+        && predicates
+            .iter()
+            .any(|predicate| matches!(predicate, Predicate::ObjectTapped(ObjectRef::Source)))
+}
+
 pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
@@ -2334,13 +2381,10 @@ pub(crate) fn describe_apply_continuous_effect(
         && effect.runtime_modifications.is_empty()
         && matches!(effect.until, Until::EndOfTurn)
         && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
-        && let Some(model) = ability.compiled_model()
-        && let ironsmith_core::StaticAbilityPayload::CanBlockAdditionalCreatureEachCombat(
-            additional,
-        ) = &model.payload
-        && *additional > 0
+        && let Some(additional) = ability.additional_blockable_attackers()
+        && additional > 0
     {
-        let blocker_count = if *additional == 1 {
+        let blocker_count = if additional == 1 {
             "an additional creature".to_string()
         } else {
             format!("{additional} additional creatures")
@@ -2387,8 +2431,9 @@ pub(crate) fn describe_apply_continuous_effect(
             return Some(text);
         }
         let mut text = format!("Gain control of {target}");
-        if effect.condition == Some(Condition::SourceIsTapped)
-            && matches!(effect.until, Until::SourceUntaps)
+        if (effect.condition == Some(Condition::SourceIsTapped)
+            && matches!(effect.until, Until::SourceUntaps))
+            || is_source_controlled_and_tapped_duration(&effect.until)
         {
             let source = apply_continuous_source_reference_text(effect);
             text.push_str(&format!(
@@ -3318,6 +3363,20 @@ fn describe_continuous_duration_predicate(
         Predicate::ObjectTapped(object) => {
             format!("{} remains tapped", describe_duration_object(object))
         }
+        Predicate::ObjectControlledBy { object, player } => match player {
+            ironsmith_core::ContinuousDurationPlayer::EffectController => {
+                format!("you control {}", describe_duration_object(object))
+            }
+            ironsmith_core::ContinuousDurationPlayer::ControllerOf(controller_object) => format!(
+                "{}'s controller controls {}",
+                describe_duration_object(controller_object),
+                describe_duration_object(object)
+            ),
+            ironsmith_core::ContinuousDurationPlayer::Tagged(_)
+            | ironsmith_core::ContinuousDurationPlayer::Specific(_) => {
+                format!("that player controls {}", describe_duration_object(object))
+            }
+        },
         Predicate::ObjectHasCounter {
             object,
             counter_type,
@@ -3677,6 +3736,31 @@ pub(crate) fn describe_prevention_target(target: &crate::prevention::PreventionT
     }
 }
 
+/// A restriction whose subject is a pure "it"/"them" back-reference (the
+/// object a trigger or prior clause introduced, tagged IsTaggedObject with
+/// __it__) should render the pronoun, not the generic "permanent" its bare
+/// filter description would produce. Returns None for any filter carrying
+/// additional identifying constraints (a real filtered restriction).
+fn restriction_backref_subject(filter: &ObjectFilter) -> Option<String> {
+    // Exactly one IsTaggedObject __it__ constraint and no identifying
+    // characteristics (types, colors, zone, controller, etc.) — a pure
+    // back-reference to the object a trigger/prior clause introduced.
+    let it_only = filter.tagged_constraints.len() == 1
+        && filter.tagged_constraints.iter().all(|c| {
+            c.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                && matches!(c.tag.as_str(), "__it__" | "it")
+        })
+        && filter.card_types.is_empty()
+        && filter.subtypes.is_empty()
+        && filter.supertypes.is_empty()
+        && filter.colors.is_none()
+        && filter.controller.is_none()
+        && filter.owner.is_none()
+        && filter.any_of.is_empty()
+        && !filter.source;
+    it_only.then(|| "It".to_string())
+}
+
 pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> String {
     match restriction {
         crate::effect::Restriction::AdditionalLandPlays(filter, count) => {
@@ -3848,7 +3932,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         }
         crate::effect::Restriction::PreventDamage => "damage can't be prevented".to_string(),
         crate::effect::Restriction::Attack(filter) => {
-            format!("{} can't attack", filter.description())
+            let subject =
+                restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
+            format!("{subject} can't attack")
         }
         crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
             attackers,
@@ -3883,7 +3969,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't attack alone", filter.description())
         }
         crate::effect::Restriction::Block(filter) => {
-            format!("{} can't block", filter.description())
+            let subject =
+                restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
+            format!("{subject} can't block")
         }
         crate::effect::Restriction::BlockSpecificAttacker { blockers, attacker } => {
             format!(
@@ -3914,14 +4002,21 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
             format!("{} can't untap", filter.description())
         }
         crate::effect::Restriction::BeBlocked(filter) => {
-            format!("{} can't be blocked", filter.description())
+            let subject =
+                restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
+            format!("{subject} can't be blocked")
         }
         crate::effect::Restriction::BeDestroyed(filter) => {
-            format!("{} can't be destroyed", filter.description())
+            let subject =
+                restriction_backref_subject(filter).unwrap_or_else(|| filter.description());
+            format!("{subject} can't be destroyed")
         }
         crate::effect::Restriction::BeRegenerated(filter) => {
-            let subject = describe_prior_effect_tagged_filter_surface(filter)
-                .map(|subject| capitalize_first(&subject))
+            let subject = restriction_backref_subject(filter)
+                .or_else(|| {
+                    describe_prior_effect_tagged_filter_surface(filter)
+                        .map(|s| capitalize_first(&s))
+                })
                 .unwrap_or_else(|| filter.description());
             format!("{subject} can't be regenerated")
         }
@@ -4317,7 +4412,10 @@ fn describe_prior_effect_result_surface(
     }
     let mut filter = surface.filter.clone();
     filter.zone = None;
-    filter.tagged_constraints.clear();
+    filter.tagged_constraints.retain(|constraint| {
+        !(constraint.tag.as_str() == "__it__"
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+    });
     filter.set_prior_effect_action_surface(None);
     let base = strip_leading_article(&filter.description())
         .trim()
@@ -4343,10 +4441,14 @@ fn describe_prior_effect_result_surface(
         return format!("{actor} {action} {object} this way");
     }
 
-    let copula = if surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore {
-        "are"
-    } else {
-        "is"
+    let copula = match (
+        surface.action,
+        surface.quantifier == crate::effect::PriorEffectResultQuantifier::OneOrMore,
+    ) {
+        (crate::effect::PriorEffectAction::PutOntoBattlefield, false) => "is",
+        (crate::effect::PriorEffectAction::PutOntoBattlefield, true) => "are",
+        (_, false) => "was",
+        (_, true) => "were",
     };
     format!(
         "{object} {copula} {} this way",
@@ -4427,6 +4529,50 @@ pub(crate) fn this_way_action_from_tag(tag: &TagKey) -> Option<&'static str> {
     None
 }
 
+pub(crate) fn describe_permanent_card_filter_surface(filter: &ObjectFilter) -> Option<String> {
+    const PERMANENT_TYPES: [CardType; 6] = [
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    if filter.card_types.len() != PERMANENT_TYPES.len()
+        || !PERMANENT_TYPES
+            .iter()
+            .all(|card_type| filter.card_types.contains(card_type))
+    {
+        return None;
+    }
+
+    let mut remainder = filter.clone();
+    remainder.card_types.clear();
+    if remainder.zone == Some(Zone::Battlefield) {
+        remainder.zone = None;
+    }
+    let subtypes = std::mem::take(&mut remainder.subtypes);
+    let mana_value = remainder.mana_value.take();
+    remainder.set_explicit_card_noun(false);
+    if remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut description = if subtypes.is_empty() {
+        "a permanent card".to_string()
+    } else {
+        let subtype_text =
+            join_with_and(&subtypes.iter().map(ToString::to_string).collect::<Vec<_>>());
+        with_indefinite_article(&format!("{subtype_text} permanent card"))
+    };
+    if let Some(mana_value) = mana_value {
+        let comparison = describe_filter_comparison_clause(&mana_value);
+        let comparison = comparison.strip_prefix("is ").unwrap_or(&comparison);
+        description.push_str(&format!(" with mana value {comparison}"));
+    }
+    Some(description)
+}
+
 pub(crate) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFilter) -> String {
     let action = this_way_action_from_tag(tag);
     let card_context = tag.as_str().starts_with("discarded_")
@@ -4447,6 +4593,9 @@ pub(crate) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFi
         && filter.any_of.is_empty()
         && filter.tagged_constraints.is_empty()
     {
+        if let Some(permanent) = describe_permanent_card_filter_surface(filter) {
+            return permanent;
+        }
         let words = filter
             .card_types
             .iter()
@@ -4458,6 +4607,9 @@ pub(crate) fn describe_player_tagged_object_text(tag: &TagKey, filter: &ObjectFi
         let bare_desc = strip_leading_article(&desc);
         let bare_type = strip_leading_article(&described_type);
         if let Some(rest) = bare_desc.strip_prefix(bare_type) {
+            if rest.starts_with(" card") {
+                return format!("{described_type}{rest}");
+            }
             return format!("{described_type} card{rest}");
         }
         return with_indefinite_article(&format!("{type_phrase} card"));
@@ -4794,7 +4946,16 @@ pub(crate) fn describe_happily_ever_after_condition(condition: &Condition) -> Op
 }
 
 pub(crate) fn pluralize_relative_object_phrase(phrase: &str) -> String {
-    let mut plural = if let Some((head, tail)) = phrase.split_once(" created ") {
+    let mut plural = if let Some((head, tail)) = phrase.split_once(" attached to ") {
+        // Attachment provenance is postpositive. Pluralize the selected
+        // object's noun rather than the object serving as its attachment
+        // anchor ("Aura attached to that creature" -> "Auras ...").
+        format!(
+            "{} attached to {}",
+            pluralize_noun_phrase(head.trim()),
+            tail.trim()
+        )
+    } else if let Some((head, tail)) = phrase.split_once(" created ") {
         // `created ...` is a postpositive provenance qualifier. The selected
         // object's noun is on its left; pluralizing the terminal word would
         // produce the synthetic verb "createds".

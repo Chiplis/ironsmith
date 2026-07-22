@@ -1863,10 +1863,11 @@ fn parse_anthem_subject_with_attached_fallback(
     tokens: &[OwnedLexToken],
     attached_subject_filter: Option<&ObjectFilter>,
 ) -> Result<AnthemSubjectAst, CardTextError> {
-    if anthem_grant_grammar::is_source_it_subject(tokens)
-        && let Some(filter) = attached_subject_filter
-    {
-        return Ok(AnthemSubjectAst::Filter(filter.clone()));
+    if anthem_grant_grammar::is_source_it_subject(tokens) {
+        return Ok(match attached_subject_filter {
+            Some(filter) => AnthemSubjectAst::Filter(filter.clone()),
+            None => AnthemSubjectAst::Source,
+        });
     }
     parse_anthem_subject(tokens)
 }
@@ -2605,6 +2606,7 @@ fn anthem_for_each_prefers_specialized_parser(tokens: &[OwnedLexToken]) -> bool 
     // Keep their typed grammar ahead of the generic object/count fallback.
     parse_sticker_count_expression(rest).is_some()
         || anthem_grant_grammar::parse_for_each_special_shape(rest).is_some()
+        || parse_commander_cast_count_player(rest).is_some()
 }
 
 fn parse_sticker_count_expression(tokens: &[OwnedLexToken]) -> Option<AnthemCountExpression> {
@@ -3583,8 +3585,8 @@ mod dynamic_anthem_tests {
         let tokens = lex_line(text, 0).expect("anthem fixture should lex");
         let get_idx = tokens
             .iter()
-            .position(|token| token.is_word("gets"))
-            .expect("gets token");
+            .position(|token| token.is_word("gets") || token.is_word("get"))
+            .expect("get/gets token");
         parse_anthem_clause(&tokens, get_idx, tokens.len()).expect("anthem fixture should parse")
     }
 
@@ -3608,6 +3610,28 @@ mod dynamic_anthem_tests {
         assert!(power.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
         assert_eq!(power.unhinted(), &Value::PartySize(PlayerFilter::You));
         assert_eq!(clause.toughness, AnthemValue::Fixed(0));
+    }
+
+    #[test]
+    fn commander_cast_count_anthem_precedes_generic_commander_filter() {
+        let clause = parse_clause(
+            "Creatures you control get +1/+1 for each time you've cast your commander from the command zone this game.",
+        );
+
+        assert!(matches!(
+            clause.power,
+            AnthemValue::PerCount {
+                multiplier: 1,
+                count: AnthemCountExpression::CommanderCastCount(PlayerFilter::You),
+            }
+        ), "{clause:#?}");
+        assert!(matches!(
+            clause.toughness,
+            AnthemValue::PerCount {
+                multiplier: 1,
+                count: AnthemCountExpression::CommanderCastCount(PlayerFilter::You),
+            }
+        ), "{clause:#?}");
     }
 
     #[test]

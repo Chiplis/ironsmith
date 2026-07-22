@@ -205,7 +205,10 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
                 Some((1, "color of mana spent to cast it".to_string()))
             }
             Value::Count(filter) => {
-                let description = filter.description();
+                if is_revealed_this_way_count_filter(filter) {
+                    return Some((1, "card revealed this way".to_string()));
+                }
+                let description = describe_enters_with_counters_count_filter(filter);
                 let description = description
                     .strip_prefix("an ")
                     .or_else(|| description.strip_prefix("a "))
@@ -433,7 +436,8 @@ fn is_revealed_this_way_count_filter(filter: &ObjectFilter) -> bool {
     bare == ObjectFilter::default()
         && filter.tagged_constraints.len() == 1
         && filter.tagged_constraints.iter().any(|constraint| {
-            constraint.tag.as_str() == "__public_revealed"
+            (constraint.tag.as_str() == "__public_revealed"
+                || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed"))
                 && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
         })
 }

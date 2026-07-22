@@ -119,7 +119,7 @@ impl StaticAbilityKind for Protection {
     }
 }
 
-fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {
+pub(crate) fn describe_protection_mana_value_scope(filter: &ObjectFilter) -> String {
     let description = filter.description();
     pluralize_leading_subject(&description).unwrap_or(description)
 }

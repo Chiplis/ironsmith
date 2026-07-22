@@ -3743,6 +3743,34 @@ pub(super) fn activated_cost_objects_seed_typed_resolution_references() {
         tapped_debug.contains("SharesSubtypeWithEachTagged"),
         "{tapped_debug}"
     );
+    let activated = tapped
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            crate::ability::AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("Gateway Probe should have an activated ability");
+    let effects = activated.effects.flattened_default_effects();
+    let choose_hand_card = effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::ChooseObjectsEffect>(effect))
+        .expect("Gateway Probe should choose the matching hand card");
+    let filter = &choose_hand_card.filter;
+    assert_eq!(filter.zone, Some(Zone::Hand), "{filter:#?}");
+    assert_eq!(filter.owner, Some(crate::PlayerFilter::You), "{filter:#?}");
+    assert!(
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SharesSubtypeWithEachTagged
+        }),
+        "{filter:#?}"
+    );
+    assert!(
+        filter.tagged_constraints.iter().all(|constraint| {
+            constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }),
+        "the hand card must not also be one of the creatures tapped for the cost: {filter:#?}"
+    );
 
     let returned = CardDefinitionBuilder::new(CardId::new(), "Sage Probe")
         .card_types(vec![CardType::Creature])

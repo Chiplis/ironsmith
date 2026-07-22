@@ -1,6 +1,7 @@
 //! "At the beginning of [player]'s upkeep" trigger.
 
 use crate::events::EventKind;
+use crate::filter::PlayerFilterExt as _;
 use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -95,7 +96,7 @@ fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerC
                 crate::object::AttachmentTarget::Player(id) => id == player,
             }
         }
-        _ => true, // Default to true for complex filters evaluated at runtime
+        _ => filter.matches_player(player, &ctx.filter_ctx),
     }
 }
 
@@ -106,6 +107,9 @@ mod tests {
     use crate::events::phase::BeginningOfUpkeepEvent;
     use crate::game_state::GameState;
     use crate::ids::ObjectId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::tag::TagKey;
+    use std::collections::HashMap;
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
@@ -164,6 +168,35 @@ mod tests {
         );
         assert!(trigger.matches(&event1, &ctx));
         assert!(trigger.matches(&event2, &ctx));
+    }
+
+    #[test]
+    fn owner_of_delayed_tag_matches_only_that_objects_owner() {
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let triggering_id = ObjectId::from_raw(10);
+
+        let mut triggering = ObjectSnapshot::for_testing(triggering_id, alice, "Returned Card");
+        triggering.owner = bob;
+        let tagged_objects = HashMap::from([(TagKey::from("triggering"), vec![triggering])]);
+        let ctx = TriggerContext::for_delayed_source(source_id, alice, &game, &tagged_objects);
+        let trigger = BeginningOfUpkeepTrigger::new(PlayerFilter::OwnerOf(
+            crate::target::ObjectRef::Tagged(TagKey::from("triggering")),
+        ));
+
+        let alice_upkeep = TriggerEvent::new_with_provenance(
+            BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let bob_upkeep = TriggerEvent::new_with_provenance(
+            BeginningOfUpkeepEvent::new(bob),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(!trigger.matches(&alice_upkeep, &ctx));
+        assert!(trigger.matches(&bob_upkeep, &ctx));
     }
 
     #[test]

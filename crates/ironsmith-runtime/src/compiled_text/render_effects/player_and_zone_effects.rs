@@ -515,6 +515,18 @@ pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
     if let Some(equal_to) = describe_equal_to_card_action_count(&draw.count) {
         return Some(format!("{player} {verb} {equal_to}"));
     }
+    if let Value::Count(filter) = &draw.count
+        && filter.zone == Some(Zone::Hand)
+        && matches!(draw.player, PlayerFilter::Target(_))
+        && filter
+            .owner
+            .as_ref()
+            .is_some_and(|owner| player_filters_refer_to_same_player(&draw.player, owner))
+    {
+        return Some(format!(
+            "{player} {verb} cards equal to the number of cards in their hand"
+        ));
+    }
     if let Some(dynamic_for_each) = describe_draw_count_for_each_phrase(&draw.count) {
         return Some(format!("{player} {verb} {dynamic_for_each}"));
     }
@@ -529,17 +541,6 @@ pub(crate) fn describe_draw_for_each(draw: &crate::effects::DrawCardsEffect) -> 
                     describe_power_card_count_basis(spec)
                 ))
             }
-        }
-        Value::Count(filter)
-            if filter.zone == Some(Zone::Hand)
-                && matches!(draw.player, PlayerFilter::Target(_))
-                && filter.owner.as_ref().is_some_and(|owner| {
-                    player_filters_refer_to_same_player(&draw.player, owner)
-                }) =>
-        {
-            Some(format!(
-                "{player} {verb} cards equal to the number of cards in their hand"
-            ))
         }
         Value::Count(filter) => Some(format!(
             "{player} {verb} a card for each {}",
@@ -1111,6 +1112,9 @@ pub(crate) fn describe_compact_token_count(value: &Value, token_name: &str) -> S
             "a number of {token_name} tokens equal to {}",
             describe_value(&amount)
         );
+    }
+    if let Some(amount) = describe_effect_count_backref(value) {
+        return format!("{amount} {token_name} tokens");
     }
     match value.unhinted() {
         Value::Fixed(1) => format!("a {token_name} token"),
@@ -2066,6 +2070,58 @@ pub(super) fn describe_countered_spell_exile_with_counters_gain_suspend(
     ))
 }
 
+pub(in crate::compiled_text) fn describe_separated_countered_spell_exile_with_counters_gain_suspend(
+    effects: &[Effect],
+) -> Option<String> {
+    let [counter_effect, replacement_effect, conditional_effect] = effects else {
+        return None;
+    };
+    let counter = unwrap_basic_tag_wrappers(counter_effect)
+        .downcast_ref::<crate::effects::CounterEffect>()?;
+    if !describe_choose_spec(&counter.target)
+        .to_ascii_lowercase()
+        .contains("spell")
+    {
+        return None;
+    }
+    let countered_tag = wrapped_effect_tag(counter_effect)?;
+    let replacement =
+        replacement_effect.downcast_ref::<crate::effects::RegisterZoneReplacementEffect>()?;
+    if replacement.from_zone != Some(Zone::Stack)
+        || replacement.to_zone != Some(Zone::Graveyard)
+        || replacement.replacement_zone != Zone::Exile
+        || replacement.optional
+        || !choose_spec_references_tagged_object(&replacement.target, countered_tag)
+    {
+        return None;
+    }
+    let [(counter_type, count)] = replacement.counters.as_slice() else {
+        return None;
+    };
+    if *counter_type != CounterType::Time {
+        return None;
+    }
+
+    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty()
+        || conditional.if_true.len() != 1
+        || !condition_is_tagged_object_without_suspend(&conditional.condition, countered_tag)
+    {
+        return None;
+    }
+    let apply = unwrap_basic_tag_wrappers(&conditional.if_true[0])
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if !apply_grants_suspend_to_tag(apply, countered_tag) {
+        return None;
+    }
+
+    let counter_text = describe_put_counter_phrase(&Value::Fixed(*count as i32), *counter_type);
+    Some(format!(
+        "{}. If that spell is countered this way, exile it with {counter_text} on it instead of putting it into its owner's graveyard. If it doesn't have suspend, it gains suspend",
+        describe_effect(counter_effect).trim_end_matches('.')
+    ))
+}
+
 pub(super) fn describe_second_spell_counter_conditional(
     conditional: &crate::effects::ConditionalEffect,
 ) -> Option<String> {
@@ -2538,6 +2594,9 @@ pub(super) fn append_battlefield_entry_counter_surface(
                 rendered.push_str(" on it");
                 continue;
             }
+            ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters => {
+                format!("Each of them enters with {counter_phrase} on it")
+            }
             ironsmith_core::BattlefieldEntryCounterSurface::IfObjectEntersThisWay => {
                 let counter_phrase = battlefield_entry_counter_phrase(counter, true);
                 format!(
@@ -2684,28 +2743,38 @@ pub(crate) fn describe_choose_then_move_to_battlefield(
         return None;
     }
 
-    let primary_zone = choose_primary_zone(choose)?;
-    let origin = match primary_zone {
-        Zone::Hand => describe_choose_zone_origin(choose, "hand"),
-        Zone::Graveyard => describe_choose_zone_origin(choose, "graveyard"),
-        Zone::Library => {
-            if choose.top_only {
-                match choose.filter.owner.as_ref() {
-                    Some(PlayerFilter::IteratedPlayer) => {
-                        "from the top of their library".to_string()
+    let zones = choose_search_zones(choose)?;
+    let primary_zone = *zones.first()?;
+    let origin =
+        if zones.len() == 2 && zones.contains(&Zone::Hand) && zones.contains(&Zone::Graveyard) {
+            let owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+            format!(
+                "from {} hand or graveyard",
+                describe_possessive_player_filter(owner)
+            )
+        } else {
+            match primary_zone {
+                Zone::Hand => describe_choose_zone_origin(choose, "hand"),
+                Zone::Graveyard => describe_choose_zone_origin(choose, "graveyard"),
+                Zone::Library => {
+                    if choose.top_only {
+                        match choose.filter.owner.as_ref() {
+                            Some(PlayerFilter::IteratedPlayer) => {
+                                "from the top of their library".to_string()
+                            }
+                            Some(owner) => format!(
+                                "from the top of {} library",
+                                describe_possessive_player_filter(owner)
+                            ),
+                            None => "from the top of a library".to_string(),
+                        }
+                    } else {
+                        describe_choose_zone_origin(choose, "library")
                     }
-                    Some(owner) => format!(
-                        "from the top of {} library",
-                        describe_possessive_player_filter(owner)
-                    ),
-                    None => "from the top of a library".to_string(),
                 }
-            } else {
-                describe_choose_zone_origin(choose, "library")
+                _ => return None,
             }
-        }
-        _ => return None,
-    };
+        };
 
     let chooser = describe_player_filter(&choose.chooser);
     let mut chosen = describe_choose_selection(choose);
@@ -3047,7 +3116,7 @@ pub(super) fn describe_reveal_top_then_temporarily_play_revealed_top_card(
     )
 }
 
-pub(super) fn describe_shuffle_then_reveal_top_then_temporarily_play_revealed_top_card(
+pub(in crate::compiled_text) fn describe_shuffle_then_reveal_top_then_temporarily_play_revealed_top_card(
     shuffle: &crate::effects::ShuffleLibraryEffect,
     reveal_top: &crate::effects::RevealTopEffect,
     reveal_permission: &crate::effects::ApplyContinuousEffect,

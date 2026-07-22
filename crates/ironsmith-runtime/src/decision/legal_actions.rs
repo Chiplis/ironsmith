@@ -1841,9 +1841,9 @@ fn activation_cost_is_payable_with_view(
     }
 
     if cost.mana_cost_ref().is_some() {
-        // Effective costs are likewise paid after activation begins. This
-        // stage must reject impossible nonmana components, but not preempt
-        // the mana-ability window used to produce the required mana.
+        // Mana is paid only after the activation has opened its mana-ability
+        // window. This must match the printed-cost precheck above even when a
+        // continuous modifier rebuilt the total cost.
         return true;
     }
     if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
@@ -1909,6 +1909,99 @@ pub(crate) fn activation_total_cost_is_payable_with_view(
         }
         ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
             activation_total_cost_is_payable_with_view(game, controller, source, branch, view)
+        }),
+    }
+}
+
+fn activation_cost_branch_is_payable_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    cost: &crate::costs::Cost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    let reason = crate::costs::PaymentReason::ActivateAbility;
+    if game
+        .validate_cost_for_payment_reason(controller, source, cost, reason)
+        .is_err()
+    {
+        return false;
+    }
+
+    if let Some(mana_cost) = cost.mana_cost_ref() {
+        return view.can_potentially_pay_with_reason(
+            controller,
+            Some(source),
+            mana_cost,
+            0,
+            reason,
+        );
+    }
+    if let Some(dynamic_mana) = cost.dynamic_mana_cost_ref() {
+        return dynamic_activation_mana_cost_resolves(game, controller, source, dynamic_mana);
+    }
+    if cost.is_remove_counters() {
+        return true;
+    }
+
+    let check_ctx = crate::costs::CostCheckContext::new(source, controller).with_reason(reason);
+    crate::costs::can_pay_with_check_context(&*cost.0, game, &check_ctx).is_ok()
+}
+
+pub(crate) fn activation_total_cost_branch_is_payable_with_view(
+    game: &GameState,
+    controller: PlayerId,
+    source: ObjectId,
+    cost: &crate::cost::TotalCost,
+    view: &DerivedGameView<'_>,
+) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(components) => {
+            let mut idx = 0usize;
+            while idx < components.len() {
+                if let Some(choose) = components[idx]
+                    .effect_ref()
+                    .and_then(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
+                    && let Some(next) = components.get(idx + 1)
+                    && let Some(step) = crate::game_loop::choose_tagged_cost_step(choose, next)
+                {
+                    let paired_cost = match &step {
+                        crate::game_loop::ActivationCostStep::Cost(cost)
+                        | crate::game_loop::ActivationCostStep::Sacrifice { cost, .. } => cost,
+                        crate::game_loop::ActivationCostStep::CardChoice(choice) => {
+                            activation_card_cost_choice_cost(choice)
+                        }
+                    };
+                    if !activation_cost_branch_is_payable_with_view(
+                        game,
+                        controller,
+                        source,
+                        paired_cost,
+                        view,
+                    ) {
+                        return false;
+                    }
+                    idx += 2;
+                    continue;
+                }
+
+                if !activation_cost_branch_is_payable_with_view(
+                    game,
+                    controller,
+                    source,
+                    &components[idx],
+                    view,
+                ) {
+                    return false;
+                }
+                idx += 1;
+            }
+            true
+        }
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches.iter().any(|branch| {
+            activation_total_cost_branch_is_payable_with_view(
+                game, controller, source, branch, view,
+            )
         }),
     }
 }

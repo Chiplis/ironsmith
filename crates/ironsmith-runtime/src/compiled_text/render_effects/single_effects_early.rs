@@ -23,8 +23,9 @@ pub(crate) fn describe_same_actor_draw_then_gain(
     }
 
     let subject = describe_player_filter(&actor);
+    let displayed_subject = capitalize_first(&subject);
     Some(format!(
-        "{subject} {} X cards and {} X life, where X is {draw_basis}",
+        "{displayed_subject} {} X cards and {} X life, where X is {draw_basis}",
         player_verb(&subject, "draw", "draws"),
         player_verb(&subject, "gain", "gains"),
     ))
@@ -60,8 +61,9 @@ pub(crate) fn describe_same_actor_gain_then_draw(
     };
 
     let subject = describe_player_filter(&actor);
+    let displayed_subject = capitalize_first(&subject);
     Some(format!(
-        "{subject} {} {life} and {} {cards}{suffix}",
+        "{displayed_subject} {} {life} and {} {cards}{suffix}",
         player_verb(&subject, "gain", "gains"),
         player_verb(&subject, "draw", "draws"),
     ))
@@ -188,13 +190,10 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
     }
     match value.unhinted() {
         Value::Count(filter) => {
-            let mut subject = pluralize_noun_phrase(&describe_for_each_count_filter(filter));
-            if filter.zone == Some(Zone::Battlefield)
-                && filter.controller.is_none()
-                && !subject.contains("battlefield")
-            {
-                subject.push_str(" on the battlefield");
-            }
+            let subject = pluralize_noun_phrase(&describe_for_each_count_filter(filter));
+            let subject = subject
+                .strip_suffix(" on the battlefield")
+                .unwrap_or(&subject);
             Some(format!("the number of {subject}"))
         }
         Value::BasicLandTypesAmong(filter) => Some(format!(
@@ -647,6 +646,11 @@ pub(crate) fn describe_with_id_if_clause(
         && matches!(if_effect.predicate, EffectPredicate::Happened)
     {
         "When one or more cards are milled this way".to_string()
+    } else if effect_moves_object_to_exile(&with_id.effect)
+        && matches!(if_effect.predicate, EffectPredicate::Happened)
+        && is_reflexive_choose_one_followup(if_effect, &then_text)
+    {
+        "When you do".to_string()
     } else if let Some(condition) =
         describe_linked_action_result_condition(&with_id.effect, &if_effect.predicate)
     {
@@ -678,7 +682,17 @@ pub(crate) fn describe_with_id_if_clause(
         .effect
         .downcast_ref::<crate::effects::ForPlayersEffect>()
     {
-        if for_players.effects.len() == 1
+        if for_players.starting_with_controller && for_players.stop_after_first_happened {
+            match if_effect.predicate {
+                EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined => {
+                    "If no one does".to_string()
+                }
+                EffectPredicate::Happened | EffectPredicate::Chosen => {
+                    "If a player does".to_string()
+                }
+                _ => format!("If {}", describe_effect_predicate(&if_effect.predicate)),
+            }
+        } else if for_players.effects.len() == 1
             && for_players.effects[0]
                 .downcast_ref::<crate::effects::MayEffect>()
                 .is_some()
@@ -749,9 +763,7 @@ pub(crate) fn describe_with_id_if_clause(
     } else if effect_moves_object_to_exile(&with_id.effect)
         && matches!(if_effect.predicate, EffectPredicate::Happened)
     {
-        if is_reflexive_choose_one_followup(if_effect, &then_text) {
-            "When you do".to_string()
-        } else if then_text.contains("except it's a ") {
+        if then_text.contains("except it's a ") {
             "If you exiled a card this way".to_string()
         } else {
             "If you do".to_string()
@@ -916,7 +928,18 @@ pub(super) fn describe_damage_fanout_filter(filter: &ObjectFilter) -> Option<Str
     // Remove the zone only in this tightly scoped damage surface.
     let mut display_filter = filter.clone();
     display_filter.zone = None;
-    let rendered = describe_for_each_count_filter(&display_filter);
+    let mut rendered = describe_for_each_count_filter(&display_filter);
+    // Planeswalker subtypes are proper names in Oracle text. The generic
+    // filter description intentionally lowercases excluded subtypes for its
+    // rules/debug surface, so restore the proper-name spelling here.
+    for subtype in &display_filter.excluded_subtypes {
+        if subtype.is_planeswalker_subtype() {
+            rendered = rendered.replace(
+                &format!("non-{}", subtype.to_string().to_ascii_lowercase()),
+                &format!("non-{subtype}"),
+            );
+        }
+    }
     let rendered = conjoin_quantified_card_types(rendered, &display_filter.card_types);
     (!rendered.trim().is_empty()).then_some(rendered)
 }
@@ -1168,6 +1191,20 @@ pub(super) fn describe_conditional_branch_effect_list(effects: &[Effect]) -> Opt
 }
 
 fn describe_coin_flip_outcome_branch(effects: &[Effect]) -> Option<String> {
+    let effects = if let [only] = effects {
+        if let Some(sequence) =
+            unwrap_basic_tag_wrappers(only).downcast_ref::<crate::effects::SequenceEffect>()
+        {
+            if sequence.surface != ironsmith_core::SequenceSurface::Coordinated {
+                return None;
+            }
+            sequence.effects.as_slice()
+        } else {
+            effects
+        }
+    } else {
+        effects
+    };
     describe_conditional_branch_effect_list(effects)
         .or_else(|| describe_triggering_spell_return_branch(effects))
         .or_else(|| describe_tagged_counter_spell_branch(effects))
@@ -1257,7 +1294,7 @@ fn describe_gain_control_then_may_retarget_branch(effects: &[Effect]) -> Option<
         return None;
     }
 
-    Some("You gain control of that spell and may choose new targets for it".to_string())
+    Some("Gain control of that spell and you may choose new targets for it".to_string())
 }
 
 fn describe_triggering_spell_return_branch(effects: &[Effect]) -> Option<String> {
@@ -1456,18 +1493,9 @@ pub(super) fn describe_removed_counters_then_exile_by_mana_value(
 
     let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
     let removed_counters = may.effects.iter().any(|effect| {
-        effect
-            .downcast_ref::<crate::effects::WithIdEffect>()
-            .is_some_and(|nested| {
-                nested.id == with_id.id
-                    && nested
-                        .effect
-                        .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                        .is_some()
-            })
-            || effect
-                .downcast_ref::<crate::effects::RemoveCountersEffect>()
-                .is_some()
+        structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::RemoveCountersEffect>()
+            .is_some()
     });
     if !removed_counters {
         return None;
@@ -1484,7 +1512,7 @@ pub(super) fn describe_removed_counters_then_exile_by_mana_value(
     else {
         return None;
     };
-    if !matches!(value.as_ref(), Value::EffectValue(id) if *id == with_id.id) {
+    if !matches!(value.unhinted(), Value::EffectValue(id) if *id == with_id.id) {
         return None;
     }
 
@@ -1492,22 +1520,31 @@ pub(super) fn describe_removed_counters_then_exile_by_mana_value(
     Some(text.to_string())
 }
 
-pub(super) fn describe_declined_may_mill_then_damage(
+fn is_target_or_aliased_opponent(player: &PlayerFilter) -> bool {
+    matches!(
+        player,
+        PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner)
+            if matches!(inner.as_ref(), PlayerFilter::Opponent)
+    )
+}
+
+pub(in crate::compiled_text) fn describe_declined_may_mill_then_damage(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
-    if !matches!(if_effect.predicate, EffectPredicate::DidNotHappen)
+    if if_effect.condition != with_id.id
+        || !matches!(if_effect.predicate, EffectPredicate::DidNotHappen)
         || !if_effect.else_.is_empty()
         || if_effect.then.len() != 2
     {
         return None;
     }
     let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if !matches!(
-        may.decider.as_ref(),
-        Some(crate::filter::PlayerFilter::Target(inner))
-            if matches!(inner.as_ref(), crate::filter::PlayerFilter::Opponent)
-    ) {
+    if !may
+        .decider
+        .as_ref()
+        .is_some_and(is_target_or_aliased_opponent)
+    {
         return None;
     }
 
@@ -1518,14 +1555,13 @@ pub(super) fn describe_declined_may_mill_then_damage(
     let damage = if_effect.then[1].downcast_ref::<crate::effects::DealDamageEffect>()?;
     if !matches!(mill.player, PlayerFilter::You)
         || !matches!(
-            damage.target,
-            ChooseSpec::Player(crate::filter::PlayerFilter::Target(ref inner))
-                if matches!(inner.as_ref(), crate::filter::PlayerFilter::Opponent)
+            &damage.target,
+            ChooseSpec::Player(player) if is_target_or_aliased_opponent(player)
         )
     {
         return None;
     }
-    let Value::TotalManaValue(filter) = &damage.amount else {
+    let Value::TotalManaValue(filter) = damage.amount.unhinted() else {
         return None;
     };
     if !filter.tagged_constraints.iter().any(|constraint| {
@@ -2309,6 +2345,7 @@ pub(crate) fn describe_search_choose_for_each(
     } else {
         describe_search_selection_with_cards_preserving_where(&selection_text)
     };
+    let selection_text = title_case_named_card_selection(&selection_text);
     let pronoun = if choose.count.max == Some(1) {
         "it"
     } else {
@@ -3911,13 +3948,18 @@ pub(crate) fn describe_put_counter_choice_mode(
     }
 
     let target = shared_display_target?;
-    let first = counter_names.first()?.clone();
-    let first = with_indefinite_article(&first);
-    let mut options = Vec::with_capacity(counter_names.len());
-    options.push(first);
-    options.extend(counter_names.into_iter().skip(1));
+    if counter_names.is_empty() {
+        return None;
+    }
+    // Oracle repeats the noun per option ("a vigilance counter, a reach
+    // counter, or a trample counter"), not the abbreviated "a vigilance,
+    // reach, or trample counter".
+    let options = counter_names
+        .iter()
+        .map(|name| format!("{} counter", with_indefinite_article(name)))
+        .collect::<Vec<_>>();
     Some(format!(
-        "Put your choice of {} counter on {target}",
+        "Put your choice of {} on {target}",
         join_with_or(&options)
     ))
 }
@@ -4227,6 +4269,7 @@ pub(super) fn choose_spec_references_exact_tag(spec: &ChooseSpec, tag: &TagKey) 
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             choose_spec_references_exact_tag(inner, tag)
         }
+        ChooseSpec::SurfaceHinted { spec, .. } => choose_spec_references_exact_tag(spec, tag),
         _ => false,
     }
 }

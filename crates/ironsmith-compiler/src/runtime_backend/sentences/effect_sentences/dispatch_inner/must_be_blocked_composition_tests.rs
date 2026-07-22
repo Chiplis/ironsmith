@@ -37,6 +37,7 @@ fn assert_target_pump_and_must_be_blocked(text: &str, amount: i32) {
                     restriction: crate::effect::Restriction::MustBeBlocked(filter),
                     duration: restriction_duration,
                     condition: None,
+                    ..
                 },
             ..
         }),
@@ -91,6 +92,7 @@ fn group_pump_and_must_be_blocked_reuse_the_same_filter() {
                     restriction: crate::effect::Restriction::MustBeBlocked(restriction_filter),
                     duration: restriction_duration,
                     condition: None,
+                    ..
                 },
             ..
         }),
@@ -129,6 +131,7 @@ fn target_grant_and_must_be_blocked_share_one_target() {
                     restriction: crate::effect::Restriction::MustBeBlocked(filter),
                     duration: restriction_duration,
                     condition: None,
+                    ..
                 },
             ..
         }),

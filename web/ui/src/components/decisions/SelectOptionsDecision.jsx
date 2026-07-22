@@ -74,6 +74,19 @@ function isColorChoiceDecision(decision) {
   );
 }
 
+function isFinishManaAbilitiesOption(option) {
+  return String(option?.description || "")
+    .trim()
+    .toLowerCase() === "finish activating mana abilities";
+}
+
+function isManaAbilityWindowDecision(decision) {
+  if (!decision || decision.kind !== "select_options") return false;
+  const description = String(decision.description || "").trim().toLowerCase();
+  return description.startsWith("activate mana abilities before paying costs")
+    && (decision.options || []).some(isFinishManaAbilitiesOption);
+}
+
 function buildContextualOptions(
   options,
   hoveredObjectId,
@@ -609,9 +622,17 @@ function SingleSelectDecision({
     () => isPaymentDecision(decision),
     [decision],
   );
+  const manaAbilityWindowDecision = useMemo(
+    () => isManaAbilityWindowDecision(decision),
+    [decision],
+  );
   const castFlowDecision = useMemo(
     () => isSpellCastFlowDecision(decision),
     [decision],
+  );
+  const finishManaAbilitiesOption = useMemo(
+    () => options.find(isFinishManaAbilitiesOption) || null,
+    [options],
   );
   const payOption = useMemo(
     () =>
@@ -660,14 +681,26 @@ function SingleSelectDecision({
       autoSubmitPayOption.description || "Submit",
     );
   }, [dispatch, autoSubmitPayOption]);
+  const canFinishManaAbilities = canAct
+    && !!finishManaAbilitiesOption
+    && finishManaAbilitiesOption.legal !== false;
+  const finishManaAbilities = useCallback(() => {
+    if (!finishManaAbilitiesOption || finishManaAbilitiesOption.legal === false) return;
+    dispatch(
+      { type: "select_options", option_indices: [finishManaAbilitiesOption.index] },
+      finishManaAbilitiesOption.description,
+    );
+  }, [dispatch, finishManaAbilitiesOption]);
   const displayOptions = useMemo(() => {
-    let visible = paymentDecision
-      ? options.filter(
+    let visible = manaAbilityWindowDecision
+      ? options.filter((opt) => !isFinishManaAbilitiesOption(opt))
+      : paymentDecision
+        ? options.filter(
           (opt) =>
             opt.index !== autoSubmitPayOption?.index ||
             isLifePaymentOptionDescription(opt.description),
-        )
-      : options;
+          )
+        : options;
 
     if (!searchableLargeOptionDecision) {
       return paymentDecision
@@ -690,6 +723,7 @@ function SingleSelectDecision({
       : matches;
   }, [
     options,
+    manaAbilityWindowDecision,
     paymentDecision,
     autoSubmitPayOption,
     searchableLargeOptionDecision,
@@ -755,21 +789,50 @@ function SingleSelectDecision({
     return "Submit (1/1)";
   }, [singleLegalOption]);
   const contextual = useMemo(
-    () =>
-      buildContextualOptions(displayOptions, activeObjectId, {
+    () => {
+      // A mana-ability window is a single global payment step. Its sources
+      // must not be narrowed to the permanent that started the activation or
+      // to the card currently under the pointer.
+      if (manaAbilityWindowDecision) {
+        return {
+          options: displayOptions,
+          waitingForHover: false,
+        };
+      }
+      return buildContextualOptions(displayOptions, activeObjectId, {
         fallbackToAll: stripLayout,
         includedObjectIds: stripLayout && hoveredObjectId == null ? selectedObjectFamilyIds : null,
-      }),
-    [activeObjectId, displayOptions, hoveredObjectId, selectedObjectFamilyIds, stripLayout],
+      });
+    },
+    [
+      activeObjectId,
+      displayOptions,
+      hoveredObjectId,
+      manaAbilityWindowDecision,
+      selectedObjectFamilyIds,
+      stripLayout,
+    ],
   );
-  const visibleOptions = useAnimatedRows(
+  const animatedVisibleOptions = useAnimatedRows(
     contextual.options,
     contextual.options.length > 0,
   );
+  // Mana sources change after every activation. Render the replacement list
+  // synchronously so stale source rows do not flash between snapshots.
+  const visibleOptions = manaAbilityWindowDecision
+    ? contextual.options
+    : animatedVisibleOptions;
   const showHoverHint =
     contextual.waitingForHover && options.some((opt) => opt.object_id != null);
   const showHeader = !stripLayout && !mobileOverlayLayout;
   const submitAction = useMemo(() => {
+    if (manaAbilityWindowDecision) {
+      return {
+        label: "Finish Activating Mana Abilities",
+        disabled: !canFinishManaAbilities,
+        onSubmit: finishManaAbilities,
+      };
+    }
     if (paymentDecision) {
       return {
         label:
@@ -789,6 +852,9 @@ function SingleSelectDecision({
     }
     return null;
   }, [
+    manaAbilityWindowDecision,
+    canFinishManaAbilities,
+    finishManaAbilities,
     paymentDecision,
     spellCastPaymentDecision,
     castFlowDecision,
@@ -909,6 +975,8 @@ function SingleSelectDecision({
               >
                 {paymentDecision
                   ? "No additional payment actions."
+                  : manaAbilityWindowDecision
+                    ? "No mana abilities available."
                   : "No legal choices."}
               </div>
             )}

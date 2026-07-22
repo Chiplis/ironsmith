@@ -6,10 +6,11 @@
 //!    they controlled that was destroyed this way."
 
 use crate::effect::{Effect, EffectOutcome};
-use crate::effects::EffectExecutor;
+use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
+use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 
 /// Effect that applies effects once for each tagged object.
@@ -48,6 +49,97 @@ impl ForEachTaggedEffect {
     }
 }
 
+/// Prepared iterations over one player's captured tagged set.
+///
+/// The shared execution context is reused while every player's simultaneous
+/// action is prepared. Retaining these snapshots keeps each player's tagged
+/// cards paired with the proposals prepared for those cards.
+#[derive(Debug)]
+struct ForEachTaggedProposal {
+    tag: TagKey,
+    snapshots: Vec<ObjectSnapshot>,
+    iterations: Vec<Vec<Box<dyn SimultaneousEffectProposal>>>,
+}
+
+impl SimultaneousEffectProposal for ForEachTaggedProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Self {
+            tag,
+            snapshots,
+            iterations,
+        } = *self;
+        let it_tag = TagKey::from("__it__");
+        let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);
+        let original_tagged = ctx.tagged_objects.remove(&tag);
+        let original_it = ctx.tagged_objects.remove(&it_tag);
+        let original_previous = ctx.tagged_objects.remove(&previous_tag);
+        ctx.set_tagged_objects(tag.clone(), snapshots.clone());
+
+        let result = (|| {
+            let mut outcomes = Vec::new();
+            let mut player_counts: Vec<(PlayerId, i32)> = Vec::new();
+            for (index, (snapshot, proposals)) in
+                snapshots.iter().zip(iterations.into_iter()).enumerate()
+            {
+                ctx.set_tagged_objects(previous_tag.clone(), snapshots[..index].to_vec());
+                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
+                let start = outcomes.len();
+                ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
+                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                        for proposal in proposals {
+                            outcomes.push(proposal.commit(game, ctx)?);
+                        }
+                        Ok::<(), ExecutionError>(())
+                    })
+                })?;
+                let count =
+                    EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned())
+                        .as_count()
+                        .unwrap_or(0);
+                if let Some((_, total)) = player_counts
+                    .iter_mut()
+                    .find(|(player, _)| *player == snapshot.controller)
+                {
+                    *total += count;
+                } else {
+                    player_counts.push((snapshot.controller, count));
+                }
+            }
+            Ok(EffectOutcome::aggregate_summing_counts(outcomes).with_player_counts(player_counts))
+        })();
+
+        match original_tagged {
+            Some(value) => {
+                ctx.tagged_objects.insert(tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&tag);
+            }
+        }
+        match original_it {
+            Some(value) => {
+                ctx.tagged_objects.insert(it_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&it_tag);
+            }
+        }
+        match original_previous {
+            Some(value) => {
+                ctx.tagged_objects.insert(previous_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&previous_tag);
+            }
+        }
+        result
+    }
+}
+
 impl EffectExecutor for ForEachTaggedEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -57,6 +149,67 @@ impl EffectExecutor for ForEachTaggedEffect {
         for effect in &self.effects {
             visitor(effect);
         }
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.tag.as_str() != "__it__"
+            && self.tag.as_str() != ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG
+            && self
+                .effects
+                .iter()
+                .all(|effect| effect.0.supports_simultaneous_player_action())
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn SimultaneousEffectProposal>, ExecutionError> {
+        let snapshots = ctx.get_tagged_all(&self.tag).cloned().unwrap_or_default();
+        let it_tag = TagKey::from("__it__");
+        let previous_tag = TagKey::from(ironsmith_core::PREVIOUS_ITERATED_OBJECTS_TAG);
+        let original_it = ctx.tagged_objects.remove(&it_tag);
+        let original_previous = ctx.tagged_objects.remove(&previous_tag);
+
+        let result = (|| {
+            let mut iterations = Vec::with_capacity(snapshots.len());
+            for (index, snapshot) in snapshots.iter().enumerate() {
+                ctx.set_tagged_objects(previous_tag.clone(), snapshots[..index].to_vec());
+                ctx.set_tagged_objects(it_tag.clone(), vec![snapshot.clone()]);
+                let proposals = ctx.with_temp_iterated_object(Some(snapshot.object_id), |ctx| {
+                    ctx.with_temp_iterated_player(Some(snapshot.controller), |ctx| {
+                        self.effects
+                            .iter()
+                            .map(|effect| effect.0.prepare_simultaneous_player_action(game, ctx))
+                            .collect::<Result<Vec<_>, _>>()
+                    })
+                })?;
+                iterations.push(proposals);
+            }
+            Ok::<_, ExecutionError>(Box::new(ForEachTaggedProposal {
+                tag: self.tag.clone(),
+                snapshots: snapshots.clone(),
+                iterations,
+            }) as Box<dyn SimultaneousEffectProposal>)
+        })();
+
+        match original_it {
+            Some(value) => {
+                ctx.tagged_objects.insert(it_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&it_tag);
+            }
+        }
+        match original_previous {
+            Some(value) => {
+                ctx.tagged_objects.insert(previous_tag, value);
+            }
+            None => {
+                ctx.tagged_objects.remove(&previous_tag);
+            }
+        }
+        result
     }
 
     fn execute(

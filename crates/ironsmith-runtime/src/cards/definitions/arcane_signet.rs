@@ -361,8 +361,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "1", // Tap Sol Ring for mana (adds 2 colorless)
                 "1", // Cast Arcane Signet
+                "0", // Activate Sol Ring while paying its cost
             ],
             ReplayTestConfig::new()
                 .p1_hand(vec!["Arcane Signet"])

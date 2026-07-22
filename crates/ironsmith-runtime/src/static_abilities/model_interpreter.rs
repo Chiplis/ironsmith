@@ -2025,6 +2025,16 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
             .is_some_and(|ability| ability.affects_untap())
     }
 
+    fn additional_votes_while_voting(&self) -> u32 {
+        self.leaf_static_ability()
+            .map_or(0, StaticAbility::additional_votes_while_voting)
+    }
+
+    fn optional_additional_votes_while_voting(&self) -> u32 {
+        self.leaf_static_ability()
+            .map_or(0, StaticAbility::optional_additional_votes_while_voting)
+    }
+
     fn untap_during_each_other_players_untap_step_filter(
         &self,
     ) -> Option<&crate::target::ObjectFilter> {
@@ -2707,5 +2717,23 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 
     fn has_improvise(&self) -> bool {
         self.id() == StaticAbilityId::Improvise
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modeled_vote_modifiers_delegate_leaf_runtime_behavior() {
+        let optional =
+            StaticAbility::from_model(CompiledStaticAbility::vote_additional_time_while_voting());
+        assert_eq!(optional.optional_additional_votes_while_voting(), 1);
+        assert_eq!(optional.additional_votes_while_voting(), 0);
+
+        let mandatory =
+            StaticAbility::from_model(CompiledStaticAbility::vote_additional_vote_while_voting());
+        assert_eq!(mandatory.additional_votes_while_voting(), 1);
+        assert_eq!(mandatory.optional_additional_votes_while_voting(), 0);
     }
 }

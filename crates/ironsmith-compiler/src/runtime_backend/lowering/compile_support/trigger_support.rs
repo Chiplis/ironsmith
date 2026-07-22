@@ -751,9 +751,16 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             surface.clone(),
             destination_name.clone(),
         ),
-        TriggerSpec::ThisDealsCombatDamageToPlayer { player } => {
-            Trigger::this_deals_combat_damage_to_player(player.clone())
-        }
+        TriggerSpec::ThisDealsCombatDamageToPlayer {
+            player,
+            source_surface,
+        } => match source_surface {
+            Some(surface) => Trigger::this_deals_combat_damage_to_player_with_surface(
+                player.clone(),
+                surface.clone(),
+            ),
+            None => Trigger::this_deals_combat_damage_to_player(player.clone()),
+        },
         TriggerSpec::DealsCombatDamageToPlayer { source, player } => {
             Trigger::deals_combat_damage_to_player(source, player)
         }

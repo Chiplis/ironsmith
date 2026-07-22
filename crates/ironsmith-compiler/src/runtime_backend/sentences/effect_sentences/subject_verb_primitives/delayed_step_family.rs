@@ -131,7 +131,8 @@ pub(crate) fn parse_sentence_delayed_timing_suffix(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let clause = clause.trimmed();
-    let Some(marker) = delayed_grammar::parse_delayed_timing_marker_shape(clause.tokens()) else {
+    let Some(mut marker) = delayed_grammar::parse_delayed_timing_marker_shape(clause.tokens())
+    else {
         return Ok(None);
     };
     if marker.start_word == 0 {
@@ -141,6 +142,18 @@ pub(crate) fn parse_sentence_delayed_timing_suffix(
     let Some(before_timing) = clause.before_word(marker.start_word) else {
         return Ok(None);
     };
+    // In “return it ... under its owner's control at the beginning of their
+    // next upkeep”, “their” names that object's owner. Preserve that typed
+    // relation instead of treating the pronoun as an unrelated iterated
+    // player, which could make the delayed trigger fire on the wrong upkeep.
+    if marker.player == PlayerAst::That
+        && before_timing
+            .trimmed_word_refs()
+            .windows(4)
+            .any(|words| words == ["under", "its", "owners", "control"])
+    {
+        marker.player = PlayerAst::ItsOwner;
+    }
     let Some(after_timing) = clause.from_word(marker.end_word) else {
         return Ok(None);
     };

@@ -579,13 +579,24 @@ fn compile_effect_inner(
         let inner = lowered.pop().ok_or_else(|| {
             CardTextError::ParseError("tag-affected requires a single nested effect".to_string())
         })?;
-        if !lowered.is_empty() {
+        // A single semantic action can lower with target/capture preludes
+        // before its executable effect. Keep those preludes outside the
+        // wrapper and tag only the final action's actual outcome.
+        if lowered.iter().any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_none()
+                && effect
+                    .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+                    .is_none()
+        }) {
             return Err(CardTextError::ParseError(
-                "tag-affected nested effect must lower to a single effect".to_string(),
+                "tag-affected nested effect may only have target or capture preludes".to_string(),
             ));
         }
         ctx.last_object_tag = Some(tag.as_str().to_string());
-        return Ok((vec![inner.tag_all(tag.clone())], choices));
+        lowered.push(inner.tag_all(tag.clone()));
+        return Ok((lowered, choices));
     }
     if let EffectAst::ManaRestricted {
         effects,
@@ -840,7 +851,6 @@ where
         let binding_player = ctx
             .last_player_filter
             .as_ref()
-            .filter(|filter| !filter.mentions_iterated_player())
             .unwrap_or_else(|| subject.player_filter());
         bind_relative_iterated_player_in_value_to_player_filter(&mut value, binding_player);
     }

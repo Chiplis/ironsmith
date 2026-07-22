@@ -1044,6 +1044,17 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
             tokens,
         );
     for effect in effects.iter_mut().rev() {
+        // A separately authored `It has "This token's power and toughness
+        // ..."` sentence is a characteristic-defining ability of the token,
+        // not a one-time base-P/T assignment made by the create effect. Give
+        // the nested token-identity parser first refusal for this shape; the
+        // dynamic reminder path below remains the fallback for unquoted
+        // copy/snapshot P/T clauses.
+        if reminder.dynamic_power_toughness.is_some()
+            && append_token_granted_ability_to_effect(Some(effect), tokens)?
+        {
+            return Ok(true);
+        }
         // Specialized reminder facts must win over the generic granted-ability
         // parser. Otherwise a quoted rule such as "When this token dies ..."
         // is retained as an opaque granted ability and its typed token rule is

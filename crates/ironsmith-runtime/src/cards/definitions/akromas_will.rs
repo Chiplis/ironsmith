@@ -967,17 +967,20 @@ mod tests {
                 "",
                 // Main phase - Cast Akroma's Will
                 "1", // Cast spell (index 1, after PassPriority at index 0)
+                "0", // Choose mode 1 (flying, vigilance, double strike)
                 "0", // Tap Plains 1 for white mana
                 "0", // Tap Plains 2 for generic
                 "0", // Tap Plains 3 for generic
-                // Plains 4 auto-taps for last generic, spell resolves
-                "0", // Choose mode 1 (flying, vigilance, double strike)
+                "0", // Tap Plains 4 for the last generic, then resolve
                 // After spell resolves, priority auto-passes through main and begin combat
                 // Declare attackers - attack with Grizzly Bears (index 0)
                 "0",
             ],
             ReplayTestConfig::new()
                 .p1_hand(vec!["Akroma's Will"])
+                // The full-turn runner performs a real draw step; provide a card
+                // so this combat scenario does not end via an empty-library loss.
+                .p1_deck(vec!["Darksteel Colossus"])
                 .p1_battlefield(vec!["Plains", "Plains", "Plains", "Plains"])
                 .p1_commander_on_battlefield(vec!["Grizzly Bears"]),
         );

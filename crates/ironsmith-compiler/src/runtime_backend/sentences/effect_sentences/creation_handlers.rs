@@ -313,11 +313,17 @@ fn attach_inline_token_granted_abilities_to_effect(
     if let EffectAst::SubjectVerb(subject_verb) = effect
         && let SubjectVerbActionAst::CreateTokenWithMods {
             definition,
+            dynamic_power_toughness,
             granted_abilities,
             ability_presentation,
             ..
         } = &mut subject_verb.action
     {
+        if let Some(dynamic) =
+            token_definition_grammar::parse_token_dynamic_power_toughness_tokens(tokens)
+        {
+            *dynamic_power_toughness = Some(dynamic);
+        }
         for ability in parse_inline_token_granted_abilities(definition, tokens) {
             if !granted_abilities.contains(&ability) {
                 granted_abilities.push(ability);
@@ -764,7 +770,14 @@ pub(crate) fn parse_create(
         }
     }
     let mut dynamic_power_toughness =
-        token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&definition_tokens);
+        token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&definition_tokens)
+            .or_else(|| {
+                // Quoted characteristic sentences are deliberately excluded
+                // from the compact token-blueprint slice. Inspect the complete
+                // creation clause as well so their semantic value still reaches
+                // lowering.
+                token_definition_grammar::parse_token_dynamic_power_toughness_tokens(tokens)
+            });
     let primary_definition_is_construct = name_words[..name_words_primary_len]
         .iter()
         .any(|word| *word == "construct");
@@ -1299,6 +1312,34 @@ mod tests {
         assert_eq!(construct.power_toughness, (0, 0));
         assert_eq!(construct.artifact_scaling, None);
         assert!(dynamic_power_toughness.is_some());
+    }
+
+    #[test]
+    fn quoted_dynamic_token_pt_survives_the_compact_definition_slice() {
+        let tokens = lex_line(
+            "Create a green Ooze creature token with \"This token's power and toughness are each equal to the number of slime counters on this enchantment.\"",
+            0,
+        )
+        .expect("quoted dynamic token creation should lex");
+        let effect =
+            parse_create(&tokens, None).expect("quoted dynamic token creation should parse");
+        let EffectAst::SubjectVerb(effect) = effect else {
+            panic!("expected a subject-verb token creation");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods {
+            dynamic_power_toughness,
+            ..
+        } = effect.action
+        else {
+            panic!("expected a token creation with modifiers");
+        };
+        assert!(matches!(
+            dynamic_power_toughness,
+            Some((
+                Value::CountersOnSource(crate::CounterType::Named("slime")),
+                Value::CountersOnSource(crate::CounterType::Named("slime")),
+            ))
+        ));
     }
 
     #[test]

@@ -11,7 +11,7 @@ fn named_consult_result_surfaces_preserve_typed_alternatives_and_remainders() {
     let gamekeeper = compiled_card_text("Gamekeeper");
     assert!(
         gamekeeper.contains(
-            "If you do, reveal cards from the top of your library until you reveal creature card. Put that card onto the battlefield and put all other cards revealed this way into your graveyard"
+            "If you do, reveal cards from the top of your library until you reveal a creature card. Put that card onto the battlefield and put all other cards revealed this way into your graveyard"
         ),
         "{gamekeeper}"
     );

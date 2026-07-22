@@ -337,13 +337,38 @@ const RETURN_LINKED_AT_NEXT_END_STEP: &[&str] = &[
     "end",
     "step",
 ];
+const AT_NEXT_END_STEP_RETURN_LINKED: &[&str] = &[
+    "at",
+    "the",
+    "beginning",
+    "of",
+    "the",
+    "next",
+    "end",
+    "step",
+    "return",
+    "it",
+    "to",
+    "the",
+    "battlefield",
+    "under",
+    "its",
+    "owner's",
+    "control",
+];
 
 pub(crate) fn is_filtered_future_exile_return_next_end_step_shape(
     replacement: &[OwnedLexToken],
     delayed_return: &[OwnedLexToken],
 ) -> bool {
     matches_complete_sequence(replacement, &[FILTERED_FUTURE_EXILE_THIS_TURN])
-        && matches_complete_sequence(delayed_return, &[RETURN_LINKED_AT_NEXT_END_STEP])
+        && matches_complete_sequence(
+            delayed_return,
+            &[
+                RETURN_LINKED_AT_NEXT_END_STEP,
+                AT_NEXT_END_STEP_RETURN_LINKED,
+            ],
+        )
 }
 
 fn parse_fixed_limit_word(input: &mut LexStream<'_>) -> WResult<i32> {
@@ -584,6 +609,14 @@ mod tests {
             ),
             &lex(
                 "Return it to the battlefield under its owner's control at the beginning of the next end step"
+            ),
+        ));
+        assert!(is_filtered_future_exile_return_next_end_step_shape(
+            &lex(
+                "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead"
+            ),
+            &lex(
+                "At the beginning of the next end step, return it to the battlefield under its owner's control"
             ),
         ));
     }

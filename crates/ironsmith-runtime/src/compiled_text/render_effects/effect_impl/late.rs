@@ -833,6 +833,13 @@
         return base;
     }
     if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        if let crate::effect::RestrictionStart::NextTurn(player) = &cant.start {
+            return format!(
+                "{} during {} next turn",
+                describe_restriction(&cant.restriction),
+                describe_possessive_player_filter(player)
+            );
+        }
         if cant.duration == Until::Forever
             && matches!(cant.restriction, crate::effect::Restriction::GainLife(_))
         {
@@ -2667,6 +2674,9 @@
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if let Some(text) = describe_delayed_life_loss_and_source_return(schedule) {
+            return text;
+        }
         if let Some(text) = describe_delayed_coin_flip_result(schedule) {
             return text;
         }
@@ -4337,7 +4347,15 @@
                 filter,
                 exclude_voter,
             } => {
-                if *exclude_voter && *filter == PlayerFilter::Any {
+                let filter_already_excludes_voter = matches!(
+                    filter,
+                    PlayerFilter::Excluding { base, excluded }
+                        if **base == PlayerFilter::Any
+                            && **excluded == PlayerFilter::IteratedPlayer
+                );
+                if *exclude_voter
+                    && (*filter == PlayerFilter::Any || filter_already_excludes_voter)
+                {
                     "another player".to_string()
                 } else {
                     strip_leading_article(&describe_player_filter(filter)).to_string()

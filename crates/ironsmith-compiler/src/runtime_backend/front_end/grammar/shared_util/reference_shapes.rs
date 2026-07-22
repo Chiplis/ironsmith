@@ -86,7 +86,7 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     }
 
     let mut slice = words.get(start..).unwrap_or_default();
-    while prefix_one_of(slice, &[&["then"], &["and"]]) {
+    while prefix_one_of(slice, &[&["then"], &["and"], &["instead"]]) {
         slice = &slice[1..];
     }
     while permission_shapes::prefix_words(slice, &["each"]) {

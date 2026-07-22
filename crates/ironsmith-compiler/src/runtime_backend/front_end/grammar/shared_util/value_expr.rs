@@ -681,7 +681,10 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
             &["thiss", "creatures", "mana", "value"],
         ],
     ) {
-        return Some((Value::ManaValueOf(Box::new(ChooseSpec::Source)), used));
+        return Some((
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+            used,
+        ));
     }
     if let Some(used) = prefix_len(words, COLORS_SPENT_PREFIXES) {
         return Some((Value::ColorsOfManaSpentToCastThisSpell, used));

@@ -121,7 +121,7 @@ mod tests {
 
         let grant_ability = def.abilities.iter().find(|a| {
             if let AbilityKind::Static(s) = &a.kind {
-                s.id() == StaticAbilityId::EquipmentGrant
+                s.id() == StaticAbilityId::AttachedAbilityGrant
             } else {
                 false
             }
@@ -132,21 +132,13 @@ mod tests {
         );
 
         if let AbilityKind::Static(s) = &grant_ability.unwrap().kind {
-            if let Some(abilities) = s.equipment_grant_abilities() {
-                assert_eq!(abilities.len(), 2, "Should grant 2 abilities");
-                assert!(
-                    abilities.iter().any(|a| a.has_haste()),
-                    "Should grant haste"
-                );
-                assert!(
-                    abilities.iter().any(|a| a.has_shroud()),
-                    "Should grant shroud"
-                );
-            } else {
-                panic!("Expected equipment grant abilities");
-            }
+            assert_eq!(
+                s.display(),
+                "Equipped creature has haste and shroud.",
+                "the attached grant should preserve both granted abilities"
+            );
         } else {
-            panic!("Expected EquipmentGrant ability");
+            panic!("Expected AttachedAbilityGrant ability");
         }
     }
 
@@ -527,8 +519,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "1", // Tap Sol Ring for mana (adds 2 colorless to pool)
-                "1", // Cast Lightning Greaves (now we have mana in pool)
+                "1", // Cast Lightning Greaves
+                "0", // Activate Sol Ring while paying its cost
             ],
             ReplayTestConfig::new()
                 .p1_hand(vec!["Lightning Greaves"])

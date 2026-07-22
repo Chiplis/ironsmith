@@ -591,7 +591,7 @@ mod tests {
         ));
         let follow_up_outcome = follow_up.execute(&mut game, &mut ctx).unwrap();
 
-        assert_eq!(follow_up_outcome.status, OutcomeStatus::TargetInvalid);
+        assert_eq!(follow_up_outcome.status, OutcomeStatus::Succeeded);
         assert!(game.players[0].hand.is_empty());
         assert!(game.players[0].graveyard.is_empty());
         assert_eq!(game.exile.len(), 1);

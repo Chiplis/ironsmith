@@ -933,7 +933,15 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
         }
         Comparison::LessThanExpr(value) => format!("less than {}", describe_value_expr(value)),
         Comparison::LessThanOrEqualExpr(value) => {
-            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison) {
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison)
+                || matches!(
+                    value.unhinted(),
+                    crate::effect::Value::EffectMetric {
+                        metric: crate::effect::EffectMetric::OtherNumber,
+                        ..
+                    }
+                )
+            {
                 format!("less than or equal to {}", describe_value_expr(value))
             } else {
                 format!("{} or less", describe_value_expr(value))
@@ -943,7 +951,15 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
             format!("greater than {}", describe_value_expr(value))
         }
         Comparison::GreaterThanOrEqualExpr(value) => {
-            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison) {
+            if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitComparison)
+                || matches!(
+                    value.unhinted(),
+                    crate::effect::Value::EffectMetric {
+                        metric: crate::effect::EffectMetric::OtherNumber,
+                        ..
+                    }
+                )
+            {
                 format!("greater than or equal to {}", describe_value_expr(value))
             } else {
                 format!("{} or greater", describe_value_expr(value))

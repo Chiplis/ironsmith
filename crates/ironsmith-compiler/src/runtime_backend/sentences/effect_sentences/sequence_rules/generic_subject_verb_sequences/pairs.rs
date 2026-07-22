@@ -254,6 +254,7 @@ pub(crate) fn parse_reciprocal_creature_control_sequence(
                 filter: shape.your_creatures,
                 zones: vec![Zone::Battlefield],
                 tag: your_tag,
+                source_tags: Vec::new(),
             },
         ),
         EffectAst::subject_verb(
@@ -263,6 +264,7 @@ pub(crate) fn parse_reciprocal_creature_control_sequence(
                 filter: shape.target_player_creatures,
                 zones: vec![Zone::Battlefield],
                 tag: target_tag,
+                source_tags: Vec::new(),
             },
         ),
     ];
@@ -408,6 +410,32 @@ mod optional_consult_gating_tests {
         assert!(consult.contains("ConsultTopOfLibrary"), "{consult}");
         assert!(disposition.contains("MoveToZone"), "{disposition}");
         assert!(disposition.contains("ForEachTagged"), "{disposition}");
+    }
+
+    #[test]
+    fn optional_consult_gates_an_unprefixed_move_and_bottom_disposition() {
+        let parsed = parse_effect_text(
+            "You may reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest on the bottom of your library in a random order.",
+        );
+        let [
+            EffectAst::May { effects: consult },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: disposition,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected the complete consult procedure to remain optional: {parsed:#?}");
+        };
+
+        let consult = format!("{consult:#?}");
+        let disposition = format!("{disposition:#?}");
+        assert!(consult.contains("ConsultTopOfLibrary"), "{consult}");
+        assert!(disposition.contains("MoveToZone"), "{disposition}");
+        assert!(
+            disposition.contains("PutTaggedRemainderOnBottomOfLibrary"),
+            "{disposition}"
+        );
     }
 
     #[test]
@@ -2674,7 +2702,7 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first = sentences[sentence_idx].lowered();
     let second = sentences[sentence_idx + 1].lowered();
-    let Some(parts) = parse_consult_traversal_sentence(first)? else {
+    let Some((parts, optional)) = parse_optional_consult_traversal_sentence(first)? else {
         return Ok(None);
     };
     if !matches!(
@@ -2691,10 +2719,9 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
     if let Some(matched) = effect_grammar::parse_consult_matched_move_shape(&second_tokens)
         && matched.selection == effect_grammar::ConsultMoveSelectionShape::AllMatched
     {
-        let mut effects = parts.effects;
-        effects.push(
+        let followups = vec![
             EffectAst::subject_verb_move_to_zone(
-                TargetAst::Tagged(parts.match_tag, None),
+                TargetAst::Tagged(parts.match_tag.clone(), None),
                 matched.zone,
                 false,
                 if matched.controller_you {
@@ -2706,28 +2733,33 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
                 None,
             )
             .with_move_to_zone_plural_surface_if(matched.target_plural_surface),
-        );
-        return Ok(Some(effects));
+        ];
+        return Ok(Some(wrap_optional_consult_effects(
+            parts, optional, followups, false, false,
+        )));
     }
     let Some(shape) = effect_grammar::parse_consult_move_bottom_shape(&second_tokens) else {
         return Ok(None);
     };
     if shape == effect_grammar::ConsultMoveBottomShape::MatchedToBattlefieldAndShuffle {
-        let mut effects = parts.effects;
-        effects.push(EffectAst::subject_verb_move_to_zone(
-            TargetAst::Tagged(parts.match_tag, None),
-            Zone::Battlefield,
-            false,
-            crate::cards::builders::ReturnControllerAst::Preserve,
-            false,
-            None,
-        ));
-        effects.push(EffectAst::subject_verb(
-            SubjectVerbRoleAst::LibraryOwner,
-            parts.player,
-            SubjectVerbActionAst::ShuffleLibrary,
-        ));
-        return Ok(Some(effects));
+        let followups = vec![
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(parts.match_tag.clone(), None),
+                Zone::Battlefield,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                parts.player,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ),
+        ];
+        return Ok(Some(wrap_optional_consult_effects(
+            parts, optional, followups, false, false,
+        )));
     }
 
     let effect_grammar::ConsultMoveBottomShape::MoveMatchAndBottom {
@@ -2739,24 +2771,25 @@ pub(crate) fn parse_consult_match_move_and_bottom_remainder(
         unreachable!("shuffle consult shape returned above")
     };
 
-    let mut effects = parts.effects;
-    effects.push(EffectAst::subject_verb_move_to_zone(
-        TargetAst::Tagged(parts.match_tag.clone(), None),
-        zone,
-        false,
-        crate::cards::builders::ReturnControllerAst::Preserve,
-        battlefield_tapped,
-        None,
-    ));
-    effects.push(
+    let followups = vec![
+        EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(parts.match_tag.clone(), None),
+            zone,
+            false,
+            crate::cards::builders::ReturnControllerAst::Preserve,
+            battlefield_tapped,
+            None,
+        ),
         EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
-            parts.all_tag,
-            Some(parts.match_tag),
+            parts.all_tag.clone(),
+            Some(parts.match_tag.clone()),
             order,
             parts.player,
         ),
-    );
-    Ok(Some(effects))
+    ];
+    Ok(Some(wrap_optional_consult_effects(
+        parts, optional, followups, false, false,
+    )))
 }
 
 pub(crate) fn parse_conditional_consult_match_move_and_bottom_remainder(

@@ -2927,9 +2927,8 @@ pub(super) fn parse_robe_of_the_archmagi_compiled_text_includes_class_equip_clau
     let lines = canonical_compiled_lines(&def);
 
     assert!(
-        lines
-            .iter()
-            .any(|line| line == "Whenever equipped creature deals combat damage to a player, you draw that many cards."),
+        lines.iter().any(|line| line
+            == "Whenever equipped creature deals combat damage to a player, draw that many cards."),
         "expected Robe trigger text in compiled output, got {lines:?}"
     );
     assert!(

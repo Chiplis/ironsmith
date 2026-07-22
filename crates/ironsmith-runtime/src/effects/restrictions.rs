@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::effect::{EffectOutcome, Restriction, Until};
+use crate::effect::{EffectOutcome, Restriction, RestrictionStart, Until};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt;
@@ -188,6 +188,12 @@ impl EffectExecutor for CantEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let restriction = normalize_restriction_for_resolution(&self.restriction, ctx, game);
+        let starts_next_turn_of = match &self.start {
+            RestrictionStart::Immediate => None,
+            RestrictionStart::NextTurn(player) => Some(
+                crate::effects::helpers::resolve_player_filter(game, player, ctx)?,
+            ),
+        };
         if matches!(self.duration, Until::ControllersNextUntapStep)
             && let Restriction::Untap(filter) = &restriction
         {
@@ -207,30 +213,35 @@ impl EffectExecutor for CantEffect {
 
             if !targets.is_empty() {
                 for (object_id, controller) in targets {
-                    game.add_restriction_effect(
+                    game.add_restriction_effect_with_start_and_tagged_objects(
                         Restriction::untap(crate::target::ObjectFilter::specific(object_id)),
                         self.duration.clone(),
                         ctx.source,
                         controller,
                         ctx.iteration.iterated_player,
+                        starts_next_turn_of,
+                        Default::default(),
                     );
                 }
             } else {
-                game.add_restriction_effect(
+                game.add_restriction_effect_with_start_and_tagged_objects(
                     self.restriction.clone(),
                     self.duration.clone(),
                     ctx.source,
                     ctx.controller,
                     ctx.iteration.iterated_player,
+                    starts_next_turn_of,
+                    Default::default(),
                 );
             }
         } else {
-            game.add_restriction_effect_with_tagged_objects(
+            game.add_restriction_effect_with_start_and_tagged_objects(
                 restriction,
                 self.duration.clone(),
                 ctx.source,
                 ctx.controller,
                 ctx.iteration.iterated_player,
+                starts_next_turn_of,
                 ctx.tagged_objects.clone(),
             );
         }
@@ -268,6 +279,91 @@ mod tests {
 
         assert!(!game.can_gain_life(PlayerId::from_index(0)));
         assert!(!game.can_gain_life(PlayerId::from_index(1)));
+    }
+
+    #[test]
+    fn cant_effect_can_start_at_the_affected_players_next_turn_boundary() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let spell_filter = ObjectFilter::default().with_type(CardType::Instant);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.iteration.iterated_player = Some(bob);
+        CantEffect::during_next_turn(
+            Restriction::cast_spells_matching(PlayerFilter::IteratedPlayer, spell_filter.clone()),
+            PlayerFilter::IteratedPlayer,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("schedule next-turn cast restriction");
+
+        assert!(game.effect_store.restriction_effects[0].is_pending());
+        assert!(
+            game.effect_store
+                .cant_effects
+                .cast_filters_for_player(bob)
+                .is_none(),
+            "the restriction must not apply during the current turn"
+        );
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, bob);
+        assert!(
+            game.effect_store
+                .cant_effects
+                .cast_filters_for_player(bob)
+                .is_some_and(|filters| filters.iter().any(|entry| entry.filter == spell_filter)),
+            "the restriction must be active before priority on the affected player's next turn"
+        );
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, alice);
+        assert!(
+            game.effect_store
+                .cant_effects
+                .cast_filters_for_player(bob)
+                .is_none(),
+            "the restriction must expire after that turn"
+        );
+    }
+
+    #[test]
+    fn next_turn_restriction_waits_if_the_affected_players_turn_is_skipped() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.iteration.iterated_player = Some(bob);
+
+        CantEffect::during_next_turn(
+            Restriction::gain_life(PlayerFilter::IteratedPlayer),
+            PlayerFilter::IteratedPlayer,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("schedule next-turn restriction");
+        game.turn_store.skip_next_turn.insert(bob);
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, charlie);
+        assert!(game.can_gain_life(bob));
+        assert!(game.effect_store.restriction_effects[0].is_pending());
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, alice);
+        assert!(game.can_gain_life(bob));
+
+        game.next_turn();
+        assert_eq!(game.turn.active_player, bob);
+        assert!(!game.can_gain_life(bob));
     }
 
     #[test]

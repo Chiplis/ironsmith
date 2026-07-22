@@ -48,6 +48,13 @@ fn token_reminder_sentence_head<'a>(
         alt((
             primitives::phrase(&["its", "power"]),
             primitives::phrase(&["its", "toughness"]),
+            // The lexer removes possessive apostrophes, so "token's" is the
+            // parser-word piece "tokens". The token-level grammar still sees
+            // the normalized lexical token "token's".
+            primitives::phrase(&["this", "token's", "power"]),
+            primitives::phrase(&["this", "token's", "toughness"]),
+            primitives::phrase(&["this", "tokens", "power"]),
+            primitives::phrase(&["this", "tokens", "toughness"]),
         ))
         .value(TokenReminderSentenceKind::PowerToughness),
         alt((primitives::kw("exile"), primitives::kw("sacrifice")))

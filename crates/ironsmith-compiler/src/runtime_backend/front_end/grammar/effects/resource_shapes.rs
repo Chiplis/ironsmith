@@ -496,9 +496,21 @@ pub(crate) fn parse_resource_look_shape<'a>(
         } else {
             return None;
         };
-    if !sentence_finished(owner_rest) {
-        return None;
-    }
+    let owner_rest = trimmed(owner_rest);
+    let count = if sentence_finished(owner_rest) {
+        count
+    } else {
+        if count != Value::X {
+            return None;
+        }
+        let (_, value_tokens) =
+            primitives::parse_prefix(owner_rest, |input: &mut LexStream<'_>| {
+                primitives::phrase(&["where", "x", "is"])
+                    .void()
+                    .parse_next(input)
+            })?;
+        super::looked_card_shapes::parse_where_x_value(trimmed(value_tokens))?
+    };
     if matches!(player, PlayerAst::Any) {
         Some(ResourceLookShape::EachPlayerTopCards { count })
     } else {

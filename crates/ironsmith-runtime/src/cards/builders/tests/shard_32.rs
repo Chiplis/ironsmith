@@ -79,31 +79,55 @@ pub(super) fn reptilian_recruiter_or_condition_keeps_every_action_on_chosen_crea
         "the existential Lizard branch must not become a new target: {choice_filter:?}"
     );
 
+    let initial_target_tag = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<TaggedEffect>()?;
+            unwrapped_effect(effect)
+                .downcast_ref::<TargetOnlyEffect>()
+                .map(|_| &tagged.tag)
+        })
+        .expect("Recruiter's initial creature target should have a target slot");
+
     let conditional = triggered
         .effects
         .flattened_default_effects()
         .iter()
         .find_map(|effect| unwrapped_effect(effect).downcast_ref::<ConditionalEffect>())
         .expect("Recruiter's gain-control chain should remain conditional");
-    let control = conditional
-        .if_true
+    let branch_effects = match conditional.if_true.as_slice() {
+        [effect]
+            if unwrapped_effect(effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .is_some() =>
+        {
+            &unwrapped_effect(effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .expect("checked above")
+                .effects
+        }
+        effects => effects,
+    };
+    let (controlled_tag, control) = branch_effects
         .iter()
-        .filter_map(continuous_effect)
-        .find(|effect| {
-            effect
+        .find_map(|effect| {
+            let tagged = effect.downcast_ref::<TaggedEffect>()?;
+            let continuous = continuous_effect(effect)?;
+            continuous
                 .runtime_modifications
                 .contains(&crate::effects::RuntimeModification::ChangeControllerToEffectController)
+                .then_some((&tagged.tag, continuous))
         })
         .expect("Recruiter should gain control of the chosen creature");
-    let untap = conditional
-        .if_true
+    let untap = branch_effects
         .iter()
         .find_map(|effect| unwrapped_effect(effect).downcast_ref::<UntapEffect>())
         .expect("Recruiter should untap the chosen creature");
-    let haste = conditional
-        .if_true
+    let haste = branch_effects
         .iter()
-        .filter_map(continuous_effect)
+        .filter_map(|effect| continuous_effect(effect))
         .find(|effect| {
             matches!(
                 effect.modification.as_ref(),
@@ -113,14 +137,23 @@ pub(super) fn reptilian_recruiter_or_condition_keeps_every_action_on_chosen_crea
         })
         .expect("Recruiter should grant haste to the chosen creature");
 
-    let Some(ChooseSpec::Tagged(controlled_tag)) =
-        control.target_spec.as_ref().map(ChooseSpec::unhinted)
-    else {
-        panic!(
-            "Recruiter's control effect should reference the chosen creature, got {:?}",
-            control.target_spec
-        );
+    let control_references_initial_target = match control
+        .target_spec
+        .as_ref()
+        .map(ChooseSpec::unhinted)
+    {
+        Some(ChooseSpec::Tagged(tag)) => tag == initial_target_tag,
+        Some(ChooseSpec::Object(filter)) => filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *initial_target_tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }),
+        _ => false,
     };
+    assert!(
+        control_references_initial_target,
+        "Recruiter's control effect should reference the initial target slot: {:?}",
+        control.target_spec
+    );
     assert!(
         matches!(untap.target.unhinted(), ChooseSpec::Tagged(tag) if tag == controlled_tag),
         "Recruiter's untap should use the controlled creature tag: {:?}",
@@ -267,6 +300,14 @@ pub(super) fn kookus_coordinated_attack_grant_targets_source() {
         .effects
         .flattened_default_effects()
         .iter()
+        .flat_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .map_or_else(
+                    || std::slice::from_ref(effect),
+                    |sequence| sequence.effects.as_slice(),
+                )
+        })
         .filter_map(continuous_effect)
         .find(|effect| {
             matches!(

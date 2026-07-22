@@ -1179,7 +1179,7 @@ pub(super) fn test_generic_unless_pays_mana_rendering() {
         .join(" | ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("destroy target creature unless that object's controller pays {2}"),
+        rendered.contains("destroy target creature unless its controller pays {2}"),
         "expected generic unless-pays mana text in compiled output, got {rendered}"
     );
 
@@ -1202,7 +1202,7 @@ pub(super) fn test_generic_unless_pays_life_rendering() {
         .join(" | ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("destroy target creature unless that object's controller pays 2 life"),
+        rendered.contains("destroy target creature unless its controller pays 2 life"),
         "expected generic unless-pays life text in compiled output, got {rendered}"
     );
 
@@ -1226,7 +1226,7 @@ pub(super) fn test_generic_unless_sacrifice_rendering() {
     let rendered_raw = unprocessed_compiled_lines(&def).join(" | ");
     let rendered = rendered_raw.to_ascii_lowercase();
     assert!(
-        rendered.contains("destroy target creature unless that object's controller sacrifices"),
+        rendered.contains("destroy target creature unless its controller sacrifices"),
         "expected generic unless-sacrifice action text in compiled output, got {rendered_raw}"
     );
     assert!(
@@ -1831,9 +1831,9 @@ pub(super) fn search_reveal_named_card_branch_moves_the_searched_card() {
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("ConditionalEffect")
-            && debug.contains("TaggedObjectMatches")
-            && debug.contains("Hammer of Nazahn"),
+        debug.contains("IfEffect")
+            && debug.contains("PriorEffectResult")
+            && debug.contains("hammer of nazahn"),
         "expected named searched-card conditional, got {debug}"
     );
     assert!(
@@ -1884,7 +1884,9 @@ pub(super) fn if_you_put_artifact_this_way_does_not_leak_tagged_object_markers()
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("if you put an artifact this way, put two +1/+1 counters on it"),
+        rendered.contains(
+            "if you put an artifact onto the battlefield this way, put two +1/+1 counters on it"
+        ),
         "expected moved-tag conditional to render as put-this-way text, got {rendered}"
     );
     assert!(
@@ -2286,7 +2288,7 @@ pub(super) fn test_experiment_twelve_strict_parse_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("put x +1/+1 counters on it, where x is its power"),
+        compiled.contains("put x +1/+1 counters on that creature, where x is its power"),
         "expected dynamic power-based counter clause in compiled output, got {compiled}"
     );
 }
@@ -2415,7 +2417,7 @@ pub(super) fn parse_anger_graveyard_condition_with_land_control() {
         matches!(
             &ability.kind,
             AbilityKind::Static(static_ability)
-                if static_ability.id() == StaticAbilityId::GrantAbility
+                if static_ability.id() == StaticAbilityId::GrantObjectAbilityForFilter
         ) && ability.functional_zones.contains(&Zone::Graveyard)
             && !ability.functional_zones.contains(&Zone::Battlefield)
     });
@@ -2487,8 +2489,8 @@ pub(super) fn test_parse_exile_then_return_with_counter_keeps_counter_followup()
         "expected return move-to-battlefield effect, got {debug}"
     );
     assert!(
-        debug.contains("PutCountersEffect") && debug.contains("PlusOnePlusOne"),
-        "expected +1/+1 counter follow-up on returned object, got {debug}"
+        debug.contains("enters_with_counters") && debug.contains("PlusOnePlusOne"),
+        "expected +1/+1 counter entry modifier on the returned object, got {debug}"
     );
 }
 
@@ -2504,7 +2506,7 @@ pub(super) fn test_parse_shares_permanent_type_with_it_adds_tagged_constraint() 
 
     let debug = format!("{:#?}", def.abilities);
     assert!(
-        debug.contains("SharesCardType"),
+        debug.contains("SharesPermanentType"),
         "expected tagged shares-card-type constraint for 'shares a permanent type with it', got {debug}"
     );
 
@@ -3085,7 +3087,7 @@ pub(super) fn test_parse_bridge_from_below_compiles_graveyard_triggers() {
         rendered.contains("create a 2/2 black zombie creature token")
             && rendered.contains("exile this")
             && rendered.contains("an opponent")
-            && rendered.contains("dies"),
+            && rendered.contains("is put into an opponent's graveyard from the battlefield"),
         "expected both Bridge abilities in compiled text, got {rendered}"
     );
 }
@@ -3267,7 +3269,7 @@ pub(super) fn parse_song_of_the_dryads_type_transform_line() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("enchanted permanent is land"),
+        compiled.contains("enchanted permanent is a colorless forest land"),
         "expected land type-setting text, got {compiled}"
     );
     assert!(
@@ -3395,9 +3397,9 @@ pub(super) fn parse_ensoul_artifact_style_transform_line() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("enchanted artifact is creature")
+        compiled.contains("enchanted artifact is a creature")
             || compiled
-                .contains("enchanted artifact has base power and toughness 5/5 and is creature"),
+                .contains("enchanted artifact has base power and toughness 5/5 and is a creature"),
         "expected creature type-setting text, got {compiled}"
     );
     assert!(

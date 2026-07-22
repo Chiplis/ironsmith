@@ -1,5 +1,25 @@
 use super::*;
 
+fn normalize_symbol_case(text: &str) -> String {
+    let mut normalized = String::with_capacity(text.len());
+    let mut in_symbol = false;
+    for character in text.chars() {
+        match character {
+            '{' => {
+                in_symbol = true;
+                normalized.push(character);
+            }
+            '}' => {
+                in_symbol = false;
+                normalized.push(character);
+            }
+            _ if in_symbol => normalized.push(character.to_ascii_uppercase()),
+            _ => normalized.push(character),
+        }
+    }
+    normalized
+}
+
 /// Controller of source controls the permanent attached to source.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ControlAttachedPermanent {
@@ -323,7 +343,7 @@ impl StaticAbilityKind for GrantObjectAbilityForFilter {
     }
 
     fn display(&self) -> String {
-        let mut ability_text = self.display.clone();
+        let mut ability_text = normalize_symbol_case(&self.display);
         if let AbilityKind::Activated(activated) = &self.ability.kind
             && activated.is_loyalty_ability
             && let Some(rendered) = loyalty_activated_ability_display(activated, &ability_text)

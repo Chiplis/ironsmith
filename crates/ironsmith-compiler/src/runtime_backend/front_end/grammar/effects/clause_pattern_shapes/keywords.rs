@@ -58,7 +58,6 @@ pub(crate) enum KeywordMechanicShape<'a> {
         odd: bool,
         action_tokens: &'a [OwnedLexToken],
     },
-    Unsupported,
     Phase {
         direction: PhaseDirectionShape,
         subject: PhaseSubjectShape<'a>,
@@ -140,10 +139,10 @@ fn parse_creature_subtype<'a>(input: &mut LexStream<'a>) -> WResult<Subtype> {
 
 fn source_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((
-        primitives::kw("it").void(),
-        primitives::kw("this").void(),
         primitives::phrase(&["this", "creature"]),
         primitives::phrase(&["this", "permanent"]),
+        primitives::kw("it").void(),
+        primitives::kw("this").void(),
     ))
     .parse_next(input)
 }
@@ -233,13 +232,6 @@ fn parse_odd_even_result<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechan
     let action_tokens = tokens_before(input, 1, primitives::sentence_end())?;
     primitives::sentence_end().parse_next(input)?;
     Ok(KeywordMechanicShape::OddEvenResult { odd, action_tokens })
-}
-
-fn parse_unsupported<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
-    alt((primitives::kw("dredge"), primitives::kw("warp"))).parse_next(input)?;
-    tokens_before(input, 0, primitives::sentence_end())?;
-    primitives::sentence_end().parse_next(input)?;
-    Ok(KeywordMechanicShape::Unsupported)
 }
 
 fn phase_marker<'a>(input: &mut LexStream<'a>) -> WResult<PhaseDirectionShape> {
@@ -584,7 +576,6 @@ fn parse_keyword_mechanic_lexed<'a>(
         parse_harness,
         parse_roll_d6,
         parse_odd_even_result,
-        parse_unsupported,
         parse_phase,
         parse_open_attraction,
         alt((

@@ -30,7 +30,10 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
-            | EffectAst::AnyPlayerMay { effects: $effects }
+            | EffectAst::AnyPlayerMay {
+                effects: $effects,
+                ..
+            }
             | EffectAst::ResolvedIfResult {
                 effects: $effects,
                 ..

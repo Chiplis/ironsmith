@@ -699,6 +699,8 @@ pub(super) fn compile_subject_verb_late(
                 } else {
                     let tag = ctx.next_tag("exiled");
                     effect = effect.tag(tag.clone());
+                    ctx.last_exiled_collection_tag = Some(tag.clone());
+                    ctx.last_exiled_collection_is_plural = true;
                     ctx.last_object_tag = Some(tag);
                 }
             }
@@ -987,11 +989,26 @@ pub(super) fn compile_subject_verb_late(
             let graveyard_player_surface = return_graveyard_player_surface(target, ctx)?;
             let (mut spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            // A plural demonstrative in a later per-player sentence refers to
+            // the collection chosen by the preceding quantified sentence.
+            // `Iterated` cannot resolve an object while only a player loop is
+            // active, so retain the producer tag explicitly instead.
+            if ctx.iterated_player
+                && !ctx.iterated_object
+                && set_reference_surface.is_some()
+                && matches!(spec.base(), ChooseSpec::Iterated)
+                && let Some(tag) = ctx.last_object_tag.as_deref()
+            {
+                spec = ChooseSpec::Tagged(TagKey::from(tag));
+            }
             let destination_player_surface = destination_player_surface
                 .map(|player| resolve_non_target_player_filter(player, &current_reference_env(ctx)))
                 .transpose()?;
             let from_graveyard = target_mentions_graveyard(target);
-            if from_graveyard && !ctx.iterated_player && choose_spec_mentions_iterated_player(&spec)
+            if from_graveyard
+                && !ctx.iterated_player
+                && ctx.last_player_filter.as_ref() != Some(&PlayerFilter::IteratedPlayer)
+                && choose_spec_mentions_iterated_player(&spec)
             {
                 replace_iterated_player_with_target_player_in_choose_spec(&mut spec);
             }

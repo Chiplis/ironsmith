@@ -90,7 +90,7 @@ pub(crate) fn describe_card_count(value: &Value) -> String {
             let amount = value
                 .clone()
                 .without_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo);
-            format!("a number of cards equal to {}", describe_value(&amount))
+            format!("cards equal to {}", describe_value(&amount))
         }
         _ => {
             if let Some(backref) = describe_effect_count_backref(value) {
@@ -175,7 +175,7 @@ pub(crate) fn additional_cost_color_discard_surface(
 
 pub(crate) fn describe_discard_count(value: &Value, filter: Option<&ObjectFilter>) -> String {
     let Some(filter) = filter else {
-        return match value {
+        return match value.unhinted() {
             Value::BasicLandTypesAmong(filter) => {
                 format!(
                     "a card for each basic land type among {}",
@@ -1656,7 +1656,16 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 if let ChooseSpec::Target(target_inner) = inner.as_ref() {
                     let target_desc = describe_choose_spec(target_inner);
                     let base = strip_leading_article(&target_desc);
-                    let plural = pluralize_relative_object_phrase(base);
+                    let mut plural = pluralize_relative_object_phrase(base);
+                    if let ChooseSpec::Object(filter) = target_inner.base()
+                        && filter.zone == Some(Zone::Graveyard)
+                        && filter.owner.is_none()
+                        && !filter.single_graveyard
+                    {
+                        plural = plural
+                            .replace(" in a graveyard", " in graveyards")
+                            .replace(" from a graveyard", " from graveyards");
+                    }
                     let count_text =
                         |n: usize| number_word(n as i32).unwrap_or_else(|| n.to_string());
                     if count.is_up_to_dynamic_x() {
@@ -2035,7 +2044,8 @@ pub(crate) fn owner_for_zone_from_spec(
     zone: Zone,
 ) -> Option<Option<PlayerFilter>> {
     match spec {
-        ChooseSpec::Target(inner)
+        ChooseSpec::SurfaceHinted { spec: inner, .. }
+        | ChooseSpec::Target(inner)
         | ChooseSpec::WithCount(inner, _)
         | ChooseSpec::WithCountValue(inner, _, _) => owner_for_zone_from_spec(inner, zone),
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
@@ -2100,6 +2110,9 @@ pub(crate) fn describe_card_choice_count(count: ChoiceCount) -> String {
 
 pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> String {
     match spec {
+        ChooseSpec::SurfaceHinted { spec: inner, .. } => {
+            describe_choose_spec_without_graveyard_zone(inner)
+        }
         ChooseSpec::Target(inner) => {
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
@@ -2560,6 +2573,13 @@ pub(crate) fn describe_search_selection_with_cards(selection: &str) -> String {
     if let Some(name) = selection.strip_prefix("permanent named ") {
         return format!("a card named {name}");
     }
+    let unarticled = strip_leading_article(selection);
+    if unarticled.starts_with("basic land card with ") || unarticled.starts_with("land card with ")
+    {
+        // `with ...` is a qualifier on the land card, not a subtype that
+        // should be moved in front of the shared `card` noun.
+        return with_indefinite_article(unarticled);
+    }
     if let Some(subtype) = selection.strip_prefix("a basic land card ") {
         return format!("a basic {} card", subtype.trim());
     }
@@ -2603,6 +2623,26 @@ pub(crate) fn describe_search_selection_with_cards(selection: &str) -> String {
                 format!("{} card", with_indefinite_article(head))
             };
             return format!("{head_with_card} with mana value {value}");
+        }
+    }
+    let card_union_parts = selection.split(" or ").map(str::trim).collect::<Vec<_>>();
+    if card_union_parts.len() > 1
+        && card_union_parts
+            .iter()
+            .all(|part| part.strip_suffix(" card").is_some())
+    {
+        let modifiers = card_union_parts
+            .iter()
+            .filter_map(|part| part.strip_suffix(" card"))
+            .map(|part| {
+                part.trim()
+                    .strip_prefix("an ")
+                    .or_else(|| part.trim().strip_prefix("a "))
+                    .unwrap_or(part.trim())
+            })
+            .collect::<Vec<_>>();
+        if modifiers.iter().all(|modifier| !modifier.is_empty()) {
+            return with_indefinite_article(&format!("{} card", modifiers.join(" or ")));
         }
     }
     if selection.contains(" card") {
@@ -3244,6 +3284,31 @@ mod structured_zone_count_surface_tests {
     }
 }
 
+#[cfg(test)]
+mod shared_card_noun_union_tests {
+    use super::*;
+
+    #[test]
+    fn search_selection_shares_card_noun_across_type_union() {
+        assert_eq!(
+            describe_search_selection_with_cards("Elf card or Elemental card"),
+            "an Elf or Elemental card"
+        );
+        assert_eq!(
+            describe_search_selection_with_cards("an artifact card or a creature card"),
+            "an artifact or creature card"
+        );
+    }
+
+    #[test]
+    fn qualified_land_search_keeps_the_qualifier_after_card() {
+        assert_eq!(
+            describe_search_selection_with_cards("land card with a basic land type"),
+            "a land card with a basic land type"
+        );
+    }
+}
+
 pub(crate) fn describe_mana_symbol(symbol: ManaSymbol) -> String {
     match symbol {
         ManaSymbol::White => "{W}".to_string(),
@@ -3838,11 +3903,17 @@ fn describe_turn_history_count(query: &TurnHistoryCount) -> String {
             "the number of {} who were dealt damage this turn",
             pluralize_noun_phrase(&describe_player_filter(player))
         ),
-        TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => format!(
-            "the number of {} who were dealt combat damage by {} this turn",
-            pluralize_noun_phrase(&describe_player_filter(players)),
-            describe_for_each_filter(sources)
-        ),
+        TurnHistoryCount::PlayersDealtCombatDamageBy { players, sources } => {
+            let players = pluralize_noun_phrase(&describe_player_filter(players));
+            if sources == &ObjectFilter::default() {
+                format!("the number of {players} who were dealt combat damage this turn")
+            } else {
+                format!(
+                    "the number of {players} who were dealt combat damage by {} this turn",
+                    describe_for_each_filter(sources)
+                )
+            }
+        }
         TurnHistoryCount::DiscardedOrCycled(player) => match player {
             PlayerFilter::You => {
                 "the number of cards you've cycled or discarded this turn".to_string()

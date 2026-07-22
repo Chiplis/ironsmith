@@ -1995,10 +1995,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 return "a permanent's ability is countered this way".to_string();
             }
-            if let Some(action) = this_way_action_from_tag(tag)
-                && action != "put"
-            {
+            if let Some(action) = this_way_action_from_tag(tag) {
                 let object = describe_player_tagged_object_text(tag, filter);
+                if action == "put" && filter.zone == Some(Zone::Battlefield) {
+                    return format!("{object} is put onto the battlefield this way");
+                }
+                if action == "put" {
+                    return describe_implicit_tagged_object_fallback_condition("it", &desc);
+                }
                 return if action == "died" {
                     format!("{object} died this way")
                 } else {
@@ -2557,6 +2561,12 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 if *include_source_noun {
                     source.push_str(" source");
                 }
+                if source_filter.name.is_none()
+                    && source_filter.specific.is_none()
+                    && !source_filter.source
+                {
+                    source = ensure_indefinite_article(&source);
+                }
                 if *amount == 1 {
                     return format!("mana from {source} was spent to cast it");
                 }
@@ -2705,6 +2715,28 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                     }
                 };
                 return format!("{subject} drawn {count_text} or more cards this turn");
+            }
+            if let (
+                Value::MaxDiceRolledThisTurn(player),
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                Value::Fixed(count),
+            ) = (left.unhinted(), operator, right.unhinted())
+                && *count >= 0
+            {
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+                let subject = match player {
+                    PlayerFilter::You => "you've".to_string(),
+                    PlayerFilter::Opponent | PlayerFilter::NotYou => {
+                        "an opponent has".to_string()
+                    }
+                    PlayerFilter::Any => "a player has".to_string(),
+                    _ => {
+                        let described = describe_player_filter(player);
+                        format!("{} {}", described, player_verb(&described, "have", "has"))
+                    }
+                };
+                return format!("{subject} rolled {count_text} or more dice this turn");
             }
             if let (
                 Value::CountersOn(spec, Some(counter_type)),
@@ -2911,6 +2943,25 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 Condition::TargetObjectsHaveDifferentColorSets
             ) {
                 "the target objects have the same color set".to_string()
+            } else if let Condition::PlayerCastSpellsThisTurnOrMore { player, count } =
+                inner.as_ref()
+            {
+                let subject = describe_player_filter(player);
+                if *count <= 1 {
+                    format!(
+                        "{} {} cast a spell this turn",
+                        subject,
+                        player_verb(&subject, "haven't", "hasn't")
+                    )
+                } else {
+                    let count_text =
+                        small_number_word(*count).unwrap_or_else(|| count.to_string());
+                    format!(
+                        "{} {} cast fewer than {count_text} spells this turn",
+                        subject,
+                        player_verb(&subject, "have", "has")
+                    )
+                }
             } else if let Condition::PlayerCompletedDungeon {
                 player,
                 dungeon_name,

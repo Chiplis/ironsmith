@@ -2292,12 +2292,20 @@ fn prior_effect_damaged_player(ctx: &ExecutionContext) -> Option<PlayerId> {
         .filter(|(id, _)| **id != crate::effect::EffectId::TAGGED_COUNT)
         .collect::<Vec<_>>();
     outcomes.sort_unstable_by_key(|(id, _)| std::cmp::Reverse(id.0));
-    outcomes.into_iter().find_map(|(_, outcome)| {
-        outcome.events_of_type::<DamageEvent>().find_map(|event| match event.target {
-            DamageTarget::Player(player_id) => Some(player_id),
-            _ => None,
+    outcomes
+        .into_iter()
+        .find_map(|(_, outcome)| {
+            outcome
+                .events_of_type::<DamageEvent>()
+                .find_map(|event| match event.target {
+                    DamageTarget::Player(player_id) => Some(player_id),
+                    _ => None,
+                })
         })
-    }).or_else(|| ctx.get_tagged_players("__it__").and_then(|players| players.last().copied()))
+        .or_else(|| {
+            ctx.get_tagged_players("__it__")
+                .and_then(|players| players.last().copied())
+        })
 }
 
 fn object_lki_snapshot<'a>(

@@ -578,6 +578,28 @@ fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
 }
 
 #[test]
+fn compile_each_other_becomes_copy_uses_prior_chosen_object_as_copy_source() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Copy Choice Probe")
+        .parse_text(
+            "Choose a creature you control. Each other creature you control becomes a copy of that creature until end of turn.",
+        )
+        .expect("choice followed by a mass copy effect should parse");
+
+    let debug = format!("{:#?}", def.spell_effect.expect("spell effect"));
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("CopyOf"), "{debug}");
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+    assert!(
+        debug.contains("spec: Tagged(") && !debug.contains("spec: Iterated"),
+        "the copy source must remain the prior choice, not the current mass-effect iteration: {debug}"
+    );
+    assert!(
+        !debug.contains("ForEachObject"),
+        "a single continuous effect should lock the affected set at resolution: {debug}"
+    );
+}
+
+#[test]
 fn parse_text_gargoyle_sentinel_keeps_the_activation_on_self() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Gargoyle Sentinel")
         .parse_text(
@@ -2088,4 +2110,21 @@ fn compile_shared_you_then_that_player_draw_preserves_prior_non_you_binding() {
         debug.contains("player: DamagedPlayer"),
         "second draw should preserve damaged-player binding: {debug}"
     );
+}
+
+#[test]
+fn relative_cards_in_hand_value_binds_to_target_subject() {
+    let mut value = Value::CardsInHand(PlayerFilter::IteratedPlayer)
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::AllCardsInHand);
+
+    bind_relative_iterated_player_in_value_to_player_filter(
+        &mut value,
+        &PlayerFilter::target_opponent(),
+    );
+
+    assert!(matches!(
+        value.unhinted(),
+        Value::CardsInHand(PlayerFilter::AliasedTarget(player))
+            if matches!(player.as_ref(), PlayerFilter::Opponent)
+    ));
 }

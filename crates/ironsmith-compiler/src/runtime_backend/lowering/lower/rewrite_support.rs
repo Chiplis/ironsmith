@@ -102,7 +102,7 @@ fn replace_filter_tag(filter: &mut ObjectFilter, old_tag: &str, new_tag: &TagKey
     replaced
 }
 
-pub(super) fn rewrite_normalize_additional_cost_sacrifice_tags(
+pub(super) fn rewrite_normalize_selected_sacrifice_tags(
     mut effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
     let Some((first, rest)) = effects.split_first_mut() else {

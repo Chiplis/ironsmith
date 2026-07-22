@@ -1504,6 +1504,35 @@ fn parse_effect_sentences_from_sentence_inputs(
         }
     }
 
+    fn starts_with_linked_ability_grant(tokens: &[OwnedLexToken]) -> bool {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        matches!(words.as_slice(), ["it", "gains" | "has", ..])
+            || matches!(words.as_slice(), ["they", "gain" | "have", ..])
+            || matches!(
+                words.as_slice(),
+                [
+                    "that",
+                    "creature" | "permanent" | "artifact" | "enchantment" | "land" | "vehicle",
+                    "gains" | "has",
+                    ..
+                ]
+            )
+            || matches!(
+                words.as_slice(),
+                [
+                    "those",
+                    "creatures"
+                        | "permanents"
+                        | "artifacts"
+                        | "enchantments"
+                        | "lands"
+                        | "vehicles",
+                    "gain" | "have",
+                    ..
+                ]
+            )
+    }
+
     fn preserve_plural_counter_antecedent(
         sentence_tokens: &[OwnedLexToken],
         effects: &mut Vec<EffectAst>,
@@ -2047,6 +2076,15 @@ fn parse_effect_sentences_from_sentence_inputs(
                 ValueSurfaceHint::CounterFollowupSeparateSentence,
             );
         }
+        if sentences
+            .get(sentence_idx + parse_plan.consumed_sentences)
+            .is_some_and(|next| starts_with_linked_ability_grant(next.lexed()))
+        {
+            annotate_counter_followup_surface(
+                &mut sentence_effects,
+                ValueSurfaceHint::CounterGrantSeparateSentence,
+            );
+        }
         // `sentence_tokens` may intentionally have had inline token rules
         // stripped before outer subject/verb dispatch. The resulting create
         // action is now known, so attach every quoted token ability from the
@@ -2136,6 +2174,28 @@ fn parse_effect_sentences_from_sentence_inputs(
                     &previous_target,
                 );
             }
+        }
+        let sentence_words = crate::runtime_backend::token_word_refs(&parse_plan.tokens);
+        let is_if_player_does = sentence_words
+            .get(..4)
+            .is_some_and(|prefix| prefix == ["if", "a", "player", "does"]);
+        if is_if_player_does
+            && matches!(effects.last(), Some(EffectAst::ForEachPlayer { .. }))
+            && let [effect] = sentence_effects.as_mut_slice()
+            && let EffectAst::IfResult {
+                predicate,
+                effects: followups,
+            } = effect.clone()
+        {
+            // Preserve the participant identity from an each-player action.
+            // The resulting per-player branch is lowered with that player as
+            // IteratedPlayer, and the runtime can correlate it with the
+            // antecedent's PlayerCounts outcome.
+            *effect = EffectAst::ForEachPlayerDid {
+                effects: followups,
+                predicate: None,
+                result_predicate: predicate,
+            };
         }
         {
             let mut state = SentenceDispatchState {
@@ -2353,8 +2413,16 @@ fn coin_flip_owner_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst
     let effects = match effect {
         EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::AnyPlayerMay { effects }
-        | EffectAst::ForEachObject { effects, .. } => effects,
+        | EffectAst::AnyPlayerMay { effects, .. }
+        | EffectAst::ForEachObject { effects, .. }
+        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextUpkeep { effects, .. }
+        | EffectAst::DelayedUntilNextDrawStep { effects, .. }
+        | EffectAst::DelayedUntilNextMainPhase { effects, .. }
+        | EffectAst::DelayedUntilEndStepOfExtraTurn { effects, .. }
+        | EffectAst::DelayedUntilEndOfCombat { effects }
+        | EffectAst::DelayedTriggerThisTurn { effects, .. }
+        | EffectAst::DelayedTriggerForDuration { effects, .. } => effects,
         _ => return None,
     };
     if !effects.last().is_some_and(is_direct_coin_flip) {
@@ -2451,10 +2519,48 @@ fn filter_has_it_reference(filter: &ObjectFilter) -> bool {
         .any(|constraint| constraint.tag.as_str() == IT_TAG)
 }
 
+fn linked_fanout_group_tag(effect: &EffectAst) -> Option<TagKey> {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::TagMatchingObjects { tag, .. },
+        ..
+    }) = effect
+        && tag.as_str().starts_with("linked_fanout_group_")
+    {
+        return Some(tag.clone());
+    }
+
+    let mut found = None;
+    for_each_nested_effects(effect, true, |nested| {
+        if found.is_none() {
+            found = nested.iter().find_map(linked_fanout_group_tag);
+        }
+    });
+    found
+}
+
+fn retag_linked_fanout_followup(effect: &mut EffectAst, group: &TagKey) {
+    if let Some(filter) = direct_all_object_filter_mut(effect) {
+        for constraint in &mut filter.tagged_constraints {
+            if constraint.tag.as_str() == IT_TAG {
+                constraint.tag = group.clone();
+            }
+        }
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            retag_linked_fanout_followup(effect, group);
+        }
+    });
+}
+
 /// Keep a compound target-plus-linked-set subject available to later
 /// demonstratives. The individual fanout action must still exclude the target,
 /// while "those creatures/cards" refers to the union of both parts.
 fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut Vec<EffectAst>) {
+    // Sentence splitting may put the target/fanout pair and its later plural
+    // demonstrative in sibling containers. Carry the durable union tag across
+    // that boundary before looking for a direct pair in this vector.
+    let mut carried_group = None;
     for effect in effects.iter_mut() {
         if let EffectAst::Sequence { effects: nested }
         | EffectAst::Coordinated {
@@ -2463,8 +2569,14 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         {
             preserve_linked_target_fanout_group(tokens, nested);
         }
+        if let Some(group) = carried_group.as_ref() {
+            retag_linked_fanout_followup(effect, group);
+        }
+        if let Some(group) = linked_fanout_group_tag(effect) {
+            carried_group = Some(group);
+        }
     }
-    if effects.len() < 3 {
+    if effects.len() < 2 {
         return;
     }
 
@@ -2473,7 +2585,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         .windows(3)
         .any(|window| window == ["with", "that", "name"]);
 
-    for first_idx in 0..effects.len().saturating_sub(2) {
+    for first_idx in 0..effects.len().saturating_sub(1) {
         let second_idx = first_idx + 1;
         let Some(linked_filter) = direct_all_object_filter(&effects[second_idx]) else {
             continue;
@@ -2502,14 +2614,6 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
                     tag: TagKey::from(IT_TAG),
                     relation: TaggedOpbjectRelation::SameNameAsTagged,
                 });
-        }
-
-        if !effects[second_idx + 1..]
-            .iter()
-            .filter_map(direct_all_object_filter)
-            .any(filter_has_it_reference)
-        {
-            continue;
         }
 
         let primary_alias = TagKey::from(format!("linked_fanout_primary_{first_idx}"));
@@ -2553,7 +2657,7 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
         primary_filter
             .tagged_constraints
             .push(TaggedObjectConstraint {
-                tag: primary_alias,
+                tag: primary_alias.clone(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
         let mut group_filter = related_filter.clone();
@@ -2576,9 +2680,26 @@ fn preserve_linked_target_fanout_group(tokens: &[OwnedLexToken], effects: &mut V
             }
         }
 
+        // Capture the fanout's actual outcomes before creating the union. A
+        // post-action battlefield scan loses moved objects and can include
+        // objects whose zone change was replaced or prevented.
+        let fanout = effects.remove(second_idx);
+        effects.insert(
+            second_idx,
+            EffectAst::TagAffected {
+                effect: Box::new(fanout),
+                tag: group_alias.clone(),
+            },
+        );
+
         effects.insert(
             second_idx + 1,
-            EffectAst::subject_verb_tag_matching_objects(group_filter, group_zones, group_alias),
+            EffectAst::subject_verb_tagged_object_union(
+                group_filter,
+                group_zones,
+                group_alias.clone(),
+                vec![primary_alias, group_alias],
+            ),
         );
         return;
     }
@@ -3241,6 +3362,110 @@ mod tests {
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         parse_top_cards_view_sentence, parse_typed_effect_bundle_lexed,
     };
+
+    #[test]
+    fn delayed_coin_flip_keeps_its_outcome_inside_the_delayed_scope() {
+        let tokens = lex_line(
+            "Flip a coin at the beginning of the next end step. If you lose the flip, sacrifice that creature.",
+            0,
+        )
+        .expect("lex delayed coin flip");
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("parse delayed coin flip and outcome");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 1, "{debug}");
+        assert!(debug.contains("DelayedUntilNextEndStep"), "{debug}");
+        assert!(debug.contains("FlipCoin"), "{debug}");
+        assert!(debug.contains("IfResult"), "{debug}");
+        assert!(debug.contains("DidNot"), "{debug}");
+    }
+
+    #[test]
+    fn delayed_definite_creature_sacrifice_keeps_the_prior_object_reference() {
+        let tokens = lex_line(
+            "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
+            0,
+        )
+        .expect("lex creature insertion and delayed sacrifice");
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("parse creature insertion and delayed sacrifice");
+        let debug = format!("{effects:#?}");
+
+        let Some(crate::cards::builders::EffectAst::DelayedUntilNextEndStep {
+            effects: delayed,
+            ..
+        }) = effects.last()
+        else {
+            panic!("expected delayed sacrifice as the final effect\n{debug}");
+        };
+        let [
+            crate::cards::builders::EffectAst::SubjectVerb(
+                crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::Sacrifice { filter, .. },
+                    ..
+                },
+            ),
+        ] = delayed.as_slice()
+        else {
+            panic!("expected one delayed sacrifice effect\n{debug}");
+        };
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::cards::builders::IT_TAG),
+            "the definite creature should reference the established object\n{debug}"
+        );
+    }
+
+    #[test]
+    fn choose_then_tagged_damage_this_turn_keeps_delayed_trigger_scope() {
+        let tokens = lex_line(
+            "Choose target creature. Whenever that creature is dealt damage this turn, it deals that much damage to each other creature and each player.",
+            0,
+        )
+        .expect("lex target declaration and delayed damage trigger");
+        let (effects, trace) = crate::parse_trace::capture(|| {
+            super::parse_effect_sentences_lexed(&tokens)
+                .expect("parse target declaration and delayed damage trigger")
+        });
+        let debug = format!("{effects:#?}");
+
+        assert!(
+            effects.iter().any(|effect| matches!(
+                effect,
+                crate::cards::builders::EffectAst::DelayedTriggerThisTurn { .. }
+            )),
+            "delayed trigger wrapper was lost\n{debug}\ntrace:\n{}",
+            trace.render()
+        );
+    }
+
+    #[test]
+    fn target_player_draw_then_matching_spell_reduction_stays_a_player_effect() {
+        let tokens = lex_line(
+            "Target player draws two cards. Until your next turn, instant, sorcery, and planeswalker spells that player casts cost {2} less to cast.",
+            0,
+        )
+        .expect("lex draw and matching-spell reduction");
+        let (effects, trace) = crate::parse_trace::capture(|| {
+            super::parse_effect_sentences_lexed(&tokens)
+                .expect("parse draw and matching-spell reduction")
+        });
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("action: Draw("), "{debug}");
+        assert!(
+            debug.contains("ReduceMatchingSpellCostThisTurn") && debug.contains("YourNextTurn"),
+            "matching-spell reduction was misclassified\n{debug}\ntrace:\n{}",
+            trace.render()
+        );
+        assert!(
+            !debug.contains("GrantAbilitiesToTarget"),
+            "matching-spell reduction became a hand-card ability grant\n{debug}"
+        );
+    }
 
     #[test]
     fn restart_game_keeps_exiled_non_aura_permanent_cards_as_a_typed_exemption() {
@@ -5101,6 +5326,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::Cant { .. } => {}
             SubjectVerbActionAst::SearchLibrary {
                 filter,
+                count,
                 count_value,
                 library_position_from_top,
                 ..
@@ -5108,6 +5334,8 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                 replace_in_filter(filter, replacement, clause)?;
                 if let Some(count_value) = count_value.as_mut() {
                     replace_value(count_value, replacement, clause)?;
+                } else if count.dynamic_x {
+                    *count_value = Some(replacement.clone());
                 }
                 if let Some(position) = library_position_from_top.as_mut() {
                     replace_value(position, replacement, clause)?;

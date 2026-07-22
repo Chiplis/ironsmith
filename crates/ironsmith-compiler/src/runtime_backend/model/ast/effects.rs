@@ -244,9 +244,11 @@ pub(crate) enum EffectAst {
         player: PlayerAst,
         effects: Vec<EffectAst>,
     },
-    /// Offer each player, beginning with the effect controller and proceeding
-    /// in turn order, the option to perform `effects`. Stop after one accepts.
+    /// Offer each matching player, beginning with the effect controller and
+    /// proceeding in turn order, the option to perform `effects`. Stop after
+    /// one accepts.
     AnyPlayerMay {
+        players: PlayerFilter,
         effects: Vec<EffectAst>,
     },
     ResolvedIfResult {
@@ -1407,6 +1409,7 @@ impl EffectAst {
                 battlefield_attacking,
                 battlefield_attack_target_player_or_planeswalker_controlled_by,
                 battlefield_face_down,
+                battlefield_transformed: false,
                 attached_to,
                 all: false,
             },
@@ -1441,6 +1444,7 @@ impl EffectAst {
                 battlefield_attacking: false,
                 battlefield_attack_target_player_or_planeswalker_controlled_by: None,
                 battlefield_face_down: false,
+                battlefield_transformed: false,
                 attached_to,
                 all: true,
             },
@@ -1547,6 +1551,18 @@ impl EffectAst {
         }
     }
 
+    pub(crate) fn with_move_to_zone_transformed(mut self) -> Self {
+        if let Self::SubjectVerb(subject_verb) = &mut self
+            && let SubjectVerbActionAst::MoveToZone {
+                battlefield_transformed,
+                ..
+            } = &mut subject_verb.action
+        {
+            *battlefield_transformed = true;
+        }
+        self
+    }
+
     pub(crate) fn with_destination_player_reference_surface(
         mut self,
         surface: Option<ironsmith_core::DestinationPlayerReferenceSurface>,
@@ -1642,7 +1658,30 @@ impl EffectAst {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
-            SubjectVerbActionAst::TagMatchingObjects { filter, zones, tag },
+            SubjectVerbActionAst::TagMatchingObjects {
+                filter,
+                zones,
+                tag,
+                source_tags: Vec::new(),
+            },
+        )
+    }
+
+    pub(crate) fn subject_verb_tagged_object_union(
+        filter: ObjectFilter,
+        zones: Vec<Zone>,
+        tag: TagKey,
+        source_tags: Vec<TagKey>,
+    ) -> Self {
+        Self::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::TagMatchingObjects {
+                filter,
+                zones,
+                tag,
+                source_tags,
+            },
         )
     }
 
@@ -2379,12 +2418,27 @@ impl EffectAst {
         duration: crate::effect::Until,
         condition: Option<crate::ConditionExpr>,
     ) -> Self {
+        Self::subject_verb_cant_starting(
+            restriction,
+            duration,
+            crate::effect::RestrictionStart::Immediate,
+            condition,
+        )
+    }
+
+    pub(crate) fn subject_verb_cant_starting(
+        restriction: crate::effect::Restriction,
+        duration: crate::effect::Until,
+        start: crate::effect::RestrictionStart,
+        condition: Option<crate::ConditionExpr>,
+    ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
             PlayerAst::Implicit,
             SubjectVerbActionAst::Cant {
                 restriction,
                 duration,
+                start,
                 condition,
             },
         )

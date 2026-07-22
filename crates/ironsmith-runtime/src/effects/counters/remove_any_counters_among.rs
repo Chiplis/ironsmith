@@ -419,6 +419,9 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
     }
 
     if filter.source {
+        if let Some(surface) = &filter.source_surface {
+            return surface.display_text();
+        }
         if plural {
             return "this source".to_string();
         }

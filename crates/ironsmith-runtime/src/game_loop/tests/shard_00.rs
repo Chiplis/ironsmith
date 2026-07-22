@@ -195,7 +195,6 @@ pub(super) fn resolve_will_kenrith_loyalty_ability(
         .unwrap_or_else(|| {
             panic!("Will Kenrith should have loyalty ability matching {cost_markers:?}")
         });
-
     let mut ctx =
         crate::effects::ExecutionContext::new_default(source, controller).with_targets(targets);
     for effect in activated.effects.flattened_default_effects() {

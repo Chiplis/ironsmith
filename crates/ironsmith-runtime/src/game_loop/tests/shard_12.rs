@@ -925,7 +925,7 @@ pub(super) fn test_suspend_creature_gains_haste_until_control_changes() {
 }
 
 #[test]
-pub(super) fn test_warp_exiles_at_next_end_step_and_grants_play_from_exile() {
+pub(super) fn test_warp_marks_cast_exiles_at_next_end_step_and_grants_play_next_turn() {
     use crate::cards::CardDefinitionBuilder;
     use crate::mana::{ManaCost, ManaSymbol};
     use crate::triggers::TriggerQueue;
@@ -965,6 +965,10 @@ pub(super) fn test_warp_exiles_at_next_end_step_and_grants_play_from_exile() {
     });
     apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast_response)
         .expect("warp cast should succeed");
+    assert!(
+        game.turn_store.turn_history.spell_warped_this_turn,
+        "a spell is warped as soon as it is cast for its warp cost"
+    );
     resolve_stack_entry(&mut game).expect("warp spell should resolve");
 
     let warped_id = *game
@@ -1002,17 +1006,26 @@ pub(super) fn test_warp_exiles_at_next_end_step_and_grants_play_from_exile() {
         })
         .expect("warped creature should be exiled");
     assert!(
+        game.effect_store
+            .grant_registry
+            .granted_play_from_for_card(&game, exiled_id, Zone::Exile, alice)
+            .is_empty(),
+        "warp permission should not begin during the turn the card was warped"
+    );
+    game.turn.turn_number = game.turn.turn_number.saturating_add(1);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 3);
+
+    assert!(
         !game
             .effect_store
             .grant_registry
             .granted_play_from_for_card(&game, exiled_id, Zone::Exile, alice)
             .is_empty(),
-        "warp should grant play permission from exile"
+        "warp should grant its owner play permission on a later turn"
     );
-    game.player_mut(alice)
-        .expect("alice exists")
-        .mana_pool
-        .add(ManaSymbol::Blue, 3);
 
     let legal_actions = crate::decision::compute_legal_actions(&game, alice);
     assert!(
@@ -1053,7 +1066,6 @@ pub(super) fn test_next_matching_spell_cost_reduction_is_consumed_by_first_match
     let instant_def = CardDefinitionBuilder::new(CardId::new(), "Instant Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(1)]]))
         .card_types(vec![CardType::Instant])
-        .with_spell_effect(vec![Effect::draw(1)])
         .build();
     let creature_def = CardDefinitionBuilder::new(CardId::new(), "Creature Probe")
         .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(4)]]))
@@ -1120,7 +1132,6 @@ pub(super) fn test_next_matching_spell_cost_reduction_is_consumed_by_first_match
     });
     apply_priority_response(&mut game, &mut trigger_queue, &mut state, &creature_cast)
         .expect("creature cast should succeed");
-    resolve_stack_entry(&mut game).expect("creature should resolve");
 
     let second_creature = game
         .object(second_creature_id)

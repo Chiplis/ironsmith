@@ -1541,7 +1541,7 @@ pub(super) fn describe_effect_list_compacts_exile_then_gain_life_from_its_mana_v
 
     assert_eq!(
         describe_effect_list(&[exile, gain]),
-        "Exile a card from your graveyard. you gain life equal to its mana value"
+        "Exile a card from your graveyard. You gain life equal to its mana value"
     );
 }
 
@@ -1820,7 +1820,7 @@ pub(super) fn describe_effect_list_compacts_exile_consult_battlefield_remainder_
 
     assert_eq!(
         describe_effect_list(&[consult, move_match, remainder]),
-        "you exile cards from the top of your library until you exile a land card. Put that card onto the battlefield and the rest on the bottom of your library in a random order"
+        "Exile cards from the top of your library until you exile a land card. Put that card onto the battlefield and the rest on the bottom of your library in a random order"
     );
 }
 
@@ -1911,6 +1911,46 @@ pub(super) fn describe_effect_list_compacts_multi_zone_aura_search_attach_condit
         Some(expected)
     );
     assert_eq!(describe_effect_list(&effects), expected);
+}
+
+#[test]
+pub(super) fn describe_effect_list_compacts_wrapped_multi_zone_search_move_conditional_shuffle() {
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let mut named_card = ObjectFilter::default();
+    named_card.name = Some("scion of darkness".to_string());
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        named_card,
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+    .as_search();
+    let move_each = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched_tag),
+            Zone::Battlefield,
+            false,
+        ))],
+    );
+    let sequence = Effect::new(crate::effects::SequenceEffect::new(vec![
+        Effect::new(choose),
+        Effect::new(move_each),
+    ]));
+    let search = Effect::with_id(0, sequence);
+    let shuffle = Effect::if_then(
+        crate::effect::EffectId(0),
+        EffectPredicate::SearchedLibrary,
+        vec![Effect::new(crate::effects::ShuffleLibraryEffect::new(
+            PlayerFilter::You,
+        ))],
+    );
+
+    assert_eq!(
+        describe_effect_list(&[search, shuffle]),
+        "Search your graveyard, hand, and/or library for a card named Scion of Darkness and put it onto the battlefield. If you search your library this way, shuffle"
+    );
 }
 
 #[test]
@@ -4034,7 +4074,7 @@ pub(super) fn describe_unless_source_damage_matches_tagged_primary_target_contro
 
     assert_eq!(
         describe_effect(&effect),
-        "Deal 3 damage to target creature unless that object's controller has this source deal 5 damage to them"
+        "Deal 3 damage to target creature unless its controller has this source deal 5 damage to them"
     );
 }
 

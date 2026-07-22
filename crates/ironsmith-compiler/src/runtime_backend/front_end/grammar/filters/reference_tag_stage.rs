@@ -1034,8 +1034,11 @@ pub(super) fn parse_object_filter_inner(
         triggered.stack_kind = Some(crate::filter::StackObjectKind::TriggeredAbility);
         filter.zone = Some(Zone::Stack);
         filter.any_of = vec![ObjectFilter::activated_ability(), triggered];
-    } else if parse_phrase_anywhere(&ability_words, &["activated", "ability"]).is_some()
-        || parse_phrase_anywhere(&ability_words, &["activated", "abilities"]).is_some()
+    } else if (parse_phrase_anywhere(&ability_words, &["activated", "ability"]).is_some()
+        || parse_phrase_anywhere(&ability_words, &["activated", "abilities"]).is_some())
+        && (!has_tap_activated_ability
+            || ability_words.starts_with(&["activated", "ability"])
+            || ability_words.starts_with(&["activated", "abilities"]))
     {
         filter.zone = Some(Zone::Stack);
         filter.stack_kind = Some(crate::filter::StackObjectKind::ActivatedAbility);

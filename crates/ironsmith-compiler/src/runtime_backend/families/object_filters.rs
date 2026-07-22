@@ -76,6 +76,17 @@ fn apply_sacrificed_card_type_relation(
     filter
 }
 
+fn deduplicate_tagged_constraints(mut filter: ObjectFilter) -> ObjectFilter {
+    let mut unique = Vec::with_capacity(filter.tagged_constraints.len());
+    for constraint in filter.tagged_constraints.drain(..) {
+        if !unique.contains(&constraint) {
+            unique.push(constraint);
+        }
+    }
+    filter.tagged_constraints = unique;
+    filter
+}
+
 fn original_printing_set_word_span(words: &[&str]) -> Option<(usize, std::ops::Range<usize>)> {
     if words.last().copied() != Some("expansion") {
         return None;
@@ -206,7 +217,15 @@ fn normalize_generic_card_ability_tail(tokens: &[OwnedLexToken], filter: &mut Ob
     // The noun before the tail is deliberately untyped. Characteristic words
     // found inside an ability name therefore cannot also constrain the card's
     // type (for example, Doctor in "doctor's companion").
-    filter.zone = None;
+    // Only clear the battlefield zone that was inferred from a characteristic
+    // word inside the ability name (for example, Doctor in "doctor's
+    // companion"). Explicit source locations such as "card with cycling from
+    // your graveyard" are semantic and must survive this normalization.
+    if filter.zone == Some(crate::Zone::Battlefield)
+        && !words.iter().any(|word| *word == "battlefield")
+    {
+        filter.zone = None;
+    }
     filter.card_types.clear();
     filter.all_card_types.clear();
     filter.excluded_card_types.clear();
@@ -348,7 +367,8 @@ pub(crate) fn parse_object_filter(
     preserve_union_surface(&mut filter, tokens);
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     normalize_generic_card_ability_tail(tokens, &mut filter);
-    let filter = apply_sacrificed_card_type_relation(filter, tokens);
+    let filter =
+        deduplicate_tagged_constraints(apply_sacrificed_card_type_relation(filter, tokens));
     Ok(apply_sacrificed_as_it_entered_relation(
         apply_original_printing_set(filter, original_printing_set),
         sacrificed_as_it_entered,
@@ -676,6 +696,23 @@ mod tests {
         assert_eq!(filter.zone, None, "{filter:#?}");
         assert_eq!(filter.ability_markers, ["doctor's companion".to_string()]);
         assert_eq!(filter.description(), "card with doctor's companion");
+    }
+
+    #[test]
+    fn generic_card_ability_tail_preserves_explicit_graveyard_location() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "cards with cycling from your graveyard",
+            0,
+        )
+        .expect("generic card ability filter should lex");
+
+        let filter =
+            parse_object_filter(&tokens, false).expect("generic card ability filter should parse");
+
+        assert_eq!(filter.zone, Some(Zone::Graveyard), "{filter:#?}");
+        assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.ability_markers, ["cycling".to_string()]);
+        assert_eq!(filter.description(), "card with cycling in your graveyard");
     }
 
     #[test]

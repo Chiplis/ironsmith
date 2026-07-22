@@ -4,18 +4,32 @@ use crate::events::DamageEvent;
 use crate::events::DamageTarget;
 use crate::events::EventKind;
 use crate::filter::PlayerFilterExt;
-use crate::target::PlayerFilter;
+use crate::target::{PlayerFilter, SourceReferenceSurface};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThisDealsCombatDamageToPlayerTrigger {
     pub player: PlayerFilter,
+    pub source_surface: Option<SourceReferenceSurface>,
 }
 
 impl ThisDealsCombatDamageToPlayerTrigger {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            source_surface: None,
+        }
+    }
+
+    pub fn with_source_surface(
+        player: PlayerFilter,
+        source_surface: SourceReferenceSurface,
+    ) -> Self {
+        Self {
+            player,
+            source_surface: Some(source_surface),
+        }
     }
 }
 
@@ -41,12 +55,17 @@ impl TriggerMatcher for ThisDealsCombatDamageToPlayerTrigger {
     }
 
     fn display(&self) -> String {
+        let source = self
+            .source_surface
+            .as_ref()
+            .map(SourceReferenceSurface::display_text)
+            .unwrap_or_else(|| "this creature".to_string());
         let player = match &self.player {
             PlayerFilter::Any => "a player".to_string(),
             PlayerFilter::Opponent => "an opponent".to_string(),
             _ => self.player.description(),
         };
-        format!("Whenever this creature deals combat damage to {player}")
+        format!("Whenever {source} deals combat damage to {player}")
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
@@ -182,5 +201,18 @@ mod tests {
         );
         assert!(trigger.matches(&hits_opponent, &ctx));
         assert_eq!(trigger.event_value_amount(&hits_opponent, &ctx), Some(5));
+    }
+
+    #[test]
+    fn display_preserves_named_source_surface() {
+        let trigger = ThisDealsCombatDamageToPlayerTrigger::with_source_surface(
+            PlayerFilter::Any,
+            SourceReferenceSurface::ShortName("Ragavan".to_string()),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever Ragavan deals combat damage to a player"
+        );
     }
 }

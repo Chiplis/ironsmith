@@ -444,6 +444,15 @@ fn compile_trailing_instead_if_condition(
 }
 
 fn with_chosen_creature_type_filter(effect: crate::effect::Effect) -> crate::effect::Effect {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut sequence = sequence.clone();
+        sequence.effects = sequence
+            .effects
+            .into_iter()
+            .map(with_chosen_creature_type_filter)
+            .collect();
+        return crate::effect::Effect::new(sequence);
+    }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return crate::effect::Effect::new(crate::effects::TaggedEffect::new(
             tagged.tag.clone(),
@@ -1598,6 +1607,46 @@ fn preserve_latest_self_replacement_presentation(
     }
 }
 
+fn bind_as_enters_counter_grants_to_source(effects: &mut [EffectAst]) {
+    fn bind(effect: &mut EffectAst) {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target, abilities, ..
+            } = &mut subject_verb.action
+            && abilities.iter().any(|ability| {
+                matches!(
+                    ability,
+                    crate::cards::builders::GrantedAbilityAst::StaticAbility(static_ability)
+                        if static_ability.id()
+                            == crate::static_abilities::StaticAbilityId::EnterWithCounters
+                ) || matches!(
+                    ability,
+                    crate::cards::builders::GrantedAbilityAst::ParsedObjectAbility {
+                        ability: parsed,
+                        ..
+                    } if matches!(
+                        parsed.kind(),
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == crate::static_abilities::StaticAbilityId::EnterWithCounters
+                    )
+                )
+            })
+        {
+            *target = crate::TargetAst::Source(None);
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                bind(nested_effect);
+            }
+        });
+    }
+
+    for effect in effects {
+        bind(effect);
+    }
+}
+
 fn lower_statement_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -1657,6 +1706,24 @@ fn lower_statement_chunk(
         )?;
     }
 
+    if semantic_facts
+        .statement
+        .as_enters_effect_program
+        .as_ref()
+        .is_some_and(|facts| facts.uses_enters_with_counter_surface)
+    {
+        let imports = prepared.imports.clone();
+        bind_as_enters_counter_grants_to_source(&mut prepared.effects);
+        prepared = super::rewrite_prepare_effects_for_lowering(&prepared.effects, imports)?;
+    }
+
+    if semantic_facts.statement.as_enters_effect_program.is_some() && prepared.effects.len() == 2 {
+        let imports = prepared.imports.clone();
+        let effects = std::mem::take(&mut prepared.effects);
+        prepared.effects = super::rewrite_normalize_selected_sacrifice_tags(effects);
+        prepared = super::rewrite_prepare_effects_for_lowering(&prepared.effects, imports)?;
+    }
+
     let lowered = match super::rewrite_lower_prepared_statement_effects(&prepared) {
         Ok(lowered) => lowered,
         Err(err) if allow_unsupported => {
@@ -1696,6 +1763,9 @@ fn lower_statement_chunk(
             existing.extend(compiled);
         } else {
             builder.spell_effect = Some(compiled);
+        }
+        if let Some(program) = builder.spell_effect.as_mut() {
+            super::super::battlefield_entry_counter_fusion::fuse_program(program);
         }
         preserve_latest_self_replacement_presentation(&mut builder, &semantic_facts.statement);
         return Ok(builder);
@@ -2076,6 +2146,9 @@ fn lower_statement_chunk(
         existing.extend(compiled);
     } else {
         builder.spell_effect = Some(compiled);
+    }
+    if let Some(program) = builder.spell_effect.as_mut() {
+        super::super::battlefield_entry_counter_fusion::fuse_program(program);
     }
     preserve_latest_self_replacement_presentation(&mut builder, statement_facts);
     Ok(builder)

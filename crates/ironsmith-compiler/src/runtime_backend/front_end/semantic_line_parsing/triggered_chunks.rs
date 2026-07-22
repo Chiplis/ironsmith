@@ -8,7 +8,8 @@ use super::*;
 use crate::runtime_backend::ast::TriggerIntroSurfaceAst;
 use crate::runtime_backend::condition_antecedent::{
     ConditionAntecedentBinding, bind_condition_antecedent_in_effects,
-    bind_condition_counter_antecedent_in_effects, predicate_object_filter_antecedent,
+    bind_condition_counter_antecedent_in_effects,
+    bind_random_count_condition_antecedent_in_effects, predicate_object_filter_antecedent,
     predicate_source_counter_antecedent, retarget_it_animations_to_source,
 };
 use crate::runtime_backend::shared_types::TriggeredLineSemanticFacts;
@@ -484,10 +485,16 @@ pub(crate) fn apply_explicit_intervening_if_to_triggered_chunk(
             effects,
             max_triggers_per_turn,
         } => {
+            let random_count_antecedent_predicate = predicate.clone();
             let predicate = retarget_spell_cast_mana_spent_predicate(&trigger, predicate);
             let (trigger, predicate) = absorb_predicate_into_trigger(trigger, predicate);
             let (trigger, effects) =
                 absorb_single_conditional_effect_into_trigger(trigger, effects);
+            let mut effects = effects;
+            bind_random_count_condition_antecedent_in_effects(
+                &mut effects,
+                &random_count_antecedent_predicate,
+            );
             let Some(predicate) = predicate else {
                 return Ok(LineAst::Triggered {
                     trigger,
@@ -495,7 +502,6 @@ pub(crate) fn apply_explicit_intervening_if_to_triggered_chunk(
                     max_triggers_per_turn,
                 });
             };
-            let mut effects = effects;
             if let Some(antecedent) = predicate_object_filter_antecedent(&predicate) {
                 bind_condition_antecedent_in_effects(
                     &mut effects,
@@ -503,6 +509,7 @@ pub(crate) fn apply_explicit_intervening_if_to_triggered_chunk(
                     ConditionAntecedentBinding::TaggedItOnly,
                 );
             }
+            bind_random_count_condition_antecedent_in_effects(&mut effects, &predicate);
             if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
                 bind_condition_counter_antecedent_in_effects(&mut effects, counter_type);
             }
@@ -541,6 +548,7 @@ pub(crate) fn apply_explicit_intervening_if_to_triggered_chunk(
                         ConditionAntecedentBinding::TaggedItOnly,
                     );
                 }
+                bind_random_count_condition_antecedent_in_effects(&mut effects_ast, &predicate);
                 if let Some(counter_type) = predicate_source_counter_antecedent(&predicate) {
                     bind_condition_counter_antecedent_in_effects(&mut effects_ast, counter_type);
                 }

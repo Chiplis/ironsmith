@@ -3,6 +3,7 @@
 use crate::effect::{EffectOutcome, EffectPredicate, EffectPredicateRuntimeExt, ExecutionFact};
 use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
+use crate::filter::ObjectFilterExt;
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
 pub type IfEffect = ironsmith_core::IfEffect<crate::effect::Effect>;
@@ -74,6 +75,30 @@ fn effect_mentions_iterated_player(effect: &crate::effect::Effect) -> bool {
 
 fn effect_list_mentions_iterated_player(effects: &[crate::effect::Effect]) -> bool {
     effects.iter().any(effect_mentions_iterated_player)
+}
+
+fn predicate_matches_with_context(
+    predicate: &EffectPredicate,
+    outcome: &EffectOutcome,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> bool {
+    let EffectPredicate::PriorEffectResult(surface) = predicate else {
+        return predicate.evaluate_outcome(outcome);
+    };
+    if surface.filter == crate::target::ObjectFilter::default() {
+        return predicate.evaluate_outcome(outcome);
+    }
+
+    let Some(memories) = outcome.affected_object_memory() else {
+        return false;
+    };
+    let filter_ctx = ctx.filter_context(game);
+    memories.iter().any(|memory| {
+        surface
+            .filter
+            .matches_snapshot(&memory.to_snapshot(game), &filter_ctx, game)
+    })
 }
 
 /// Effect that branches based on a prior effect's result.
@@ -185,11 +210,18 @@ impl EffectExecutor for IfEffect {
             } else {
                 (&self.else_, 1)
             }
-        } else if self.predicate.evaluate_outcome(outcome) {
+        } else if predicate_matches_with_context(&self.predicate, outcome, game, ctx) {
             (&self.then, 1)
         } else {
             (&self.else_, 1)
         };
+
+        // A condition selecting an absent branch is a successful evaluation,
+        // but no game action happened. Preserve that distinction so a later
+        // "otherwise" gate can observe this conditional's result.
+        if branch.is_empty() {
+            return Ok(EffectOutcome::count(0));
+        }
 
         let mut outcomes = Vec::new();
         for _ in 0..repetitions {

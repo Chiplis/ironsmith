@@ -229,6 +229,22 @@
         {
             parts.push(rendered);
             idx += consumed;
+            if let Some(next) = filtered.get(idx)
+                && structural_unwrap_render_wrappers(next)
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .is_some_and(|draw| draw.player == PlayerFilter::You)
+            {
+                parts.push(normalize_imperative_you_clause(
+                    describe_effect(next).trim().trim_end_matches('.'),
+                ));
+                idx += 1;
+            }
+            continue;
+        }
+
+        if let Some((rendered, consumed)) = describe_self_look_reorder(&filtered[idx..]) {
+            parts.push(rendered);
+            idx += consumed;
             continue;
         }
 

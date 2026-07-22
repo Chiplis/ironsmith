@@ -215,6 +215,29 @@ fn quoted_attached_activated_grants_parse_from_carried_tokens() {
 }
 
 #[test]
+fn attached_has_clause_combines_keyword_and_quoted_activated_grants() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\" (To bolster 1, choose a creature with the least toughness among creatures you control and put a +1/+1 counter on it.)",
+        0,
+    )
+    .unwrap();
+
+    let abilities = parse_enchanted_creature_has_line(&tokens)
+        .unwrap()
+        .expect("mixed attached grants should parse");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 2, "{debug}");
+    assert!(debug.contains("Vigilance"), "{debug}");
+    assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
+    assert!(debug.contains("Bolster"), "{debug}");
+
+    let dispatched = parse_static_ability_ast_line_lexed(&tokens)
+        .unwrap()
+        .expect("quoted Bolster must not be routed as a top-level keyword action");
+    assert_eq!(dispatched.len(), 2, "{dispatched:#?}");
+}
+
+#[test]
 fn attached_land_reset_lowers_loss_and_each_quoted_mana_ability() {
     let tokens = crate::runtime_backend::lexer::lex_line(
         "Enchanted land loses all land types and abilities and has \"{T}: Add {C}\" and \"{T}, Pay 1 life: Add one mana of any color.\"",

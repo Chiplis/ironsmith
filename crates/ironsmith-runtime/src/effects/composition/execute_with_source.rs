@@ -49,8 +49,16 @@ impl EffectExecutor for ExecuteWithSourceEffect {
         let Some(source_obj) = game.object(source_id) else {
             return Ok(EffectOutcome::target_invalid());
         };
-        let source_snapshot = match &self.source {
+        let source_snapshot = match self.source.base() {
             ChooseSpec::Tagged(tag) => ctx.get_tagged(tag).cloned(),
+            ChooseSpec::Source => ctx.source_snapshot.as_ref().and_then(|snapshot| {
+                // Rebinding an effect to its own source must not replace the
+                // stack entry's battlefield LKI with the counter-cleared card
+                // object now in a graveyard (or another destination zone).
+                (snapshot.stable_id == source_obj.stable_id
+                    && (snapshot.object_id != source_obj.id || snapshot.zone != source_obj.zone))
+                    .then(|| snapshot.clone())
+            }),
             _ => None,
         }
         .or_else(|| Some(ObjectSnapshot::from_object(source_obj, game)));
@@ -165,5 +173,30 @@ mod tests {
                 .expect("missing wrapped source should return an outcome");
 
         assert_eq!(outcome.status, crate::effect::OutcomeStatus::TargetInvalid);
+    }
+
+    #[test]
+    fn execute_with_source_preserves_source_lki_after_the_source_moves() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, "Countered Source", alice);
+        game.add_counters(source, crate::object::CounterType::Charge, 3)
+            .expect("source counters");
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(source).expect("source should exist"), &game);
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("source should move");
+
+        let mut ctx = ExecutionContext::new_default(source, alice).with_source_snapshot(snapshot);
+        ExecuteWithSourceEffect::new(
+            ChooseSpec::Source,
+            Effect::gain_life(crate::effect::Value::CountersOnSource(
+                crate::object::CounterType::Charge,
+            )),
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("wrapped source-LKI effect should resolve");
+
+        assert_eq!(game.player(alice).expect("Alice").life, 23);
     }
 }

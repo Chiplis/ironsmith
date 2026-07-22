@@ -425,7 +425,11 @@ impl ZoneChangeTrigger {
             // it on the noun would duplicate the relation as "you own ...
             // into your graveyard".
             subject.owner = None;
-            subject.description()
+            let description = subject.description();
+            description
+                .strip_suffix(" in a graveyard")
+                .unwrap_or(&description)
+                .to_string()
         }
 
         fn pluralize_zone_change_word(word: &str) -> String {
@@ -519,6 +523,16 @@ impl ZoneChangeTrigger {
                 .strip_prefix("another ")
                 .map(|rest| format!("other {rest}"))
                 .unwrap_or_else(|| subject.to_string());
+
+            // A card-zone subject such as "creature card" pluralizes the
+            // head noun `card`, not its type adjective. Do this before the
+            // structured card-type pass would produce "creatures card".
+            if subject == "card" {
+                return "cards".to_string();
+            }
+            if let Some(prefix) = subject.strip_suffix(" card") {
+                return format!("{prefix} cards");
+            }
 
             let mut replaced_structured_noun = false;
             for card_type in filter.card_types.iter().chain(filter.all_card_types.iter()) {

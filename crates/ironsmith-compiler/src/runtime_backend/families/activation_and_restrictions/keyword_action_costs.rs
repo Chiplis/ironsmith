@@ -821,6 +821,43 @@ pub(crate) fn parse_single_word_keyword_action(word: &str) -> Option<KeywordActi
         .find_map(|(keyword, action)| keyword_head_is(word, keyword).then(|| action.clone()))
 }
 
+pub(crate) fn is_known_keyword_action_head(word: &str) -> bool {
+    let word = word.to_ascii_lowercase();
+    let word = word.as_str();
+    SIMPLE_HEAD_KEYWORD_ACTIONS
+        .iter()
+        .any(|(keyword, _)| keyword_head_is(word, keyword))
+        || NUMERIC_KEYWORD_ACTIONS
+            .iter()
+            .any(|(keyword, _)| keyword_head_is(word, keyword))
+        || MARKER_KEYWORD_FALLBACK_HEADS
+            .iter()
+            .any(|keyword| keyword_head_is(word, keyword))
+        || MARKER_KEYWORD_IDS
+            .iter()
+            .any(|keyword| keyword_head_is(word, keyword))
+        || COST_MARKER_KEYWORDS
+            .iter()
+            .any(|keyword| keyword_head_is(word, keyword))
+        || matches!(
+            word,
+            "annihilator"
+                | "afflict"
+                | "awaken"
+                | "bloodthirst"
+                | "bushido"
+                | "casualty"
+                | "crew"
+                | "dredge"
+                | "devour"
+                | "frenzy"
+                | "poisonous"
+                | "rampage"
+                | "saddle"
+                | "toxic"
+        )
+}
+
 fn special_ability_phrase_action(kind: SpecialAbilityPhraseKind) -> KeywordAction {
     match kind {
         SpecialAbilityPhraseKind::VariableCasualtyPlaneswalkerCopy => {

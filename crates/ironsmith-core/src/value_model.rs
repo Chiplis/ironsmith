@@ -148,6 +148,10 @@ pub enum ValueSurfaceHint {
     /// Preserve a sentence boundary before a counter-placement follow-up.
     /// This is presentation metadata only; the numeric value is unchanged.
     CounterFollowupSeparateSentence,
+    /// Preserve a sentence boundary after counter placement when the next
+    /// authored sentence grants an ability to the countered object.
+    /// This is presentation metadata only; the numeric value is unchanged.
+    CounterGrantSeparateSentence,
     /// Marks a counter parsed from the same battlefield-entry clause as its
     /// zone move ("with a ... counter on it"). This lets lowering distinguish
     /// an entry modifier from a genuinely subsequent counter action even when

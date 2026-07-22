@@ -727,7 +727,10 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
         name: "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom",
         feature_tag: Some("looked-cards-battlefield-and-hand"),
-        priority: 333,
+        // This is a strict superset of the single-destination looked-card
+        // rule. Run it first so the first "put" clause cannot consume the
+        // sentence while silently dropping the coordinated hand choice.
+        priority: 336,
         consumed_sentences: 3,
         predicate: first_word_look_or_reveal,
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_match_onto_battlefield_and_match_into_hand_rest_bottom,

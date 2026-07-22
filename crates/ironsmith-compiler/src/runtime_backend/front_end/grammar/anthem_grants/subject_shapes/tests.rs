@@ -120,6 +120,28 @@ fn parses_distributive_chosen_land_type_subject_without_suffix_recovery() {
 }
 
 #[test]
+fn parses_relative_subtype_list_without_widening_to_all_creatures() {
+    let tokens = lex_line(
+        "Each other creature you control that's a Skeleton or Pirate",
+        0,
+    )
+    .unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected a typed relative subtype-list filter");
+    };
+
+    assert_eq!(filter.card_types, [CardType::Creature], "{filter:#?}");
+    assert_eq!(
+        filter.subtypes,
+        [Subtype::Skeleton, Subtype::Pirate],
+        "{filter:#?}"
+    );
+    assert!(!filter.type_or_subtype_union, "{filter:#?}");
+}
+
+#[test]
 fn parses_differently_qualified_type_branches_as_typed_disjunction() {
     let tokens = lex_line(
         "Each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater",

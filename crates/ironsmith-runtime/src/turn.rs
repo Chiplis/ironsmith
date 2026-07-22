@@ -618,10 +618,9 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
                 let controller = game.controller_of(obj);
                 let controlled_by_active = active_players.contains(&controller);
                 let has_doesnt_untap = controlled_by_active
-                    && chars
-                        .static_abilities
-                        .iter()
-                        .any(|static_ability| static_ability.affects_untap());
+                    && chars.static_abilities.iter().any(|static_ability| {
+                        static_ability.affects_untap() && static_ability.is_active(game, id)
+                    });
                 let has_optional_choice = controlled_by_active
                     && chars.static_abilities.iter().any(|static_ability| {
                         static_ability.id() == StaticAbilityId::MayChooseNotToUntapDuringUntapStep

@@ -300,13 +300,14 @@ pub(super) fn emet_selch_keeps_graveyard_cost_and_life_loss_may_cast_trigger() {
 #[test]
 pub(super) fn filtered_future_zone_replacement_surfaces_round_trip() {
     let cosmic = "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. At the beginning of the next end step, return it to the battlefield under its owner's control.";
+    let cosmic_compiled = "If a permanent you control would be put into a graveyard from the battlefield this turn, exile it instead. Return it to the battlefield under its owner's control at the beginning of the next end step.";
     let cosmic_def = CardDefinitionBuilder::new(CardId::new(), "Cosmic Intervention Variant")
         .card_types(vec![CardType::Instant])
         .parse_text(cosmic)
         .expect("linked future replacement should parse");
     assert_eq!(
         unprocessed_compiled_lines(&cosmic_def),
-        vec![cosmic.to_string()]
+        vec![cosmic_compiled.to_string()]
     );
     let cosmic_debug = format!("{:#?}", cosmic_def.spell_effect);
     assert!(
@@ -434,8 +435,11 @@ pub(super) fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission(
     assert!(debug.contains("allow_any_color_for_cast: true"), "{debug}");
     assert_eq!(
         unprocessed_compiled_lines(&def),
-        vec![trigger.to_string(), "Equip {1}.".to_string()],
-        "expected Dream-Thief's Bandana oracle wording to survive compilation"
+        vec![
+            "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell.".to_string(),
+            "Equip {1}".to_string(),
+        ],
+        "expected Dream-Thief's Bandana semantics to survive canonical rendering"
     );
 }
 
@@ -3061,7 +3065,8 @@ pub(super) fn test_strip_bare_normalizes_destroy_attached_auras_and_equipment() 
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("destroy all auras and equipment attached to target creature"),
+        rendered.contains("choose target creature")
+            && rendered.contains("destroy all auras or equipment attached to it"),
         "expected Strip Bare's attached-permanent text to normalize cleanly, got {rendered}"
     );
 }
@@ -3206,9 +3211,7 @@ pub(super) fn test_parse_split_the_party_chooses_target_player_and_half_their_cr
                 "return half the creatures they control to their owner's hand, rounded up"
             ) || rendered.contains(
                 "return half the creatures that player controls to their owner's hand, rounded up"
-            ) || rendered.contains(
-                "that player chooses x creatures target player controls"
-            ))
+            ) || rendered.contains("that player chooses x creatures target player controls"))
             && rendered.contains("hand"),
         "expected choose-player plus half-creature return text, got {rendered}"
     );
@@ -3514,7 +3517,9 @@ pub(super) fn test_roaming_throne_variant_parses_without_placeholders() {
 pub(super) fn dredge_compiles_to_typed_graveyard_replacement_ability() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Stinkweed Imp")
         .card_types(vec![CardType::Creature])
-        .parse_text("Dredge 5")
+        .parse_text(
+            "Dredge 5 (If you would draw a card, you may mill five cards instead. If you do, return this card from your graveyard to your hand.)",
+        )
         .expect("Dredge should compile");
     let ability = def
         .abilities

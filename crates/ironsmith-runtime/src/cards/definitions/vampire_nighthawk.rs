@@ -124,13 +124,13 @@ mod tests {
         let events = execute_combat_damage_step(&mut game, &combat, false);
         assert!(
             events.iter().any(|event| {
-                event.source == nighthawk_id && event.amount == 1 && event.result.life_gained == 1
+                event.source == nighthawk_id && event.amount == 2 && event.result.life_gained == 2
             }),
-            "Vampire Nighthawk should deal lethal deathtouch damage with lifelink"
+            "Vampire Nighthawk should assign its full power to its only blocker and gain that much life"
         );
         assert_eq!(
             game.player(alice).expect("Alice should exist").life,
-            21,
+            22,
             "lifelink should gain Alice life equal to the damage dealt"
         );
 

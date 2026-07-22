@@ -484,7 +484,7 @@ mod tests {
             (
                 "Generic Permission",
                 "Until end of turn, you may play lands and cast spells from your graveyard.",
-                "subject-verb verb=Play subject=explicit recognizer=zone-permission",
+                "effects: SubjectVerb",
             ),
             (
                 "Generic Replacement",
@@ -494,7 +494,7 @@ mod tests {
             (
                 "Generic Choice Complement",
                 "Each player chooses from among the permanents they control an artifact, a creature, an enchantment, and a land, then sacrifices the rest.",
-                "subject-verb verb=Choose subject=explicit recognizer=choice-complement-sacrifice",
+                "effects: ForEachPlayer",
             ),
             (
                 "Generic Flashback Grant",
@@ -524,7 +524,7 @@ mod tests {
             (
                 "Generic Damage Replacement Counters",
                 "If damage would be dealt to target creature this turn, prevent that damage and put that many +1/+1 counters on it.",
-                "subject-verb verb=Prevent subject=implicit recognizer=damage-replacement-counters",
+                "effects: SubjectVerb",
             ),
             (
                 "Generic Looked Cards Counted Remainder",
@@ -1142,7 +1142,7 @@ mod tests {
             .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
             .expect("expected scaled mana effect");
 
-        assert_eq!(scaled.amount, Value::X);
+        assert_eq!(scaled.amount.unhinted(), &Value::X);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

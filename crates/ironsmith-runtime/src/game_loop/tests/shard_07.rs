@@ -157,11 +157,7 @@ pub(super) fn telling_time_preserves_independent_hand_top_and_bottom_choices() {
 
     let spell_id = game.create_object_from_definition(&def, alice, Zone::Stack);
     game.push_to_stack(StackEntry::new(spell_id, alice));
-    let mut decisions = SelectNamedObjectGroups::new([
-        vec!["Chosen Hand"],
-        vec!["Chosen Top"],
-        vec!["Chosen Bottom"],
-    ]);
+    let mut decisions = SelectNamedObjectGroups::new([vec!["Chosen Hand"], vec!["Chosen Top"]]);
     resolve_stack_entry_with(&mut game, &mut decisions).expect("Telling Time should resolve");
 
     let player = game.player(alice).expect("Alice should exist");
@@ -187,7 +183,7 @@ pub(super) fn telling_time_preserves_independent_hand_top_and_bottom_choices() {
     );
     assert!(
         decisions.groups.is_empty(),
-        "all three choices should be used"
+        "the hand and top choices should be used; the last looked-at card goes to the bottom deterministically"
     );
 }
 

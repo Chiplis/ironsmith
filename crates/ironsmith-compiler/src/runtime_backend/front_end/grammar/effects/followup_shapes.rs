@@ -180,11 +180,26 @@ pub(crate) fn parse_conditional_followup(
 
 pub(crate) fn is_anaphoric_damage_self_replacement(tokens: &[OwnedLexToken]) -> bool {
     let words = token_word_refs(tokens);
-    words.starts_with(&["it", "deals"])
-        && words
-            .windows(3)
-            .any(|window| window == ["to", "that", "creature"])
-        && words.contains(&"instead")
+    if !words.starts_with(&["it", "deals"]) || !words.contains(&"instead") {
+        return false;
+    }
+    if words
+        .windows(3)
+        .any(|window| window == ["to", "that", "creature"])
+    {
+        return true;
+    }
+
+    // "It deals N damage instead" omits both arguments because it repeats
+    // the source and target of the default damage event. Do not apply this to
+    // a clause that names a different destination explicitly.
+    let Some(damage_idx) = words.iter().position(|word| *word == "damage") else {
+        return false;
+    };
+    let Some(instead_idx) = words.iter().position(|word| *word == "instead") else {
+        return false;
+    };
+    damage_idx < instead_idx && !words[damage_idx + 1..instead_idx].contains(&"to")
 }
 
 fn lifecycle_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {

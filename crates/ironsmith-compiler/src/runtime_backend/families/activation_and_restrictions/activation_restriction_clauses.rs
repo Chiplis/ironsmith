@@ -734,61 +734,58 @@ pub(crate) fn parse_negated_object_restriction_clause(
         return Ok(None);
     }
 
-    let (mut filter, mut target, ability_scope) =
-        if let Some(parsed) = parse_activated_ability_subject(&subject_tokens)? {
-            (parsed.filter, parsed.target, Some(parsed.scope))
-        } else if starts_with_target_indicator(&subject_tokens) {
-            let target = parse_target_phrase(&subject_tokens)?;
-            let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported target restriction subject (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                ))
-            })?;
-            ensure_it_tagged_constraint(&mut filter);
-            (filter, Some(target), None)
-        } else if subject_tokens.is_empty() {
-            // Supports carried clauses like "... and can't be blocked this turn."
-            let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
-            (
-                ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                Some(target),
-                None,
-            )
-        } else if matches!(
-            subject_words.as_slice(),
-            ["it"]
-                | ["that", "creature"]
-                | ["that", "permanent"]
-                | ["them"]
-                | ["those", "creatures"]
-        ) {
-            // A pronoun/demonstrative subject back-references the object the
-            // trigger introduced (e.g. "Whenever this blocks or becomes
-            // blocked, it can't be regenerated this turn"), not a filter over
-            // every creature. target=None keeps it on the plain
-            // cant-restriction path (no spurious "choose it").
-            (ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None)
-        } else if bare_other_choice {
-            (
-                ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
-                None,
-                None,
-            )
-        } else if matches!(
-            restriction_grammar::parse_restriction_subject_surface_words(&subject_words),
-            Some(restriction_grammar::RestrictionSubjectSurface::Player)
-        ) {
-            (ObjectFilter::default(), None, None)
-        } else {
-            let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
-                return Err(CardTextError::ParseError(format!(
-                    "unsupported subject in negated restriction clause (clause: '{}')",
-                    crate::runtime_backend::token_word_refs(tokens).join(" ")
-                )));
-            };
-            (filter, None, None)
+    let (mut filter, mut target, ability_scope) = if let Some(parsed) =
+        parse_activated_ability_subject(&subject_tokens)?
+    {
+        (parsed.filter, parsed.target, Some(parsed.scope))
+    } else if starts_with_target_indicator(&subject_tokens) {
+        let target = parse_target_phrase(&subject_tokens)?;
+        let mut filter = target_ast_to_object_filter(target.clone()).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported target restriction subject (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            ))
+        })?;
+        ensure_it_tagged_constraint(&mut filter);
+        (filter, Some(target), None)
+    } else if subject_tokens.is_empty() {
+        // Supports carried clauses like "... and can't be blocked this turn."
+        let target = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(tokens));
+        (
+            ObjectFilter::tagged(TagKey::from(IT_TAG)),
+            Some(target),
+            None,
+        )
+    } else if matches!(
+        subject_words.as_slice(),
+        ["it"] | ["that", "creature"] | ["that", "permanent"] | ["them"] | ["those", "creatures"]
+    ) {
+        // A pronoun/demonstrative subject back-references the object the
+        // trigger introduced (e.g. "Whenever this blocks or becomes
+        // blocked, it can't be regenerated this turn"), not a filter over
+        // every creature. target=None keeps it on the plain
+        // cant-restriction path (no spurious "choose it").
+        (ObjectFilter::tagged(TagKey::from(IT_TAG)), None, None)
+    } else if bare_other_choice {
+        (
+            ObjectFilter::creature().not_tagged(TagKey::from(IT_TAG)),
+            None,
+            None,
+        )
+    } else if matches!(
+        restriction_grammar::parse_restriction_subject_surface_words(&subject_words),
+        Some(restriction_grammar::RestrictionSubjectSurface::Player)
+    ) {
+        (ObjectFilter::default(), None, None)
+    } else {
+        let Some(filter) = parse_subject_object_filter(&subject_tokens)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported subject in negated restriction clause (clause: '{}')",
+                crate::runtime_backend::token_word_refs(tokens).join(" ")
+            )));
         };
+        (filter, None, None)
+    };
     if restriction_grammar::parse_dealt_damage_this_way_words(&words).is_some()
         && !filter
             .tagged_constraints

@@ -897,6 +897,14 @@ fn alternative_cost_parse_tokens(
 pub(super) fn run_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
+    if super::super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
+        &ctx.line.tokens,
+    )
+    .is_some()
+    {
+        return Ok(None);
+    }
+
     if matches!(
         parse_ability_line_lexed(&ctx.line.tokens).as_deref(),
         Some([crate::cards::builders::KeywordAction::CumulativeUpkeep { .. }])
@@ -1446,17 +1454,35 @@ pub(super) fn run_statement_probe_line_family(
     // Bare keyword lines are claimed by the static/keyword line families.
     // Keep the broad statement probe from consuming them as empty effect
     // programs (notably Daybound, Nightbound, and Fuse).
-    if parse_ability_line_lexed(&ctx.line.tokens).is_some() {
+    if parse_ability_line_lexed(&ctx.line.tokens).is_some()
+        && super::super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
+            &ctx.line.tokens,
+        )
+        .is_none()
+    {
         return Ok(None);
     }
+    let prefer_nonpermanent_statement =
+        should_prefer_statement_before_static_for_nonpermanent_spell(
+            ctx.preprocessed,
+            &ctx.line.tokens,
+        );
+    let has_effect_prefix_before_static =
+        has_effect_prefix_before_trailing_static_sentence(&ctx.line.tokens);
+
     // Typed static-line parsers must win over the broad statement probe. In
     // particular, `As this enters, choose ...` and `As this enters, note ...`
     // otherwise become generic AsEntersEffectProgram abilities, losing the
-    // runtime ETB choice/note metadata.
-    if matches!(
-        parse_static_ability_ast_line_lexed(&ctx.line.tokens),
-        Ok(Some(_))
-    ) {
+    // runtime ETB choice/note metadata. A typed statement on an instant or
+    // sorcery is the exception: trailing restriction language must not turn
+    // the spell's complete action sequence into a battlefield static ability.
+    if !prefer_nonpermanent_statement
+        && !has_effect_prefix_before_static
+        && matches!(
+            parse_static_ability_ast_line_lexed(&ctx.line.tokens),
+            Ok(Some(_))
+        )
+    {
         return Ok(None);
     }
     if crate::runtime_backend::families::keyword_static::parse_double_counters_replacement_line(
@@ -1494,12 +1520,6 @@ pub(super) fn run_statement_probe_line_family(
 
     let linked_preference = line_grammar::parse_linked_statement_preference(&ctx.line.tokens);
     let static_preference = line_grammar::parse_statement_static_preference(&ctx.line.tokens);
-    let prefer_nonpermanent_statement =
-        should_prefer_statement_before_static_for_nonpermanent_spell(
-            ctx.preprocessed,
-            &ctx.line.tokens,
-        );
-
     if (matches!(
         crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(
             &ctx.line.tokens

@@ -158,6 +158,41 @@ pub(super) fn describe_looked_may_one_top_rest_bottom(
     ))
 }
 
+/// Render an optional look whose successful branch performs an exact
+/// singleton top/rest-bottom partition. The caller supplies the matching
+/// `WithId`/`If(Happened)` proof; this helper validates the card-pool tags,
+/// count, zones, move, and true remainder.
+pub(in crate::compiled_text) fn describe_may_look_then_put_one_top_rest_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_effect: &Effect,
+    remainder: &crate::effects::PutTaggedRemainderOnLibraryBottomEffect,
+) -> Option<String> {
+    if look_at_top.player != PlayerFilter::You
+        || look_at_top.reveal
+        || !is_exact_looked_singleton_top_partition(
+            look_at_top,
+            choose,
+            move_effect,
+            remainder,
+            ChoiceCount::exactly(1),
+        )
+    {
+        return None;
+    }
+
+    let owner = describe_possessive_player_filter(&look_at_top.player);
+    let (count_text, noun, where_clause) =
+        describe_top_count_noun_and_where_clause(&look_at_top.count);
+    let order = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    Some(format!(
+        "You may look at the top {count_text} {noun} of {owner} library{where_clause}. If you do, put one of those cards on top of {owner} library and the rest on the bottom of {owner} library{order}"
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

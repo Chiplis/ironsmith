@@ -114,7 +114,14 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Mill => parse_mill(tokens, subject),
         Verb::Get => parse_get(tokens, subject),
         Verb::Remove => parse_remove(tokens),
-        Verb::Return => parse_return(tokens),
+        Verb::Return => {
+            let player = extract_subject_player(subject);
+            let mut effect = parse_return(tokens)?;
+            if let Some(player) = player {
+                super::bind_implicit_player_context(&mut effect, player);
+            }
+            Ok(effect)
+        }
         Verb::Exchange => parse_exchange(tokens, subject),
         Verb::Become => parse_become(tokens, subject),
         Verb::Switch => parse_switch(tokens),

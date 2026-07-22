@@ -4,7 +4,7 @@ use winnow::prelude::*;
 use winnow::token::{literal, take_till};
 
 use super::super::{leaf, permission_shapes, primitives};
-use crate::cards::builders::{PlayerAst, SubjectAst, TagKey, TargetAst};
+use crate::cards::builders::{IT_TAG, PlayerAst, SubjectAst, TagKey, TargetAst};
 use crate::effect::Value;
 use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, TokenWordView};
 use crate::target::{ChooseSpec, ObjectFilter};
@@ -142,6 +142,20 @@ pub(crate) fn parse_controller_owner_subject_tokens(
         &["enchanted", "creatures", "owner"],
         &["enchanted", "creature's", "owner"],
     ];
+
+    if tokens.len() == 2 && tokens[0].is_word("its") {
+        let player = if tokens[1].is_word("controller") {
+            PlayerAst::ItsController
+        } else if tokens[1].is_word("owner") {
+            PlayerAst::ItsOwner
+        } else {
+            return None;
+        };
+        return Some(ControllerOwnerSubjectShape {
+            subject: SubjectAst::Player(player),
+            target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+        });
+    }
 
     if ENCHANTED_CONTROLLER
         .iter()

@@ -964,6 +964,19 @@ mod tests {
         let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert!(filter.has_tap_activated_ability);
+        assert_ne!(filter.zone, Some(Zone::Stack));
+        assert_eq!(filter.stack_kind, None);
+
+        let singular = lex_line(
+            "creature that has an activated ability with {T} in its cost",
+            0,
+        )
+        .unwrap();
+        let singular = parse_object_filter_with_grammar_entrypoint_lexed(&singular, false).unwrap();
+        assert_eq!(singular.card_types, vec![CardType::Creature]);
+        assert!(singular.has_tap_activated_ability);
+        assert_ne!(singular.zone, Some(Zone::Stack));
+        assert_eq!(singular.stack_kind, None);
     }
 
     #[test]

@@ -83,6 +83,8 @@ pub(super) fn parse_statement_line_cst(
     let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
         .ok()
         .flatten();
+    let typed_effect_prefix_before_static =
+        has_effect_prefix_before_trailing_static_sentence(&line.tokens);
     let typed_create_statement = line
         .tokens
         .first()
@@ -109,6 +111,7 @@ pub(super) fn parse_statement_line_cst(
     let persistent_static_modifier = !typed_create_statement
         && !typed_energy_payment_threshold
         && !typed_counter_linked_land_subtype
+        && !typed_effect_prefix_before_static
         && force_surface != Some(StatementForceShape::PlayerGetsCounters)
         && !matches!(
             line_family,
@@ -122,6 +125,7 @@ pub(super) fn parse_statement_line_cst(
     let force_statement = typed_create_statement
         || typed_energy_payment_threshold
         || typed_counter_linked_land_subtype
+        || typed_effect_prefix_before_static
         || matches!(
             line_family,
             Some(structure::StatementLineFamily::Divvy | structure::StatementLineFamily::Emblem)
@@ -439,6 +443,11 @@ fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) ->
     }
 
     Some(first_static_idx)
+}
+
+pub(super) fn has_effect_prefix_before_trailing_static_sentence(tokens: &[OwnedLexToken]) -> bool {
+    let sentences = normalize_statement_parse_sentences_lexed(tokens);
+    first_trailing_static_sentence_idx(&sentences).is_some()
 }
 
 fn normalize_statement_parse_groups_from_sentences_lexed(

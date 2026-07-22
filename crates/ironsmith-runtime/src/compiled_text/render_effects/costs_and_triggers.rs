@@ -2225,6 +2225,21 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         base = stripped.trim_end();
         trailing = ".";
     }
+    if let Some(rest) = base.strip_prefix("another ") {
+        return format!("other {}{}", pluralize_noun_phrase(rest), trailing);
+    }
+    // Past-participial creation provenance qualifies the noun to its left.
+    // Handle it before the broader `with` qualifier so "token created with"
+    // cannot recurse as the noun phrase "token created" and become
+    // "token createds".
+    if let Some((head, tail)) = base.split_once(" created ") {
+        return format!(
+            "{} created {}{}",
+            pluralize_noun_phrase(head.trim()),
+            tail.trim(),
+            trailing
+        );
+    }
     // Qualifiers delimit the noun phrase before any conjunctions they may
     // contain. In particular, the `or` in "less than or equal to" is not a
     // union of noun-phrase arms and must not recursively pluralize its value.
@@ -2256,17 +2271,6 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         return format!(
             "{} that {}{}",
             pluralize_noun_phrase(head),
-            tail.trim(),
-            trailing
-        );
-    }
-    // Past-participial creation provenance qualifies the noun to its left.
-    // Pluralize that noun, not the final word before a later `with` clause:
-    // "token created with this enchantment" -> "tokens created with ...".
-    if let Some((head, tail)) = base.split_once(" created ") {
-        return format!(
-            "{} created {}{}",
-            pluralize_noun_phrase(head.trim()),
             tail.trim(),
             trailing
         );
@@ -2362,6 +2366,7 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         " in that player's library",
         " in a library",
         " in exile",
+        " on the battlefield",
         " revealed this way",
         " of the chosen type",
         " that aren't of the chosen type",
@@ -2621,6 +2626,72 @@ pub(super) fn describe_for_players_choose_then_destroy_chosen_collection_pair(
         .downcast_ref::<crate::effects::ForPlayersEffect>()?;
     let destroy = destroy_effect_for_choose_compaction(consumer)?;
     describe_for_players_choose_then_destroy_chosen_collection(for_players, destroy)
+}
+
+/// Render a per-player choice followed by destruction of that same player's
+/// unchosen creatures when both operations live inside one quantified loop.
+/// The negative shared-tag constraint proves that "the rest" is exactly the
+/// complement of the creature each player selected.
+pub(super) fn describe_for_players_choose_creature_then_destroy_rest(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+    {
+        return None;
+    }
+    let [choose_effect, destroy_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::IteratedPlayer
+        || choose.is_search
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+        || choose.count.random
+        || choose_primary_zone(choose) != Some(Zone::Battlefield)
+        || choose.filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || choose.filter.card_types.as_slice() != [crate::types::CardType::Creature]
+    {
+        return None;
+    }
+    let mut plain_choose_filter = choose.filter.clone();
+    plain_choose_filter.zone = None;
+    plain_choose_filter.controller = None;
+    plain_choose_filter.card_types.clear();
+    if plain_choose_filter != ObjectFilter::default() {
+        return None;
+    }
+
+    let destroy = structural_unwrap_render_wrappers(destroy_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::All(destroy_filter) = &destroy.spec else {
+        return None;
+    };
+    if destroy_filter.controller != Some(PlayerFilter::IteratedPlayer)
+        || destroy_filter.zone != Some(Zone::Battlefield)
+        || destroy_filter.card_types.as_slice() != [crate::types::CardType::Creature]
+        || destroy_filter.tagged_constraints.as_slice()
+            != [crate::filter::TaggedObjectConstraint {
+                tag: choose.tag.clone(),
+                relation: crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+            }]
+    {
+        return None;
+    }
+    let mut plain_destroy_filter = destroy_filter.clone();
+    plain_destroy_filter.zone = None;
+    plain_destroy_filter.controller = None;
+    plain_destroy_filter.card_types.clear();
+    plain_destroy_filter.tagged_constraints.clear();
+    if plain_destroy_filter != ObjectFilter::default() {
+        return None;
+    }
+
+    Some("Each player chooses a creature they control. Destroy the rest".to_string())
 }
 
 /// Render a quantified choice followed by destroying the complement of that
@@ -2909,11 +2980,52 @@ pub(super) fn describe_counted_sacrifice_choice_selection(
 pub(crate) fn describe_for_players_choose_then_sacrifice(
     for_players: &crate::effects::ForPlayersEffect,
 ) -> Option<String> {
-    if for_players.effects.len() != 2 {
+    let effects = match for_players.effects.as_slice() {
+        [effect] => effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .map(|sequence| sequence.effects.as_slice())
+            .unwrap_or(for_players.effects.as_slice()),
+        effects => effects,
+    };
+    let [choose_effect, sacrifice_effect] = effects else {
         return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let sacrifices_exact_choice = sacrifice_effect
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .is_some_and(|sacrifice| {
+            matches!(sacrifice.target.base(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        });
+    if sacrifices_exact_choice
+        && choose_primary_zone(choose) == Some(Zone::Battlefield)
+        && !choose.is_search
+        && choose.chooser == PlayerFilter::IteratedPlayer
+        && choose.count.is_single()
+        && choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+        })
+    {
+        let (subject, choose_verb, sacrifice_verb, actor) = match for_players.filter {
+            PlayerFilter::Any => ("Each player", "chooses", "sacrifices", "they"),
+            PlayerFilter::Opponent => ("Each opponent", "chooses", "sacrifices", "they"),
+            PlayerFilter::You => ("You", "choose", "sacrifice", "you"),
+            _ => return None,
+        };
+        let mut kind = choose.filter.clone();
+        kind.zone = None;
+        kind.controller = None;
+        let selection = with_indefinite_article(&kind.description());
+        let selection = if let Some((head, tail)) = selection.split_once(" that shares ") {
+            format!("{head} {actor} control that shares {tail}")
+        } else {
+            format!("{selection} {actor} control")
+        };
+        return Some(format!(
+            "{subject} {choose_verb} {selection} and {sacrifice_verb} it"
+        ));
     }
-    let choose = for_players.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let sacrifice = sacrifice_view(&for_players.effects[1])?;
+
+    let sacrifice = sacrifice_view(sacrifice_effect)?;
     if choose_primary_zone(choose) != Some(Zone::Battlefield)
         || choose.is_search
         || choose.chooser != PlayerFilter::IteratedPlayer
@@ -2931,6 +3043,27 @@ pub(crate) fn describe_for_players_choose_then_sacrifice(
         PlayerFilter::You => ("You", "sacrifice", "you", "your"),
         _ => return None,
     };
+    if choose.count.is_single()
+        && choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SharesCardType
+        })
+    {
+        let mut kind = choose.filter.clone();
+        kind.zone = None;
+        kind.controller = None;
+        let selection = with_indefinite_article(&kind.description());
+        let selection = if let Some((head, tail)) = selection.split_once(" that shares ") {
+            format!("{head} {actor} control that shares {tail}")
+        } else {
+            format!("{selection} {actor} control")
+        };
+        let choose_verb = if subject == "You" {
+            "choose"
+        } else {
+            "chooses"
+        };
+        return Some(format!("{subject} {choose_verb} {selection} and {verb} it"));
+    }
     if let Some(chosen) = describe_greatest_power_choice_filter(&choose.filter) {
         let chosen = with_indefinite_article(&chosen);
         return Some(format!("{subject} {verb} {chosen}"));
@@ -3719,10 +3852,10 @@ pub(crate) fn describe_choose_then_sacrifice(
     // `You`. Keep that carried actor for the player-or-planeswalker follow-up;
     // standalone costs and as-enters sacrifices retain their implicit `You`.
     let render_player = if !players_match
-        && matches!(
-            sacrifice.player,
-            PlayerFilter::TargetPlayerOrControllerOfTarget
-        ) {
+        && exact_sentence_helper_set
+        && sacrifice.player != &PlayerFilter::You
+        && sacrifice.player != &PlayerFilter::IteratedPlayer
+    {
         sacrifice.player
     } else {
         &choose.chooser
@@ -4008,14 +4141,37 @@ pub(crate) fn describe_choose_then_for_each_copy(
     if for_each.tag != choose.tag || for_each.effects.len() != 1 {
         return None;
     }
-    let create_copy =
-        for_each.effects[0].downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
-    if !matches!(create_copy.target.unhinted(), ChooseSpec::Iterated)
-        && !matches!(create_copy.target.unhinted(), ChooseSpec::Tagged(tag) if tag == &choose.tag)
-    {
+    describe_choose_then_for_each_copy_effects(choose, &for_each.effects)
+}
+
+pub(crate) fn describe_choose_then_for_each_object_copy(
+    choose: &crate::effects::ChooseObjectsEffect,
+    for_each: &crate::effects::ForEachObject,
+) -> Option<String> {
+    if !for_each.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag == choose.tag
+    }) {
         return None;
     }
-    if create_copy.controller != PlayerFilter::You
+    describe_choose_then_for_each_copy_effects(choose, &for_each.effects)
+}
+
+fn describe_choose_then_for_each_copy_effects(
+    choose: &crate::effects::ChooseObjectsEffect,
+    effects: &[Effect],
+) -> Option<String> {
+    if choose.is_search || choose.count.is_single() || effects.len() != 1 {
+        return None;
+    }
+    let create_copy = unwrap_basic_tag_wrappers(&effects[0])
+        .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
+    let target_matches = matches!(create_copy.target.unhinted(), ChooseSpec::Iterated)
+        || matches!(create_copy.target.unhinted(), ChooseSpec::Tagged(tag) if tag == &choose.tag);
+    if !target_matches {
+        return None;
+    }
+    let has_unsupported_modifier = create_copy.controller != PlayerFilter::You
         || create_copy.enters_tapped
         || create_copy.has_haste
         || create_copy.enters_attacking
@@ -4031,8 +4187,8 @@ pub(crate) fn describe_choose_then_for_each_copy(
         || create_copy.set_colors.is_some()
         || create_copy.set_card_types.is_some()
         || create_copy.set_subtypes.is_some()
-        || !create_copy.granted_static_abilities.is_empty()
-    {
+        || !create_copy.granted_static_abilities.is_empty();
+    if has_unsupported_modifier {
         return None;
     }
 
@@ -4426,20 +4582,23 @@ pub(crate) fn describe_choose_then_tap_cost(
 }
 
 pub(crate) fn exile_uses_chosen_tag(spec: &ChooseSpec, tag: &str) -> bool {
-    matches!(spec.base(), ChooseSpec::Tagged(t) if t.as_str() == tag)
+    let tag = TagKey::from(tag);
+    matches!(spec.base(), ChooseSpec::Tagged(candidate) if candidate == &tag)
+        || choose_spec_has_tagged_constraint(spec, &tag)
 }
 
 pub(crate) fn move_to_exile_uses_chosen_tag(
     move_to_zone: &crate::effects::MoveToZoneEffect,
     tag: &str,
 ) -> bool {
+    let tag = TagKey::from(tag);
     move_to_zone.zone == Zone::Exile
         // Some parser lowerings route the chosen object through a tagged
         // for-each wrapper and leave the move target as `Iterated`.
         && match move_to_zone.target.base() {
             ChooseSpec::Iterated => true,
-            ChooseSpec::Tagged(t) => t.as_str() == tag,
-            _ => false,
+            ChooseSpec::Tagged(candidate) => candidate == &tag,
+            _ => choose_spec_has_tagged_constraint(&move_to_zone.target, &tag),
         }
 }
 
@@ -4475,6 +4634,10 @@ pub(crate) fn describe_milled_graveyard_count_filter(filter: &ObjectFilter) -> O
     } else {
         format!("{noun} card")
     };
+    if filter.prior_effect_action_surface() == Some(crate::effect::PriorEffectAction::Milled) {
+        return Some(format!("{card} milled this way"));
+    }
+
     let graveyard = match filter.owner {
         Some(PlayerFilter::You) => "your graveyard",
         Some(_) => "their graveyard",

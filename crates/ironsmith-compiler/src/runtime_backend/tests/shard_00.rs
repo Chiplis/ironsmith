@@ -1685,7 +1685,7 @@ pub(super) fn rewrite_structure_triggered_conditional_clause_parser_keeps_counte
         "{predicate_debug}"
     );
     assert!(predicate_debug.contains("Count("), "{predicate_debug}");
-    assert!(predicate_debug.contains("aim"), "{predicate_debug}");
+    assert!(predicate_debug.contains("Aim"), "{predicate_debug}");
     assert!(predicate_debug.contains("NotYou"), "{predicate_debug}");
 }
 

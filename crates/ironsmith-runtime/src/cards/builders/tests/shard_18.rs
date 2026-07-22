@@ -112,7 +112,7 @@ pub(super) fn pinnacle_starcage_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Pinnacle Starcage");
     let lines = canonical_compiled_lines(&def);
     let expected_enters = "When this artifact enters, exile all artifacts and creatures with mana value 2 or less until this artifact leaves the battlefield.";
-    let expected_activated = "{6}{W}{W}: Put each card exiled with this artifact into its owner's graveyard, then create a 2/2 colorless Robot artifact creature token for each card put into a graveyard this way. Sacrifice this artifact.";
+    let expected_activated = "{6}{W}{W}: Put each card exiled with this artifact into their owners' graveyard, then create that many 2/2 colorless Robot artifact creature tokens. Sacrifice this artifact.";
 
     assert_eq!(lines, vec![expected_enters, expected_activated]);
 
@@ -678,7 +678,7 @@ pub(super) fn guardian_of_the_ages_strict_parser_and_text_regression() {
         rendered_lines,
         vec![
             "Defender".to_string(),
-            "Whenever a creature attacks you or a planeswalker you control, if this creature has defender, this creature loses defender and gains trample.".to_string(),
+            "Whenever a creature attacks you or a planeswalker you control, if this creature has defender, this creature loses defender and this creature gains trample.".to_string(),
         ],
         "Guardian of the Ages should render the source-keyword intervening-if clause"
     );
@@ -1111,7 +1111,7 @@ pub(super) fn rebbec_architect_of_ascension_strict_parser_and_text_regression() 
 
     let ability_debug = format!("{:?}", def.abilities);
     assert!(
-        ability_debug.contains("GrantAbility")
+        ability_debug.contains("GrantObjectAbilityForFilter")
             && ability_debug.contains("EachManaValueAmong")
             && ability_debug.contains("Artifact"),
         "Rebbec, Architect of Ascension should structurally grant artifact mana-value protection, got {ability_debug}"
@@ -1278,7 +1278,7 @@ pub(super) fn trystan_faces_strict_parser_and_text_regression() {
             "Whenever this creature enters or transforms into Trystan, Callous Cultivator"
         ) && front_rendered.contains("mill three cards")
             && front_rendered
-                .contains("Then if there is an Elf card in your graveyard, you gain 2 life"),
+                .contains("If there is an Elf card in your graveyard, you gain 2 life"),
         "expected front-face transform trigger and Elf-card graveyard condition, got {front_rendered}"
     );
 
@@ -1392,7 +1392,7 @@ pub(super) fn breaker_of_creation_strict_parser_text_and_structure_regression() 
         rendered.contains(
             "When you cast this spell, you gain 1 life for each colorless permanent you control"
         ) && rendered.contains("Hexproof from each color")
-            && rendered.contains("Annihilator 2"),
+            && rendered.contains("annihilator 2"),
         "expected Breaker of Creation cast trigger, hexproof-from-each-color, and annihilator text, got {rendered}"
     );
     assert!(
@@ -1981,7 +1981,7 @@ pub(super) fn cephalid_vandal_upkeep_trigger_adds_shred_counter_then_mills_one()
         })
         .expect("Cephalid Vandal should have an upkeep triggered ability");
 
-    let effects = &triggered.effects.segments[0].default_effects;
+    let effects = triggered.effects.flattened_default_effects();
     let alice = PlayerId::from_index(0);
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -2032,7 +2032,7 @@ pub(super) fn cephalid_vandal_upkeep_trigger_mill_count_scales_with_existing_shr
         })
         .expect("Cephalid Vandal should have an upkeep triggered ability");
 
-    let effects = &triggered.effects.segments[0].default_effects;
+    let effects = triggered.effects.flattened_default_effects();
     let alice = PlayerId::from_index(0);
     let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
     let source_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
@@ -2089,7 +2089,7 @@ pub(super) fn cloud_ex_soldier_compiled_text_keeps_power_threshold_treasure_clau
     assert!(
         rendered.contains("whenever cloud attacks")
             && rendered.contains("draw a card for each equipped attacking creature you control")
-            && rendered.contains("then if this has power 7 or greater")
+            && rendered.contains("if this has power 7 or greater")
             && rendered.contains("create two treasure tokens"),
         "expected Cloud, Ex-SOLDIER attack trigger and power-threshold treasure clause, got {rendered}"
     );
@@ -2143,9 +2143,8 @@ pub(super) fn xanthic_statue_compiled_text_keeps_until_end_of_turn_becomes_claus
 
     assert!(
         rendered.contains("until end of turn")
-            && rendered.contains("this artifact becomes")
+            && rendered.contains("this artifact becomes an 8/8")
             && rendered.contains("golem artifact creature")
-            && rendered.contains("base power and toughness 8/8")
             && rendered.contains("trample"),
         "expected Xanthic Statue become-until-end clause, got {rendered}"
     );
@@ -3256,7 +3255,8 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
             .expect("Creeping Peeper should carry its special mana usage restriction");
 
     let alice = PlayerId::from_index(0);
-    let mut game = crate::game_state::GameState::new(vec!["Alice".to_string()], 20);
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let peeper_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
     game.player_mut(alice)
         .expect("alice exists")
@@ -3501,6 +3501,25 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
             )),
         ));
     game.set_face_down(face_up_probe_id);
+    assert_eq!(
+        crate::special_actions::turn_face_up_cost_display(
+            &game,
+            face_up_probe_id,
+            crate::special_actions::TurnFaceUpMethod::TurnFaceUpAbility,
+        )
+        .as_deref(),
+        Some("{U}")
+    );
+    assert!(
+        game.can_pay_mana_cost_with_reason(
+            alice,
+            Some(face_up_probe_id),
+            &blue_cost,
+            0,
+            crate::costs::PaymentReason::TurnFaceUp,
+        ),
+        "Creeping Peeper mana should be eligible for the face-down permanent's turn-face-up cost"
+    );
     crate::special_actions::perform(
         crate::special_actions::SpecialAction::TurnFaceUp {
             permanent_id: face_up_probe_id,

@@ -59,6 +59,79 @@ fn describe_optional_consult_then_battlefield_partition(
     ))
 }
 
+fn describe_optional_consult_then_hand_bottom_partition(
+    may: &crate::effects::MayEffect,
+    followups: &[Effect],
+) -> Option<String> {
+    let [consult_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let [move_effect, remainder_effect] = followups else {
+        return None;
+    };
+    let compact = render_consult_reveal_put_hand_then_bottom(&[
+        consult_effect,
+        move_effect,
+        remainder_effect,
+    ])?;
+    let (consult_text, disposition) = compact.split_once(". ")?;
+    let reveal = consult_text.strip_prefix("Reveal ")?;
+    Some(format!(
+        "You may reveal {reveal}. {}",
+        capitalize_first(disposition)
+    ))
+}
+
+fn describe_optional_sacrifice_then_lesser_mana_consult_partition(
+    may: &crate::effects::MayEffect,
+    followups: &[Effect],
+) -> Option<String> {
+    let [choose_effect, sacrifice_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let [consult_effect, move_effect, remainder_effect] = followups else {
+        return None;
+    };
+    render_sacrifice_then_consult_reveal_put_battlefield_rest_bottom(&[
+        choose_effect,
+        sacrifice_effect,
+        consult_effect,
+        move_effect,
+        remainder_effect,
+    ])?;
+
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let consult = consult_effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if !consult.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == choose.tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::ManaValueLtTagged
+    }) {
+        return None;
+    }
+
+    let partition = describe_consult_reveal_put_battlefield_then_bottom(&[
+        consult_effect,
+        move_effect,
+        remainder_effect,
+    ])?;
+    let partition = partition
+        .replace(" with lesser mana value than it", " with lesser mana value")
+        .replace(
+            ". Put that card onto the battlefield",
+            ", put it onto the battlefield",
+        )
+        .replace(
+            " and the rest on the bottom",
+            ", then put the rest on the bottom",
+        );
+    let may_text = describe_effect(&Effect::new(may.clone()));
+    Some(format!(
+        "{}. If you do, {}",
+        may_text.trim().trim_end_matches('.'),
+        lowercase_first(&partition)
+    ))
+}
+
 fn describe_optional_payment_then_consult_hand_partition(
     may: &crate::effects::MayEffect,
     followups: &[Effect],
@@ -89,7 +162,9 @@ fn describe_optional_payment_then_consult_hand_partition(
 /// and helper-tag spelling.
 pub(super) fn describe_optional_gated_consult_partition(effects: &[Effect]) -> Option<String> {
     let (may, followups) = optional_action_and_happened_branch(effects)?;
-    describe_optional_consult_then_battlefield_partition(may, followups)
+    describe_optional_sacrifice_then_lesser_mana_consult_partition(may, followups)
+        .or_else(|| describe_optional_consult_then_hand_bottom_partition(may, followups))
+        .or_else(|| describe_optional_consult_then_battlefield_partition(may, followups))
         .or_else(|| describe_optional_payment_then_consult_hand_partition(may, followups))
 }
 
@@ -202,6 +277,49 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "You may pay {1}. If you do, reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest into your graveyard"
+        );
+    }
+
+    #[test]
+    fn optional_consult_hides_the_synthetic_gate_for_a_hand_bottom_partition() {
+        let all_tag = TagKey::from("revealed");
+        let match_tag = TagKey::from("matched");
+        let consult = Effect::new(crate::effects::ConsultTopOfLibraryEffect::new(
+            PlayerFilter::You,
+            crate::effects::consult_helpers::LibraryConsultMode::Reveal,
+            creature_filter(),
+            crate::effects::ConsultTopOfLibraryStopRule::FirstMatch,
+            all_tag.clone(),
+            match_tag.clone(),
+        ));
+        let move_match = Effect::new(
+            crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(match_tag.clone()),
+                Zone::Hand,
+                false,
+            )
+            .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put),
+        );
+        let remainder = Effect::new(
+            crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
+                all_tag,
+                Some(match_tag),
+                crate::effects::consult_helpers::LibraryBottomOrder::Random,
+                PlayerFilter::You,
+            ),
+        );
+        let effects = vec![
+            Effect::with_id(0, Effect::may(vec![consult])),
+            Effect::if_then(
+                crate::effect::EffectId(0),
+                EffectPredicate::Happened,
+                vec![move_match, remainder],
+            ),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "You may reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest on the bottom of your library in a random order"
         );
     }
 }

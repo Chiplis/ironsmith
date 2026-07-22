@@ -35,6 +35,7 @@ use super::grammar::document_facts as document_fact_grammar;
 use super::grammar::document_shapes as document_grammar;
 use super::grammar::effects as effect_grammar;
 use super::grammar::line_families as line_family_grammar;
+use super::grammar::preprocess as preprocess_grammar;
 use super::grammar::primitives as grammar;
 use super::grammar::semantic_lowering as semantic_grammar;
 use super::grammar::structure::split_lexed_sentences;
@@ -83,8 +84,9 @@ use line_cst_parsing::{
 use line_dispatch::{LineDispatchResult, dispatch_standard_line_cst};
 use statement_cst_support::{
     extend_activated_line_with_result_followups, extend_statement_line_with_result_followups,
-    extend_triggered_line_with_result_followups, looks_like_statement_line_lexed,
-    parse_colon_nonactivation_statement_fallback, parse_statement_line_cst,
+    extend_triggered_line_with_result_followups, has_effect_prefix_before_trailing_static_sentence,
+    looks_like_statement_line_lexed, parse_colon_nonactivation_statement_fallback,
+    parse_statement_line_cst,
 };
 #[cfg(test)]
 use statement_cst_support::{looks_like_statement_line, normalize_statement_parse_groups_lexed};
@@ -471,9 +473,13 @@ fn should_prefer_statement_before_static_for_nonpermanent_spell(
         return false;
     }
     let is_effect_redirect = crate::runtime_backend::grammar::effects::clause_pattern_shapes::parse_redirect_next_damage_tokens(tokens).is_some();
+    let has_statement_family =
+        crate::runtime_backend::grammar::structure::classify_statement_line_family_lexed(tokens)
+            .is_some();
     is_nonpermanent_spell
         && (document_grammar::parse_nonpermanent_statement_surface(tokens).is_some()
-            || is_effect_redirect)
+            || is_effect_redirect
+            || has_statement_family)
 }
 
 fn looks_like_leading_conditional_self_replacement(tokens: &[OwnedLexToken]) -> bool {
@@ -513,6 +519,18 @@ fn parse_labeled_conditional_replacement_sentence_split(
         .transpose()?;
     let sentences = split_lexed_sentences(&line.tokens);
     if sentences.len() < 2 {
+        return Ok(None);
+    }
+    // This is one linked spell instruction: the delayed return consumes the
+    // objects exported by the future replacement. Splitting it here produces
+    // two independent statement programs before sequence lowering can assign
+    // the shared replacement tag.
+    if let [replacement, delayed_return] = sentences.as_slice()
+        && effect_grammar::is_filtered_future_exile_return_next_end_step_shape(
+            replacement,
+            delayed_return,
+        )
+    {
         return Ok(None);
     }
     if sentences.first().is_some_and(|sentence| {
@@ -574,8 +592,14 @@ fn parse_labeled_conditional_replacement_sentence_split(
     for (sentence_idx, sentence_tokens) in sentences.iter().enumerate().skip(1) {
         let sentence_line = rewrite_line_tokens(line, sentence_tokens);
         let is_typed_prevention_trigger = prevention_then_trigger.is_some() && sentence_idx == 1;
+        let is_delayed_schedule =
+            effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(
+                &sentence_line.tokens,
+            )
+            .is_some();
         if is_typed_prevention_trigger
-            || line_starts_with_trigger_intro_tokens(&sentence_line.tokens)
+            || (line_starts_with_trigger_intro_tokens(&sentence_line.tokens)
+                && !is_delayed_schedule)
         {
             lines.push(RewriteLineCst::Triggered(parse_triggered_line_cst(
                 &sentence_line,
@@ -628,7 +652,9 @@ fn should_parse_delayed_trigger_line_as_spell_effect(
     });
 
     let is_delayed_effect = document_grammar::parse_next_cast_trigger_surface(tokens).is_some()
-        || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some();
+        || effect_grammar::delayed_sentence_shapes::parse_delayed_this_turn_shape(tokens).is_some()
+        || effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
+            .is_some();
     (builder_has_nonpermanent_spell_type || metadata_has_nonpermanent_spell_type)
         && is_delayed_effect
 }
@@ -1029,6 +1055,28 @@ fn normalize_named_source_sentence_for_builder(
         for name_lower in &names {
             rewritten = replace_named_source_aliases(&rewritten, name_lower, subject);
         }
+        // In replacement programs such as "As this creature enters, ... .
+        // This creature enters with ...", preserving a short-name surface in
+        // the follow-up sentence prevents the two sentences from being parsed
+        // as one typed as-enters program. Once the leading source has been
+        // normalized, normalize source references in the follow-up as well.
+        let normalized_as_enters_subject = rewritten
+            .strip_prefix("as ")
+            .and_then(|rest| rest.split_once(" enters,").map(|(subject, _)| subject))
+            .filter(|subject| *subject == "this" || subject.starts_with("this "));
+        if let Some(as_enters_subject) = normalized_as_enters_subject
+            && let Some((head, tail)) = rewritten.split_once(". ")
+        {
+            let mut normalized_tail = tail.to_string();
+            for name_lower in &names {
+                normalized_tail = replace_named_source_aliases_for_trigger_normalization(
+                    &normalized_tail,
+                    name_lower,
+                    as_enters_subject,
+                );
+            }
+            rewritten = format!("{head}. {normalized_tail}");
+        }
         rewritten = normalize_named_source_enter_agreement(&rewritten, subject);
         if rewritten != lower {
             return Some(rewritten);
@@ -1263,7 +1311,10 @@ fn replace_named_source_aliases_with_options(
         let start = pieces[word_idx].span.start;
         let end = pieces[end_word - 1].span.end;
         let preserve_surface =
-            source_alias_occurrence_is_name_override_surface_lexed(&pieces, word_idx, end_word)
+            source_alias_occurrence_looks_like_effect_verb_lexed(&pieces, word_idx, end_word)
+                || source_alias_occurrence_is_name_override_surface_lexed(
+                    &pieces, word_idx, end_word,
+                )
                 || (preserve_surface_hints
                     && source_alias_occurrence_should_preserve_surface_lexed(
                         &pieces, word_idx, end_word,
@@ -1315,6 +1366,28 @@ fn source_alias_word_span_matches(
         })
 }
 
+fn source_alias_occurrence_looks_like_effect_verb_lexed(
+    pieces: &[SourceAliasWordPiece<'_>],
+    start_word: usize,
+    end_word: usize,
+) -> bool {
+    let alias = pieces
+        .get(start_word..end_word)
+        .unwrap_or_default()
+        .iter()
+        .map(|piece| piece.text)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let remainder = pieces
+        .get(end_word..)
+        .unwrap_or_default()
+        .iter()
+        .map(|piece| piece.text)
+        .collect::<Vec<_>>()
+        .join(" ");
+    !remainder.is_empty() && source_alias_prefix_looks_like_effect_verb(&alias, &remainder)
+}
+
 fn source_alias_occurrence_should_preserve_surface_lexed(
     pieces: &[SourceAliasWordPiece<'_>],
     start_word: usize,
@@ -1330,6 +1403,27 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         .map(|piece| piece.text);
     let next_word = pieces.get(end_word).map(|piece| piece.text);
 
+    let is_modal_may = end_word == start_word + 1
+        && pieces
+            .get(start_word)
+            .is_some_and(|piece| piece.text == "may")
+        && previous_word.is_some_and(|word| {
+            matches!(
+                word,
+                "you"
+                    | "they"
+                    | "player"
+                    | "players"
+                    | "opponent"
+                    | "opponents"
+                    | "controller"
+                    | "owner"
+            )
+        });
+    if is_modal_may {
+        return true;
+    }
+
     if previous_word == Some("as") {
         return false;
     }
@@ -1343,6 +1437,10 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
     }
 
     next_word == Some(TOKEN_NAME_SUFFIX_WORD)
+        // A named vote option remains option data in later references such as
+        // "cards equal to the number of truth votes". It cannot denote the
+        // source here because only players vote.
+        || matches!(next_word, Some("vote" | "votes"))
         || next_word == Some("s")
         || previous_word.is_some_and(|word| {
             matches!(
@@ -1372,6 +1470,8 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
                     | "becoming"
                     | "deal"
                     | "deals"
+                    | "counter"
+                    | "counters"
                     | "enter"
                     | "enters"
                     | "remain"
@@ -1447,6 +1547,10 @@ fn source_name_aliases_for_builder(builder: &CardDefinitionBuilder) -> Vec<Strin
 
     for full_name in &full_names {
         push_alias(full_name);
+        let short_name = preprocess_grammar::parse_short_self_reference_name(full_name);
+        if short_name != *full_name {
+            push_alias(short_name.as_str());
+        }
         if let Some((short_name, _)) = full_name.split_once(',') {
             push_alias(short_name);
             for part in short_name
@@ -1552,11 +1656,12 @@ mod tests {
         parse_colon_nonactivation_statement_fallback, parse_keyword_line_cst, parse_level_item_cst,
         parse_statement_line_cst, parse_static_line_cst, parse_text_to_semantic_document,
         parse_triggered_line_cst, preprocess_document, probe_triggered_split, render_token_slice,
-        rewrite_keyword_dash_parse_tokens, rewrite_when_one_or_more_this_way_line,
-        split_activation_text_parts_lexed, split_label_prefix, split_label_prefix_lexed,
-        split_reveal_first_draw_line_rewrite_lexed, split_trigger_sentence_chunks_rewrite_lexed,
-        strip_non_keyword_label_prefix, strip_trailing_trigger_cap_suffix_tokens,
-        tokens_after_non_keyword_label_prefix, trigger_presentation_from_line_tokens,
+        replace_named_source_aliases, rewrite_keyword_dash_parse_tokens,
+        rewrite_when_one_or_more_this_way_line, split_activation_text_parts_lexed,
+        split_label_prefix, split_label_prefix_lexed, split_reveal_first_draw_line_rewrite_lexed,
+        split_trigger_sentence_chunks_rewrite_lexed, strip_non_keyword_label_prefix,
+        strip_trailing_trigger_cap_suffix_tokens, tokens_after_non_keyword_label_prefix,
+        trigger_presentation_from_line_tokens,
     };
 
     fn single_preprocessed_line(text: &str) -> super::PreprocessedLine {
@@ -2904,19 +3009,92 @@ mod tests {
     }
 
     #[test]
+    fn named_source_sentence_rewrite_normalizes_short_legendary_name_in_as_enters_line() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked")
+            .card_types(vec![CardType::Creature]);
+
+        let rewritten = normalize_named_source_sentence_for_builder(
+            &builder,
+            "As Shimatsu enters, sacrifice any number of permanents. Shimatsu enters with that many +1/+1 counters on it.",
+        )
+        .expect("expected short legendary source name to normalize");
+
+        assert_eq!(
+            rewritten,
+            "as this creature enters, sacrifice any number of permanents. this creature enters with that many +1/+1 counters on it."
+        );
+    }
+
+    #[test]
+    fn named_source_sentence_rewrite_uses_preprocessed_untyped_as_enters_subject() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Shimatsu the Bloodcloaked");
+
+        let rewritten = normalize_named_source_sentence_for_builder(
+            &builder,
+            "as this enters, sacrifice any number of permanents. shimatsu enters with that many +1/+1 counters on it.",
+        )
+        .expect("expected the preserved follow-up short name to normalize");
+
+        assert_eq!(
+            rewritten,
+            "as this enters, sacrifice any number of permanents. this enters with that many +1/+1 counters on it."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_short_alias_used_as_effect_verb() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Search your library for a card, reveal it, then shuffle.",
+                "search",
+                "this permanent",
+            ),
+            "search your library for a card, reveal it, then shuffle."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_short_alias_used_as_counter_type() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Put up to three lore counters on target Saga.",
+                "lore",
+                "this permanent",
+            ),
+            "put up to three lore counters on target saga."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_short_alias_used_as_modal_may() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Reveal the top five cards of your library. You may put one of them into your hand.",
+                "may",
+                "this permanent",
+            ),
+            "reveal the top five cards of your library. you may put one of them into your hand."
+        );
+    }
+
+    #[test]
     fn named_source_rewrite_preserves_vote_option_alias() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Truth or Consequences")
             .card_types(vec![CardType::Sorcery]);
 
         let rewritten = normalize_named_source_sentence_for_builder(
             &builder,
-            "Each player secretly votes for truth or consequences, then those votes are revealed. Truth or Consequences can't be countered.",
+            "Each player secretly votes for truth or consequences, then those votes are revealed. You draw cards equal to the number of truth votes. Truth or Consequences can't be countered.",
         )
         .expect("expected source name to normalize outside the vote option");
 
         assert!(
             rewritten.contains("votes for truth or consequences"),
             "expected vote option alias to remain named, got {rewritten}"
+        );
+        assert!(
+            rewritten.contains("number of truth votes"),
+            "expected later vote-count references to remain named, got {rewritten}"
         );
         assert!(
             rewritten.contains("this permanent can't be countered"),
@@ -4330,6 +4508,7 @@ pub(crate) fn parse_document_cst(
                 }
                 if !line_starts_with_trigger_intro_tokens(&line.tokens)
                     && !labeled_body_starts_with_trigger_intro_tokens(&line.tokens)
+                    && line_family_grammar::parse_champion_line(&line.tokens).is_none()
                     && normalized_line_mentions_source_alias(
                         &preprocessed.builder,
                         line.info.normalized.normalized.as_str(),

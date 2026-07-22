@@ -341,6 +341,53 @@ pub(crate) fn bind_condition_antecedent_in_effects(
     let _ = bind_condition_antecedent_in_effects_internal(effects, antecedent, mode);
 }
 
+/// Bind an explicit collection choice such as "choose one of those creatures"
+/// to the positive existential set established by an intervening condition.
+/// This is intentionally narrower than the ordinary object-antecedent binder:
+/// an existential condition alone does not make a bare `it` unambiguous, but
+/// the parser's tagged collection constraint records an authored `those`.
+pub(crate) fn bind_condition_collection_antecedent_in_effects(
+    effects: &mut [EffectAst],
+    predicate: &PredicateAst,
+) {
+    fn collection_filter(predicate: &PredicateAst) -> Option<ObjectFilter> {
+        match predicate {
+            PredicateAst::PlayerControls { filter, .. } => Some(filter.clone()),
+            PredicateAst::And(left, right) => {
+                match (collection_filter(left), collection_filter(right)) {
+                    (Some(left), Some(right)) if left == right => Some(left),
+                    (Some(filter), None) | (None, Some(filter)) => Some(filter),
+                    _ => None,
+                }
+            }
+            _ => None,
+        }
+    }
+
+    fn bind(effect: &mut EffectAst, antecedent: &ObjectFilter) {
+        match effect {
+            EffectAst::ChooseObjects { filter, .. }
+            | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
+            | EffectAst::ChooseObjectsAcrossZones { filter, .. } => {
+                bind_condition_filter_antecedent(filter, antecedent);
+            }
+            _ => {}
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            for nested_effect in nested {
+                bind(nested_effect, antecedent);
+            }
+        });
+    }
+
+    let Some(antecedent) = collection_filter(predicate) else {
+        return;
+    };
+    for effect in effects {
+        bind(effect, &antecedent);
+    }
+}
+
 pub(crate) fn bind_random_count_condition_antecedent_in_effects(
     effects: &mut [EffectAst],
     predicate: &PredicateAst,

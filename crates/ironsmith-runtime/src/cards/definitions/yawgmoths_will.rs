@@ -124,22 +124,25 @@ mod tests {
         let game = run_replay_test(
             vec![
                 // P1's turn: cast Yawgmoth's Will
-                // Actions: 0=Pass, 1=YW (Counterspell can't be cast - no blue mana), 2-4=Tap Swamps
+                // Actions: 0=Pass, 1=YW (Counterspell can't be cast - no blue mana)
                 "1", // Decision 0: P1 casts Yawgmoth's Will
                 "0", // Decision 1: Pay {B} - tap Swamp
                 "0", // Decision 2: Pay {1} - tap Swamp
-                // YW on stack, P2 passes (P1 will auto-pass)
-                "", // Decision 3: P2 passes (YW resolves due to P1 auto-pass)
+                "0", // Decision 3: Pay {1} - tap the third Swamp
+                // YW on stack; P1 auto-passes and P2 declines to respond.
+                "", // Decision 4: P2 passes, so Yawgmoth's Will resolves
                 // P1 auto-passes after resolution (Swamps tapped, Counterspell needs UU)
-                // P2 gets priority and casts Lightning Bolt (target+mana selected during cast)
-                "1", // Decision 4: P2 casts Lightning Bolt (auto-targets P1, auto-taps Mountain)
+                // P2 gets priority and casts Lightning Bolt.
+                "1", // Decision 5: P2 casts Lightning Bolt
+                "0", // Decision 6: Target P1
+                "0", // Decision 7: Tap Mountain
                 // P1 responds with Force of Will from graveyard using alt cost
-                // Priority[5] = 3 actions: 0=Pass, 1=Cast FoW, 2=mana ability
-                "1", // Decision 5: P1 casts Force of Will from GY [alt cost]
-                "1", // Decision 6: Target Lightning Bolt on stack (index 1, not 0)
-                "0", // Decision 7: Choose Counterspell to exile (blue card)
-                "",  // Decision 8: P1 passes
-                "",  // Decision 9: P2 passes (FoW resolves, counters Bolt)
+                "1", // Decision 8: P1 casts Force of Will from GY [alt cost]
+                "0", // Decision 9: Target Lightning Bolt on stack
+                "0", // Decision 10: Choose the exile-a-blue-card cost
+                "0", // Decision 11: Choose Counterspell to exile
+                "",  // Decision 12: P1 passes
+                "",  // Decision 13: P2 passes (FoW resolves, counters Bolt)
             ],
             ReplayTestConfig::new()
                 // Counterspell is a blue card that can be exiled for Force of Will's alt cost
@@ -183,12 +186,13 @@ mod tests {
                 "0", // Decision 1: Tap first Swamp
                 "0", // Decision 2: Tap second Swamp
                 "0", // Decision 3: Tap third Swamp
-                "",  // Decision 4: P1 passes priority (P2 auto-passes, YW resolves)
+                "1", // Decision 4: Stop activating mana abilities; leave Mountain untapped
+                "",  // Decision 5: Pass priority so Yawgmoth's Will resolves
                 // Now cast Lightning Bolt from graveyard on our own creature
-                "1", // Decision 5: Cast Lightning Bolt from GY
-                "2", // Decision 6: Target Grizzly Bears (0=P1, 1=P2, 2=Bears)
-                "0", // Decision 7: Tap Mountain for mana
-                "",  // Decision 8: P1 passes priority (P2 auto-passes, Bolt resolves)
+                "1", // Decision 6: Cast Lightning Bolt from GY
+                "2", // Decision 7: Target Grizzly Bears (0=P1, 1=P2, 2=Bears)
+                "0", // Decision 8: Tap Mountain for mana
+                "",  // Decision 9: P1 passes priority (P2 auto-passes, Bolt resolves)
             ],
             ReplayTestConfig::new()
                 .p1_hand(vec!["Yawgmoth's Will"])

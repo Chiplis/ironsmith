@@ -175,7 +175,9 @@ fn parse_composite_copy_exception_characteristics() {
             && debug.contains("AddAbility"),
         "expected typed copy/name/PT/ability modifications, got {debug}"
     );
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered = unprocessed_compiled_lines(&def)
+        .join("\n")
+        .to_ascii_lowercase();
     assert!(
         rendered.contains("until end of turn")
             && rendered.contains("name is this")
@@ -201,10 +203,11 @@ fn parse_copy_filter_excluding_the_chosen_creature() {
         "expected an identity exclusion rather than a creature-type negation, got {debug}"
     );
     let rendered = unprocessed_compiled_lines(&def).join("\n");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("each creature you control other than the chosen creature")
-            && rendered.contains("except it isn't legendary")
-            && rendered.contains("becomes a copy of that creature until end of turn"),
+        rendered_lower.contains("each creature you control other than the chosen creature")
+            && rendered_lower.contains("except it isn't legendary")
+            && rendered_lower.contains("becomes a copy of that creature until end of turn"),
         "expected chosen-exclusion copy semantics in compiled text, got {rendered}"
     );
 }
@@ -2402,18 +2405,20 @@ fn parse_investigate_for_each_clause_uses_prior_effect_count() {
         })
         .expect("should include investigate effect");
 
-    assert_eq!(
-        investigate.count,
-        Value::Count(
-            crate::target::ObjectFilter::creature()
-                .nontoken()
-                .in_zone(crate::zone::Zone::Exile)
-                .match_tagged(
-                    crate::TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
-                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-                )
-        ),
-        "investigate count should follow the tagged nontoken creatures exiled by the prior effect"
+    let Value::Count(filter) = &investigate.count else {
+        panic!(
+            "investigate count should be derived from the prior exile, got {:?}",
+            investigate.count
+        );
+    };
+    assert_eq!(filter.zone, Some(crate::zone::Zone::Exile));
+    assert!(filter.card_types.contains(&crate::types::CardType::Creature));
+    assert!(filter.nontoken);
+    assert!(
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }),
+        "investigate count should follow the tagged nontoken creatures exiled by the prior effect: {filter:#?}"
     );
 }
 
@@ -2937,14 +2942,17 @@ fn parse_populate_x_times_from_text() {
 #[test]
 fn parse_monstrosity_static_designation_from_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Fleecemane Variant")
+            .card_types(vec![CardType::Creature])
             .parse_text(
                 "{3}{G}{W}: Monstrosity 1.\nAs long as this creature is monstrous, it has hexproof and indestructible.",
             )
             .expect("parse monstrous static designation");
 
-    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
+    let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        rendered.contains("Monstrosity 1")
+        rendered.contains("monstrosity 1")
             && rendered.contains("as long as this creature is monstrous"),
         "expected compiled text to preserve monstrous condition, got {rendered}"
     );

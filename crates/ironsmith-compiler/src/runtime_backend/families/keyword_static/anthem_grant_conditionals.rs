@@ -1329,33 +1329,6 @@ pub(crate) fn parse_heterogeneous_granted_tail(
             continue;
         }
 
-        if let Some(actions) = parse_granted_keyword_fragment(&segment) {
-            reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-            if let [KeywordAction::CumulativeUpkeep { total_cost, .. }] = actions.as_slice() {
-                parsed.granted_object_abilities.push((
-                    ParsedAbility {
-                        ability: cumulative_upkeep_granted_ability(total_cost.clone()).into(),
-                        text: Some(display_text_for_tokens(&segment, false)),
-                        effects_ast: None,
-                        reference_imports: ReferenceImports::default(),
-                        trigger_spec: None,
-                    },
-                    display_text_for_tokens(&segment, false),
-                ));
-                continue;
-            }
-
-            let lowered = actions
-                .into_iter()
-                .filter(|action| action.lowers_to_static_ability())
-                .collect::<Vec<_>>();
-            if lowered.is_empty() {
-                return Ok(None);
-            }
-            parsed.granted_keyword_actions.extend(lowered);
-            continue;
-        }
-
         let split_fragments = split_lexed_slices_on_and(&segment)
             .into_iter()
             .map(trim_edge_punctuation)
@@ -1386,6 +1359,33 @@ pub(crate) fn parse_heterogeneous_granted_tail(
                 parsed.granted_static.extend(split_static);
                 continue;
             }
+        }
+
+        if let Some(actions) = parse_granted_keyword_fragment(&segment) {
+            reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+            if let [KeywordAction::CumulativeUpkeep { total_cost, .. }] = actions.as_slice() {
+                parsed.granted_object_abilities.push((
+                    ParsedAbility {
+                        ability: cumulative_upkeep_granted_ability(total_cost.clone()).into(),
+                        text: Some(display_text_for_tokens(&segment, false)),
+                        effects_ast: None,
+                        reference_imports: ReferenceImports::default(),
+                        trigger_spec: None,
+                    },
+                    display_text_for_tokens(&segment, false),
+                ));
+                continue;
+            }
+
+            let lowered = actions
+                .into_iter()
+                .filter(|action| action.lowers_to_static_ability())
+                .collect::<Vec<_>>();
+            if lowered.is_empty() {
+                return Ok(None);
+            }
+            parsed.granted_keyword_actions.extend(lowered);
+            continue;
         }
 
         if let Some(marker) = parse_static_text_marker_line(&segment) {
@@ -2743,7 +2743,12 @@ pub(crate) fn parse_filter_has_granted_ability_line(
             }
         }
         let subject_facts = anthem_grant_grammar::parse_granted_subject_facts(&subject_tokens);
-        if subject_facts.rejected_action || subject_facts.has_may {
+        let attached_subject_filter =
+            infer_attached_subject_filter_from_condition_expr(condition.as_ref());
+        if subject_facts.rejected_action
+            || subject_facts.has_may
+            || (subject_facts.unbound_pronoun && condition.is_none())
+        {
             continue;
         }
 
@@ -2809,8 +2814,6 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 continue;
             }
         };
-        let attached_subject_filter =
-            infer_attached_subject_filter_from_condition_expr(condition.as_ref());
         let subject = match parse_anthem_subject_with_attached_fallback(
             &subject_tokens,
             attached_subject_filter.as_ref(),
@@ -3106,6 +3109,17 @@ fn exact_one_control_condition_binds_that_creature_subject() {
 
 #[test]
 fn conditional_anthems_preserve_no_defender_attack_permission() {
+    let tail_tokens = crate::runtime_backend::lexer::lex_line(
+        "trample and can attack as though it didn't have defender.",
+        0,
+    )
+    .expect("lex compound grant tail");
+    let tail = parse_heterogeneous_granted_tail(&tail_tokens, &[], false)
+        .expect("parse compound grant tail")
+        .expect("compound grant tail should be recognized");
+    assert_eq!(tail.granted_keyword_actions.len(), 1, "{tail:#?}");
+    assert_eq!(tail.granted_static.len(), 1, "{tail:#?}");
+
     for text in [
         "As long as this creature is monstrous, it gets +2/+2 and can attack as though it didn't have defender.",
         "As long as you control three or more artifacts, this creature gets +2/+2 and can attack as though it didn't have defender.",

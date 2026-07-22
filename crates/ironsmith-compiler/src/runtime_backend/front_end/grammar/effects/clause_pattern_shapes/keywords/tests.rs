@@ -98,6 +98,15 @@ fn parses_subject_endure_shape() {
             ..
         })
     ));
+
+    let source_tokens = lex_line("This creature endures 1.", 0).unwrap();
+    assert!(matches!(
+        parse_keyword_mechanic_tokens(&source_tokens),
+        Some(KeywordMechanicShape::Endure {
+            subject: KeywordSubjectShape::Source(_),
+            ..
+        })
+    ));
 }
 
 #[test]

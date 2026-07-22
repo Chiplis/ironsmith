@@ -135,6 +135,86 @@ fn parse_inline_mill_then_put_from_among_bundle(
     }]))
 }
 
+/// Keeps a comma-linked private look, face-down exile, and persistent play
+/// permission on one provenance tag.  This is the one-sentence counterpart
+/// of the existing two-sentence look/exile/permission sequence rule.
+fn parse_inline_look_exile_face_down_permission_bundle(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let segments = crate::runtime_backend::grammar::primitives::split_lexed_slices_on_comma(tokens);
+    if segments.len() < 3 {
+        return Ok(None);
+    }
+
+    let look_tokens = trim_commas(segments[0]);
+    let exile_tokens = trim_commas(segments[1]);
+    let Ok(mut look_effects) = effect_sentences::parse_effect_sentence_lexed(&look_tokens) else {
+        return Ok(None);
+    };
+    let Ok(mut exile_effects) = effect_sentences::parse_effect_sentence_lexed(&exile_tokens) else {
+        return Ok(None);
+    };
+    let [look_effect] = look_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+    let [exile_effect] = exile_effects.as_mut_slice() else {
+        return Ok(None);
+    };
+
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::LookAtTopCards { tag: look_tag, .. },
+        ..
+    }) = look_effect
+    else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::Exile {
+                target: TargetAst::Tagged(exile_tag, _),
+                face_down: true,
+                ..
+            },
+        ..
+    }) = exile_effect
+    else {
+        return Ok(None);
+    };
+    if exile_tag.as_str() != IT_TAG {
+        return Ok(None);
+    }
+
+    let mut permission_tokens = Vec::new();
+    for segment in &segments[2..] {
+        permission_tokens.extend_from_slice(&trim_commas(segment));
+    }
+    let Some(mut permission) = parse_cast_or_play_tagged_clause(&permission_tokens)? else {
+        return Ok(None);
+    };
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                tag: permission_tag,
+                ..
+            },
+        ..
+    }) = &mut permission
+    else {
+        return Ok(None);
+    };
+
+    let linked_tag = helper_tag_for_tokens(tokens, "looked_exiled");
+    *look_tag = linked_tag.clone();
+    *exile_tag = linked_tag.clone();
+    *permission_tag = linked_tag;
+
+    Ok(Some(vec![
+        look_effects.remove(0),
+        exile_effects.remove(0),
+        permission,
+    ]))
+}
+
 fn parse_exile_top_library_then_play_bundle(
     first_sentence: &[OwnedLexToken],
     second_sentence: &[OwnedLexToken],
@@ -1688,6 +1768,9 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     if let Some(effects) = parse_untap_then_phase_out_until_source_leaves_bundle(tokens) {
         return Some(effects);
     }
+    if let Ok(Some(effects)) = parse_inline_look_exile_face_down_permission_bundle(tokens) {
+        return Some(effects);
+    }
     if let Ok(Some(effects)) = parse_inline_exile_top_then_put_from_among_bundle(tokens) {
         return Some(effects);
     }
@@ -1932,6 +2015,39 @@ mod tests {
             Some(crate::target::Comparison::LessThanOrEqual(limit)) => Some(*limit),
             _ => None,
         }
+    }
+
+    #[test]
+    fn inline_look_face_down_exile_permission_uses_one_collection_tag() {
+        let tokens = lex_line(
+            "Look at the top card of that player's library, exile it face down, then you may play that card for as long as it remains exiled, and you may spend mana as though it were mana of any color to cast that spell.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).unwrap_or_else(|| {
+            let segments = crate::runtime_backend::grammar::primitives::split_lexed_slices_on_comma(&tokens);
+            let look = effect_sentences::parse_effect_sentence_lexed(&trim_commas(segments[0]));
+            let exile = effect_sentences::parse_effect_sentence_lexed(&trim_commas(segments[1]));
+            let mut permission_tokens = Vec::new();
+            for segment in &segments[2..] {
+                permission_tokens.extend_from_slice(&trim_commas(segment));
+            }
+            let permission = parse_cast_or_play_tagged_clause(&permission_tokens);
+            panic!(
+                "inline bundle did not match; segments={segments:#?}\nlook={look:#?}\nexile={exile:#?}\npermission={permission:#?}"
+            )
+        });
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("LookAtTopCards"), "{debug}");
+        assert!(debug.contains("face_down: true"), "{debug}");
+        assert!(
+            debug.contains("GrantPlayTaggedForAsLongAsExiled"),
+            "{debug}"
+        );
+        assert!(
+            debug.contains("AnyColor") || debug.contains("AnyType"),
+            "{debug}"
+        );
     }
 
     #[test]

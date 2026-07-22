@@ -933,6 +933,7 @@ fn counter_placement<'a>(input: &mut LexStream<'a>) -> WResult<CounterPlacementS
         any.void(),
         peek(alt((
             primitives::comma().void(),
+            (primitives::kw("and"), peek(parse_counter_descriptor_lexed)).void(),
             primitives::sentence_end(),
         ))),
     )
@@ -953,11 +954,13 @@ fn parse_counter_placement_sequence_lexed<'a>(
     let rest: Vec<CounterPlacementShape<'a>> = repeat(
         1..,
         (
-            primitives::comma(),
-            opt(primitives::kw("and")),
+            alt((
+                (primitives::comma(), opt(primitives::kw("and"))).void(),
+                primitives::kw("and").void(),
+            )),
             counter_placement,
         )
-            .map(|(_, _, placement)| placement),
+            .map(|(_, placement)| placement),
     )
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
@@ -1162,6 +1165,31 @@ mod tests {
         let placements = parse_counter_placement_sequence_tokens(&placements).unwrap();
         assert_eq!(placements.len(), 2);
         assert_eq!(placements[1].descriptor.counter_type, CounterType::Flying);
+
+        let three_placements = lex_line(
+            "Put a +1/+1 counter on target creature, two +1/+1 counters on another target creature, and three +1/+1 counters on a third target creature.",
+            0,
+        )
+        .unwrap();
+        let three_placements = parse_counter_placement_sequence_tokens(&three_placements).unwrap();
+        assert_eq!(three_placements.len(), 3);
+        assert_eq!(three_placements[2].descriptor.count, 3);
+        assert_eq!(
+            render_token_slice(three_placements[2].target_tokens),
+            "a third target creature"
+        );
+
+        let normalized_three_placements = lex_line(
+            "Put a +1/+1 counter on target creature, two +1/+1 counters on another target creature and three +1/+1 counters on a third target creature.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_counter_placement_sequence_tokens(&normalized_three_placements)
+                .unwrap()
+                .len(),
+            3
+        );
 
         let shared = lex_line(
             "Put a flying counter and a vigilance counter on target creature.",

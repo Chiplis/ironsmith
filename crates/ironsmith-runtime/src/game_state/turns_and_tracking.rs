@@ -1012,6 +1012,7 @@ impl GameState {
         // Reconcile them before the untap step establishes which permanents
         // have been continuously controlled since this turn began (CR 302.6).
         self.reconcile_continuous_control_changes();
+        self.activate_restrictions_starting_this_turn();
     }
 
     pub fn record_turn_start_hand_sizes(&mut self) {

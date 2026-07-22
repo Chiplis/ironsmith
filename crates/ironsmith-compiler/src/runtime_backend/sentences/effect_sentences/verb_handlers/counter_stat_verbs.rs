@@ -1008,6 +1008,10 @@ pub(crate) fn validate_life_keyword(rest: &[OwnedLexToken]) -> Result<(), CardTe
 
 pub(crate) fn remap_source_stat_value_to_it(value: Value) -> Value {
     match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(remap_source_stat_value_to_it(*value)),
+            hints,
+        },
         Value::PowerOf(spec) if matches!(spec.as_ref(), ChooseSpec::Source) => {
             Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG))))
         }

@@ -290,6 +290,7 @@ fn parse_land_or_legendary_permanent(
 
     let mut filter = ObjectFilter::default();
     filter.any_of = vec![land, legendary_permanent];
+    filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     Some(filter)
 }
 
@@ -370,6 +371,9 @@ fn parse_filter_disjunction(tokens: &[OwnedLexToken], words: &[&str]) -> Option<
     }
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
+    if tokens.iter().any(|token| token.is_word("and/or")) {
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
     filter.set_explicit_union_branch_articles(explicit_branch_articles);
     apply_disjunction_qualifiers(&mut filter, parse_disjunction_qualifiers(words));
     Some(filter)
@@ -393,6 +397,9 @@ fn parse_generic_disjunction_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFi
     }
     let mut filter = ObjectFilter::default();
     filter.any_of = branches;
+    if tokens.iter().any(|token| token.is_word("and/or")) {
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+    }
     Some(filter)
 }
 
@@ -525,9 +532,15 @@ mod tests {
                 .excluded_card_types
                 .contains(&CardType::Land)
         );
+        let and_or = parse("a land and/or legendary permanent card");
+        assert_eq!(and_or.any_of.len(), 2);
         assert_eq!(
-            parse("a land and/or legendary permanent card").any_of.len(),
-            2
+            and_or.union_connective(),
+            crate::filter::ObjectFilterUnionConnective::AndOr
+        );
+        assert_eq!(
+            parse("artifact and/or land cards").union_connective(),
+            crate::filter::ObjectFilterUnionConnective::AndOr
         );
         assert_eq!(
             parse("a card with the chosen name")

@@ -336,6 +336,8 @@ pub struct Grant {
     pub grantable: Grantable,
     /// How often this grant may be used from the same source.
     pub usage_limit: Option<GrantUsageLimit>,
+    /// First turn number on which this grant may be used.
+    pub available_starting_turn: Option<u32>,
     /// How this grant was created.
     pub source: GrantSource,
 }
@@ -375,6 +377,30 @@ impl GrantRegistry {
             player,
             grantable,
             usage_limit: None,
+            available_starting_turn: None,
+            source,
+        });
+    }
+
+    /// Add a grant for a specific card that becomes usable on a later turn.
+    pub fn grant_to_card_starting_on_turn(
+        &mut self,
+        target_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+        grantable: Grantable,
+        available_starting_turn: u32,
+        source: GrantSource,
+    ) {
+        self.grants.push(Grant {
+            target_id: Some(target_id),
+            target_stable_id: None,
+            filter: None,
+            zone,
+            player,
+            grantable,
+            usage_limit: None,
+            available_starting_turn: Some(available_starting_turn),
             source,
         });
     }
@@ -397,6 +423,7 @@ impl GrantRegistry {
             player,
             grantable,
             usage_limit: None,
+            available_starting_turn: None,
             source,
         });
     }
@@ -419,6 +446,7 @@ impl GrantRegistry {
             player,
             grantable,
             usage_limit: None,
+            available_starting_turn: None,
             source,
         });
     }
@@ -552,6 +580,13 @@ impl GrantRegistry {
 
             // Check if grant is still valid
             if !grant.source.is_valid(game) {
+                continue;
+            }
+
+            if grant
+                .available_starting_turn
+                .is_some_and(|turn| game.turn.turn_number < turn)
+            {
                 continue;
             }
 
@@ -734,6 +769,9 @@ impl GrantRegistry {
             .filter(|grant| {
                 !matches!(grant.source, GrantSource::StaticAbility { .. })
                     && grant.source.is_valid(game)
+                    && grant
+                        .available_starting_turn
+                        .is_none_or(|turn| game.turn.turn_number >= turn)
             })
             .cloned()
             .collect();
@@ -793,6 +831,7 @@ impl GrantRegistry {
                         player: player.id,
                         grantable: spec.grantable.clone(),
                         usage_limit: spec.usage_limit,
+                        available_starting_turn: None,
                         source: GrantSource::StaticAbility { source_id },
                     });
                 }
@@ -953,6 +992,45 @@ mod tests {
         assert!(matches!(
             &registry.grants[1].grantable,
             Grantable::Ability(_)
+        ));
+    }
+
+    #[test]
+    fn targeted_grant_can_start_on_a_later_turn() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(61), "Future Cast")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        let available_turn = game.turn.turn_number.saturating_add(1);
+
+        game.effect_store
+            .grant_registry
+            .grant_to_card_starting_on_turn(
+                card_id,
+                Zone::Exile,
+                alice,
+                Grantable::PlayFrom,
+                available_turn,
+                GrantSource::Effect {
+                    source_id: ObjectId::from_raw(9),
+                    expires_end_of_turn: u32::MAX,
+                },
+            );
+
+        assert!(!game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            card_id,
+            Zone::Exile,
+            alice,
+        ));
+        game.turn.turn_number = available_turn;
+        assert!(game.effect_store.grant_registry.card_can_play_from_zone(
+            &game,
+            card_id,
+            Zone::Exile,
+            alice,
         ));
     }
 

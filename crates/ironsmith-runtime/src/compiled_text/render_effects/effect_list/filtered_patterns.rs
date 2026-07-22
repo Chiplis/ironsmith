@@ -225,8 +225,7 @@
     {
         return compact;
     }
-    if filtered.len() == 2
-        && let Some(compact) = describe_counter_artifact_ability_destroy_source(&filtered)
+    if let Some(compact) = describe_counter_artifact_ability_destroy_source(&filtered)
     {
         return compact;
     }

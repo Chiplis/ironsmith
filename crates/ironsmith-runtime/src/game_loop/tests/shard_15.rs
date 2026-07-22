@@ -1388,7 +1388,13 @@ pub(super) fn test_cream_of_the_crop_etb_trigger_uses_may_and_source_power_rearr
         "Cream trigger should scale looked card count from the entering creature's power, got {trigger_debug}"
     );
     assert!(
-        trigger_debug.contains("rearrangelookedcardsinlibrary") && trigger_debug.contains("min: 1"),
+        trigger_debug.contains("chooseobjectseffect")
+            && trigger_debug.contains("min: 1")
+            && trigger_debug
+                .contains("max: some(\n                                                1,")
+            && trigger_debug.contains("foreachtaggedeffect")
+            && trigger_debug.contains("to_top: true")
+            && trigger_debug.contains("puttaggedremainderonlibrarybottomeffect"),
         "Cream trigger should rearrange looked cards by choosing exactly one for top, got {trigger_debug}"
     );
 }

@@ -1249,24 +1249,7 @@ pub(crate) fn parse_trigger_clause_lexed(
 pub(crate) fn parse_static_ability_ast_line_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let parsed = super::keyword_static::parse_static_ability_ast_line_lexed(tokens)?;
-
-    // Bolster has both a static-line spelling and an executable effect
-    // spelling. When this helper is called while splitting a triggered line,
-    // treating a trailing "bolster 2" sentence as static sends it through
-    // static-ability lowering, where it cannot be represented. Keep this
-    // exception limited to the ambiguous keyword action: ordinary static
-    // lines can also be parsed by the effect grammar, but must remain static.
-    let words = TokenWordView::new(tokens).word_refs();
-    if parsed.is_some()
-        && words.first().is_some_and(|word| *word == "bolster")
-        && super::effect_sentences::parse_effect_sentences_lexed(tokens)
-            .is_ok_and(|effects| !effects.is_empty())
-    {
-        return Ok(None);
-    }
-
-    Ok(parsed)
+    super::keyword_static::parse_static_ability_ast_line_lexed(tokens)
 }
 
 #[cfg(test)]

@@ -406,6 +406,12 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
+    // Keep the exact, unqualified creature-death wording on the dedicated
+    // value variant. Richer historical filters still use TurnHistoryCount.
+    if let Some(value) = parse_creatures_died_this_turn_count_value(&tokens) {
+        return Some(value);
+    }
+
     // This composite value ends with the same `spells you've cast this turn`
     // suffix as an ordinary spell-history count. Recognize the whole phrase
     // first so the generic suffix parser does not reinterpret
@@ -677,7 +683,7 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
         words.as_slice(),
         [
             "opponent" | "opponents",
-            "who",
+            "who" | "that",
             "was" | "were",
             "dealt",
             "damage",
@@ -687,6 +693,26 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
     ) {
         return Some(Value::TurnHistoryCount(
             TurnHistoryCount::PlayersDealtDamage(PlayerFilter::Opponent),
+        ));
+    }
+    if matches!(
+        words.as_slice(),
+        [
+            "opponent" | "opponents",
+            "who" | "that",
+            "was" | "were",
+            "dealt",
+            "combat",
+            "damage",
+            "this",
+            "turn"
+        ]
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::PlayersDealtCombatDamageBy {
+                players: PlayerFilter::Opponent,
+                sources: ObjectFilter::default(),
+            },
         ));
     }
     if matches!(
@@ -1574,6 +1600,21 @@ mod tests {
             Some(crate::filter::StackObjectKind::Spell)
         );
         assert!(!filter.has_mana_cost);
+    }
+
+    #[test]
+    fn parses_opponents_dealt_combat_damage_without_a_source_qualifier() {
+        let value = parse_turn_history_count_value(&lex_words(
+            "opponents that were dealt combat damage this turn",
+        ))
+        .expect("combat-damaged opponent count should parse");
+        assert!(matches!(
+            value,
+            Value::TurnHistoryCount(TurnHistoryCount::PlayersDealtCombatDamageBy {
+                players: PlayerFilter::Opponent,
+                sources,
+            }) if sources == ObjectFilter::default()
+        ));
     }
 
     #[test]

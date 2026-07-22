@@ -99,12 +99,19 @@ pub(super) fn describe_annihilator_keyword(
     let [effect] = segment.default_effects.as_slice() else {
         return None;
     };
-    let sacrifice = effect.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()?;
-    if sacrifice.filter != ObjectFilter::permanent() || sacrifice.player != PlayerFilter::Defending
+    let (filter, player, count) = if let Some(sacrifice) =
+        effect.downcast_ref::<crate::effects::zones::SacrificePlayerEffect>()
     {
+        (&sacrifice.filter, &sacrifice.player, &sacrifice.count)
+    } else if let Some(sacrifice) = effect.downcast_ref::<crate::effects::SacrificeEffect>() {
+        (&sacrifice.filter, &sacrifice.player, &sacrifice.count)
+    } else {
+        return None;
+    };
+    if filter != &ObjectFilter::permanent() || player != &PlayerFilter::Defending {
         return None;
     }
-    let Value::Fixed(amount) = sacrifice.count else {
+    let Value::Fixed(amount) = count else {
         return None;
     };
     Some(format!("Annihilator {amount}"))
@@ -1104,16 +1111,45 @@ pub(crate) fn rewrite_damage_phrases_for_permanent_abilities(
         effect_text.to_string()
     };
     const CONDITIONAL_DEAL_MARKER: &str = "__ironsmith_keep_conditional_deal__";
+    // Spell-resolution text sometimes intentionally keeps an imperative
+    // negative branch. Permanent abilities, however, need their typed source
+    // restored before the later pass contracts this phrase to `Otherwise`.
+    if !subject.to_ascii_lowercase().starts_with("this ") {
+        out = out
+            .replace(
+                "If that doesn't happen, Deal ",
+                &format!("If that doesn't happen, {CONDITIONAL_DEAL_MARKER}"),
+            )
+            .replace(
+                "If that doesn't happen, deal ",
+                &format!("If that doesn't happen, {CONDITIONAL_DEAL_MARKER}"),
+            );
+    }
     out = out
         .replace(
-            "If that doesn't happen, Deal ",
-            &format!("If that doesn't happen, {CONDITIONAL_DEAL_MARKER}"),
+            ". Otherwise, Deal ",
+            &format!(". Otherwise, {capitalized_subject} deals "),
         )
         .replace(
-            "If that doesn't happen, deal ",
-            &format!("If that doesn't happen, {CONDITIONAL_DEAL_MARKER}"),
-        );
-    out = out
+            ". Otherwise, deal ",
+            &format!(". Otherwise, {subject} deals "),
+        )
+        .replace(
+            " Otherwise, Deal ",
+            &format!(" Otherwise, {capitalized_subject} deals "),
+        )
+        .replace(
+            " Otherwise, deal ",
+            &format!(" Otherwise, {subject} deals "),
+        )
+        .replace(
+            " otherwise, Deal ",
+            &format!(" otherwise, {subject} deals "),
+        )
+        .replace(
+            " otherwise, deal ",
+            &format!(" otherwise, {subject} deals "),
+        )
         .replace(". Deal ", &format!(". {capitalized_subject} deals "))
         .replace(". deal ", &format!(". {subject} deals "))
         .replace("| Deal ", &format!("| {capitalized_subject} deals "))

@@ -484,6 +484,10 @@ fn materialize_duration_predicate(
             source_type,
             ctx,
         )?),
+        Predicate::ObjectControlledBy { object, player } => Predicate::ObjectControlledBy {
+            object: materialize_duration_object(object, target, source_type, ctx)?,
+            player: materialize_duration_player(player, target, source_type, game, ctx)?,
+        },
         Predicate::ObjectHasCounter {
             object,
             counter_type,
@@ -1447,6 +1451,47 @@ mod tests {
                 },
             ));
         assert!(game.calculated_power(source).unwrap() > game.calculated_power(target).unwrap());
+        assert_eq!(game.current_controller(target), Some(bob));
+    }
+
+    #[test]
+    fn compound_source_control_and_tapped_duration_expires_when_source_changes_controller() {
+        use ironsmith_core::{
+            ContinuousDurationObject as ObjectRef, ContinuousDurationPlayer as PlayerRef,
+            ContinuousDurationPredicate as Predicate,
+        };
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Compound Duration Source", alice);
+        let target = create_creature(&mut game, "Compound Duration Target", bob);
+        game.tap(source);
+
+        execute_latched_control(
+            &mut game,
+            source,
+            alice,
+            target,
+            Predicate::all([
+                Predicate::ObjectControlledBy {
+                    object: ObjectRef::Source,
+                    player: PlayerRef::EffectController,
+                },
+                Predicate::ObjectTapped(ObjectRef::Source),
+            ]),
+        );
+        assert_eq!(game.current_controller(target), Some(alice));
+
+        game.effect_store
+            .continuous_effects
+            .add_effect(ContinuousEffect::new(
+                source,
+                bob,
+                EffectTarget::Specific(source),
+                Modification::ChangeController(bob),
+            ));
+        assert_eq!(game.current_controller(source), Some(bob));
         assert_eq!(game.current_controller(target), Some(bob));
     }
 

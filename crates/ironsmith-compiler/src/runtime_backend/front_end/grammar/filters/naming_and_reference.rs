@@ -1489,10 +1489,13 @@ pub(super) fn apply_reference_and_tag_stage(
         } else {
             IT_TAG.into()
         };
-        filter.tagged_constraints.push(TaggedObjectConstraint {
+        let constraint = TaggedObjectConstraint {
             tag,
             relation: shared_type_relation(all_words),
-        });
+        };
+        if !filter.tagged_constraints.contains(&constraint) {
+            filter.tagged_constraints.push(constraint);
+        }
     }
     if has_share_color {
         filter.tagged_constraints.push(TaggedObjectConstraint {
@@ -1595,7 +1598,8 @@ pub(super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
-    if let Some(this_way_idx) = find_phrase_start(all_words, &["this", "way"])
+    if !references_each_tapped_cost_object
+        && let Some(this_way_idx) = find_phrase_start(all_words, &["this", "way"])
         && let Some((action, _)) =
             crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(
                 &all_words[..this_way_idx],

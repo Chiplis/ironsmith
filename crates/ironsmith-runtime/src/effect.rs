@@ -32,7 +32,8 @@ use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 pub use ironsmith_core::effect::{
-    ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId, SearchSelectionMode,
+    ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId, RestrictionStart,
+    SearchSelectionMode,
 };
 pub use ironsmith_core::{
     Comparison, ConditionalModeRange, EffectPredicate, EventValueSpec, PriorEffectResultActor,
@@ -146,6 +147,7 @@ impl OutcomeValue {
 pub struct OutcomeObjectMemory {
     pub object_id: ObjectId,
     pub stable_id: StableId,
+    pub name: String,
     pub controller: PlayerId,
     pub owner: PlayerId,
     pub zone: Zone,
@@ -163,6 +165,7 @@ impl OutcomeObjectMemory {
         Self {
             object_id: snapshot.object_id,
             stable_id: snapshot.stable_id,
+            name: snapshot.name.clone(),
             controller: snapshot.controller,
             owner: snapshot.owner,
             zone: snapshot.zone,
@@ -204,7 +207,7 @@ impl OutcomeObjectMemory {
                 card: None,
                 controller: self.controller,
                 owner: self.owner,
-                name: String::new(),
+                name: self.name.clone(),
                 first_printed_set_name: None,
                 mana_cost: None,
                 colors: self.colors,
@@ -243,6 +246,7 @@ impl OutcomeObjectMemory {
             });
 
         snapshot.stable_id = self.stable_id;
+        snapshot.name = self.name.clone();
         snapshot.controller = self.controller;
         snapshot.owner = self.owner;
         snapshot.zone = self.zone;
@@ -897,10 +901,7 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::Failed => outcome.status.is_failure(),
             Self::Happened => {
                 if let Some(coin_flip) = outcome.execution_facts.iter().find_map(|fact| {
-                    let ExecutionFact::CoinFlip {
-                        winner, loser, ..
-                    } = fact
-                    else {
+                    let ExecutionFact::CoinFlip { winner, loser, .. } = fact else {
                         return None;
                     };
                     Some(winner.is_some() && loser.is_none())
@@ -1713,6 +1714,15 @@ impl Effect {
     pub fn cant_until(restriction: Restriction, duration: Until) -> Self {
         use crate::effects::CantEffect;
         Self::new(CantEffect::new(restriction, duration))
+    }
+
+    pub fn cant_starting(
+        restriction: Restriction,
+        duration: Until,
+        start: crate::effect::RestrictionStart,
+    ) -> Self {
+        use crate::effects::CantEffect;
+        Self::new(CantEffect::starting(restriction, duration, start))
     }
 }
 
@@ -4754,6 +4764,7 @@ mod tests {
             OutcomeObjectMemory {
                 object_id,
                 stable_id: StableId::from(object_id),
+                name: "Test Card".to_string(),
                 controller: PlayerId::from_index(0),
                 owner: PlayerId::from_index(0),
                 zone,
@@ -4782,6 +4793,7 @@ mod tests {
         let memory = OutcomeObjectMemory {
             object_id: ObjectId::from_raw(41),
             stable_id: crate::ids::StableId::from_raw(41),
+            name: "Test Creature".to_string(),
             controller: PlayerId::from_index(0),
             owner: PlayerId::from_index(0),
             zone: Zone::Exile,

@@ -53,6 +53,33 @@ fn parses_dynamic_pt_and_lifecycle_reminders() {
             if matches!(power.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::runtime_backend::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
                 && matches!(toughness.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == crate::runtime_backend::token_definition::TOKEN_DYNAMIC_THAT_CARD_TAG)
     ));
+
+    let embedded = lex_line(
+        "green Ooze creature token with \"This token's power and toughness are each equal to the number of slime counters on this enchantment.\"",
+        0,
+    )
+    .unwrap();
+    let facts = parse_token_reminder_facts_tokens(&embedded);
+    assert!(
+        matches!(
+            facts.dynamic_power_toughness,
+            Some((
+                Value::CountersOnSource(crate::CounterType::Named("slime")),
+                Value::CountersOnSource(crate::CounterType::Named("slime")),
+            ))
+        ),
+        "{facts:#?}"
+    );
+
+    let standalone = lex_line(
+        "This token's power and toughness are each equal to the number of slime counters on this enchantment.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_token_reminder_sentence_kind_tokens(&standalone),
+        Some(TokenReminderSentenceKind::PowerToughness)
+    );
 }
 
 #[test]

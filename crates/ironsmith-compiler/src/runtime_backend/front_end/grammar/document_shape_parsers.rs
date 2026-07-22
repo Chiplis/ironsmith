@@ -101,6 +101,7 @@ pub(super) fn source_alias_effect_verb(input: &mut LexStream<'_>) -> WResult<()>
             | "return"
             | "sacrifice"
             | "scry"
+            | "search"
             | "shuffle"
             | "skip"
             | "surveil"

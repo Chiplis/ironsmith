@@ -395,6 +395,13 @@ pub(super) fn parse_static_line_cst(
 ) -> Result<Option<StaticLineCst>, CardTextError> {
     let normalized = line.info.normalized.normalized.as_str();
     let parse_tokens = rewrite_keyword_dash_parse_tokens(&line.tokens);
+    if super::super::grammar::effects::clause_pattern_shapes::parse_keyword_mechanic_tokens(
+        &parse_tokens,
+    )
+    .is_some()
+    {
+        return Ok(None);
+    }
     if line_starts_with_effect_statement_sentence(&parse_tokens)
         && !matches!(
             parse_static_ability_ast_line_lexed(&parse_tokens),

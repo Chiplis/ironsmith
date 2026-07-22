@@ -2161,7 +2161,7 @@ pub(super) fn mindleech_mass_casts_spell_from_damaged_players_hand_without_payin
     let land_id = game.create_object_from_card(&land, bob, Zone::Hand);
 
     let mut dm = MindleechMassDecisionMaker {
-        boolean_choices: vec![true, true, true],
+        boolean_choices: vec![true, true],
     };
     resolve_mindleech_mass_damage_trigger(&mut game, &definition, mindleech_id, bob, &mut dm);
 

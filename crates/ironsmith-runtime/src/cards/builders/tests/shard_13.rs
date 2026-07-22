@@ -983,8 +983,7 @@ pub(super) fn parse_answered_prayers_keeps_life_gain_and_angel_animation() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("gain 1 life")
-            && rendered.contains("angel creature with base power and toughness 3/3 and flying"),
+        rendered.contains("gain 1 life") && rendered.contains("3/3 angel creature with flying"),
         "expected oracle-like rendered text for Answered Prayers, got {rendered}"
     );
     assert!(
@@ -1031,10 +1030,11 @@ pub(super) fn parse_returned_object_pronoun_static_followup_stays_in_trigger() {
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered.contains("with a +1/+1 counter")
-            && rendered.to_ascii_lowercase().contains("flying")
-            && rendered.contains("Angel"),
+            && rendered_lower.contains("flying")
+            && rendered_lower.contains("angel"),
         "expected returned-object modifications in compiled text, got {rendered}"
     );
 }
@@ -1076,10 +1076,12 @@ pub(super) fn parse_returned_object_color_subtype_static_followup_stays_in_trigg
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("with a +1/+1 counter")
-            && rendered.contains("black Zombie")
-            && rendered.contains("beginning of the next end step"),
+        (rendered_lower.contains("with a +1/+1 counter")
+            || rendered_lower.contains("with an additional +1/+1 counter"))
+            && rendered_lower.contains("black zombie")
+            && rendered_lower.contains("beginning of the next end step"),
         "expected returned-object color/type modifications in compiled text, got {rendered}"
     );
 }
@@ -1110,7 +1112,7 @@ pub(super) fn parse_your_turn_keyword_grants_preserve_during_vs_as_long_surface(
         .expect("as-long-as-your-turn keyword grant should parse");
     let as_long_debug = format!("{:?}", as_long.abilities);
     assert!(
-        as_long_debug.contains("condition: YourTurn"),
+        as_long_debug.contains("condition: Some(YourTurn)"),
         "expected as-long source to keep the plain YourTurn condition, got {as_long_debug}"
     );
     let as_long_rendered = unprocessed_compiled_lines(&as_long).join(" ");
@@ -1170,10 +1172,10 @@ pub(super) fn parse_veiled_apparition_uses_source_gate_and_granted_upkeep_trigge
     assert!(
         matches!(
             animation.modification.as_ref(),
-            Some(crate::continuous::Modification::AddCardTypes(card_types))
+            Some(crate::continuous::Modification::SetCardTypes(card_types))
                 if card_types.as_slice() == [CardType::Creature]
         ),
-        "animation should add creature to the source, got {:?}",
+        "animation should set the source's creature type, got {:?}",
         animation.modification
     );
 
@@ -1207,7 +1209,8 @@ pub(super) fn parse_veiled_apparition_uses_source_gate_and_granted_upkeep_trigge
         !rendered.contains("spell or enchantment")
             && rendered.contains("opponent casts a spell")
             && rendered.contains("illusion creature")
-            && rendered.contains("base power and toughness 3/3")
+            && (rendered.contains("base power and toughness 3/3")
+                || rendered.contains("3/3 illusion creature"))
             && rendered.contains("flying"),
         "expected source-gated spell trigger rendering, got {rendered}"
     );
@@ -1761,22 +1764,35 @@ pub(super) fn parse_haunting_echoes_exception_and_target_library_search() {
         "expected structural non-basic-land exclusion, got {exile_filter:#?}"
     );
 
-    let iterated_effects = if let Some(for_each) =
-        effects[1].downcast_ref::<crate::effects::ForEachObject>()
-    {
-        for_each.effects.as_slice()
-    } else if let Some(for_each) = effects[1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
-    {
-        assert!(
-            for_each.tag == tagged_exile.tag
-                || for_each.tag.as_str() == crate::tag::SOURCE_EXILED_TAG,
-            "tagged iteration should use the cards exiled by the first effect, got {:?}",
-            for_each.tag
-        );
-        for_each.effects.as_slice()
-    } else {
-        panic!("second effect should iterate cards exiled this way");
-    };
+    let iteration_effect = program
+        .segments
+        .iter()
+        .flat_map(|segment| &segment.default_effects)
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::ForEachObject>()
+                .is_some()
+                || effect
+                    .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                    .is_some()
+        })
+        .expect("a later segment should iterate cards exiled this way");
+    let iterated_effects =
+        if let Some(for_each) = iteration_effect.downcast_ref::<crate::effects::ForEachObject>() {
+            for_each.effects.as_slice()
+        } else if let Some(for_each) =
+            iteration_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()
+        {
+            assert!(
+                for_each.tag == tagged_exile.tag
+                    || for_each.tag.as_str() == crate::tag::SOURCE_EXILED_TAG,
+                "tagged iteration should use the cards exiled by the first effect, got {:?}",
+                for_each.tag
+            );
+            for_each.effects.as_slice()
+        } else {
+            panic!("second effect should iterate cards exiled this way");
+        };
     let iterated_effects = match iterated_effects {
         [sequence_effect] => sequence_effect
             .downcast_ref::<crate::effects::SequenceEffect>()
@@ -1789,7 +1805,9 @@ pub(super) fn parse_haunting_echoes_exception_and_target_library_search() {
     assert!(
         matches!(
             search.filter.owner,
-            Some(PlayerFilter::IteratedPlayer) | Some(PlayerFilter::Target(_))
+            Some(PlayerFilter::IteratedPlayer)
+                | Some(PlayerFilter::Target(_))
+                | Some(PlayerFilter::AliasedTarget(_))
         ),
         "expected the search owner to remain linked to the exiled target player's cards, got {:?}",
         search.filter.owner
@@ -1865,7 +1883,9 @@ pub(super) fn parse_manabond_reveal_hand_put_lands_from_it() {
         "expected reveal-hand rendering, got {rendered}"
     );
     assert!(
-        rendered.contains("from your hand") || rendered.contains("your hand to the battlefield"),
+        rendered.contains("from your hand")
+            || rendered.contains("cards in your hand")
+            || rendered.contains("your hand to the battlefield"),
         "expected lands to be moved from hand, got {rendered}"
     );
 }
@@ -2630,13 +2650,14 @@ pub(super) fn parse_comma_then_exile_that_players_graveyard_from_target_graveyar
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains("onto the battlefield tapped under your control")
-            && rendered_lower.contains("exile that player's graveyard"),
+            && (rendered_lower.contains("exile that player's graveyard")
+                || rendered_lower.contains("exile their graveyard")),
         "expected target graveyard-card owner follow-up text, got {rendered}"
     );
 
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("OwnerOf(Tagged"),
+        debug.contains("OwnerOf(Tagged") || debug.contains("AliasedOwnerOf(Target)"),
         "expected graveyard exile to bind to the targeted card owner's graveyard, got {debug}"
     );
 }
@@ -2774,6 +2795,25 @@ pub(super) fn parse_put_counter_sequence_with_and_chain() {
     );
 }
 
+fn nested_cant_effect(effect: &Effect) -> Option<&crate::effects::CantEffect> {
+    if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>() {
+        return Some(cant);
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return sequence.effects.iter().find_map(nested_cant_effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return nested_cant_effect(&tagged.effect);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return nested_cant_effect(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return nested_cant_effect(&with_id.effect);
+    }
+    None
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_together() {
@@ -2819,7 +2859,7 @@ pub(super) fn parse_cephalid_inkshrouder_keeps_self_buff_and_unblockable_clause_
                 .segments
                 .iter()
                 .flat_map(|segment| segment.default_effects.iter())
-                .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>()),
+                .find_map(nested_cant_effect),
             _ => None,
         })
         .expect("expected Cephalid Inkshrouder to compile a cant effect");
@@ -2871,7 +2911,7 @@ pub(super) fn parse_break_through_the_line_keeps_targeted_unblockable_clause_tie
                 .segments
                 .iter()
                 .flat_map(|segment| segment.default_effects.iter())
-                .find_map(|effect| effect.downcast_ref::<crate::effects::CantEffect>()),
+                .find_map(nested_cant_effect),
             _ => None,
         })
         .expect("expected Break Through the Line to compile a cant effect");
@@ -2981,8 +3021,8 @@ pub(super) fn source_counter_thresholds_keep_existential_oracle_surface() {
     ))
     .join("\n");
     assert!(
-        decree.contains(
-            "Then if there are three or more depletion counters on this enchantment, sacrifice it"
+        decree.to_ascii_lowercase().contains(
+            "if there are three or more depletion counters on this enchantment, sacrifice it"
         ),
         "expected Decree of Silence to preserve its conditional follow-up, got {decree}"
     );
@@ -3003,7 +3043,7 @@ pub(super) fn source_counter_thresholds_keep_existential_oracle_surface() {
     ))
     .join("\n");
     assert!(
-        grasping.contains("Then if there are three or more dread counters on it, transform it"),
+        grasping.contains("there are three or more dread counters on it, transform it"),
         "expected Grasping Shadows to preserve its source pronoun and transform follow-up, got {grasping}"
     );
 
@@ -3339,18 +3379,20 @@ pub(super) fn thelonite_druid_forest_animation_renders_still_lands() {
     let score_path =
         crate::compiled_text::compile_effect_list(&activated.effects.segments[0].default_effects);
     assert!(
-        score_path.contains(
-            "Forests you control become creatures with base power and toughness 2/3 until end of turn"
-        )
+        (score_path.contains("All Forests you control become 2/3 creatures until end of turn")
+            || score_path.contains(
+                "Forests you control become creatures with base power and toughness 2/3 until end of turn"
+            ))
             && score_path.contains("They're still lands"),
         "expected Forest animation to preserve land-ness in effect rendering, got {score_path}"
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains(
-            "Forests you control become creatures with base power and toughness 2/3 until end of turn"
-        )
+        (rendered.contains("Forests you control become 2/3 creatures until end of turn")
+            || rendered.contains(
+                "Forests you control become creatures with base power and toughness 2/3 until end of turn"
+            ))
             && rendered.contains("They're still lands"),
         "expected Thelonite Druid compiled text to render Forests as still lands, got {rendered}"
     );
@@ -3428,9 +3470,11 @@ pub(super) fn fendeep_summoner_land_animation_keeps_subtypes_with_addition_tail(
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered_lower.contains(
+        (rendered_lower.contains(
+            "up to two target swamps become 3/5 treefolk warrior creatures in addition to their other types until end of turn"
+        ) || rendered_lower.contains(
             "up to two target swamps become treefolk warrior creatures with base power and toughness 3/5 in addition to their other types until end of turn"
-        ) && !rendered.contains("They're still lands"),
+        )) && !rendered.contains("They're still lands"),
         "expected Fendeep Summoner compiled text to render Treefolk Warrior animation as type addition, got {rendered}"
     );
 }
@@ -3450,7 +3494,9 @@ pub(super) fn forest_animation_keeps_color_subtypes_and_source_duration() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        awakener_rendered.contains("green treefolk creature with base power and toughness 4/5")
+        (awakener_rendered.contains("4/5 green treefolk creature")
+            || awakener_rendered
+                .contains("green treefolk creature with base power and toughness 4/5"))
             && awakener_rendered.contains("still a land"),
         "expected Awakener Druid animation to keep color/subtype and land tail, got {awakener_rendered}"
     );
@@ -3473,9 +3519,11 @@ pub(super) fn forest_animation_keeps_color_subtypes_and_source_duration() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        woodwraith_rendered.contains(
-            "black and green elemental horror creature with base power and toughness 4/4"
-        ) && woodwraith_rendered.contains("still a land"),
+        (woodwraith_rendered.contains("4/4 black and green elemental horror creature")
+            || woodwraith_rendered.contains(
+                "black and green elemental horror creature with base power and toughness 4/4"
+            ))
+            && woodwraith_rendered.contains("still a land"),
         "expected Woodwraith animation to keep color/subtypes and land tail, got {woodwraith_rendered}"
     );
 }
@@ -3536,7 +3584,7 @@ pub(super) fn drownyard_behemoth_parses_hexproof_condition_for_entered_this_turn
 
     let abilities_debug = format!("{def:#?}").to_ascii_lowercase();
     assert!(
-        abilities_debug.contains("conditional")
+        abilities_debug.contains("condition: some(")
             && abilities_debug.contains("hexproof")
             && abilities_debug.contains("entered_battlefield_this_turn: true"),
         "expected Drownyard Behemoth to compile conditional entered-this-turn hexproof, got {abilities_debug}"

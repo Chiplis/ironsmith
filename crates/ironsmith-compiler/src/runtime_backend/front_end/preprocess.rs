@@ -104,6 +104,31 @@ fn split_parse_line_variants(line: &str) -> Vec<String> {
         let first = line.get(..split.first_end).unwrap_or_default().trim();
         let second = line.get(split.second_start..).unwrap_or_default().trim();
         let second_without_reminder = strip_parenthetical_segments(second);
+        let is_flashback_scoped_cost_adjustment = split.kind
+            == preprocess_grammar::LineVariantSplitKind::CostAdjustmentFollowup
+            && lex_line(first, 0).ok().is_some_and(|tokens| {
+                split_lexed_sentences(&tokens)
+                    .first()
+                    .is_some_and(|sentence| {
+                        super::grammar::abilities::parse_flashback_keyword_line_spec_lexed(sentence)
+                            .is_some()
+                    })
+            })
+            && lex_line(second_without_reminder.as_str(), 0)
+                .ok()
+                .is_some_and(|tokens| {
+                    let words = super::lexer::TokenWordView::new(&tokens).word_refs();
+                    words.starts_with(&["this", "spell", "costs"])
+                        && words
+                            .windows(4)
+                            .any(|window| window == ["to", "cast", "this", "way"])
+                });
+        if is_flashback_scoped_cost_adjustment {
+            // The flashback parser binds "this way" to the alternative cast.
+            // Splitting these sentences first silently broadens the reduction
+            // to normal casting as well.
+            return vec![line.to_string()];
+        }
         if split.kind == preprocess_grammar::LineVariantSplitKind::ManaSpendFollowup
             && lex_line(second_without_reminder.as_str(), 0)
                 .ok()
@@ -1166,6 +1191,13 @@ mod tests {
                 "As an additional cost to cast this spell, discard a card.".to_string(),
                 "Draw two cards.".to_string(),
             ]
+        );
+
+        let flashback = "Flashback {8}{B}{B}. This spell costs {X} less to cast this way, where X is the greatest mana value of a commander you own on the battlefield or in the command zone.";
+        assert_eq!(
+            split_parse_line_variants(flashback),
+            vec![flashback.to_string()],
+            "flashback-scoped cost adjustments must reach the compound keyword parser"
         );
 
         assert_eq!(

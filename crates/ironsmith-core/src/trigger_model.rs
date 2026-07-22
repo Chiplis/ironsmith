@@ -178,6 +178,7 @@ pub enum TriggerKind {
     },
     ThisDealsCombatDamageToPlayer {
         player: PlayerFilter,
+        source_surface: Option<SourceReferenceSurface>,
     },
     DealsDamage {
         filter: ObjectFilter,
@@ -792,7 +793,22 @@ impl Trigger {
     pub fn this_deals_combat_damage_to_player(player: PlayerFilter) -> Self {
         Self::typed(
             "this_deals_combat_damage_to_player",
-            TriggerKind::ThisDealsCombatDamageToPlayer { player },
+            TriggerKind::ThisDealsCombatDamageToPlayer {
+                player,
+                source_surface: None,
+            },
+        )
+    }
+    pub fn this_deals_combat_damage_to_player_with_surface(
+        player: PlayerFilter,
+        source_surface: SourceReferenceSurface,
+    ) -> Self {
+        Self::typed(
+            "this_deals_combat_damage_to_player",
+            TriggerKind::ThisDealsCombatDamageToPlayer {
+                player,
+                source_surface: Some(source_surface),
+            },
         )
     }
     pub fn deals_damage(filter: ObjectFilter) -> Self {

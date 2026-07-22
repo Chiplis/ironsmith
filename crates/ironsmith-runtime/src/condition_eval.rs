@@ -4502,6 +4502,7 @@ fn matching_condition_players_external(
     player: &PlayerFilter,
 ) -> Vec<PlayerId> {
     match player {
+        PlayerFilter::IteratedPlayer => ctx.iterated_player.into_iter().collect(),
         PlayerFilter::Defending => ctx.defending_player.into_iter().collect(),
         PlayerFilter::Attacking => Some(ctx.attacking_player.unwrap_or(ctx.controller))
             .into_iter()

@@ -22,6 +22,16 @@ fn parses_resource_look_shapes() {
             ..
         })
     ));
+
+    let dynamic_tokens =
+        lex("at the top X cards of your library, where X is that creature's power");
+    let Some(ResourceLookShape::TopCards { count, .. }) =
+        parse_resource_look_shape(&dynamic_tokens, None)
+    else {
+        panic!("expected dynamic top-card look shape");
+    };
+    assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs));
+    assert!(matches!(count.unhinted(), Value::PowerOf(_)));
 }
 
 #[test]

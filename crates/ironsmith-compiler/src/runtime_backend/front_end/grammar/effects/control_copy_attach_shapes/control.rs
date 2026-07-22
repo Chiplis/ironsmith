@@ -5,9 +5,12 @@ use crate::ConditionExpr;
 use crate::cards::builders::ControlDurationAst;
 use crate::effect::Until;
 use crate::runtime_backend::front_end::grammar::{filters, permission_shapes, primitives};
-use crate::runtime_backend::front_end::lexer::{OwnedLexToken, TokenWordView, trim_lexed_commas};
+use crate::runtime_backend::front_end::lexer::{
+    OwnedLexToken, TokenWordView, lex_line, trim_lexed_commas,
+};
 use crate::runtime_backend::front_end::shared::util::{
-    source_reference_surface_for_words, this_source_surface_for_words,
+    current_source_reference_name, source_reference_surface_for_words,
+    this_source_surface_for_words,
 };
 use crate::target::SourceReferenceSurface;
 
@@ -86,7 +89,22 @@ pub(crate) fn parse_gain_control_clause_shape(
 
 fn source_surface(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
     let words = TokenWordView::new(trim_lexed_commas(tokens)).word_refs();
-    source_reference_surface_for_words(&words).or_else(|| this_source_surface_for_words(&words))
+    source_reference_surface_for_words(&words)
+        .or_else(|| this_source_surface_for_words(&words))
+        .or_else(|| {
+            let source_name = current_source_reference_name()?;
+            source_name.split("//").find_map(|face_name| {
+                let face_name = face_name.trim();
+                let name_tokens = lex_line(face_name, 0).ok()?;
+                let name_words = TokenWordView::new(&name_tokens).word_refs();
+                (words.len() == name_words.len()
+                    && words
+                        .iter()
+                        .zip(name_words)
+                        .all(|(actual, expected)| actual.eq_ignore_ascii_case(expected)))
+                .then(|| SourceReferenceSurface::FullName(face_name.to_string()))
+            })
+        })
 }
 
 fn after_you_control(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
@@ -114,20 +132,29 @@ fn parses_you_control_source(tokens: &[OwnedLexToken]) -> bool {
             .any(|word| primitives::contains_word(tokens, word))
 }
 
-fn parse_source_remains_tapped(tokens: &[OwnedLexToken]) -> Option<SourceReferenceSurface> {
+fn parse_source_remains_tapped(tokens: &[OwnedLexToken]) -> Option<Option<SourceReferenceSurface>> {
     let after_control = after_you_control(tokens)?;
     let (and_index, _, after_and) =
         primitives::find_prefix(after_control, || primitives::kw("and"))?;
     let first_source = trim_lexed_commas(after_control.get(..and_index)?);
-    let first_surface = source_surface(first_source)?;
+    if first_source.is_empty() {
+        return None;
+    }
+    let first_surface = source_surface(first_source);
     let (remains_index, _, after_remains) = primitives::find_prefix(after_and, || {
         alt((primitives::kw("remain"), primitives::kw("remains"))).void()
     })?;
     let second_source = trim_lexed_commas(after_and.get(..remains_index)?);
-    if !is_source_reference(second_source) || !primitives::contains_word(after_remains, "tapped") {
+    if second_source.is_empty() || !primitives::contains_word(after_remains, "tapped") {
         return None;
     }
-    Some(first_surface)
+    let second_surface = source_surface(second_source);
+    let repeated_surface = TokenWordView::new(first_source).word_refs()
+        == TokenWordView::new(second_source).word_refs();
+    if first_surface.is_none() && second_surface.is_none() && !repeated_surface {
+        return None;
+    }
+    Some(first_surface.or(second_surface))
 }
 
 fn has_all_words(tokens: &[OwnedLexToken], words: &[&'static str]) -> bool {
@@ -225,20 +252,28 @@ pub(crate) fn parse_control_duration_shape(tokens: &[OwnedLexToken]) -> Option<C
 pub(crate) fn parse_permanent_control_duration_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<PermanentControlDurationShape> {
+    if permission_shapes::contains_tokens(tokens, &["for", "as", "long", "as"])
+        && let Some(surface) = parse_source_remains_tapped(tokens)
+    {
+        return Some(PermanentControlDurationShape {
+            until: Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::all([
+                ironsmith_core::ContinuousDurationPredicate::ObjectControlledBy {
+                    object: ironsmith_core::ContinuousDurationObject::Source,
+                    player: ironsmith_core::ContinuousDurationPlayer::EffectController,
+                },
+                ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                    ironsmith_core::ContinuousDurationObject::Source,
+                ),
+            ])),
+            condition: None,
+            source_surface: surface,
+        });
+    }
     if let Some(until) = parse_predicate_control_duration(tokens) {
         return Some(PermanentControlDurationShape {
             until,
             condition: None,
             source_surface: None,
-        });
-    }
-    if permission_shapes::contains_tokens(tokens, &["for", "as", "long", "as"])
-        && let Some(surface) = parse_source_remains_tapped(tokens)
-    {
-        return Some(PermanentControlDurationShape {
-            until: Until::SourceUntaps,
-            condition: Some(ConditionExpr::SourceIsTapped),
-            source_surface: Some(surface),
         });
     }
     let duration = parse_control_duration_shape(tokens)?;
@@ -288,9 +323,37 @@ mod tests {
             parse_permanent_control_duration_shape(&tapped)
                 .unwrap()
                 .until,
-            Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
-                ironsmith_core::ContinuousDurationObject::Source,
-            ))
+            Until::ForAsLongAs(ironsmith_core::ContinuousDurationPredicate::all([
+                ironsmith_core::ContinuousDurationPredicate::ObjectControlledBy {
+                    object: ironsmith_core::ContinuousDurationObject::Source,
+                    player: ironsmith_core::ContinuousDurationPlayer::EffectController,
+                },
+                ironsmith_core::ContinuousDurationPredicate::ObjectTapped(
+                    ironsmith_core::ContinuousDurationObject::Source,
+                ),
+            ]))
+        );
+    }
+
+    #[test]
+    fn parses_named_source_compound_control_duration_with_surface() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Rubinia Soulsinger",
+            || {
+                let tokens = lex_line(
+                    "for as long as you control Rubinia Soulsinger and Rubinia Soulsinger remains tapped",
+                    0,
+                )
+                .unwrap();
+                let shape = parse_permanent_control_duration_shape(&tokens).unwrap();
+                assert!(matches!(shape.until, Until::ForAsLongAs(_)));
+                assert_eq!(
+                    shape.source_surface,
+                    Some(SourceReferenceSurface::FullName(
+                        "Rubinia Soulsinger".to_string()
+                    ))
+                );
+            },
         );
     }
 

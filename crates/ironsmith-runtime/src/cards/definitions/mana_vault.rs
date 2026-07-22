@@ -148,8 +148,8 @@ mod tests {
 
         let game = run_replay_test(
             vec![
-                "1", // Tap Sol Ring for mana (need mana first before we can cast)
-                "1", // Cast Mana Vault (now we have mana to cast it)
+                "1", // Cast Mana Vault
+                "0", // Activate Sol Ring while paying its cost
                      // Mana Vault resolves and enters battlefield (auto-passes handle resolution)
             ],
             ReplayTestConfig::new()

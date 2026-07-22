@@ -1,7 +1,17 @@
 use super::render_effects::{
-    damage_with_source_view, describe_roll_result_damage_then_random_source_attachment_program,
-    describe_same_name_reference_search_bundle, describe_single_hand_reveal_same_name_search,
-    describe_single_hand_reveal_setup,
+    damage_with_source_view, describe_choose_color_reveal_hand_discard_that_color,
+    describe_choose_name_target_mills_conditional_draw, describe_declined_may_mill_then_damage,
+    describe_exile_then_free_cast_while_exiled_structural,
+    describe_look_hand_choose_then_discard_or_exile,
+    describe_reveal_hand_choose_discard_then_adventure_move,
+    describe_reveal_hand_choose_graveyard_exile_bundle,
+    describe_reveal_hand_choose_graveyard_or_hand_exile,
+    describe_reveal_top_to_hand_then_lose_mana_value_effects,
+    describe_roll_result_damage_then_random_source_attachment_program,
+    describe_same_name_reference_search_bundle,
+    describe_separated_countered_spell_exile_with_counters_gain_suspend,
+    describe_single_hand_reveal_same_name_search, describe_single_hand_reveal_setup,
+    render_search_reveal_opponent_choose_rest_bundle,
 };
 use super::*;
 use crate::cards::CardDefinitionRuntimeExt;
@@ -637,6 +647,42 @@ fn modeled_source_keyword_grant(
     Some((keyword.id(), keyword_text, grant.condition.as_ref()?))
 }
 
+/// Render one conditional keyword granted to the source from its typed model.
+/// Keeping the condition out of the grammatical subject avoids plural nouns in
+/// the condition (for example, "three artifacts") selecting `have` for the
+/// singular source.
+fn describe_structural_conditional_source_keyword_grant(
+    ability: &Ability,
+    subject: &str,
+) -> Option<String> {
+    let (_, keyword, condition) = modeled_source_keyword_grant(ability)?;
+    if matches!(
+        condition,
+        Condition::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn)
+    ) {
+        return Some(format!("During your turn, {subject} has {keyword}"));
+    }
+    let prefix_surface = matches!(
+        condition,
+        Condition::Not(inner)
+            if matches!(inner.as_ref(), Condition::PlayerCastSpellsThisTurnOrMore { .. })
+    ) || matches!(
+        condition,
+        Condition::ValueComparison { left, .. }
+            if matches!(left.unhinted(), Value::MaxDiceRolledThisTurn(_))
+    );
+    let condition = describe_condition(condition);
+    let condition = condition
+        .strip_prefix("this permanent")
+        .map(|rest| format!("{}{rest}", lowercase_first(subject)))
+        .unwrap_or(condition);
+    if prefix_surface {
+        Some(format!("As long as {condition}, {subject} has {keyword}"))
+    } else {
+        Some(format!("{subject} has {keyword} as long as {condition}"))
+    }
+}
+
 fn threshold_graveyard_presentation_label(condition: &Condition) -> Option<&'static str> {
     // Threshold is an ability word with no rules meaning. This exact typed
     // gate is therefore safe presentation provenance without consulting a
@@ -770,8 +816,7 @@ fn describe_structural_threshold_source_modifier_bundle(
 
     Some((
         format!(
-            "{presentation_label} — As long as {}, {subject} gets +1/+1, is black, and has \"{granted_text}\"",
-            describe_condition(condition),
+            "{presentation_label} — As long as there are seven or more cards in your graveyard, {subject} gets +1/+1, is black, and has \"{granted_text}\""
         ),
         3,
     ))
@@ -1173,8 +1218,223 @@ fn describe_cross_segment_named_vote_window(
         return None;
     }
     let rendered =
-        crate::compiled_text::render_effects::describe_named_vote_conditional_sequence(&effects)?;
+        crate::compiled_text::render_effects::describe_planeswalk_chaos_vote_sequence(&effects)
+            .or_else(|| {
+                crate::compiled_text::render_effects::describe_named_vote_conditional_sequence(
+                    &effects,
+                )
+            })?;
     Some((rendered, end - start))
+}
+
+/// Rejoin an authored discard-hand/add-mana/draw sequence when sentence
+/// lowering preserved its result references but split the actions into
+/// adjacent resolution segments.
+fn describe_cross_segment_discard_hand_add_mana_draw_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let mut effects = Vec::with_capacity(3);
+    let mut end = start;
+    while effects.len() < 3 {
+        let segment = segments.get(end)?;
+        if !segment.self_replacements.is_empty()
+            || segment.default_effects.is_empty()
+            || effects.len() + segment.default_effects.len() > 3
+        {
+            return None;
+        }
+        effects.extend(segment.default_effects.iter());
+        end += 1;
+    }
+    if end == start + 1 {
+        return None;
+    }
+    let rendered =
+        crate::compiled_text::render_effects::describe_discard_hand_add_mana_draw_sequence(
+            &effects,
+        )?;
+    Some((rendered, end - start))
+}
+
+fn describe_cross_segment_return_animation_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [return_segment, animation_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !return_segment.self_replacements.is_empty()
+        || !animation_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [return_effect] = return_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [animation_effect] = animation_segment.default_effects.as_slice() else {
+        return None;
+    };
+    crate::compiled_text::render_effects::describe_returned_battlefield_object_then_animated_pair(
+        return_effect,
+        animation_effect,
+    )
+    .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a battlefield return/move with the coordinated color-and-subtype
+/// modifications authored in the following sentence. A third source-move
+/// segment is retained when it is part of the same typed spell procedure.
+fn describe_cross_segment_color_subtype_addition_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, modification_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !modification_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [producer] = producer_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [modifications] = modification_segment.default_effects.as_slice() else {
+        return None;
+    };
+
+    if let Some(followup_segment) = segments.get(start + 2)
+        && followup_segment.self_replacements.is_empty()
+        && let [followup] = followup_segment.default_effects.as_slice()
+        && let Some(rendered) =
+            crate::compiled_text::render_effects::describe_return_then_color_subtype_addition(&[
+                producer,
+                modifications,
+                followup,
+            ])
+    {
+        return Some((rendered, 3));
+    }
+
+    crate::compiled_text::render_effects::describe_return_then_color_subtype_addition(&[
+        producer,
+        modifications,
+    ])
+    .or_else(|| {
+        crate::compiled_text::render_effects::describe_move_then_color_subtype_addition(&[
+            producer,
+            modifications,
+        ])
+    })
+    .map(|rendered| (rendered, 2))
+}
+
+/// Expose a segmented same-name extraction program to its exact typed
+/// renderer. Sequential wrapper effects are expanded only inside this window;
+/// the matcher still verifies every chooser, zone, tag, shuffle, and token
+/// count relationship before accepting it.
+fn describe_cross_segment_necromentia_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let mut effects = Vec::new();
+    for end in start..(start + 3).min(segments.len()) {
+        let segment = &segments[end];
+        if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
+            return None;
+        }
+        for effect in &segment.default_effects {
+            if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+                effects.extend(sequence.effects.iter());
+            } else {
+                effects.push(effect);
+            }
+        }
+        if end > start
+            && let Some(rendered) =
+                crate::compiled_text::render_effects::render_necromentia_shape(&effects)
+        {
+            return Some((rendered, end - start + 1));
+        }
+    }
+    None
+}
+
+/// Rejoin a typed prior-result gate and its separately lowered `otherwise`
+/// branch when both IDs prove one choose-name/mill conditional. Runtime keeps
+/// the gate result addressable for the fallback; rendering can recover the
+/// authored conditional once the producer tag, both IDs, and both branches
+/// agree.
+fn describe_cross_segment_choose_name_mill_conditional_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, gate_segment, fallback_segment] = segments.get(start..start + 3)? else {
+        return None;
+    };
+    if [producer_segment, gate_segment, fallback_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+
+    let [choose_effect, target_effect, producer_effect] =
+        producer_segment.default_effects.as_slice()
+    else {
+        return None;
+    };
+    let producer_with_id = producer_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let tagged_mill = producer_with_id
+        .effect
+        .downcast_ref::<crate::effects::TaggedEffect>()?;
+    tagged_mill
+        .effect
+        .downcast_ref::<crate::effects::MillEffect>()?;
+
+    let [gate_effect] = gate_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let gate_with_id = gate_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let gate = gate_with_id
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()?;
+    let EffectPredicate::PriorEffectResult(surface) = &gate.predicate else {
+        return None;
+    };
+    if gate.condition != producer_with_id.id
+        || !gate.else_.is_empty()
+        || surface.action != crate::effect::PriorEffectAction::Milled
+        || surface.actor != crate::effect::PriorEffectResultActor::Passive
+        || surface.quantifier != crate::effect::PriorEffectResultQuantifier::One
+    {
+        return None;
+    }
+
+    let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.condition != gate_with_id.id
+        || fallback.predicate != EffectPredicate::DidNotHappen
+        || !fallback.else_.is_empty()
+    {
+        return None;
+    }
+
+    let conditional = Effect::conditional(
+        Condition::TaggedObjectMatches(tagged_mill.tag.clone(), surface.filter.clone()),
+        gate.then.clone(),
+        fallback.then.clone(),
+    );
+    let normalized = [
+        choose_effect.clone(),
+        target_effect.clone(),
+        (*producer_with_id.effect).clone(),
+        conditional,
+    ];
+    describe_choose_name_target_mills_conditional_draw(&normalized).map(|rendered| (rendered, 3))
 }
 
 fn describe_cross_segment_result_window(
@@ -1241,6 +1501,236 @@ fn describe_cross_segment_result_window(
         .flat_map(|segment| segment.default_effects.iter().cloned())
         .collect::<Vec<_>>();
     Some((describe_effect_list(&combined), end - start))
+}
+
+/// Rejoin linked graveyard choices and their optional return when sentence
+/// boundaries placed the three instructions in adjacent resolution segments.
+/// The effect-list matcher verifies the shared tag, reciprocal chooser, zones,
+/// cardinalities, destination, and controller before compacting the surface.
+fn describe_cross_segment_linked_graveyard_choices_then_may_return_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let mut effects = Vec::with_capacity(3);
+    let mut consumed = 0usize;
+    for segment in segments.iter().skip(start).take(3) {
+        if !segment.self_replacements.is_empty()
+            || segment.default_effects.is_empty()
+            || effects.len() + segment.default_effects.len() > 3
+        {
+            return None;
+        }
+        effects.extend(segment.default_effects.iter());
+        consumed += 1;
+        if effects.len() == 3 {
+            break;
+        }
+    }
+    if effects.len() != 3 {
+        return None;
+    }
+    describe_linked_graveyard_choices_then_may_return_bundle(&effects)
+        .map(|rendered| (rendered, consumed))
+}
+
+/// Rejoin a target declaration and its investigate action when sentence
+/// lowering placed them in adjacent resolution segments. The existing effect
+/// list matcher proves the target cardinality and the target-relative count;
+/// this bridge only restores the context that matcher needs.
+fn describe_cross_segment_target_players_investigate_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [target_segment, investigate_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !target_segment.self_replacements.is_empty()
+        || !investigate_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [target_effect] = target_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [investigate_effect] = investigate_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let rendered = super::render_effects::compile_effect_list(&[
+        target_effect.clone(),
+        investigate_effect.clone(),
+    ]);
+    (rendered
+        == "Choose any number of target players. Investigate X times, where X is the total number of creatures those players control")
+        .then_some((rendered, 2))
+}
+
+fn describe_cross_segment_damage_and_die_replacement_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    let [damage_segment, replacement_segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if !damage_segment.self_replacements.is_empty()
+        || !replacement_segment.self_replacements.is_empty()
+        || replacement_segment.default_effects.len() != 1
+    {
+        return None;
+    }
+    let mut combined = match damage_segment.default_effects.as_slice() {
+        [first, second] => vec![first.clone(), second.clone()],
+        [sequence_effect] => {
+            let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+            if sequence.surface != ironsmith_core::SequenceSurface::Coordinated
+                || sequence.effects.len() != 2
+            {
+                return None;
+            }
+            sequence.effects.clone()
+        }
+        _ => return None,
+    };
+    combined.extend(replacement_segment.default_effects.iter().cloned());
+    let rendered = super::render_effects::compile_effect_list(&combined);
+    rendered
+        .contains("If that creature would die this turn, exile it instead")
+        .then_some(rendered)
+}
+
+fn describe_cross_segment_countered_spell_exile_with_counters_gain_suspend_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 3)?;
+    if window
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let effects = window
+        .iter()
+        .map(|segment| match segment.default_effects.as_slice() {
+            [effect] => Some(effect.clone()),
+            _ => None,
+        })
+        .collect::<Option<Vec<_>>>()?;
+    let rendered = describe_separated_countered_spell_exile_with_counters_gain_suspend(&effects)?;
+    Some((rendered, 3))
+}
+
+fn direct_or_for_players_choice_tag(effect: &Effect) -> Option<&TagKey> {
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
+        return Some(&choose.tag);
+    }
+    let for_players = effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let [choose_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    choose_effect
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .map(|choose| &choose.tag)
+}
+
+fn describe_target_opponent_graveyard_choice_to_your_battlefield(
+    choice_segment: &crate::resolution::ResolutionSegment,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+    moved_tag: &TagKey,
+) -> Option<String> {
+    let [target_effect, choose_effect] = choice_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !target.target.is_target()
+        || !matches!(
+            target.target.base(),
+            ChooseSpec::Player(PlayerFilter::Opponent)
+        )
+    {
+        return None;
+    }
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.count.is_single()
+        || choose.tag != *moved_tag
+        || choose.chooser != PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
+        || choose.filter.zone != Some(Zone::Graveyard)
+        || choose.filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || choose.is_search
+        || choose.reveal
+        || move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::You
+        || !move_to_zone.enters_with_counters.is_empty()
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+    {
+        return None;
+    }
+
+    let choice_text = capitalize_first(
+        &describe_effect_list(&choice_segment.default_effects)
+            .replace(" in a graveyard", " in their graveyard"),
+    );
+    choice_text
+        .starts_with("Target opponent chooses ")
+        .then(|| format!("{choice_text}. Put that card onto the battlefield under your control"))
+}
+
+/// Preserve a choice's player/zone surface when its tagged disposition was
+/// lowered into the following sentence. This is deliberately limited to one
+/// choice producer and one tag-linked move, so unrelated sentence boundaries
+/// remain intact.
+fn describe_cross_segment_choice_move_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choice_segment, move_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choice_segment.self_replacements.is_empty() || !move_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [move_effect] = move_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = unwrap_basic_render_wrapper(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let ChooseSpec::Tagged(moved_tag) = move_to_zone.target.base() else {
+        return None;
+    };
+
+    if let Some(rendered) = describe_target_opponent_graveyard_choice_to_your_battlefield(
+        choice_segment,
+        move_to_zone,
+        moved_tag,
+    ) {
+        return Some((rendered, 2));
+    }
+
+    let choice_tags = choice_segment
+        .default_effects
+        .iter()
+        .filter_map(direct_or_for_players_choice_tag)
+        .collect::<Vec<_>>();
+    if choice_tags.len() != 1 || choice_tags[0] != moved_tag {
+        return None;
+    }
+    if choice_segment.default_effects.iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_none()
+            && direct_or_for_players_choice_tag(effect).is_none()
+    }) {
+        return None;
+    }
+
+    let combined = choice_segment
+        .default_effects
+        .iter()
+        .chain(move_segment.default_effects.iter())
+        .cloned()
+        .collect::<Vec<_>>();
+    Some((super::render_effects::compile_effect_list(&combined), 2))
 }
 
 fn effect_contains_zone_replacement(effect: &Effect) -> bool {
@@ -1358,6 +1848,408 @@ fn describe_cross_segment_consult_window(
     None
 }
 
+fn describe_cross_segment_turn_start_hand_conditions_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [first, second] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !first.self_replacements.is_empty() || !second.self_replacements.is_empty() {
+        return None;
+    }
+    let [first_effect] = first.default_effects.as_slice() else {
+        return None;
+    };
+    let [second_effect] = second.default_effects.as_slice() else {
+        return None;
+    };
+    let effects = [first_effect.clone(), second_effect.clone()];
+    describe_turn_start_hand_condition_effects(&effects).map(|rendered| (rendered, 2))
+}
+
+fn describe_cross_segment_choose_pay_untap_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choice, untap] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choice.self_replacements.is_empty() || !untap.self_replacements.is_empty() {
+        return None;
+    }
+    let [choice_effect] = choice.default_effects.as_slice() else {
+        return None;
+    };
+    let [untap_effect] = untap.default_effects.as_slice() else {
+        return None;
+    };
+    describe_may_choose_pay_for_each_then_untap_tagged(&[choice_effect, untap_effect])
+        .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a searched-card conditional whose optional battlefield move,
+/// declined move, and shuffle were kept in separate source-sentence segments.
+/// The existing flat structural renderer still proves the searched tag,
+/// condition, effect ID, both hand fallbacks, destination, and shuffle scope.
+fn describe_cross_segment_search_reveal_may_move_else_hand_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [
+        search_segment,
+        conditional_segment,
+        fallback_segment,
+        shuffle_segment,
+    ] = segments.get(start..start + 4)?
+    else {
+        return None;
+    };
+    if [
+        search_segment,
+        conditional_segment,
+        fallback_segment,
+        shuffle_segment,
+    ]
+    .iter()
+    .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+
+    let [search_effect] = search_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let search_sequence = search_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, reveal_effect] = search_sequence.effects.as_slice() else {
+        return None;
+    };
+
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let with_id = conditional_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let conditional = with_id
+        .effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [may_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    if !conditional.if_false.is_empty()
+        || may_effect
+            .downcast_ref::<crate::effects::MayEffect>()
+            .is_none()
+    {
+        return None;
+    }
+
+    let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.condition != with_id.id
+        || fallback.predicate != EffectPredicate::DidNotHappen
+        || !fallback.else_.is_empty()
+        || fallback.then.len() != 1
+    {
+        return None;
+    }
+    let [shuffle_effect] = shuffle_segment.default_effects.as_slice() else {
+        return None;
+    };
+
+    let mut merged = conditional.clone();
+    merged.if_true = vec![
+        Effect::with_id(with_id.id.0, may_effect.clone()),
+        fallback_effect.clone(),
+    ];
+    merged.if_false = fallback.then.clone();
+    let flat = [
+        choose_effect.clone(),
+        reveal_effect.clone(),
+        Effect::new(merged),
+        shuffle_effect.clone(),
+    ];
+    describe_search_reveal_conditional_battlefield_or_hand(&flat).map(|rendered| (rendered, 4))
+}
+
+/// Rejoin the dynamic kicked target declaration with its per-target counter
+/// action when source-sentence preservation places them in adjacent segments.
+/// The existing structural helper proves the 1 + kick-count target cardinality,
+/// shared tag, iterated target, and counter amount before we cross the boundary.
+fn describe_cross_segment_kicked_targets_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [target_segment, counter_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !target_segment.self_replacements.is_empty() || !counter_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let effects = target_segment
+        .default_effects
+        .iter()
+        .chain(&counter_segment.default_effects)
+        .collect::<Vec<_>>();
+    describe_kicked_additional_targets_put_counters(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Preserve the authored choose/conditional-prevention sentence when source
+/// sentence boundaries place its producer and consumer in adjacent segments.
+fn describe_cross_segment_color_matched_prevention_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choose_segment, prevention_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choose_segment.self_replacements.is_empty()
+        || !prevention_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [choose_effect] = choose_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [prevention_effect] = prevention_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let conditional = structural_unwrap_render_wrappers(prevention_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    describe_choose_then_color_matched_combat_prevention(choose, conditional)
+        .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin an authored standalone player-target declaration with the damage
+/// sentence that consumes that exact target. The established helper proves
+/// the player filters are identical before introducing "that player."
+fn describe_cross_segment_target_only_damage_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [target_segment, damage_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !target_segment.self_replacements.is_empty() || !damage_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [target_effect] = target_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [damage_effect] = damage_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let target = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    let damage = structural_unwrap_render_wrappers(damage_effect)
+        .downcast_ref::<crate::effects::DealDamageEffect>()?;
+    describe_target_only_then_damage_that_player(target, damage).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin damage to a tagged creature with the adjacent destruction of
+/// attachments anchored to that exact target.
+fn describe_cross_segment_target_creature_damage_then_destroy_attached_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [damage_segment, destroy_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !damage_segment.self_replacements.is_empty() || !destroy_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [damage_effect] = damage_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [destroy_effect] = destroy_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let effects = [damage_effect, destroy_effect];
+    super::render_effects::describe_target_creature_damage_then_destroy_attached(&effects)
+        .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin the two authored sentences of reciprocal power-based damage. The
+/// structural matcher verifies the shared target tag, both damage sources,
+/// both destinations, and both power references.
+fn describe_cross_segment_power_damage_exchange_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    fn collect(effect: &Effect, flattened: &mut Vec<Effect>) {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            collect(&with_id.effect, flattened);
+        } else if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            for member in &sequence.effects {
+                collect(member, flattened);
+            }
+        } else {
+            flattened.push(effect.clone());
+        }
+    }
+
+    let [first_segment, reciprocal_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !first_segment.self_replacements.is_empty()
+        || !reciprocal_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let mut flattened = Vec::new();
+    for effect in first_segment
+        .default_effects
+        .iter()
+        .chain(&reciprocal_segment.default_effects)
+    {
+        collect(effect, &mut flattened);
+    }
+    describe_power_damage_exchange_clause(&flattened).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin an optional search/reveal/shuffle procedure with a trailing
+/// condition and its `otherwise` disposition. Lowering gives the condition an
+/// effect ID so the following `DidNotHappen` branch is executable; combine
+/// those two runtime nodes only after proving they share that exact ID.
+fn describe_cross_segment_may_search_conditional_disposition_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [search_segment, conditional_segment, fallback_segment] = segments.get(start..start + 3)?
+    else {
+        return None;
+    };
+    if [search_segment, conditional_segment, fallback_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+
+    let [search_effect] = search_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let may = search_effect.downcast_ref::<crate::effects::MayEffect>()?;
+
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let conditional_with_id = conditional_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let conditional = conditional_with_id
+        .effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+
+    let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.condition != conditional_with_id.id
+        || fallback.predicate != EffectPredicate::DidNotHappen
+        || !fallback.else_.is_empty()
+        || fallback.then.is_empty()
+        || !conditional.if_false.is_empty()
+    {
+        return None;
+    }
+
+    let mut combined = conditional.clone();
+    combined.if_false = fallback.then.clone();
+    describe_may_search_reveal_shuffle_then_conditional_move(may, &combined)
+        .map(|rendered| (rendered, 3))
+}
+
+/// Rejoin the named-card search branch used by effects such as Nazahn's. The
+/// producer sequence, typed reveal predicate, conditional result ID,
+/// `otherwise` branch, searched-object tag, and final shuffle must all agree
+/// before the authored four-sentence surface is restored.
+fn describe_cross_segment_named_search_conditional_disposition_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [
+        search_segment,
+        conditional_segment,
+        fallback_segment,
+        shuffle_segment,
+    ] = segments.get(start..start + 4)?
+    else {
+        return None;
+    };
+    if [
+        search_segment,
+        conditional_segment,
+        fallback_segment,
+        shuffle_segment,
+    ]
+    .iter()
+    .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+
+    let [search_effect] = search_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let search_with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let search_sequence = search_with_id
+        .effect
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, reveal_effect] = search_sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let conditional_with_id = conditional_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let conditional = conditional_with_id
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()?;
+    let EffectPredicate::PriorEffectResult(surface) = &conditional.predicate else {
+        return None;
+    };
+    if conditional.condition != search_with_id.id
+        || !conditional.else_.is_empty()
+        || surface.action != ironsmith_core::PriorEffectAction::Revealed
+        || surface.actor != ironsmith_core::PriorEffectResultActor::You
+        || surface.quantifier != ironsmith_core::PriorEffectResultQuantifier::One
+    {
+        return None;
+    }
+
+    let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.condition != conditional_with_id.id
+        || fallback.predicate != EffectPredicate::DidNotHappen
+        || !fallback.else_.is_empty()
+    {
+        return None;
+    }
+
+    let [shuffle_effect] = shuffle_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+
+    let combined = crate::effects::ConditionalEffect::new(
+        Condition::TaggedObjectMatches(choose.tag.clone(), surface.filter.clone()),
+        conditional.then.clone(),
+        fallback.then.clone(),
+    );
+    describe_search_reveal_named_conditional_move_then_shuffle(choose, reveal, &combined, shuffle)
+        .map(|rendered| (rendered, 4))
+}
+
 fn describe_cross_segment_consult_hand_remainder_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
@@ -1456,11 +2348,261 @@ fn describe_cross_segment_consult_hand_remainder_window(
     let consult_text = rendered_consult
         .strip_prefix("you ")
         .or_else(|| rendered_consult.strip_prefix("You "))
-        .map(capitalize_first)?;
+        .map(capitalize_first)
+        .unwrap_or_else(|| capitalize_first(rendered_consult));
     Some((
         format!("{consult_text}. {}", capitalize_first(disposition)),
         2,
     ))
+}
+
+/// Rejoin a reveal-hand sentence, its two same-set choices, and the trailing
+/// collection move when source sentence preservation splits them into three
+/// resolution segments. The established structural helper verifies both
+/// zones, the shared opponent, the shared result tag, and the exile consumer.
+fn describe_cross_segment_reveal_hand_choose_graveyard_exile_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [look_segment, choose_segment, exile_segment] = segments.get(start..start + 3)? else {
+        return None;
+    };
+    if [look_segment, choose_segment, exile_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let [look] = look_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [hand_choose, graveyard_choose] = choose_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [exile] = exile_segment.default_effects.as_slice() else {
+        return None;
+    };
+    describe_reveal_hand_choose_graveyard_exile_bundle(&[
+        look,
+        hand_choose,
+        graveyard_choose,
+        exile,
+    ])
+    .map(|rendered| (rendered, 3))
+}
+
+fn append_flattened_cross_segment_effect(effect: &Effect, flattened: &mut Vec<Effect>) {
+    let unwrapped = structural_unwrap_render_wrappers(effect);
+    if let Some(sequence) = unwrapped.downcast_ref::<crate::effects::SequenceEffect>() {
+        for member in &sequence.effects {
+            append_flattened_cross_segment_effect(member, flattened);
+        }
+    } else {
+        flattened.push(effect.clone());
+    }
+}
+
+fn flattened_cross_segment_effects(
+    segments: &[crate::resolution::ResolutionSegment],
+) -> Option<Vec<Effect>> {
+    let mut flattened = Vec::new();
+    for segment in segments {
+        if !segment.self_replacements.is_empty() {
+            return None;
+        }
+        for effect in &segment.default_effects {
+            append_flattened_cross_segment_effect(effect, &mut flattened);
+        }
+    }
+    Some(flattened)
+}
+
+/// Rejoin a target-plus-fanout collection and a later action over the exact
+/// captured union when an authored sentence boundary split the effects into
+/// adjacent resolution segments (for example, Radiance followed by "Those
+/// creatures ..."). The underlying matcher validates every producer,
+/// relation, collection tag, and consumer before any prose is combined.
+fn describe_cross_segment_linked_target_set_followup_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let max_consumed = segments.len().saturating_sub(start).min(4);
+    for consumed in 2..=max_consumed {
+        let window = segments.get(start..start + consumed)?;
+        let flattened = flattened_cross_segment_effects(window)?;
+        if let Some((rendered, effect_count)) =
+            describe_linked_target_set_followup_prefix(&flattened)
+                .or_else(|| describe_same_name_exile_then_investigate_prefix(&flattened))
+            && effect_count == flattened.len()
+        {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
+/// Preserve the producer's typed object noun for a later per-object consumer
+/// even when source sentence boundaries converted `ForEachTagged` into an
+/// equivalent exact-tag `ForEachObject` in the next segment.
+fn describe_cross_segment_result_producer_for_each_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    let [producer, for_each] = flattened.as_slice() else {
+        return None;
+    };
+    describe_result_producer_then_for_each_tagged(producer, for_each).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a searched-and-revealed collection, an opponent's division of that
+/// collection, and the two destinations when authored sentence boundaries put
+/// the linked effects in separate resolution segments. The underlying bundle
+/// matcher validates every tag, count, zone, chooser, and optional source-exile
+/// effect before it produces text.
+fn describe_cross_segment_search_reveal_opponent_choose_rest_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let max_consumed = segments.len().saturating_sub(start).min(8);
+    for consumed in (1..=max_consumed).rev() {
+        let window = segments.get(start..start + consumed)?;
+        let flattened = flattened_cross_segment_effects(window)?;
+        let refs = flattened.iter().collect::<Vec<_>>();
+        if let Some(rendered) = render_search_reveal_opponent_choose_rest_bundle(&refs) {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
+/// Rejoin an optional action with its exact declined branch when authored
+/// sentence boundaries place the `WithId` producer and `If` consumer in
+/// adjacent resolution segments.
+fn describe_cross_segment_declined_may_mill_damage_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, branch_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !branch_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let with_ids = producer_segment
+        .default_effects
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+        .collect::<Vec<_>>();
+    let [with_id] = with_ids.as_slice() else {
+        return None;
+    };
+    let [branch_effect] = branch_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let if_effect = branch_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    let declined = describe_declined_may_mill_then_damage(with_id, if_effect)?;
+    let setup = describe_effect_list(&producer_segment.default_effects);
+    (!setup.trim().is_empty()).then(|| {
+        (
+            format!(
+                "{}. {}",
+                setup.trim().trim_end_matches('.'),
+                declined.trim().trim_end_matches('.')
+            ),
+            2,
+        )
+    })
+}
+
+/// Rejoin a hand reveal with a graveyard-or-hand choice when source sentence
+/// boundaries place the reveal and the tag-linked choice/move in adjacent
+/// resolution segments.
+fn describe_cross_segment_reveal_hand_choose_graveyard_or_hand_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    let refs = flattened.iter().collect::<Vec<_>>();
+    describe_reveal_hand_choose_graveyard_or_hand_exile(&refs).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a standalone color choice with the following reveal-and-discard
+/// sentence when both use the same chosen-color state.
+fn describe_cross_segment_choose_color_reveal_discard_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    let refs = flattened.iter().collect::<Vec<_>>();
+    describe_choose_color_reveal_hand_discard_that_color(&refs).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a revealed hand with a tag-linked choose/discard-or-exile action
+/// when the authored sentence boundary leaves the reveal in its own segment.
+fn describe_cross_segment_look_hand_choose_action_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    let refs = flattened.iter().collect::<Vec<_>>();
+    describe_look_hand_choose_then_discard_or_exile(&refs).map(|rendered| (rendered, 2))
+}
+
+/// Preserve the coordinated reveal/move surface when the following life-loss
+/// sentence consumes the revealed card's mana value.
+fn describe_cross_segment_reveal_to_hand_lose_mana_value_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    for consumed in 2..=3 {
+        let Some(window) = segments.get(start..start + consumed) else {
+            break;
+        };
+        let flattened = flattened_cross_segment_effects(window)?;
+        if let Some(rendered) = describe_reveal_top_to_hand_then_lose_mana_value_effects(&flattened)
+        {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
+/// Rejoin a hand reveal, its tag-linked choice/discard, and a trailing optional
+/// move from exile when source sentence preservation split the authored
+/// sequence into adjacent resolution segments.
+fn describe_cross_segment_reveal_hand_choose_discard_adventure_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    for consumed in 2..=5 {
+        let Some(window) = segments.get(start..start + consumed) else {
+            break;
+        };
+        let flattened = flattened_cross_segment_effects(window)?;
+        let refs = flattened.iter().collect::<Vec<_>>();
+        if let Some(rendered) = describe_reveal_hand_choose_discard_then_adventure_move(&refs) {
+            return Some((rendered, consumed));
+        }
+    }
+    None
+}
+
+/// The while-exiled cast permission and its free-cast modifier are separate
+/// runtime effects, but jointly represent one authored permission sentence.
+fn describe_cross_segment_exile_then_free_cast_while_exiled_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    describe_exile_then_free_cast_while_exiled_structural(&flattened).map(|rendered| (rendered, 2))
 }
 
 fn describe_cross_segment_observation_window(
@@ -1524,6 +2666,21 @@ fn describe_cross_segment_search_move_shuffle_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
 ) -> Option<(String, usize)> {
+    if let Some([search_segment, followup_segment]) = segments.get(start..start + 2)
+        && search_segment.self_replacements.is_empty()
+        && followup_segment.self_replacements.is_empty()
+        && let Some(choose) = cross_segment_search_choose(search_segment)
+        && let [reveal_effect, move_effect, shuffle_effect] =
+            followup_segment.default_effects.as_slice()
+        && let Some(reveal) = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()
+        && let Some(move_to_zone) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && let Some(shuffle) = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+        && let Some(rendered) =
+            describe_search_choose_then_move(choose, Some(reveal), move_to_zone, Some(shuffle))
+    {
+        return Some((rendered, 2));
+    }
+
     let [search_segment, move_segment, shuffle_segment] = segments.get(start..start + 3)? else {
         return None;
     };
@@ -1534,22 +2691,7 @@ fn describe_cross_segment_search_move_shuffle_window(
         return None;
     }
 
-    let choose = match search_segment.default_effects.as_slice() {
-        [search_effect] => search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?,
-        [target_effect, search_effect] => {
-            let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-            let choose = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-            let ChooseSpec::Player(target_player) = target_only.target.base() else {
-                return None;
-            };
-            let search_owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
-            if !same_search_player_filter(target_player, search_owner) {
-                return None;
-            }
-            choose
-        }
-        _ => return None,
-    };
+    let choose = cross_segment_search_choose(search_segment)?;
 
     let [move_effect] = move_segment.default_effects.as_slice() else {
         return None;
@@ -1582,6 +2724,29 @@ fn describe_cross_segment_search_move_shuffle_window(
             .replacen(", then ", ". Then ", 1)
     };
     Some((rendered, 3))
+}
+
+fn cross_segment_search_choose(
+    search_segment: &crate::resolution::ResolutionSegment,
+) -> Option<&crate::effects::ChooseObjectsEffect> {
+    match search_segment.default_effects.as_slice() {
+        [search_effect] => {
+            Some(search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?)
+        }
+        [target_effect, search_effect] => {
+            let target_only = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+            let choose = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+            let ChooseSpec::Player(target_player) = target_only.target.base() else {
+                return None;
+            };
+            let search_owner = choose.filter.owner.as_ref().unwrap_or(&choose.chooser);
+            if !same_search_player_filter(target_player, search_owner) {
+                return None;
+            }
+            Some(choose)
+        }
+        _ => return None,
+    }
 }
 
 fn count_damage_controller_references_to_tag(effect: &Effect, tag: &TagKey) -> usize {
@@ -2069,6 +3234,59 @@ fn describe_cross_segment_shuffle_exile_top_cast_window(
     .map(|rendered| (rendered, 2))
 }
 
+/// Rejoin a coordinated producer sentence with the following permission
+/// sentence when lowering placed them in adjacent resolution segments. The
+/// shared exile tag proves the permission consumes the cards produced by the
+/// first segment, so the typed effect-list renderer can recover the authored
+/// duration surface and sentence boundary.
+fn describe_cross_segment_linked_exile_top_play_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    fn flattened_segment_effects(
+        segment: &crate::resolution::ResolutionSegment,
+    ) -> Option<Vec<Effect>> {
+        if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
+            return None;
+        }
+        if let [effect] = segment.default_effects.as_slice()
+            && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()
+        {
+            return Some(sequence.effects.clone());
+        }
+        Some(segment.default_effects.clone())
+    }
+
+    let mut effects = flattened_segment_effects(segments.get(start)?)?;
+    let linked_tags = effects
+        .iter()
+        .filter_map(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::ExileTopOfLibraryEffect>()
+        })
+        .flat_map(|exile| exile.moved_tags.iter().cloned())
+        .collect::<Vec<_>>();
+    if linked_tags.is_empty() {
+        return None;
+    }
+
+    for end in start + 1..(start + 5).min(segments.len()) {
+        let segment_effects = flattened_segment_effects(&segments[end])?;
+        let has_linked_grant = segment_effects.iter().any(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+                .is_some_and(|grant| linked_tags.contains(&grant.tag))
+        });
+        effects.extend(segment_effects);
+        if has_linked_grant {
+            return describe_linked_exile_top_play_clause(&effects)
+                .map(|rendered| (rendered, end - start + 1));
+        }
+    }
+    None
+}
+
 fn describe_cross_segment_exile_top_put_from_among_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
@@ -2157,6 +3375,58 @@ fn describe_cross_segment_shuffle_exile_top_free_play_window(
     ))
 }
 
+fn describe_cross_segment_shuffle_reveal_top_free_play_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let mut effects = Vec::with_capacity(5);
+    let max_end = (start + 5).min(segments.len());
+    for end in start..max_end {
+        let segment = &segments[end];
+        if !segment.self_replacements.is_empty() {
+            return None;
+        }
+        effects.extend(segment.default_effects.iter());
+        if effects.len() > 5 {
+            return None;
+        }
+        if effects.len() < 5 {
+            continue;
+        }
+
+        let [
+            shuffle_effect,
+            reveal_effect,
+            reveal_permission_effect,
+            grant_play_effect,
+            grant_free_effect,
+        ] = effects.as_slice()
+        else {
+            return None;
+        };
+        let shuffle = structural_unwrap_render_wrappers(shuffle_effect)
+            .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        let reveal_top = structural_unwrap_render_wrappers(reveal_effect)
+            .downcast_ref::<crate::effects::RevealTopEffect>()?;
+        let reveal_permission = structural_unwrap_render_wrappers(reveal_permission_effect)
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+        let grant_play = structural_unwrap_render_wrappers(grant_play_effect)
+            .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+        let grant_free_cast = structural_unwrap_render_wrappers(grant_free_effect)
+            .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
+        )?;
+        let rendered = describe_shuffle_then_reveal_top_then_temporarily_play_revealed_top_card(
+            shuffle,
+            reveal_top,
+            reveal_permission,
+            grant_play,
+            grant_free_cast,
+        )?;
+        return Some((rendered, end - start + 1));
+    }
+    None
+}
+
 /// Rejoin an authored choice sentence with its adjacent tagged play/free-cast
 /// permission sentence. The effect-list matcher proves the exact shared tag,
 /// exile/owner/counter filter, duration, and payment semantics; this window
@@ -2209,6 +3479,56 @@ fn describe_cross_segment_counter_linked_grant_window(
         return None;
     };
     describe_counter_linked_grant_after_put(put_effect, grant_effect).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a tagged target modification with a conditional that inspects the
+/// same affected object when authored sentence boundaries split the pair.
+fn describe_cross_segment_tagged_continuous_then_counter_conditional_draw_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [leading_segment, conditional_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !leading_segment.self_replacements.is_empty()
+        || !conditional_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [leading_effect] = leading_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let effects = [leading_effect, conditional_effect];
+    super::render_effects::describe_tagged_continuous_then_counter_conditional_draw(&effects)
+        .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a tagged temporary pump with the adjacent conditional keyword grant
+/// that inspects the same affected object.
+fn describe_cross_segment_tagged_pump_then_conditional_keyword_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [pump_segment, conditional_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !pump_segment.self_replacements.is_empty()
+        || !conditional_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [pump_effect] = pump_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let effects = [pump_effect, conditional_effect];
+    super::render_effects::describe_tagged_pump_then_conditional_keyword(&effects)
+        .map(|rendered| (rendered, 2))
 }
 
 /// Rejoin a counted draw with the adjacent grant that consumes the exact same
@@ -2347,6 +3667,133 @@ fn describe_cross_segment_looked_cards_window(
     None
 }
 
+/// Rejoin an optional looked-card producer with the exact `if you do`
+/// singleton top/rest-bottom partition in the following source sentence.
+fn describe_cross_segment_may_look_top_rest_bottom_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [producer_segment, branch_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !producer_segment.self_replacements.is_empty()
+        || !branch_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let with_ids = producer_segment
+        .default_effects
+        .iter()
+        .filter_map(|effect| effect.downcast_ref::<crate::effects::WithIdEffect>())
+        .collect::<Vec<_>>();
+    let [with_id] = with_ids.as_slice() else {
+        return None;
+    };
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.fallback != crate::decision::FallbackStrategy::Decline {
+        return None;
+    }
+    let [look_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| decider != &look.player)
+    {
+        return None;
+    }
+
+    let [branch_effect] = branch_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let branch = branch_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if branch.condition != with_id.id
+        || branch.predicate != EffectPredicate::Happened
+        || !branch.else_.is_empty()
+    {
+        return None;
+    }
+    let [choose_effect, move_effect, remainder_effect] = branch.then.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let remainder = remainder_effect
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    describe_may_look_then_put_one_top_rest_bottom(look, choose, move_effect, remainder)
+        .map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a declared pair of targets with the following tap-and-unattach
+/// sentence when authored sentence boundaries split the shared tagged set.
+fn describe_cross_segment_choose_two_tap_unattach_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let effects = flattened_cross_segment_effects(window)?;
+    describe_choose_two_tap_then_unattach_equipment_sequence(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a bulk battlefield return with the permanent decayed grant applied
+/// to that exact returned collection in the next authored sentence.
+fn describe_cross_segment_bulk_return_decayed_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 2)?;
+    let effects = flattened_cross_segment_effects(window)?;
+    describe_bulk_battlefield_move_then_grant_decayed(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin coordinated player choices with the following count of the exact
+/// affected collection. The structural matcher proves both player actions,
+/// the shared tag, and the tagged graveyard count before crossing the authored
+/// sentence boundary.
+fn describe_cross_segment_joint_discard_or_sacrifice_then_draw_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choice_segment, draw_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choice_segment.self_replacements.is_empty() || !draw_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let [choice_effect] = choice_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [draw_effect] = draw_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let effects = [choice_effect.clone(), draw_effect.clone()];
+    describe_joint_discard_or_sacrifice_then_draw(&effects).map(|rendered| (rendered, 2))
+}
+
+/// Rejoin a standalone opponent choice with the following two correlated
+/// graveyard choices and returns. The structural bundle matcher validates the
+/// chosen-player tag and both return actors before producing Offering-style
+/// coordinated text.
+fn describe_cross_segment_opponent_choice_returns_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choice_segment, returns_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choice_segment.self_replacements.is_empty()
+        || !returns_segment.self_replacements.is_empty()
+        || !matches!(choice_segment.default_effects.as_slice(), [effect] if effect.downcast_ref::<crate::effects::ChoosePlayerEffect>().is_some())
+        || returns_segment.default_effects.len() != 4
+    {
+        return None;
+    }
+    let effects =
+        flattened_cross_segment_effects(&[choice_segment.clone(), returns_segment.clone()])?;
+    describe_structural_multisentence_effect_list(&effects).map(|rendered| (rendered, 2))
+}
+
 /// Restore a relationship-aware fight surface when sentence lowering keeps
 /// the two targets, the conditional action, and the fight in separate
 /// resolution segments. The exact helpers prove every tag edge and require
@@ -2367,7 +3814,26 @@ fn describe_cross_segment_conditional_fight_program(
         .iter()
         .collect::<Vec<_>>();
     describe_two_distinct_targets_conditional_then_fight(&effects)
+        .or_else(|| describe_two_distinct_targets_counter_then_fight(&effects))
         .or_else(|| describe_targeted_conditional_action_then_fight(&effects))
+}
+
+/// Rejoin the chosen-creature untap, counters, keyword grant, additional
+/// combat, and attack restriction when each authored sentence occupies its
+/// own resolution segment.
+fn describe_cross_segment_chosen_creatures_blessing_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.len() < 2
+        || program
+            .segments
+            .iter()
+            .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let effects = flattened_cross_segment_effects(&program.segments)?;
+    describe_chosen_creatures_blessing_additional_combat_clause(&effects)
 }
 
 /// Target declarations and optional actions can occupy one or more resolution
@@ -2386,6 +3852,11 @@ fn describe_cross_segment_relative_player_target_consult_program(
         return None;
     }
     describe_relative_player_target_then_optional_consult(program.flattened_default_effects())
+        .or_else(|| {
+            describe_relative_player_target_then_optional_search(
+                program.flattened_default_effects(),
+            )
+        })
 }
 
 #[cfg(test)]
@@ -2561,9 +4032,193 @@ fn describe_cross_segment_same_name_search_window(
     None
 }
 
+/// Compact the general "other than basic land cards" graveyard-exile
+/// procedure. The parser represents that exception as the De Morgan union
+/// `nonland OR nonbasic`, then iterates the exact exiled tag to search and
+/// exile same-name cards before the targeted player shuffles.
+fn describe_graveyard_exception_same_name_exile_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    let [exile_segment, search_segment, shuffle_segment] = program.segments.as_slice() else {
+        return None;
+    };
+    if [exile_segment, search_segment, shuffle_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let [exile_effect] = exile_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let tagged_exile = exile_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let exile = tagged_exile
+        .effect
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let ChooseSpec::All(exile_filter) = &exile.spec else {
+        return None;
+    };
+    let [first_exception, second_exception] = exile_filter.any_of.as_slice() else {
+        return None;
+    };
+
+    let target_graveyard = |filter: &ObjectFilter| {
+        filter.zone == Some(Zone::Graveyard)
+            && matches!(
+                filter.owner.as_ref(),
+                Some(PlayerFilter::Target(player)) if **player == PlayerFilter::Any
+            )
+    };
+    if !target_graveyard(first_exception) || !target_graveyard(second_exception) {
+        return None;
+    }
+    let only_exception =
+        |filter: &ObjectFilter, card_type: Option<CardType>, supertype: Option<Supertype>| {
+            if card_type.is_some_and(|kind| filter.excluded_card_types.as_slice() != [kind])
+                || card_type.is_none() && !filter.excluded_card_types.is_empty()
+                || supertype.is_some_and(|kind| filter.excluded_supertypes.as_slice() != [kind])
+                || supertype.is_none() && !filter.excluded_supertypes.is_empty()
+            {
+                return false;
+            }
+            let mut bare = filter.clone();
+            bare.zone = None;
+            bare.owner = None;
+            bare.excluded_card_types.clear();
+            bare.excluded_supertypes.clear();
+            bare.set_explicit_card_noun(false);
+            bare == ObjectFilter::default()
+        };
+    let is_nonland = |filter: &ObjectFilter| only_exception(filter, Some(CardType::Land), None);
+    let is_nonbasic = |filter: &ObjectFilter| only_exception(filter, None, Some(Supertype::Basic));
+    if !((is_nonland(first_exception) && is_nonbasic(second_exception))
+        || (is_nonbasic(first_exception) && is_nonland(second_exception)))
+    {
+        return None;
+    }
+    let mut exile_base = exile_filter.clone();
+    exile_base.any_of.clear();
+    if exile_base != ObjectFilter::default() {
+        return None;
+    }
+
+    let [search_effect] = search_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let for_each = search_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    if for_each.tag != tagged_exile.tag {
+        return None;
+    }
+    let [search_sequence_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let search_sequence =
+        search_sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [choose_effect, move_each_effect] = search_sequence.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if !choose.is_search
+        || choose.count.min != 0
+        || choose.count.max.is_some()
+        || choose.filter.zone != Some(Zone::Library)
+        || !matches!(
+            choose.filter.owner.as_ref(),
+            Some(PlayerFilter::AliasedTarget(player)) if **player == PlayerFilter::Any
+        )
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        })
+    {
+        return None;
+    }
+    let move_each = move_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [move_effect] = move_each.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_each.tag != choose.tag
+        || move_to_zone.zone != Zone::Exile
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let [shuffle_effect] = shuffle_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if !matches!(shuffle.player, PlayerFilter::Target(ref player) if **player == PlayerFilter::Any)
+    {
+        return None;
+    }
+
+    Some(
+        "Exile all cards from target player's graveyard other than basic land cards. For each card exiled this way, search that player's library for all cards with the same name as that card and exile them. Then that player shuffles"
+            .to_string(),
+    )
+}
+
+fn describe_cross_segment_may_search_conditional_else_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let first = segments.get(start)?;
+    if !first.self_replacements.is_empty() {
+        return None;
+    }
+    let (may_effect, conditional_effect, otherwise_segment, consumed) =
+        if let [may_effect, conditional_effect] = first.default_effects.as_slice() {
+            (may_effect, conditional_effect, segments.get(start + 1)?, 2)
+        } else {
+            let [may_effect] = first.default_effects.as_slice() else {
+                return None;
+            };
+            let conditional_segment = segments.get(start + 1)?;
+            let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+                return None;
+            };
+            if !conditional_segment.self_replacements.is_empty() {
+                return None;
+            }
+            (may_effect, conditional_effect, segments.get(start + 2)?, 3)
+        };
+    if !otherwise_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let with_id = conditional_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let conditional = with_id
+        .effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !conditional.if_false.is_empty() {
+        return None;
+    }
+
+    let [otherwise_effect] = otherwise_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let otherwise = otherwise_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if otherwise.condition != with_id.id
+        || otherwise.predicate != crate::effect::EffectPredicate::DidNotHappen
+        || !otherwise.else_.is_empty()
+        || otherwise.then.len() != 1
+    {
+        return None;
+    }
+
+    let mut merged = conditional.clone();
+    merged.if_false = otherwise.then.clone();
+    describe_may_search_reveal_shuffle_then_conditional_move(may, &merged)
+        .map(|rendered| (rendered, consumed))
+}
+
 pub(super) fn describe_resolution_program(
     program: &crate::resolution::ResolutionProgram,
 ) -> String {
+    if let Some(rendered) = describe_graveyard_exception_same_name_exile_program(program) {
+        return rendered;
+    }
     if let Some(rendered) = describe_spell_mastery_reanimation_program(program) {
         return rendered;
     }
@@ -2578,7 +4233,13 @@ pub(super) fn describe_resolution_program(
     if let Some(rendered) = describe_cross_segment_conditional_fight_program(program) {
         return rendered;
     }
+    if let Some(rendered) = describe_cross_segment_chosen_creatures_blessing_program(program) {
+        return rendered;
+    }
     if let Some(rendered) = describe_cross_segment_relative_player_target_consult_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_cross_segment_damage_and_die_replacement_program(program) {
         return rendered;
     }
 
@@ -2589,8 +4250,237 @@ pub(super) fn describe_resolution_program(
             skipped_segments -= 1;
             continue;
         }
+        // Preserve the free-cast payment rider before the broader linked-play
+        // window consumes the same exile/grant pair independently.
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_shuffle_exile_top_free_play_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_linked_exile_top_play_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_may_search_conditional_else_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) = describe_cross_segment_linked_target_set_followup_window(
+            &program.segments,
+            segment_index,
+        ) {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_result_producer_for_each_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_countered_spell_exile_with_counters_gain_suspend_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        // Exact linked-choice bundles must run before broader two-segment
+        // windows consume their opening choices independently.
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_linked_graveyard_choices_then_may_return_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_search_reveal_opponent_choose_rest_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) = describe_cross_segment_turn_start_hand_conditions_window(
+            &program.segments,
+            segment_index,
+        ) {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_choose_pay_untap_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_search_reveal_may_move_else_hand_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_declined_may_mill_damage_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) = describe_cross_segment_target_players_investigate_window(
+            &program.segments,
+            segment_index,
+        ) {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_reveal_hand_choose_graveyard_or_hand_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_choose_color_reveal_discard_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_look_hand_choose_action_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_reveal_to_hand_lose_mana_value_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_reveal_hand_choose_discard_adventure_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_exile_then_free_cast_while_exiled_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_choice_move_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) = describe_cross_segment_discard_hand_add_mana_draw_window(
+            &program.segments,
+            segment_index,
+        ) {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_return_animation_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_color_subtype_addition_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_necromentia_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
         if let Some((rendered, consumed)) =
             describe_cross_segment_named_vote_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_named_search_conditional_disposition_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_may_search_conditional_disposition_window(
+                &program.segments,
+                segment_index,
+            )
         {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
@@ -2611,7 +4501,45 @@ pub(super) fn describe_resolution_program(
             continue;
         }
         if let Some((rendered, consumed)) =
+            describe_cross_segment_may_look_top_rest_bottom_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
             describe_cross_segment_looked_cards_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_choose_two_tap_unattach_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_bulk_return_decayed_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_joint_discard_or_sacrifice_then_draw_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_opponent_choice_returns_window(&program.segments, segment_index)
         {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
@@ -2625,6 +4553,26 @@ pub(super) fn describe_resolution_program(
         }
         if let Some((rendered, consumed)) =
             describe_cross_segment_choose_exiled_card_free_play_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_tagged_continuous_then_counter_conditional_draw_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_tagged_pump_then_conditional_keyword_window(
                 &program.segments,
                 segment_index,
             )
@@ -2649,6 +4597,44 @@ pub(super) fn describe_resolution_program(
         }
         if let Some((rendered, consumed)) =
             describe_cross_segment_face_down_pile_manifest_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_kicked_targets_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_color_matched_prevention_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_target_creature_damage_then_destroy_attached_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_target_only_damage_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_power_damage_exchange_window(&program.segments, segment_index)
         {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
@@ -2693,7 +4679,7 @@ pub(super) fn describe_resolution_program(
             continue;
         }
         if let Some((rendered, consumed)) =
-            describe_cross_segment_shuffle_exile_top_free_play_window(
+            describe_cross_segment_shuffle_reveal_top_free_play_window(
                 &program.segments,
                 segment_index,
             )
@@ -2711,6 +4697,16 @@ pub(super) fn describe_resolution_program(
         }
         if let Some((rendered, consumed)) =
             describe_cross_segment_observation_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_reveal_hand_choose_graveyard_exile_window(
+                &program.segments,
+                segment_index,
+            )
         {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
@@ -2786,6 +4782,16 @@ pub(super) fn describe_resolution_program(
             continue;
         }
         if let Some((rendered, consumed)) =
+            describe_cross_segment_choose_name_mill_conditional_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
             describe_cross_segment_result_window(&program.segments, segment_index)
         {
             rendered_segments.push(rendered);
@@ -2816,6 +4822,26 @@ pub(super) fn describe_resolution_program(
         }
 
         if !segment.default_effects.is_empty() {
+            if let [look_effect, conditional_effect] = segment.default_effects.as_slice()
+                && let Some(look) =
+                    look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+                && let Some(conditional) =
+                    conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+                && let Some(rendered) =
+                    describe_nested_look_top_card_matching_hand_else_bottom(look, conditional)
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
+            if let [choose_effect, cant_effect] = segment.default_effects.as_slice()
+                && let Some(rendered) = describe_split_piles_then_choose_attack_or_block_restriction(
+                    choose_effect,
+                    cant_effect,
+                )
+            {
+                rendered_segments.push(rendered);
+                continue;
+            }
             if let Some(rendered) = describe_conjoined_same_source_damage(&segment.default_effects)
             {
                 rendered_segments.push(rendered);
@@ -3354,7 +5380,6 @@ fn describe_shared_target_damage_self_replacement(
     if default_damage.source_is_combat
         || default_damage.unpreventable
         || replacement_damage.source_is_combat
-        || (scry.is_none() && !replacement_damage.unpreventable)
         || !default_damage.target.is_target()
         || !default_damage.target.is_single()
         || !replacement_damage.target.is_target()
@@ -3370,9 +5395,16 @@ fn describe_shared_target_damage_self_replacement(
     }
 
     let referent = self_replacement_target_referent(&default_damage.target)?;
+    let plain_amount_override = scry.is_none() && !replacement_damage.unpreventable;
+    let target_suffix = if plain_amount_override {
+        String::new()
+    } else {
+        format!(" to {referent}")
+    };
     let mut replacement = format!(
-        "it deals {} damage to {referent}",
-        super::normalize_common::describe_value(&replacement_damage.amount)
+        "it deals {} damage{}",
+        super::normalize_common::describe_value(&replacement_damage.amount),
+        target_suffix
     );
     if let Some(scry) = scry {
         replacement.push_str(&format!(
@@ -3384,11 +5416,18 @@ fn describe_shared_target_damage_self_replacement(
         replacement.push_str(" and the damage can't be prevented");
     }
     let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    let default_text = describe_effect_list(&segment.default_effects)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    if plain_amount_override {
+        return Some(format!(
+            "{default_text}. If {condition_text}, {replacement} instead"
+        ));
+    }
     Some(format!(
         "{}. If {condition_text}, instead {replacement}",
-        describe_effect_list(&segment.default_effects)
-            .trim()
-            .trim_end_matches('.')
+        default_text
     ))
 }
 
@@ -3504,10 +5543,11 @@ fn describe_single_self_replacement_segment(
         if let Some(inline) = describe_reveal_hand_choose_discard_inline(&replacement_refs) {
             let default_text = describe_effect_list(&segment.default_effects);
             let condition_text = super::normalize_common::describe_condition(&branch.condition);
-            return Some(format!(
+            let rendered = format!(
                 "{default_text}. If {condition_text}, instead {}",
                 super::normalize_common::lowercase_first(&inline)
-            ));
+            );
+            return Some(super::normalize_common::capitalize_first(&rendered));
         }
     }
     let conditional = Effect::conditional(
@@ -3789,31 +5829,70 @@ fn describe_same_target_hand_to_battlefield_replacement(
     let [replacement_effect] = replacement_effects else {
         return None;
     };
-    let default_tagged = default_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let replacement_tagged = replacement_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    if default_tagged.tag != replacement_tagged.tag {
-        return None;
-    }
-    let return_to_hand = default_tagged
-        .effect
+    let return_to_hand = unwrap_basic_render_wrapper(default_effect)
         .downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()?;
-    let return_to_battlefield = replacement_tagged
-        .effect
-        .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>(
-    )?;
-    if return_to_hand.target.unhinted() != return_to_battlefield.target.unhinted()
-        || return_to_battlefield.as_aura.is_some()
-        || !return_to_battlefield.enters_with_counters.is_empty()
+    let replacement_effect = unwrap_basic_render_wrapper(replacement_effect);
+    let (replacement_target, tapped, verb) = if let Some(return_to_battlefield) =
+        replacement_effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        if return_to_battlefield.as_aura.is_some()
+            || !return_to_battlefield.enters_with_counters.is_empty()
+        {
+            return None;
+        }
+        (
+            &return_to_battlefield.target,
+            return_to_battlefield.tapped,
+            "return",
+        )
+    } else if let Some(move_to_zone) =
+        replacement_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+    {
+        if move_to_zone.zone != Zone::Battlefield
+            || move_to_zone.to_top
+            || move_to_zone.library_order.is_some()
+            || move_to_zone.target_plural_surface
+            || move_to_zone.actor_surface.is_some()
+            || move_to_zone.destination_player_surface.is_some()
+            || move_to_zone.destination_player_reference_surface.is_some()
+            || move_to_zone.exiled_with_source_surface.is_some()
+            || move_to_zone.battlefield_controller
+                != crate::effects::BattlefieldController::Preserve
+            || move_to_zone.controller_surface_explicit
+            || !move_to_zone.enters_with_counters.is_empty()
+            || move_to_zone.enters_attacking
+            || move_to_zone.attack_target_mode.is_some()
+            || move_to_zone.enters_face_down
+            || move_to_zone.enters_transformed
+            || move_to_zone.transfer_exiled_with_source_links
+        {
+            return None;
+        }
+        let verb = match move_to_zone.verb_surface {
+            ironsmith_core::MoveToZoneVerbSurface::Put => "put",
+            ironsmith_core::MoveToZoneVerbSurface::Return => "return",
+            _ => return None,
+        };
+        (&move_to_zone.target, move_to_zone.enters_tapped, verb)
+    } else {
+        return None;
+    };
+    if !return_to_hand.target.is_target()
+        || !return_to_hand.target.is_single()
+        || !replacement_target.is_target()
+        || !replacement_target.is_single()
+        || !target_specs_select_same_objects(&return_to_hand.target, replacement_target)
     {
         return None;
     }
+    let destination = if verb == "put" {
+        "onto the battlefield"
+    } else {
+        "to the battlefield"
+    };
     let replacement = format!(
-        "return that card to the battlefield{} instead",
-        if return_to_battlefield.tapped {
-            " tapped"
-        } else {
-            ""
-        }
+        "{verb} that card {destination}{} instead",
+        if tapped { " tapped" } else { "" }
     );
     if condition_after_replacement {
         Some(format!(
@@ -4687,45 +6766,65 @@ fn describe_resolution_program_for_card(
         return rewrite_spell_resolution_damage_source(def, &rendered);
     }
 
-    let mut rendered_segments = Vec::new();
-    for segment in &program.segments {
-        if is_hidden_gift_resolution_segment(segment) {
-            continue;
-        }
-
-        if segment.self_replacements.len() == 1 {
-            let rendered = describe_single_self_replacement_segment(segment).unwrap_or_else(|| {
-                let branch = &segment.self_replacements[0];
-                describe_effect_list(&[Effect::conditional(
-                    branch.condition.clone(),
-                    branch.replacement_effects.clone(),
-                    segment.default_effects.clone(),
-                )])
-            });
-            let rendered =
-                apply_self_replacement_presentation_label(&segment.self_replacements[0], rendered);
-            rendered_segments.push(rewrite_spell_resolution_damage_source(def, &rendered));
-            continue;
-        }
-
-        if !segment.default_effects.is_empty() {
-            let rendered = describe_effect_list(&segment.default_effects);
-            rendered_segments.push(rewrite_spell_resolution_damage_source(def, &rendered));
-        }
-        for branch in &segment.self_replacements {
-            let rendered = describe_effect_list(&branch.replacement_effects);
-            rendered_segments.push(rewrite_spell_resolution_damage_source(def, &rendered));
-        }
-    }
-
-    rendered_segments.join(". ")
+    // Gift setup is represented as a runtime-only resolution segment. Remove
+    // only that recognized payload, then render the remaining program as a
+    // whole so cross-sentence relationships (target pairs, replacements,
+    // consult pipelines, and similar structures) remain visible to the same
+    // structural matchers used by non-Gift cards.
+    let visible_segments = program
+        .segments
+        .iter()
+        .filter(|segment| !is_hidden_gift_resolution_segment(segment))
+        .cloned()
+        .collect();
+    let visible_program = crate::resolution::ResolutionProgram::new(visible_segments);
+    let rendered = describe_resolution_program(&visible_program);
+    rewrite_spell_resolution_damage_source(def, &rendered)
 }
 
 fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) -> String {
     if !(def.card.is_instant() || def.card.is_sorcery()) || def.card.name.contains(" // ") {
         return rendered.to_string();
     }
-    let rendered = rewrite_damage_phrases_for_permanent_abilities(rendered, &def.card.name, false)
+    let mut rewritten = String::with_capacity(rendered.len());
+    let mut segment_start = 0usize;
+    let mut quoted = false;
+    for (index, character) in rendered.char_indices() {
+        if character != '"' {
+            continue;
+        }
+        let segment = &rendered[segment_start..index];
+        if quoted {
+            rewritten.push_str(segment);
+        } else {
+            rewritten.push_str(&rewrite_unquoted_spell_resolution_damage_source(
+                def, segment,
+            ));
+        }
+        rewritten.push('"');
+        quoted = !quoted;
+        segment_start = index + character.len_utf8();
+    }
+    let segment = &rendered[segment_start..];
+    if quoted {
+        rewritten.push_str(segment);
+    } else {
+        rewritten.push_str(&rewrite_unquoted_spell_resolution_damage_source(
+            def, segment,
+        ));
+    }
+    rewritten
+}
+
+fn rewrite_unquoted_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) -> String {
+    let rendered = if let Some(rest) = rendered.strip_prefix("This creature deals ") {
+        format!("{} deals {rest}", def.card.name)
+    } else {
+        rendered.to_string()
+    };
+    let rendered = rewrite_damage_phrases_for_permanent_abilities(&rendered, &def.card.name, false)
+        .replace("This creature deals ", "It deals ")
+        .replace("this creature deals ", "it deals ")
         .replace("This spell deals ", &format!("{} deals ", def.card.name))
         .replace("this spell deals ", &format!("{} deals ", def.card.name))
         .replace("This source deal ", &format!("{} deal ", def.card.name))
@@ -4831,6 +6930,12 @@ pub(super) fn substitute_legendary_source_reference(
     oracle_short_name: Option<&str>,
 ) -> String {
     let line = collapse_duplicate_source_type_subject(line);
+    let canonical_name_lower = card.name.to_ascii_lowercase();
+    let line = if canonical_name_lower != card.name {
+        replace_outside_quotes(&line, &canonical_name_lower, &card.name)
+    } else {
+        line
+    };
     let line = line.as_str();
     if card.name.contains(" // ") {
         return line.to_string();
@@ -6544,7 +8649,7 @@ fn describe_alternative_cast_with_qualified_reduction(
         method_line = method_line.replacen("Flashback—", "Flashback ", 1);
     }
     Some(format!(
-        "{}. {}",
+        "{}. {}.",
         method_line.trim_end_matches('.'),
         reduction.display().trim_end_matches('.')
     ))
@@ -7109,6 +9214,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += consumed;
                 continue;
             }
+            if let Some(text) =
+                describe_structural_conditional_source_keyword_grant(ability, subject)
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
+                continue;
+            }
             if let Some((text, consumed)) =
                 describe_labeled_static_bundle(&def.abilities[ability_idx..], subject)
             {
@@ -7442,6 +9554,9 @@ fn structural_static_effect_filter(
     };
     if static_ability.id() != expected_id {
         return None;
+    }
+    if let Some(filter) = static_ability.structural_effect_filter() {
+        return Some(filter);
     }
     match &static_ability.compiled_model()?.payload {
         ironsmith_core::StaticAbilityPayload::Anthem(anthem)
@@ -7952,6 +10067,7 @@ fn static_subject_for_attached_transform_piece(ability: &Ability) -> Option<Stri
     let display = static_ability.display();
     match static_ability.id() {
         crate::static_abilities::StaticAbilityId::AddSubtypes
+        | crate::static_abilities::StaticAbilityId::SetLandSubtypes
         | crate::static_abilities::StaticAbilityId::SetColors
         | crate::static_abilities::StaticAbilityId::MakeColorless => {
             split_static_predicate_with_verb(&display, &[" is ", " are "])
@@ -8316,7 +10432,9 @@ fn describe_structural_anthem_remove_all_abilities_bundle(
     }
 
     Some((
-        format!("{subject} gets {modifier} and loses all abilities"),
+        capitalize_first(&format!(
+            "{subject} gets {modifier} and loses all abilities"
+        )),
         2,
     ))
 }
@@ -8359,7 +10477,9 @@ fn describe_structural_anthem_set_colors_bundle(abilities: &[Ability]) -> Option
     }
 
     Some((
-        format!("{subject} {get_verb} {modifier} and {is_verb} {color}"),
+        capitalize_first(&format!(
+            "{subject} {get_verb} {modifier} and {is_verb} {color}"
+        )),
         2,
     ))
 }
@@ -9145,7 +11265,7 @@ mod self_replacement_rendering_tests {
         assert_eq!(
             describe_single_self_replacement_segment(&segment).as_deref(),
             Some(
-                "Deal 1 damage to each creature. It deals 2 damage to each creature instead if this was kicked"
+                "Deal 1 damage to each creature. It deals 2 damage to each creature instead if this spell was kicked"
             )
         );
     }

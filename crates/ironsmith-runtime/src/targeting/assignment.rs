@@ -247,6 +247,60 @@ pub fn assigned_target_ranges(
     Some(ranges)
 }
 
+/// Recover the target-slot ranges from requirement arity without requiring the
+/// old targets to remain legal. This is used when changing a spell's targets:
+/// the copied or existing assignment was legal when announced, but one or more
+/// of those targets may have become illegal before the retarget effect resolves.
+pub fn assigned_target_ranges_ignoring_current_legality(
+    requirements: &[TargetRequirementContext],
+    assigned: &[Target],
+) -> Option<Vec<Range<usize>>> {
+    fn assign_counts(
+        requirements: &[TargetRequirementContext],
+        req_idx: usize,
+        remaining: usize,
+    ) -> Option<Vec<usize>> {
+        if req_idx == requirements.len() {
+            return (remaining == 0).then(Vec::new);
+        }
+
+        let requirement = &requirements[req_idx];
+        let future_min = requirements[req_idx + 1..]
+            .iter()
+            .map(|next| next.min_targets)
+            .sum::<usize>();
+        let max = requirement.max_targets.unwrap_or(remaining).min(remaining);
+
+        for count in (requirement.min_targets..=max).rev() {
+            let after = remaining.saturating_sub(count);
+            if after < future_min {
+                continue;
+            }
+            if let Some(mut rest) = assign_counts(requirements, req_idx + 1, after) {
+                let mut counts = Vec::with_capacity(rest.len() + 1);
+                counts.push(count);
+                counts.append(&mut rest);
+                return Some(counts);
+            }
+        }
+
+        None
+    }
+
+    let counts = assign_counts(requirements, 0, assigned.len())?;
+    let mut cursor = 0usize;
+    Some(
+        counts
+            .into_iter()
+            .map(|count| {
+                let start = cursor;
+                cursor += count;
+                start..cursor
+            })
+            .collect(),
+    )
+}
+
 pub fn validate_flat_target_assignment(
     requirements: &[TargetRequirementContext],
     targets: &[Target],
@@ -257,7 +311,8 @@ pub fn validate_flat_target_assignment(
 #[cfg(test)]
 mod tests {
     use super::{
-        assigned_target_ranges, normalize_targets_for_requirements, validate_flat_target_assignment,
+        assigned_target_ranges, assigned_target_ranges_ignoring_current_legality,
+        normalize_targets_for_requirements, validate_flat_target_assignment,
     };
     use crate::decisions::context::TargetRequirementContext;
     use crate::game_state::Target;
@@ -340,6 +395,26 @@ mod tests {
         ];
 
         assert!(!validate_flat_target_assignment(&requirements, &[b, a]));
+    }
+
+    #[test]
+    fn target_ranges_can_be_recovered_after_an_old_target_becomes_illegal() {
+        let old_target = Target::Object(ObjectId::from_raw(1));
+        let new_legal_target = Target::Object(ObjectId::from_raw(2));
+        let requirements = vec![TargetRequirementContext {
+            description: "replacement target".to_string(),
+            legal_targets: vec![new_legal_target],
+            legal_target_sets: Vec::new(),
+            min_targets: 1,
+            max_targets: Some(1),
+            distinct_player_group: None,
+        }];
+
+        assert!(assigned_target_ranges(&requirements, &[old_target]).is_none());
+        assert_eq!(
+            assigned_target_ranges_ignoring_current_legality(&requirements, &[old_target]),
+            Some(vec![0..1])
+        );
     }
 
     #[test]

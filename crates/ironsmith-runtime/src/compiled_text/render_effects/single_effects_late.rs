@@ -1127,6 +1127,18 @@ pub(super) fn describe_structured_ward_cost(cost: &crate::cost::TotalCost) -> St
 
 pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
     if let AbilityKind::Triggered(triggered) = &ability.kind
+        && triggered.intervening_if.is_none()
+        && triggered.presentation_label.is_none()
+        && matches!(
+            triggered.effects.flattened_default_effects(),
+            [effect] if effect
+                .downcast_ref::<crate::effects::HauntExileEffect>()
+                .is_some()
+        )
+    {
+        return Some("Haunt".to_string());
+    }
+    if let AbilityKind::Triggered(triggered) = &ability.kind
         && let Some(annihilator) = describe_annihilator_keyword(triggered)
     {
         return Some(annihilator);

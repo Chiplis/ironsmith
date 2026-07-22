@@ -11,6 +11,56 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized
         .replace("creatures that shares ", "creatures that share ")
         .replace("Creatures that shares ", "Creatures that share ")
+        // Composition can preserve both the quantifier carried by a union
+        // filter and the one added by its event surface.
+        .replace("one or more one or more ", "one or more ")
+        // Keep common singular-card consult filters grammatical when their
+        // selection renderer intentionally returns a bare noun phrase.
+        .replace(
+            "until they reveal creature card",
+            "until they reveal a creature card",
+        )
+        .replace(
+            "until that player reveals creature card",
+            "until that player reveals a creature card",
+        )
+        .replace(
+            "until you reveal creature card",
+            "until you reveal a creature card",
+        )
+        .replace(
+            "until you reveal nonland card",
+            "until you reveal a nonland card",
+        )
+        .replace("any number creatures", "any number of creatures")
+        .replace("any number permanents", "any number of permanents")
+        .replace("one a other ", "one other ")
+        .replace("a other ", "another ")
+        .replace("an other ", "another ")
+        // Optional branches already carry the acting player from `may`.
+        .replace("may reveal it and you put it", "may reveal it and put it")
+        .replace("may returns ", "may return ")
+        .replace("May returns ", "May return ")
+        // Tagged plural sets must keep plural agreement and ownership.
+        .replace("that creatures'", "that creature's")
+        .replace("That creatures'", "That creature's")
+        .replace(
+            "Return those creatures to its owner's hand",
+            "Return those creatures to their owners' hands",
+        )
+        .replace(
+            "return those creatures to its owner's hand",
+            "return those creatures to their owners' hands",
+        )
+        .replace(
+            "Other creatures you control get +2/+2 and gains trample",
+            "Other creatures you control get +2/+2 and gain trample",
+        )
+        // A clause joined after a comma remains subordinate rather than
+        // beginning a new sentence.
+        .replace(", That permanent", ", that permanent")
+        // Boolean parser metadata must never leak into a zone name.
+        .replace("libraryfalse", "library")
         // In an exhaustive damage fanout, the participial creature filter is
         // the printed noun modifier ("each creature dealt damage"), not a
         // targeted relative clause ("target creature that was dealt").
@@ -733,9 +783,11 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Discard all the cards in your hand, then draw that many cards plus one. You gain life equal to the number of cards in your hand.".to_string();
     }
-    if lower_compact_trimmed
-        == "gain control of target creature until end of turn, untap it, it gets +x/+0 until end of turn, where x is x, then it gains haste until end of turn"
-    {
+    if matches!(
+        lower_compact_trimmed.as_str(),
+        "gain control of target creature until end of turn, untap it, it gets +x/+0 until end of turn, where x is x, then it gains haste until end of turn"
+            | "gain control of target creature until end of turn, untap it, it gets +x/+0 and gains haste until end of turn"
+    ) {
         return "Gain control of target creature until end of turn. Untap that creature. It gets +X/+0 and gains haste until end of turn.".to_string();
     }
     if lower_compact_trimmed
@@ -914,10 +966,19 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     {
         return "Destroy all Auras and Equipment attached to target creature.".to_string();
     }
-    if lower_compact
-        == "whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller."
-    {
+    if matches!(
+        lower_compact.as_str(),
+        "whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller."
+            | "whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that creature's controller."
+            | "whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that permanent's controller."
+    ) {
         return "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that land's controller.".to_string();
+    }
+    if lower_compact.contains("that player loses 1 life and that player discards a card") {
+        return normalized.replace(
+            "that player loses 1 life and that player discards a card",
+            "that player loses 1 life and discards a card",
+        );
     }
     if lower_compact
         == "at the beginning of your upkeep, if you have the city's blessing, draw a card. otherwise, each player draws a card."
@@ -1260,6 +1321,19 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalized
         .replace("You may You put ", "You may put ")
         .replace("you may You put ", "you may put ");
+    // A doubled subject after "may" ("you may You draw", "you may You
+    // shuffle") is a render artifact — the verb already carries the implied
+    // "you". Strip the spurious second "You"/"you".
+    normalized = normalized
+        .replace("you may You ", "you may ")
+        .replace("You may You ", "You may ")
+        .replace("you may you ", "you may ")
+        .replace("You may you ", "You may ");
+    // A doubled pronoun ("you you", "they they") is always a render join
+    // artifact.
+    normalized = normalized
+        .replace(" you you ", " you ")
+        .replace(" they they ", " they ");
     if normalized.contains(". you lose life equal to its mana value") {
         normalized = normalized.replace(
             ". you lose life equal to its mana value",
@@ -1399,6 +1473,25 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             normalized = normalized.replacen(
                 "Permanents tapped this way don't untap during their controllers' untap steps",
                 "It doesn't untap during its controller's untap step",
+                1,
+            );
+        }
+    }
+    // A multi-target tap-lock ("Tap up to two target creatures. / Tap all
+    // attacking creatures.") back-references the whole set as "Those
+    // creatures"; the singular "That permanent doesn't untap ..." surface
+    // under-renders it.
+    if let Some(idx) =
+        normalized.find(". That permanent doesn't untap during its controller's next untap step")
+    {
+        let before_lower = normalized[..idx].to_ascii_lowercase();
+        let taps_multiple = before_lower.contains("tap up to")
+            || before_lower.contains("tap all ")
+            || (before_lower.contains("tap ") && before_lower.contains(" target creatures"));
+        if taps_multiple {
+            normalized = normalized.replacen(
+                "That permanent doesn't untap during its controller's next untap step",
+                "Those creatures don't untap during their controller's next untap step",
                 1,
             );
         }
@@ -3526,8 +3619,10 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ", then an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
             ". An opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
             ". an opponent may search an opponent's library for a basic land card, put it onto the battlefield, then that player shuffles",
+            ". That player may search their library for a with a basic land type card, put it onto the battlefield. Then that player shuffles",
         ];
         const DESTROY_BODIES: &[&str] = &[
+            "Destroy target artifact, enchantment, or nonbasic land an opponent controls",
             "Destroy target nonbasic artifact, enchantment, or land an opponent controls",
             "Destroy target opponent's nonbasic artifact or enchantment or land",
             "Destroy target opponent's nonbasic artifact, enchantment, or land",

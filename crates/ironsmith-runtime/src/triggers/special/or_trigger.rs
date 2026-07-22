@@ -686,6 +686,9 @@ impl OrTrigger {
             let damaged_player = player.damaged_player.as_ref()?;
             let object_display = object.display();
             let (prefix, object_recipient) = object_display.rsplit_once(" to ")?;
+            let object_recipient = object_recipient
+                .strip_prefix("one or more ")
+                .unwrap_or(object_recipient);
             let player_recipient = damaged_player.description();
             let one_or_more = object.target_filter.union_is_one_or_more();
             let object_recipient = if one_or_more {
@@ -730,6 +733,9 @@ impl OrTrigger {
         let damaged_player = player.damaged_player.as_ref()?;
         let object_display = object.display();
         let (prefix, object_recipient) = object_display.rsplit_once(" to ")?;
+        let object_recipient = object_recipient
+            .strip_prefix("one or more ")
+            .unwrap_or(object_recipient);
         let player_recipient = damaged_player.description();
         let one_or_more = object.target_filter.union_is_one_or_more();
         let object_recipient = if one_or_more {

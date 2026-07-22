@@ -80,17 +80,14 @@ fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
     OwnedLexToken::word(word, TextSpan::synthetic())
 }
 
-fn parse_harness_without_terminal_punctuation(
+fn parse_keyword_mechanic_without_terminal_punctuation(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
-    if !tokens.first().is_some_and(|token| token.is_word("harness")) {
-        return Ok(None);
-    }
-
     // Chain segments are split before the sentence terminator is retained,
     // while the keyword-mechanic grammar intentionally owns the complete
-    // sentence shape. Reattach a synthetic terminator so named-source tails
-    // such as `Harness this` use the same typed parser as standalone text.
+    // sentence shape. Reattach a synthetic terminator so executable keyword
+    // clauses such as `Bolster 2`, `Adapt 2`, and `Harness this` use the same
+    // typed parser as standalone text instead of becoming implicit grants.
     let mut terminated = tokens.to_vec();
     if !terminated.last().is_some_and(|token| token.is_period()) {
         terminated.push(OwnedLexToken::period(TextSpan::synthetic()));
@@ -647,6 +644,13 @@ fn parse_effect_chain_uncoordinated_lexed(
         ))
     }
 
+    // An immediate "you may cast/play" instruction is an optional action,
+    // not a persistent permission. Claim it before the generic leading-may
+    // path strips `may` while probing broader cast-permission surfaces.
+    if let Some(spec) = parse_may_cast_it_sentence(tokens) {
+        return Ok(vec![build_may_cast_tagged_effect(&spec)]);
+    }
+
     if let Some(effects) = parse_reveal_source_exiled_permanents_sentence_lexed(tokens) {
         return Ok(effects);
     }
@@ -758,8 +762,19 @@ fn parse_effect_chain_uncoordinated_lexed(
             None,
         )?;
         return Ok(vec![EffectAst::AnyPlayerMay {
+            players: PlayerFilter::Any,
             effects: vec![sacrifice],
         }]);
+    }
+
+    // Claim the complete causative damage offer before the broad leading-may
+    // handler strips its participant and lowers only the inner damage. The
+    // specialist distinguishes sequential "any player/opponent" offers from
+    // a single targeted player's choice.
+    if let Some(effects) =
+        super::dispatch_inner::parse_any_player_may_have_source_deal_damage(tokens)?
+    {
+        return Ok(effects);
     }
 
     if let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) {
@@ -833,6 +848,19 @@ fn parse_effect_chain_uncoordinated_lexed(
             return Ok(effects);
         }
         return Ok(vec![EffectAst::May { effects }]);
+    }
+
+    // The broad consult recognizer intentionally accepts a traversal prefix.
+    // Claim the complete inline consult/disposition program first so a result-
+    // prefixed clause does not silently lose its battlefield move and library
+    // remainder after the traversal.
+    if split_leading_result_prefix_lexed(tokens).is_none()
+        && let Some(effects) =
+        super::dispatch_inner::parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
+            tokens,
+        )?
+    {
+        return Ok(effects);
     }
 
     // Consult traversal has a `reveal` verb, but its `until` stop rule is
@@ -1184,7 +1212,13 @@ pub(crate) fn parse_effect_chain_inner_lexed(
 fn parse_effect_chain_inner_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    if let Some(effect) = parse_harness_without_terminal_punctuation(tokens)? {
+    // A keyword mechanic at the end of a coordinated chain must not consume
+    // the earlier action as part of its target phrase (for example, "you
+    // lose 1 life and this creature endures 1"). Let the semantic chain
+    // splitter isolate those arms before probing the bare-keyword parser.
+    if split_effect_chain_on_and_lexed(tokens).len() <= 1
+        && let Some(effect) = parse_keyword_mechanic_without_terminal_punctuation(tokens)?
+    {
         return Ok(vec![effect]);
     }
     if let Some(stripped) = strip_leading_instead_prefix_lexed(tokens) {
@@ -1232,6 +1266,14 @@ fn parse_effect_chain_inner_lexed_unstacked(
 
     if chain_grammar::starts_with_unless_tokens(tokens)
         && let Some(effects) = parse_sentence_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
+    {
+        return Ok(effects);
+    }
+
+    if let Some(effects) =
+        super::dispatch_inner::parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
+            tokens,
+        )?
     {
         return Ok(effects);
     }
@@ -1337,6 +1379,16 @@ fn parse_effect_chain_inner_lexed_unstacked(
             && let Some(expanded) = expand_shared_subject_followup_segment_lexed(previous, &segment)
         {
             segment = expanded;
+        }
+
+        // A comma/"then" chain is split into individual executable arms
+        // before this loop. Give a bare keyword action in any arm the same
+        // typed lowering as a standalone sentence before the no-verb fallback
+        // can reinterpret it as an ability granted to the previous object.
+        if let Some(effect) = parse_keyword_mechanic_without_terminal_punctuation(&segment)? {
+            effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            previous_segment = Some(segment);
+            continue;
         }
 
         let carry_gain_duration = find_verb_lexed(&segment).is_some_and(|(verb, verb_idx)| {
@@ -1642,6 +1694,7 @@ fn tap_then_next_untap_actions(effects: &[EffectAst]) -> bool {
                     restriction: crate::effect::Restriction::Untap(_),
                     duration: Until::ControllersNextUntapStep,
                     condition: None,
+                    ..
                 },
             ..
         }),
@@ -2003,7 +2056,7 @@ fn effect_uses_half_life_total_value(effect: &EffectAst) -> bool {
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::AnyPlayerMay { effects }
+        | EffectAst::AnyPlayerMay { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::WhenResult { effects, .. }
         | EffectAst::ManaRestricted { effects, .. } => {
@@ -3219,6 +3272,10 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnToHand { .. }
+                | SubjectVerbActionAst::ReturnAllToHand { .. }
                 | SubjectVerbActionAst::MoveToZone { .. }
                 | SubjectVerbActionAst::AdditionalLandPlays { .. }
                 | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
@@ -3299,6 +3356,10 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
+                | SubjectVerbActionAst::ReturnToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+                | SubjectVerbActionAst::ReturnToHand { .. }
+                | SubjectVerbActionAst::ReturnAllToHand { .. }
                 | SubjectVerbActionAst::MoveToZone { .. }
                 | SubjectVerbActionAst::AdditionalLandPlays { .. }
                 | SubjectVerbActionAst::ExtraTurnAfterTurn { .. }
@@ -3399,6 +3460,25 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                 ..
             })
         );
+    let imperative_return = clause_words
+        .iter()
+        .copied()
+        .skip_while(|word| matches!(*word, "then" | "and"))
+        .next()
+        == Some("return")
+        && matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst {
+                    player: PlayerAst::Implicit,
+                    ..
+                },
+                action: SubjectVerbActionAst::ReturnToBattlefield { .. }
+                    | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+                    | SubjectVerbActionAst::ReturnToHand { .. }
+                    | SubjectVerbActionAst::ReturnAllToHand { .. },
+            })
+        );
     let explicitly_conjugated_player_action = clause_tokens.first().is_some_and(|token| {
         token.is_word("draws") || token.is_word("scries") || token.is_word("surveils")
     });
@@ -3414,17 +3494,18 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
     }
     let should_skip = match carried_context {
         CarryContext::Player(_) => {
-            (matches!(
-                effect,
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    subject: SubjectVerbSubjectAst {
-                        player: PlayerAst::Implicit,
-                        ..
-                    },
-                    action: SubjectVerbActionAst::Draw { .. },
-                })
-            ) && clause_head == chain_grammar::CarryClauseHead::Draw)
-                && !explicitly_conjugated_player_action
+            imperative_return
+                || (matches!(
+                    effect,
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: SubjectVerbSubjectAst {
+                            player: PlayerAst::Implicit,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::Draw { .. },
+                    })
+                ) && clause_head == chain_grammar::CarryClauseHead::Draw)
+                    && !explicitly_conjugated_player_action
                 || (matches!(
                     effect,
                     EffectAst::SubjectVerb(SubjectVerbEffectAst {

@@ -281,7 +281,14 @@ impl TriggerMatcher for AttacksTrigger {
             .attacking_player_or_planeswalker_controlled_by
             .take();
         let attacked_target_must_be_player = display_filter.targets_only_player.take().is_some();
-        let mut subject = display_filter.description();
+        let described_subject = display_filter.description();
+        let articleless_attachment_subject =
+            display_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                    && matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+            }) || described_subject.starts_with("an enchanted ")
+                || described_subject.starts_with("an equipped ");
+        let mut subject = described_subject.clone();
         if let Some(stripped) = subject.strip_prefix("a ") {
             subject = stripped.to_string();
         } else if let Some(stripped) = subject.strip_prefix("an ") {
@@ -380,10 +387,12 @@ impl TriggerMatcher for AttacksTrigger {
         if display_filter.source {
             return format!("Whenever this creature attacks{target_tail}");
         }
-        format!(
-            "Whenever {} attacks{target_tail}",
-            display_filter.description()
-        )
+        let subject = if articleless_attachment_subject {
+            subject
+        } else {
+            described_subject
+        };
+        format!("Whenever {subject} attacks{target_tail}")
     }
 
     fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {

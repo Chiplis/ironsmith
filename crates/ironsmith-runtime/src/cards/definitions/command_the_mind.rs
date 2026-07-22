@@ -65,7 +65,16 @@ mod tests {
         game.turn.priority_player = Some(alice);
 
         let inputs = vec![
-            "1", "0", "0", "", "1", "0", "0", "0", "0", "1", "0", "1", "1", "",
+            "1", // Cast Command the Mind
+            "0", // Target Bob
+            // Activate all seven lands, paying {U} and floating the rest for Tivit.
+            "0", "", "1", "0", "0", "0", "0", "1", // Cast Tivit
+            "0", "1", // Choose colors for Tivit's ambiguous generic pips
+            "1", // Use Tivit's optional additional vote
+            "0", // Alice votes for evidence
+            "1", // Alice votes for bribery
+            "1", // Controlled Bob votes for bribery using Alice's decision maker
+            "",  // Pass priority after voting
         ]
         .into_iter()
         .map(str::to_string)

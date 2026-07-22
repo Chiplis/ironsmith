@@ -8,10 +8,11 @@ use crate::ids::CardId;
 /// {3}{W}{U}{B}
 /// 6/6
 /// Flying, ward {3}
-/// Council's dilemma — Whenever Tivit enters the battlefield or deals combat
+/// Council's dilemma — Whenever Tivit enters or deals combat
 /// damage to a player, starting with you, each player votes for evidence or
 /// bribery. For each evidence vote, investigate. For each bribery vote, create
-/// a Treasure token. You may vote an additional time.
+/// a Treasure token.
+/// While voting, you may vote an additional time.
 pub fn tivit_seller_of_secrets() -> CardDefinition {
     CardDefinitionBuilder::new(CardId::new(), "Tivit, Seller of Secrets")
         .card_types(vec![crate::types::CardType::Creature])
@@ -20,10 +21,11 @@ pub fn tivit_seller_of_secrets() -> CardDefinition {
              Type: Legendary Creature — Sphinx Rogue\n\
              Power/Toughness: 6/6\n\
              Flying, ward {3}\n\
-             Council's dilemma — Whenever Tivit enters the battlefield or deals combat \
+             Council's dilemma — Whenever Tivit enters or deals combat \
              damage to a player, starting with you, each player votes for evidence or \
              bribery. For each evidence vote, investigate. For each bribery vote, create \
-             a Treasure token. You may vote an additional time.",
+             a Treasure token.\n\
+             While voting, you may vote an additional time.",
         )
         .expect("Tivit text should be supported")
 }
@@ -187,10 +189,10 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
-    fn test_tivit_has_three_abilities() {
-        // Flying, Ward, and the triggered ability
+    fn test_tivit_has_four_abilities() {
+        // Flying, ward, the triggered ability, and the separate voting static ability.
         let def = tivit_seller_of_secrets();
-        assert_eq!(def.abilities.len(), 3);
+        assert_eq!(def.abilities.len(), 4);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -409,7 +411,7 @@ mod tests {
 
         // Verify the object has the abilities
         let obj = game.object(tivit_id).unwrap();
-        assert_eq!(obj.abilities.len(), 3);
+        assert_eq!(obj.abilities.len(), 4);
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -481,13 +483,16 @@ mod tests {
         let game = run_replay_test(
             vec![
                 "1", // Cast Tivit
-                "0", // Pay {W}
-                "0", // Pay {U}
-                "0", // Pay {B}
-                "0", // Pay {1}
-                "0", // Pay {1} (final {1} auto-paid if only one option remains)
+                "0", // Activate Plains
+                "0", // Activate Island
+                "0", // Activate Swamp
+                "0", // Activate Plains
+                "0", // Activate Island
+                "0", // Activate Swamp
+                "0", // Choose mana for the first ambiguous generic pip
+                "0", // Choose mana for the second ambiguous generic pip
                 // ETB trigger resolves: council's dilemma voting
-                "1", // Alice chooses to vote an additional time
+                "y", // Alice chooses to vote an additional time
                 "0", // Alice vote 1: evidence
                 "1", // Alice vote 2: bribery
                 "1", // Bob vote: bribery
@@ -550,23 +555,22 @@ mod tests {
         let game = run_replay_test(
             vec![
                 "1", // Cast Tivit
-                "0", // Pay {W}
-                "0", // Pay {U}
-                "0", // Pay {B}
-                "0", // Pay {1}
-                "0", // Pay {1} (final {1} auto-paid if only one option remains)
-                "",  // Pass priority after casting
-                "",  // Player 2 passes priority with ETB trigger on stack
+                "0", // Activate Plains
+                "0", // Activate Island
+                "0", // Activate Swamp
+                "0", // Activate Plains
+                "0", // Activate Island
+                "0", // Activate Swamp
+                "0", // Choose mana for the first ambiguous generic pip
+                "0", // Choose mana for the second ambiguous generic pip
+                "",  // Pass priority on Tivit
+                "",  // Pass priority on Tivit
                 // ETB trigger resolves: council's dilemma voting
-                "1", // Tivit controller votes an additional time
+                "y", // Tivit controller votes an additional time
                 "1", // Player 1 vote 1: bribery
                 "1", // Player 1 vote 2: bribery
                 "0", // Player 2 vote: evidence
                 "0", // Player 3 vote: evidence
-                "",  // Keep default post-vote trigger order
-                "",  // Player 1 passes priority after token triggers are stacked
-                "",  // Player 2 passes priority after token triggers are stacked
-                "",  // Player 3 passes priority after token triggers are stacked
             ],
             ReplayTestConfig::new()
                 .p1_hand(vec!["Tivit, Seller of Secrets"])

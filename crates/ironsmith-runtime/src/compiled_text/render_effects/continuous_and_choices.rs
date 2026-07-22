@@ -2117,16 +2117,8 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
     } else {
         "their".to_string()
     };
-    let mut selection = describe_looked_battlefield_selection(choose)?;
-    let put_prefix = if choose.count.min == 0
-        && choose.count.max == Some(1)
-        && let Some(rest) = selection.strip_prefix("up to one ")
-    {
-        selection = with_indefinite_article(rest);
-        "You may put"
-    } else {
-        "Put"
-    };
+    let selection = describe_looked_battlefield_selection(choose)?;
+    let put_prefix = "Put";
     let control_suffix = match move_to_zone.battlefield_controller {
         crate::effects::BattlefieldController::Preserve => "",
         crate::effects::BattlefieldController::Owner => " under its owner's control",
@@ -3445,7 +3437,31 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
     }
 
     fn move_uses_tag(move_to_zone: &crate::effects::MoveToZoneEffect, tag: &TagKey) -> bool {
-        choose_spec_references_exact_tag(&move_to_zone.target, tag)
+        if choose_spec_references_exact_tag(&move_to_zone.target, tag) {
+            return true;
+        }
+
+        let (ChooseSpec::Object(filter) | ChooseSpec::All(filter)) = move_to_zone.target.base()
+        else {
+            return false;
+        };
+        if filter.tagged_constraints.is_empty()
+            || filter.tagged_constraints.iter().any(|constraint| {
+                &constraint.tag != tag
+                    || constraint.relation != crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+        {
+            return false;
+        }
+
+        // Reference resolution can preserve the same searched-card tag more
+        // than once while also retaining the authored generic-card surface.
+        // Those are presentation details; reject every actual extra filter
+        // constraint before treating the spec as the exact tagged object.
+        let mut bare = filter.clone();
+        bare.tagged_constraints.clear();
+        bare.set_explicit_card_noun(false);
+        bare == ObjectFilter::default()
     }
 
     let [choose_effect, reveal_effect, shuffle_effect] = may.effects.as_slice() else {
@@ -3609,7 +3625,7 @@ pub(crate) fn describe_search_reveal_named_conditional_move_then_shuffle(
         let [effect] = effects else {
             return None;
         };
-        let move_to_zone = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let move_to_zone = move_to_zone_from_effect(effect)?;
         if move_to_zone.zone != zone
             || !matches!(move_to_zone.target.base(), ChooseSpec::Tagged(found) if found.as_str() == tag)
         {
@@ -4025,7 +4041,10 @@ pub(crate) fn describe_may_have_you_create_tokens(
     }
 
     let inner = describe_effect_list(&may.effects);
-    let Some(rest) = inner.strip_prefix("Create ") else {
+    let Some(rest) = inner
+        .strip_prefix("You create ")
+        .or_else(|| inner.strip_prefix("Create "))
+    else {
         return None;
     };
 

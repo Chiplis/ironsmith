@@ -22,6 +22,7 @@ pub(crate) enum BattlefieldEntryController {
 pub(crate) struct BattlefieldEntryOptions {
     pub controller: BattlefieldEntryController,
     pub tapped: bool,
+    pub transformed: bool,
     pub initial_counters: Vec<(crate::object::CounterType, u32)>,
 }
 
@@ -30,6 +31,7 @@ impl BattlefieldEntryOptions {
         Self {
             controller: BattlefieldEntryController::Preserve,
             tapped,
+            transformed: false,
             initial_counters: Vec::new(),
         }
     }
@@ -38,6 +40,7 @@ impl BattlefieldEntryOptions {
         Self {
             controller: BattlefieldEntryController::Owner,
             tapped,
+            transformed: false,
             initial_counters: Vec::new(),
         }
     }
@@ -46,6 +49,7 @@ impl BattlefieldEntryOptions {
         Self {
             controller: BattlefieldEntryController::Specific(controller),
             tapped,
+            transformed: false,
             initial_counters: Vec::new(),
         }
     }
@@ -55,6 +59,11 @@ impl BattlefieldEntryOptions {
         counters: Vec<(crate::object::CounterType, u32)>,
     ) -> Self {
         self.initial_counters = counters;
+        self
+    }
+
+    pub(crate) fn transformed(mut self, transformed: bool) -> Self {
+        self.transformed = transformed;
         self
     }
 }
@@ -213,6 +222,57 @@ fn battlefield_entry_controller(
     })
 }
 
+/// Resolve the back-face definition used by an instruction that puts a card
+/// onto the battlefield transformed. This is not a transform action, so
+/// "can't transform" restrictions do not apply; an object without a
+/// permanent transforming back face simply cannot enter this way.
+fn transformed_entry_definition(
+    game: &GameState,
+    object_id: ObjectId,
+) -> Option<crate::cards::CardDefinition> {
+    let object = game.object(object_id)?;
+    if object.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike {
+        return None;
+    }
+    let current = game.linked_face_definition_by_name_or_id(Some(&object.name), object.card)?;
+    let other = game.linked_face_definition_by_name_or_id(
+        object.other_face_name.as_deref(),
+        object.other_face,
+    )?;
+    if current.card.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
+        || other.card.linked_face_layout != crate::card::LinkedFaceLayout::TransformLike
+    {
+        return None;
+    }
+
+    // Transform-like card families use the lower card id for the front face,
+    // matching the existing default-face restoration used by zone changes.
+    let transformed = if current.card.id.0 > other.card.id.0 {
+        current
+    } else {
+        other
+    };
+    (!transformed.card.card_types.iter().any(|card_type| {
+        matches!(
+            card_type,
+            crate::types::CardType::Instant | crate::types::CardType::Sorcery
+        )
+    }))
+    .then_some(transformed)
+}
+
+fn apply_entry_definition(
+    game: &mut GameState,
+    object_id: ObjectId,
+    definition: &crate::cards::CardDefinition,
+) -> bool {
+    let Some(object) = game.object_mut(object_id) else {
+        return false;
+    };
+    object.apply_definition_face(definition);
+    true
+}
+
 fn apnap_position(game: &GameState, player: PlayerId) -> usize {
     game.team_apnap_player_order()
         .iter()
@@ -274,10 +334,28 @@ pub(crate) fn move_to_battlefield_batch_with_options(
     }
 
     let mut working = game.clone();
+    let mut transformed_entry_states = std::collections::HashMap::new();
+    for (index, (object_id, options)) in requests.iter().enumerate() {
+        if !options.transformed {
+            continue;
+        }
+        let Some(original) = working.object(*object_id).cloned() else {
+            continue;
+        };
+        let Some(definition) = transformed_entry_definition(&working, *object_id) else {
+            continue;
+        };
+        if apply_entry_definition(&mut working, *object_id, &definition) {
+            transformed_entry_states.insert(index, (original, definition));
+        }
+    }
     let eligible_indices = requests
         .iter()
         .enumerate()
         .filter_map(|(index, (object, options))| {
+            if options.transformed && !transformed_entry_states.contains_key(&index) {
+                return None;
+            }
             if working.card_cannot_enter_battlefield(*object) {
                 return None;
             }
@@ -389,7 +467,22 @@ pub(crate) fn move_to_battlefield_batch_with_options(
             }
             continue;
         };
+        if let Some((_, transformed_definition)) = transformed_entry_states.get(&index) {
+            apply_entry_definition(&mut working, result.new_id, transformed_definition);
+        }
         outcomes[index] = finish_battlefield_entry(&mut working, ctx, old_zone, options, result);
+    }
+
+    for (index, (object_id, _)) in requests.iter().enumerate() {
+        if outcomes[index] != BattlefieldEntryOutcome::Prevented {
+            continue;
+        }
+        let Some((original, _)) = transformed_entry_states.get(&index) else {
+            continue;
+        };
+        if let Some(object) = working.object_mut(*object_id) {
+            *object = original.clone();
+        }
     }
 
     *game = working;
@@ -403,36 +496,10 @@ pub(crate) fn move_to_battlefield_with_options(
     object_id: ObjectId,
     options: BattlefieldEntryOptions,
 ) -> BattlefieldEntryOutcome {
-    if battlefield_entry_controller(game, object_id, &options).is_none_or(|controller| {
-        !game
-            .player(controller)
-            .is_some_and(|player| player.is_in_game())
-    }) {
-        // CR 800.4b: an object that would enter under the control of a player
-        // who left remains in its current zone.
-        return BattlefieldEntryOutcome::Prevented;
-    }
-    let old_zone = game.object(object_id).map(|obj| obj.zone);
-    let entering_controller = match options.controller {
-        BattlefieldEntryController::Specific(controller) => Some(controller),
-        BattlefieldEntryController::Preserve | BattlefieldEntryController::Owner => None,
-    };
-    let Some(result) = game
-        .move_object_with_etb_processing_with_initial_counters_and_controller_with_dm(
-            object_id,
-            Zone::Battlefield,
-            options.initial_counters.clone(),
-            entering_controller,
-            &mut ctx.decision_maker,
-        )
-    else {
-        return BattlefieldEntryOutcome::Prevented;
-    };
-
-    let Some(old_zone) = old_zone else {
-        return BattlefieldEntryOutcome::Prevented;
-    };
-    finish_battlefield_entry(game, ctx, old_zone, &options, result)
+    move_to_battlefield_batch_with_options(game, ctx, vec![(object_id, options)])
+        .into_iter()
+        .next()
+        .unwrap_or(BattlefieldEntryOutcome::Prevented)
 }
 
 #[cfg(test)]

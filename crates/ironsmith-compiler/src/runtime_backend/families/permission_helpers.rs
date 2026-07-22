@@ -1058,9 +1058,9 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }));
     }
 
-    // Yawgmoth's Will uses the compact permission wording that combines the
-    // land-play and spell-cast portions in one graveyard clause.  It is a
-    // source-wide static permission, not a tagged temporary play effect.
+    // This compact permission wording combines land-play and spell-cast
+    // portions in one graveyard clause. It is a source-wide static
+    // permission, not a tagged temporary play effect.
     if allow_land
         && token_word_refs(rest_tokens)
             == [

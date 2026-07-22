@@ -704,8 +704,9 @@ pub(super) fn villainous_wealth_strict_parser_and_compiled_text_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("target opponent exiles the top x cards of their library")
-            && rendered.contains("you may cast any number of spells with mana value x or less from among them without paying their mana costs"),
+        rendered.contains("exile the top x cards of target opponent's library")
+            && rendered.contains("for each nonland card with mana value x or less exiled this way")
+            && rendered.contains("you may cast that card without paying its mana cost"),
         "expected Villainous Wealth compiled text to preserve the capped any-number free-cast clause, got {rendered}"
     );
 }
@@ -795,9 +796,9 @@ pub(super) fn minds_dilation_strict_parser_and_compiled_text_regression() {
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains("whenever an opponent casts their first spell each turn")
-            && rendered_lower.contains("that player exiles the top card of their library")
-            && rendered_lower
-                .contains("if it's a nonland card, you may cast it without paying its mana cost"),
+            && rendered_lower.contains("exile the top card of their library")
+            && rendered_lower.contains("if a nonland card was exiled this way")
+            && rendered_lower.contains("you may cast that card without paying its mana cost"),
         "expected Mind's Dilation compiled text to preserve the triggering-player nonland free-cast clause, got {rendered}"
     );
     assert!(
@@ -993,7 +994,7 @@ pub(super) fn parse_day_of_black_sun_destroy_those_creatures_reuses_ability_loss
         .to_ascii_lowercase();
     assert!(
         rendered.contains("each creature with mana value x or less loses all abilities")
-            && rendered.contains("destroy those creatures")
+            && rendered.contains("destroy all creatures with mana value x or less")
             && !rendered.contains("lesses"),
         "expected Day of Black Sun compiled text to preserve the destroy followup, got {rendered}"
     );
@@ -1433,7 +1434,7 @@ pub(super) fn chandras_outburst_compiled_text_preserves_shuffle() {
     // The structural renderer still preserves the search/shuffle operation after
     // debug-only text reconciliation was removed.
     assert!(
-        rendered.contains("shuffle your library"),
+        rendered.contains("if you search your library this way, shuffle"),
         "multi-zone search should preserve the shuffle clause, got {rendered}"
     );
     // Must not contain "shuffle target player's library" or similar unconditional form.
@@ -1476,22 +1477,63 @@ pub(super) fn auditore_ambush_strict_parser_and_compiled_text_regression() {
     );
 
     let search_mode = &modal.modes[1];
+    fn contains_search(effect: &crate::effect::Effect) -> bool {
+        if effect
+            .downcast_ref::<ChooseObjectsEffect>()
+            .is_some_and(|choose| choose.is_search)
+        {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| {
+            found |= contains_search(child);
+        });
+        found
+    }
+
+    fn tracked_search_id(effect: &crate::effect::Effect) -> Option<crate::effect::EffectId> {
+        if let Some(with_id) = effect.downcast_ref::<WithIdEffect>()
+            && contains_search(&with_id.effect)
+        {
+            return Some(with_id.id);
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = tracked_search_id(child);
+            }
+        });
+        found
+    }
+
+    fn nested_if_effect(effect: &crate::effect::Effect) -> Option<&IfEffect> {
+        if let Some(if_effect) = effect.downcast_ref::<IfEffect>() {
+            return Some(if_effect);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence.effects.iter().find_map(nested_if_effect);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return nested_if_effect(&tagged.effect);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return nested_if_effect(&tagged.effect);
+        }
+        if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
+            return nested_if_effect(&with_id.effect);
+        }
+        None
+    }
+
     let search_id = search_mode
         .effects
         .iter()
-        .find_map(|effect| {
-            let with_id = effect.downcast_ref::<WithIdEffect>()?;
-            with_id
-                .effect
-                .downcast_ref::<ChooseObjectsEffect>()
-                .filter(|choose| choose.is_search)
-                .map(|_| with_id.id)
-        })
+        .find_map(tracked_search_id)
         .expect("library search should be effect-id tracked");
     let shuffle_condition = search_mode
         .effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<IfEffect>())
+        .find_map(nested_if_effect)
         .expect("conditional library shuffle should lower to IfEffect");
     assert_eq!(
         shuffle_condition.condition, search_id,
@@ -2305,7 +2347,6 @@ pub(super) fn parse_hermit_druid_no_basic_land_mills_entire_library() {
         &[],
     )
     .expect("Hermit Druid effect should resolve even with no basic lands");
-
     let hand_names: Vec<_> = game
         .player(alice)
         .expect("alice exists")
@@ -2408,7 +2449,7 @@ pub(super) fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
         .downcast_ref::<GainLifeEffect>()
         .expect("second effect should be GainLifeEffect");
     assert!(
-        matches!(gain.amount, crate::effect::Value::Count(_)),
+        matches!(gain.amount.unhinted(), crate::effect::Value::Count(_)),
         "gain amount should be Count (cards in hand), got {:?}",
         gain.amount
     );
@@ -3117,9 +3158,11 @@ pub(super) fn parse_oracle_cream_of_the_crop_keeps_power_scaled_rearrange_surfac
         "expected Cream of the Crop scored text to keep the full top/bottom rearrange wording, got {rendered}"
     );
     assert!(
-        abilities_debug.contains("rearrangelookedcardsinlibrary")
-            && abilities_debug.contains("powerof"),
-        "expected Cream of the Crop definition to use looked-card rearrange with source-power count, got {abilities_debug}"
+        abilities_debug.contains("lookattopcardseffect")
+            && abilities_debug.contains("powerof")
+            && abilities_debug.contains("chooseobjectseffect")
+            && abilities_debug.contains("puttaggedremainderonlibrarybottomeffect"),
+        "expected Cream of the Crop definition to preserve the source-power look count and tagged top/rest rearrangement, got {abilities_debug}"
     );
 }
 
@@ -3145,7 +3188,7 @@ pub(super) fn parse_oracle_divergent_transformations_keeps_reveal_until_creature
         .to_ascii_lowercase();
     assert!(
         rendered.contains("exile two target creatures")
-            && rendered.contains("for each creature exiled this way")
+            && rendered.contains("for each card exiled this way")
             && rendered.contains("until they reveal a creature card")
             && rendered.contains("puts that card onto the battlefield")
             && rendered.contains("then shuffles"),
@@ -3165,7 +3208,7 @@ pub(super) fn score_surface_normalizes_granted_death_return_trigger() {
     let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "Target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it\" until end of turn"
+            "Until end of turn, target creature gains \"When this creature dies, return it to the battlefield tapped under its owner's control with a +1/+1 counter on it.\""
         ),
         "expected oracle-like granted death trigger surface, got {rendered}"
     );
@@ -3180,10 +3223,15 @@ pub(super) fn score_surface_normalizes_attached_count_anthem() {
         .parse_text("This creature gets +1/+1 for each Equipment attached to it.")
         .expect("attached count anthem should parse");
 
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("AttachedToSource") && !abilities_debug.contains("MatchingFilter"),
+        "expected the source anthem to count Equipment attached to itself, got {abilities_debug}"
+    );
     let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
     assert!(
         rendered.contains("This creature gets +1/+1 for each Equipment attached to it"),
-        "expected attached-count anthem to render with per-object +1/+1 wording, got {rendered}"
+        "expected attached-count anthem to render with per-object +1/+1 wording, got {rendered}\n{abilities_debug}"
     );
 }
 
@@ -3355,7 +3403,7 @@ pub(super) fn esper_origins_strict_parser_and_compiled_text_regression() {
     assert!(
         debug.contains("ThisSpellWasCastFromZone")
             && debug.contains("Graveyard")
-            && debug.contains("TransformEffect")
+            && debug.contains("enters_transformed: true")
             && debug.contains("Finality"),
         "Esper Origins should structurally lower graveyard-cast transform and finality counter effects, got {debug}"
     );

@@ -83,3 +83,19 @@ fn additive_for_each_life_amount_keeps_base_and_scaled_terms() {
         "2 life plus 2 life for each Spirit"
     );
 }
+
+#[test]
+fn life_amount_preserves_where_x_history_surface() {
+    let amount = Value::TurnHistoryCount(
+        ironsmith_core::TurnHistoryCount::PlayersDealtCombatDamageBy {
+            players: PlayerFilter::Opponent,
+            sources: ObjectFilter::default(),
+        },
+    )
+    .with_surface_hint(ValueSurfaceHint::WhereXIs);
+
+    assert_eq!(
+        describe_life_amount_phrase(&amount),
+        "X life, where X is the number of opponents who were dealt combat damage this turn"
+    );
+}

@@ -1376,60 +1376,40 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         if let Some(parsed) = parse_cant_restriction_clause(prefix_tokens)? {
             let next_turn_effects = match parsed.restriction {
                 crate::effect::Restriction::CastSpellsMatching(player, spell_filter) => {
-                    let nested = crate::effect::Restriction::cast_spells_matching(
-                        PlayerFilter::Active,
+                    let restriction = crate::effect::Restriction::cast_spells_matching(
+                        PlayerFilter::IteratedPlayer,
                         spell_filter,
+                    );
+                    let restriction = EffectAst::subject_verb_cant_starting(
+                        restriction,
+                        crate::effect::Until::EndOfTurn,
+                        crate::effect::RestrictionStart::NextTurn(PlayerFilter::IteratedPlayer),
+                        None,
                     );
                     match player {
                         PlayerFilter::Opponent => Some(vec![EffectAst::ForEachOpponent {
-                            effects: vec![EffectAst::DelayedUntilNextUpkeep {
-                                player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::subject_verb_cant(
-                                    nested,
-                                    crate::effect::Until::EndOfTurn,
-                                    None,
-                                )],
-                            }],
+                            effects: vec![restriction],
                         }]),
-                        PlayerFilter::IteratedPlayer => {
-                            Some(vec![EffectAst::DelayedUntilNextUpkeep {
-                                player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::subject_verb_cant(
-                                    nested,
-                                    crate::effect::Until::EndOfTurn,
-                                    None,
-                                )],
-                            }])
-                        }
+                        PlayerFilter::IteratedPlayer => Some(vec![restriction]),
                         _ => None,
                     }
                 }
                 crate::effect::Restriction::CastMoreThanOneSpellEachTurn(player, spell_filter) => {
-                    let nested = crate::effect::Restriction::CastMoreThanOneSpellEachTurn(
-                        PlayerFilter::Active,
+                    let restriction = crate::effect::Restriction::CastMoreThanOneSpellEachTurn(
+                        PlayerFilter::IteratedPlayer,
                         spell_filter,
+                    );
+                    let restriction = EffectAst::subject_verb_cant_starting(
+                        restriction,
+                        crate::effect::Until::EndOfTurn,
+                        crate::effect::RestrictionStart::NextTurn(PlayerFilter::IteratedPlayer),
+                        None,
                     );
                     match player {
                         PlayerFilter::Opponent => Some(vec![EffectAst::ForEachOpponent {
-                            effects: vec![EffectAst::DelayedUntilNextUpkeep {
-                                player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::subject_verb_cant(
-                                    nested,
-                                    crate::effect::Until::EndOfTurn,
-                                    None,
-                                )],
-                            }],
+                            effects: vec![restriction],
                         }]),
-                        PlayerFilter::IteratedPlayer => {
-                            Some(vec![EffectAst::DelayedUntilNextUpkeep {
-                                player: crate::cards::builders::PlayerAst::That,
-                                effects: vec![EffectAst::subject_verb_cant(
-                                    nested,
-                                    crate::effect::Until::EndOfTurn,
-                                    None,
-                                )],
-                            }])
-                        }
+                        PlayerFilter::IteratedPlayer => Some(vec![restriction]),
                         _ => None,
                     }
                 }

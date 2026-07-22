@@ -33,7 +33,7 @@ pub(crate) use damage_and_cost_rewrites::*;
 pub(crate) use modal_and_level_lowering::*;
 pub(crate) use rewrite_support::infer_triggered_ability_functional_zones_from_facts;
 use rewrite_support::{
-    rewrite_finalize_lowered_card, rewrite_normalize_additional_cost_sacrifice_tags,
+    rewrite_finalize_lowered_card, rewrite_normalize_selected_sacrifice_tags,
     runtime_effects_to_costs,
 };
 pub(crate) use rewrite_text_helpers::*;

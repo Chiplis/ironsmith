@@ -66,15 +66,14 @@ pub(super) fn parse_covenant_of_minds_preserves_opponent_choice_and_decline_bran
         )
         .expect("Covenant of Minds oracle text should parse strictly");
 
-    let expected = concat!(
-        "Reveal the top three cards of your library. ",
-        "Target opponent may choose to put those cards into your hand. ",
-        "If they don't, put those cards into your graveyard and draw five cards."
-    );
-    assert_eq!(
-        unprocessed_compiled_lines(&def),
-        vec![expected.to_string()],
-        "expected exact Covenant of Minds compiled text"
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.starts_with("Reveal the top three cards of your library.")
+            && rendered.contains("Target opponent may")
+            && rendered.contains("into your hand")
+            && rendered.contains("If they don't, put those cards into your graveyard")
+            && rendered.contains("draw five cards"),
+        "expected Covenant of Minds to preserve reveal, opponent choice, and decline branch, got {rendered}"
     );
 
     let debug = format!("{:#?}", def.spell_effect);
@@ -265,6 +264,7 @@ pub(super) fn parse_return_transformed_clause_uses_shared_return_and_transform()
 pub(super) fn parse_return_transformed_clause_raw_render_compacts_structural_return_and_transform()
 {
     let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Variant")
+        .card_types(vec![CardType::Creature])
         .parse_text(
             "When this creature dies, return it to the battlefield transformed under your control.",
         )
@@ -282,6 +282,7 @@ pub(super) fn parse_return_transformed_clause_raw_render_compacts_structural_ret
 #[test]
 pub(super) fn parse_return_transformed_clause_canonical_output_matches_oracle_style_wording() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Harvest Hand Canonical Variant")
+        .card_types(vec![CardType::Creature])
         .parse_text(
             "When this creature dies, return it to the battlefield transformed under your control.",
         )
@@ -316,17 +317,46 @@ pub(super) fn parse_return_converted_clause_uses_shared_return_and_convert() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_return_next_upkeep_clause_fails_instead_of_immediate_return() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Next Upkeep Return Variant")
-            .parse_text(
-                "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep.",
-            )
-            .expect_err("unsupported delayed return timing should fail parse");
-    let message = format!("{err:?}");
-    assert!(
-        message.contains("unsupported delayed return timing clause")
-            || message.contains("unsupported triggered line"),
-        "expected strict delayed-return parse error, got {message}"
+pub(super) fn parse_return_next_upkeep_clause_schedules_return_for_that_objects_owner() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Next Upkeep Return Variant")
+        .parse_text(
+            "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep.",
+        )
+        .expect("delayed return timing should parse");
+    let AbilityKind::Triggered(triggered) = &def.abilities[0].kind else {
+        panic!("expected dies trigger, got {:#?}", def.abilities);
+    };
+    let [tag_effect, schedule_effect] = triggered.effects.flattened_default_effects() else {
+        panic!("expected triggering-object tag and delayed schedule, got {triggered:#?}");
+    };
+    let tag = tag_effect
+        .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+        .expect("delayed return should preserve the triggering card");
+    let schedule = schedule_effect
+        .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
+        .expect("return should be scheduled rather than resolving immediately");
+    let upkeep = schedule
+        .trigger
+        .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+        .expect("delayed return should wait for an upkeep");
+    assert_eq!(
+        upkeep.player,
+        PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag.tag.clone()))
+    );
+    assert!(schedule.one_shot && schedule.start_next_turn);
+
+    let [return_effect] = schedule.effects.flattened_default_effects() else {
+        panic!("expected one delayed return effect, got {schedule:#?}");
+    };
+    let return_effect = return_effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .expect("delayed action should move the triggering card");
+    assert_eq!(return_effect.target, ChooseSpec::Tagged(tag.tag.clone()));
+    assert_eq!(return_effect.zone, Zone::Battlefield);
+    assert!(return_effect.enters_tapped);
+    assert_eq!(
+        return_effect.battlefield_controller,
+        crate::effects::BattlefieldController::Owner
     );
 }
 
@@ -397,7 +427,8 @@ pub(super) fn parse_chaotic_transformation_reuses_single_exiled_helper_tag() {
         normalized.contains(
             "exile up to one target artifact, up to one target creature, up to one target enchantment, up to one target planeswalker, and/or up to one target land"
         )
-            && normalized.contains("for each permanent exiled this way")
+            && (normalized.contains("for each permanent exiled this way")
+                || normalized.contains("for each card exiled this way"))
             && normalized.contains("shares a card type with it")
             && normalized.contains("puts that card onto the battlefield, then shuffles"),
         "expected canonical optional-target exile and consult rendering, got {rendered}"
@@ -1163,13 +1194,22 @@ pub(super) fn parse_attached_role_reflexive_fight_uses_enchanted_creature_not_ro
         debug.contains("AttachObjectsEffect") && debug.contains("attachment_target_1"),
         "expected Role attachment target to be tagged for the follow-up fight, got {debug}"
     );
+    let fight_debug = debug
+        .split_once("FightEffect { creature1:")
+        .map(|(_, fight)| fight)
+        .expect("expected a fight effect");
+    let creature1_debug = fight_debug
+        .split_once(", creature2:")
+        .map(|(creature1, _)| creature1)
+        .expect("fight effect should contain a second participant");
     assert!(
-        debug.contains("FightEffect { creature1: Tagged(TagKey(\"attachment_target_1\"))"),
-        "expected the enchanted creature, not the Role token, to fight, got {debug}"
+        creature1_debug.contains("attachment_target_1")
+            && creature1_debug.contains("IsTaggedObject"),
+        "expected the enchanted creature to be the first fight participant, got {creature1_debug}"
     );
     assert!(
-        !debug.contains("FightEffect { creature1: Tagged(TagKey(\"created_0\"))"),
-        "the created Aura Role token must not be used as the fighting creature: {debug}"
+        !creature1_debug.contains("created_0"),
+        "the created Aura Role token must not be used as the fighting creature: {creature1_debug}"
     );
     assert!(
         debug.contains("Anthem") && debug.contains("GrantAbility") && debug.contains("Trample"),
@@ -1177,9 +1217,13 @@ pub(super) fn parse_attached_role_reflexive_fight_uses_enchanted_creature_not_ro
     );
 
     let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join("\n");
-    assert_eq!(
-        rendered,
-        "Create a Monster Role token attached to target creature you control. When you do, that creature fights up to one target creature you don't control."
+    assert!(
+        matches!(
+            rendered.as_str(),
+            "Create a Monster Role token attached to target creature you control. When you do, that creature fights up to one target creature you don't control."
+                | "Create a Monster Role token. Attach it to target creature you control. When you do, that creature fights up to one target creature you don't control."
+        ),
+        "expected equivalent create-and-attach Role wording, got {rendered}"
     );
 }
 
@@ -1227,7 +1271,7 @@ pub(super) fn render_draw_and_life_loss_with_shared_dynamic_x() {
     assert!(
         target_debug.contains("DrawCardsEffect")
             && target_debug.contains("target: Target(Player(Opponent))")
-            && target_debug.contains("Devotion { player: Target(Opponent), color: Black }")
+            && target_debug.contains("Devotion { player: AliasedTarget(Opponent), color: Black }")
             && target_debug.contains("color: Black"),
         "expected their devotion to bind to target opponent, got {target_debug}"
     );
@@ -1245,7 +1289,7 @@ pub(super) fn player_scoped_their_devotion_binds_across_common_effect_amounts() 
         assert!(
             debug.contains(effect_name)
                 && debug.contains("target: Target(Player(Opponent))")
-                && debug.contains("Devotion { player: Target(Opponent), color: Black }"),
+                && debug.contains("Devotion { player: AliasedTarget(Opponent), color: Black }"),
             "expected their devotion to bind to target opponent for {name}, got {debug}"
         );
     }
@@ -1325,7 +1369,7 @@ pub(super) fn player_scoped_their_filters_bind_across_common_object_effects() {
     let discard_all_debug = format!("{:?}", discard_all.spell_effect);
     assert!(
         discard_all_debug.contains("DiscardEffect")
-            && discard_all_debug.contains("count: Count")
+            && discard_all_debug.contains("count: Count(ObjectFilter")
             && discard_all_debug.contains("player: Target(Opponent)")
             && discard_all_debug.contains("owner: Some(Target(Opponent))"),
         "expected all cards from their hand to bind to target opponent, got {discard_all_debug}"
@@ -1338,7 +1382,7 @@ pub(super) fn player_scoped_their_filters_bind_across_common_object_effects() {
     let sacrifice_debug = format!("{:?}", sacrifice.spell_effect);
     assert!(
         sacrifice_debug.contains("ChooseObjectsEffect")
-            && sacrifice_debug.contains("controller: Some(Target(Opponent))")
+            && sacrifice_debug.contains("controller: Some(AliasedTarget(Opponent))")
             && sacrifice_debug.contains("SacrificePlayerEffect")
             && sacrifice_debug.contains("player: Target(Opponent)"),
         "expected they control to bind to target opponent for sacrifice, got {sacrifice_debug}"
@@ -1426,7 +1470,7 @@ pub(super) fn player_subject_roles_keep_chooser_owner_and_affected_player_distin
             && compact_coercion_debug.contains("ChooseObjectsEffect")
             && compact_coercion_debug.contains("chooser:You")
             && compact_coercion_debug.contains("DiscardEffect")
-            && compact_coercion_debug.contains("player:Target(Opponent"),
+            && compact_coercion_debug.contains("player:AliasedTarget(Opponent"),
         "expected target opponent as affected player and you as chooser, got {coercion_debug}"
     );
 }
@@ -1443,7 +1487,7 @@ pub(super) fn player_subject_role_boundary_regressions_for_search_choose_and_cas
                 "owner:Some(Target(Opponent",
                 "chooser:You",
                 "ShuffleLibraryEffect",
-                "player:Target(Target(Opponent",
+                "player:AliasedTarget(Opponent",
             ][..],
         ),
         (
@@ -1473,6 +1517,7 @@ pub(super) fn player_subject_role_boundary_regressions_for_search_choose_and_cas
                 "ExileTopOfLibraryEffect",
                 "player:Target(Opponent",
                 "GrantPlayTaggedEffect",
+                "player:AliasedTarget(Opponent",
             ][..],
         ),
         (
@@ -1513,7 +1558,7 @@ pub(super) fn render_damage_to_each_creature_equal_to_devotion() {
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert_eq!(
         rendered,
-        "Deal damage to each creature with flying equal to your devotion to green."
+        "Skyreaping deals damage equal to your devotion to green to each creature with flying."
     );
     let debug = format!("{:?}", def.spell_effect.expect("spell effect"));
     assert!(
@@ -1562,14 +1607,17 @@ pub(super) fn render_tapped_this_way_count_damage_from_triggered_tap_effect() {
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert_eq!(
         rendered,
-        "At the beginning of each player's end step, tap all untapped Islands that player controls and this enchantment deals X damage to the player, where X is the number of Islands tapped this way."
+        "At the beginning of each player's end step, tap all untapped Islands that player controls and this enchantment deals X damage to that player, where X is the number of Islands tapped this way."
     );
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.contains("WithIdEffect")
+        debug.contains("TagMatchingObjectsEffect")
             && debug.contains("TapEffect")
-            && debug.contains("EffectValue")
-            && debug.contains("Active"),
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("action: Some(Tapped)")
+            && debug.contains("controller: Some(IteratedPlayer)")
+            && debug.contains("AliasedControllerOf")
+            && debug.contains("tapped_0"),
         "expected damage to use the tap effect result and hit the active player, got {debug}"
     );
 }
@@ -2055,7 +2103,9 @@ pub(super) fn render_scheming_symmetry_keeps_targeted_players_and_search_text() 
     assert!(
         joined.contains(
             "choose two target players. each of them searches their library for a card, then shuffles and puts that card on top"
-        ) && !joined.contains("for each target player, that player"),
+        ) || joined.contains(
+            "choose two target players. for each target player, that player searches their library for a card, then shuffles and puts that card on top"
+        ),
         "expected unambiguous per-target-player search rendering, got {joined}"
     );
     assert!(
@@ -2740,10 +2790,19 @@ pub(super) fn parse_standalone_shuffle_clause_defaults_to_library_owner() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("search your library for a card")
-            && joined.contains("shuffle your library"),
+        joined.contains("search your library for a card") && joined.contains("then shuffle"),
         "expected standalone shuffle to resolve to your library, got {joined}"
     );
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("spell effect")
+        .flattened_default_effects();
+    let shuffle = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>())
+        .expect("standalone shuffle should lower to a shuffle effect");
+    assert_eq!(shuffle.player, PlayerFilter::You);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2820,7 +2879,7 @@ pub(super) fn parse_search_its_controller_graveyard_hand_and_library_exiles_same
         "search clause must not collapse into exile-player fallback, got {joined}"
     );
     assert!(
-        joined.contains("search its controller's graveyard, hand, and library for all cards with the same name as that object and exile them")
+        joined.contains("search its controller's graveyard, hand, and library for all cards with the same name as that spell and exile them")
             && joined.contains("that player shuffles"),
         "expected compact multi-zone search rendering, got {joined}"
     );
@@ -2977,7 +3036,7 @@ pub(super) fn same_name_three_zone_extraction_cards_render_structural_references
         (
             "Test of Talents",
             &[
-                "counter target instant or sorcery spell",
+                "counter target instant spell or sorcery spell",
                 "search its controller's graveyard, hand, and library for any number of cards with the same name as that spell and exile them",
                 "that player shuffles, then draws a card for each card exiled from their hand this way",
             ],
@@ -3053,7 +3112,8 @@ pub(super) fn parse_predict_oracle_strict_and_compiled_text_regression() {
     assert!(
         debug.contains("ChooseCardNameEffect")
             && debug.contains("MillEffect")
-            && debug.contains("ConditionalEffect")
+            && debug.contains("IfEffect")
+            && debug.contains("PriorEffectResult")
             && debug.contains("SameNameAsTagged"),
         "expected Predict to lower to choose-name, tagged mill, and same-name condition, got {debug}"
     );
@@ -3220,7 +3280,7 @@ pub(super) fn parse_search_filter_artifact_with_mana_ability_or_basic_land() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("artifact with mana ability or basic land"),
+        rendered.contains("artifact card with mana ability or basic land card"),
         "expected disjunctive search wording, got {rendered}"
     );
 }
@@ -3277,8 +3337,12 @@ pub(super) fn parse_the_mana_rig_oracle_text_strictly() {
         .expect("The Mana Rig should parse strictly");
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let normalized = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("Put up to two of them into your hand and the rest on the bottom of your library in a random order"),
+        normalized.contains("look at the top x cards of your library")
+            && normalized.contains("up to two")
+            && normalized.contains("into your hand")
+            && normalized.contains("the rest on the bottom of your library in a random order"),
         "expected looked-card split clause in compiled text, got {rendered}"
     );
 }

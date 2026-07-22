@@ -276,6 +276,18 @@ fn test_add_card_types_display_pluralizes_compound_spell_subjects() {
         add.display(),
         "permanent spells you control are artifacts in addition to their other types"
     );
+
+    let opponent_add = AddCardTypesForFilter::new(
+        ObjectFilter {
+            controller: Some(PlayerFilter::Opponent),
+            ..add.filter.clone()
+        },
+        vec![CardType::Artifact],
+    );
+    assert_eq!(
+        opponent_add.display(),
+        "permanent spells an opponent controls are artifacts in addition to their other types"
+    );
 }
 
 #[test]
@@ -446,7 +458,7 @@ fn attached_anthem_describes_positive_and_negative_attachment_state_conditions()
                 pirate.clone()
             ))
             .display(),
-        "enchanted creature gets +0/+2 as long as enchanted creature is a pirate"
+        "enchanted creature gets +0/+2 as long as enchanted creature is a Pirate"
     );
     assert_eq!(
         Anthem::new(filter, -2, 0)
@@ -454,7 +466,7 @@ fn attached_anthem_describes_positive_and_negative_attachment_state_conditions()
                 crate::ConditionExpr::AttachedToSourceMatches(pirate)
             )))
             .display(),
-        "enchanted creature gets -2/-0 as long as enchanted creature isn't a pirate"
+        "enchanted creature gets -2/-0 as long as enchanted creature isn't a Pirate"
     );
 }
 
@@ -527,8 +539,8 @@ fn test_commander_cast_count_anthem_scales_from_player_commander_casts() {
 
     assert_eq!(
         game.calculated_power(creature_id),
-        Some(2),
-        "the anthem should start at +1/+1 before commander casts"
+        Some(1),
+        "the anthem should grant no bonus before the commander has been cast"
     );
     assert_eq!(
         game.commander_cast_count_for_player(alice),
@@ -1354,7 +1366,7 @@ fn dynamic_base_power_toughness_uses_plural_possessive_for_plural_filter() {
 
     assert_eq!(
         ability.display(),
-        "creatures have base power and base toughness each equal to their mana value"
+        "All creatures have base power and base toughness each equal to their mana value"
     );
 }
 

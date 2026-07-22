@@ -18,7 +18,8 @@ use crate::game_state::{GameState, StackEntry, Target};
 use crate::ids::PlayerId;
 use crate::target::ChooseSpec;
 use crate::targeting::{
-    assigned_target_ranges, compute_legal_targets, normalize_targets_for_requirements,
+    assigned_target_ranges, assigned_target_ranges_ignoring_current_legality,
+    compute_legal_targets, normalize_targets_for_requirements,
 };
 use crate::triggers::TriggerEvent;
 use crate::zone::Zone;
@@ -255,7 +256,14 @@ impl EffectExecutor for RetargetStackObjectEffect {
             match &self.mode {
                 RetargetMode::All => {
                     let mut adjusted = requirements.clone();
-                    let Some(slices) = assigned_target_ranges(&adjusted, &entry.targets) else {
+                    let Some(slices) =
+                        assigned_target_ranges(&adjusted, &entry.targets).or_else(|| {
+                            assigned_target_ranges_ignoring_current_legality(
+                                &adjusted,
+                                &entry.targets,
+                            )
+                        })
+                    else {
                         continue;
                     };
 
@@ -356,7 +364,14 @@ impl EffectExecutor for RetargetStackObjectEffect {
                     }
 
                     let mut eligible_indices = Vec::new();
-                    let Some(slices) = assigned_target_ranges(&requirements, &entry.targets) else {
+                    let Some(slices) = assigned_target_ranges(&requirements, &entry.targets)
+                        .or_else(|| {
+                            assigned_target_ranges_ignoring_current_legality(
+                                &requirements,
+                                &entry.targets,
+                            )
+                        })
+                    else {
                         continue;
                     };
                     for (req, range) in requirements.iter().zip(slices.iter()) {

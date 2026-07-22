@@ -135,38 +135,8 @@ fn observed_filters(condition: &Condition, observed_tag: &TagKey) -> Option<Vec<
         .filter(|filters| !filters.is_empty())
 }
 
-fn filter_has_permanent_card_types(filter: &ObjectFilter) -> bool {
-    const PERMANENT_TYPES: [CardType; 6] = [
-        CardType::Artifact,
-        CardType::Creature,
-        CardType::Enchantment,
-        CardType::Land,
-        CardType::Planeswalker,
-        CardType::Battle,
-    ];
-    filter.card_types.len() == PERMANENT_TYPES.len()
-        && PERMANENT_TYPES
-            .iter()
-            .all(|card_type| filter.card_types.contains(card_type))
-}
-
 fn describe_permanent_card_filter(filter: &ObjectFilter) -> Option<String> {
-    if !filter_has_permanent_card_types(filter) {
-        return None;
-    }
-    let mut remainder = filter.clone();
-    remainder.card_types.clear();
-    let subtypes = std::mem::take(&mut remainder.subtypes);
-    if remainder != ObjectFilter::default() {
-        return None;
-    }
-    if subtypes.is_empty() {
-        return Some("a permanent card".to_string());
-    }
-    let subtype_text = join_with_and(&subtypes.iter().map(ToString::to_string).collect::<Vec<_>>());
-    Some(with_indefinite_article(&format!(
-        "{subtype_text} permanent card"
-    )))
+    describe_permanent_card_filter_surface(filter)
 }
 
 fn describe_observed_filter(observed_tag: &TagKey, filter: &ObjectFilter) -> String {
@@ -244,6 +214,33 @@ fn describe_observed_condition(
         && branch_casts_observed_card(true_branch, observed_tag)
     {
         return "an instant or sorcery spell".to_string();
+    }
+    if filters.len() > 1 {
+        let mut card_types = Vec::new();
+        let only_card_type_branches = filters.iter().all(|filter| {
+            let mut remainder = filter.clone();
+            let branch_types = std::mem::take(&mut remainder.card_types);
+            if remainder.zone == Some(Zone::Battlefield) {
+                remainder.zone = None;
+            }
+            remainder.set_explicit_card_noun(false);
+            if branch_types.is_empty() || remainder != ObjectFilter::default() {
+                return false;
+            }
+            for card_type in branch_types {
+                if !card_types.contains(&card_type) {
+                    card_types.push(card_type);
+                }
+            }
+            true
+        });
+        if only_card_type_branches {
+            let words = card_types
+                .into_iter()
+                .map(|card_type| describe_card_type_word_local(card_type).to_string())
+                .collect::<Vec<_>>();
+            return with_indefinite_article(&format!("{} card", join_with_or(&words)));
+        }
     }
     let descriptions = filters
         .iter()
@@ -330,11 +327,9 @@ fn describe_may_actions(may: &crate::effects::MayEffect) -> Option<String> {
     if actions.is_empty() {
         return None;
     }
-    if who == "you" {
-        for action in &mut actions {
-            if let Some(rest) = action.strip_prefix("you ") {
-                *action = rest.to_string();
-            }
+    for action in &mut actions {
+        if let Some(rest) = action.strip_prefix(&format!("{who} ")) {
+            *action = normalize_you_verb_phrase(rest);
         }
     }
     Some(format!("{who} may {}", join_with_and(&actions)))
@@ -1032,6 +1027,62 @@ mod tests {
         assert_eq!(
             describe_effect_list(&effects),
             "Reveal the top card of your library. If it's a creature card with mana value 3 or less, put it onto the battlefield"
+        );
+    }
+
+    #[test]
+    fn reveal_conditional_compacts_permanent_types_without_dropping_mana_value() {
+        let tag = TagKey::from("__sentence_helper_revealed_test");
+        let mut permanent = ObjectFilter::permanent_card();
+        permanent.mana_value = Some(crate::filter::Comparison::LessThanOrEqual(3));
+        let effects = vec![
+            Effect::reveal_top(PlayerFilter::You, tag.clone()),
+            Effect::conditional_only(
+                Condition::TaggedObjectMatches(tag.clone(), permanent),
+                vec![Effect::may_single(tagged_move(&tag, Zone::Battlefield))],
+            ),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Reveal the top card of your library. If it's a permanent card with mana value 3 or less, you may put it onto the battlefield"
+        );
+    }
+
+    #[test]
+    fn iterated_player_may_move_does_not_repeat_the_subject() {
+        let tag = TagKey::from("__sentence_helper_revealed_test");
+        let mut moved = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(tag),
+            Zone::Battlefield,
+            false,
+        );
+        moved.actor_surface = Some(PlayerFilter::IteratedPlayer);
+        let may = crate::effects::MayEffect::new_for_player(
+            vec![Effect::new(moved)],
+            PlayerFilter::IteratedPlayer,
+        );
+
+        assert_eq!(
+            describe_may_actions(&may).as_deref(),
+            Some("that player may put it onto the battlefield")
+        );
+    }
+
+    #[test]
+    fn observed_disjunction_shares_one_card_noun() {
+        let tag = TagKey::from("__sentence_helper_revealed_l0_s0_e0");
+        let mut artifact_creature_enchantment = ObjectFilter::default();
+        artifact_creature_enchantment.card_types = vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+        ];
+        let land = ObjectFilter::land();
+
+        assert_eq!(
+            describe_observed_condition(&[artifact_creature_enchantment, land], &tag, &[],),
+            "an artifact, creature, enchantment, or land card"
         );
     }
 

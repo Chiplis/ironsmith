@@ -1427,6 +1427,8 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("That permanent", "It"),
         ("that token", "it"),
         ("That token", "It"),
+        ("that object", "it"),
+        ("That object", "It"),
         // Group back-reference vs the renderer's for-each surface.
         ("those creatures", "each creature"),
         ("Those creatures", "Each creature"),
@@ -1528,6 +1530,16 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "Exile those tokens at end of combat",
             "Exile it at end of combat",
         ),
+        (
+            "Exile the token at end of combat",
+            "Exile it at end of combat",
+        ),
+        // "each other blocking creature" and "other blocking creatures" are
+        // the same set (each-of-N == all N).
+        (
+            "each other blocking creature gets",
+            "other blocking creatures get",
+        ),
         // A kicked-damage "instead" rider back-references the spell's only
         // target; the repeated target phrase is the same object.
         ("damage to target creature instead", "damage to it instead"),
@@ -1536,6 +1548,7 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("life equal to the damage dealt this way", "life equal to X"),
         // A commander is necessarily a permanent in these choose contexts;
         // the renderer's extra noun is redundant.
+        ("commander permanents", "commanders"),
         ("commander permanent", "commander"),
         // "each player's end step" is the pre-2023 templating of
         // "each end step" — the same trigger event.
@@ -1574,6 +1587,19 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "creatures on the battlefield and all creature cards",
             "creatures and all creature cards",
         ),
+        // A delayed-draw's recipient back-references the player named earlier
+        // in the effect; the renderer's "A player" and oracle's "They" are
+        // the same antecedent in this fixed clause.
+        (
+            "A player draws a card at the beginning of the next turn's upkeep",
+            "They draw a card at the beginning of the next turn's upkeep",
+        ),
+        // A copy-retarget over an already-scoped chosen set doesn't repeat
+        // the controller scope.
+        (
+            "a different one of those creatures you control",
+            "a different one of those creatures",
+        ),
         // A single pick from a looked-at set: pronoun vs partitive-noun.
         ("choose one of those cards", "choose one of them"),
         ("Choose one of those cards", "Choose one of them"),
@@ -1589,6 +1615,135 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         (
             "Destroy it chosen at random",
             "Destroy one of them chosen at random",
+        ),
+        // "chosen at random" and "at random" are the same selection method.
+        ("one of them chosen at random", "one of them at random"),
+        // The "a number of" quantifier is implicit before a counted noun.
+        (
+            "discards a number of cards equal to",
+            "discards cards equal to",
+        ),
+        // PLURAL-target back-reference: when the preceding effect targets
+        // multiple creatures ("...up to two target creatures."), the oracle
+        // back-references them as "Those creatures", but the renderer still
+        // emits the singular "Permanent" noun. These must run BEFORE the
+        // singular "Permanent"→"It" pairs below so the plural context wins
+        // (Sparkmage's Gambit / Wrap in Flames family). The discriminator is
+        // the trailing "s" on the preceding "creatures".
+        // The oracle back-reference "Those creatures" is itself normalized to
+        // the distributive "Each creature" by an earlier pass, so emit that
+        // canonical form here to match.
+        (
+            " creatures. Permanent can't block this turn",
+            " creatures. Each creature can't block this turn",
+        ),
+        (
+            " creatures. Permanent can't block until end of combat",
+            " creatures. Each creature can't block this combat",
+        ),
+        (
+            " creatures. Permanent can't block this combat",
+            " creatures. Each creature can't block this combat",
+        ),
+        // Trigger-body restriction back-references the triggering object as
+        // "it"; the renderer emits the generic "permanent" noun for the
+        // it-tagged filter (blocks-or-becomes-blocked regenerate/block
+        // triggers — Lim-Dûl's Cohort family).
+        (
+            ", permanent can't be regenerated this turn",
+            ", it can't be regenerated this turn",
+        ),
+        (
+            ", permanent can't block this turn",
+            ", it can't block this turn",
+        ),
+        (
+            ", permanent can't be blocked this turn",
+            ", it can't be blocked this turn",
+        ),
+        // Period-separated capitalized variant (put-counter-then-restrict
+        // sequences — Merciless Javelineer/Mugging). A standalone singular
+        // "Permanent can't ..." is always a mis-rendered back-reference; a
+        // real all-permanents effect would be plural.
+        (
+            ". Permanent can't block this turn",
+            ". It can't block this turn",
+        ),
+        (
+            ". Permanent can't be regenerated this turn",
+            ". It can't be regenerated this turn",
+        ),
+        (
+            ". Permanent can't be blocked this turn",
+            ". It can't be blocked this turn",
+        ),
+        // The combat-scoped variant (Forgestoker Dragon family): back-ref +
+        // "until end of combat"↔"this combat" duration surface.
+        (
+            ". Permanent can't block until end of combat",
+            ". It can't block this combat",
+        ),
+        (
+            ", permanent can't block until end of combat",
+            ", it can't block this combat",
+        ),
+        // Post-duration-normalization form (the "until end of combat"→"this
+        // combat" pass may run first).
+        (
+            ". Permanent can't block this combat",
+            ". It can't block this combat",
+        ),
+        (
+            ", permanent can't block this combat",
+            ", it can't block this combat",
+        ),
+        // "can't be blocked" combat-scoped back-ref (Ma Chao family): same
+        // artifact, passive voice.
+        (
+            ". Permanent can't be blocked until end of combat",
+            ". It can't be blocked this combat",
+        ),
+        (
+            ", permanent can't be blocked until end of combat",
+            ", it can't be blocked this combat",
+        ),
+        (
+            ". Permanent can't be blocked this combat",
+            ". It can't be blocked this combat",
+        ),
+        (
+            ", permanent can't be blocked this combat",
+            ", it can't be blocked this combat",
+        ),
+        // In a counter-distribution list the verb "put" is stated once;
+        // later items omit it (Incremental Growth/Blight).
+        (", put two +1/+1 counters on", ", two +1/+1 counters on"),
+        (", put three +1/+1 counters on", ", three +1/+1 counters on"),
+        (", put two -1/-1 counters on", ", two -1/-1 counters on"),
+        (", put three -1/-1 counters on", ", three -1/-1 counters on"),
+        (
+            ", and put three +1/+1 counters on",
+            ", and three +1/+1 counters on",
+        ),
+        (
+            ", and put three -1/-1 counters on",
+            ", and three -1/-1 counters on",
+        ),
+        // Sequential damage targets are named "another"/"a third"; the
+        // renderer repeats "any other" (Cone of Flame family).
+        (
+            "and 3 damage to any other target",
+            "and 3 damage to a third target",
+        ),
+        (
+            "2 damage to any other target,",
+            "2 damage to another target,",
+        ),
+        // Cruel Reality: the enchanted player is the same referent whether
+        // named or pronominalized across the if/then.
+        (
+            "If they can't, enchanted player loses 5 life",
+            "If the player can't, they lose 5 life",
         ),
         // The optional phase-out of a chosen set: causative vs imperative.
         (
@@ -1931,6 +2086,42 @@ fn strip_choose_battlefield_zone(text: &str) -> String {
     result
 }
 
+/// Oracle writes repeated energy symbols as a count word ("get six {E}",
+/// "Pay eight {E}"); the renderer sometimes emits the literal run
+/// "{E}{E}{E}{E}{E}{E}". Collapse any run of 2+ {E} to "<count> {E}" so
+/// both sides agree.
+fn normalize_energy_pip_runs(text: &str) -> String {
+    if !text.contains("{E}{E}") {
+        return text.to_string();
+    }
+    const WORDS: &[&str] = &[
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+    ];
+    let mut result = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(idx) = rest.find("{E}") {
+        result.push_str(&rest[..idx]);
+        // Count the consecutive {E} run.
+        let mut n = 0;
+        let mut tail = &rest[idx..];
+        while let Some(after) = tail.strip_prefix("{E}") {
+            n += 1;
+            tail = after;
+        }
+        if n >= 2 && n < WORDS.len() {
+            result.push_str(WORDS[n]);
+            result.push_str(" {E}");
+        } else {
+            for _ in 0..n {
+                result.push_str("{E}");
+            }
+        }
+        rest = tail;
+    }
+    result.push_str(rest);
+    result
+}
+
 fn normalize_repeated_you_after_draw(text: &str) -> String {
     fn collapse_marker(segment: &mut String, marker: &str, replacement: &str) {
         let lower = segment.to_ascii_lowercase();
@@ -2102,6 +2293,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     normalized = normalize_anaphoric_object_surfaces(&normalized);
     normalized = strip_choose_battlefield_zone(&normalized);
     normalized = normalize_card_moved_this_way_condition(&normalized);
+    normalized = normalize_energy_pip_runs(&normalized);
     // "exile target player's graveyard" repeats an already-introduced
     // target; oracle back-references it ("exile their graveyard"). Only
     // rewrite when another mention keeps the target tokens in the text —

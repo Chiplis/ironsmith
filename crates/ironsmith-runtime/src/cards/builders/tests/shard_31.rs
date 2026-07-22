@@ -59,7 +59,8 @@ pub(super) fn infernal_vessel_compacts_returned_object_counters_and_type_followu
             "return that card to the battlefield under its owner's control with two +1/+1 counters on it"
         ) || compiled.contains(
             "return it to the battlefield under its owner's control with two +1/+1 counters on it"
-        )) && (compiled.contains(". It is a Demon in addition to its other types")
+        )) && (compiled.contains(". It becomes a demon in addition to its other types")
+            || compiled.contains(". It is a Demon in addition to its other types")
             || compiled.contains(". It's a Demon in addition to its other types"))
             && !compiled.contains("and put two +1/+1 counters"),
         "the returned-object result must carry both the counters and Demon followup:\n{compiled}"

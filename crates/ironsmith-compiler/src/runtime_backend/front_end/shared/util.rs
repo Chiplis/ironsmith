@@ -1093,6 +1093,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_subject_recognizes_they_after_leading_instead() {
+        let tokens = lex_line("instead they exile the top card of their library", 0).unwrap();
+        assert_eq!(parse_subject(&tokens), SubjectAst::Player(PlayerAst::That));
+    }
+
+    #[test]
     fn parse_subject_recognizes_each_other_player() {
         let tokens = lex_line("each other player", 0).unwrap();
         assert_eq!(

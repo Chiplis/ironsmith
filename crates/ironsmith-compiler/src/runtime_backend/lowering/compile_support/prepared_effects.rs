@@ -1225,6 +1225,61 @@ fn normalize_targeted_conditional_action_then_fight(effects: Vec<Effect>) -> Vec
     let mut rewritten = Vec::with_capacity(effects.len());
     let mut idx = 0;
     while idx < effects.len() {
+        // Oracle commonly introduces the friendly target and its conditional
+        // action in one sentence, then introduces the opposing target in the
+        // following fight sentence:
+        //
+        //   [friendly target, conditional action, opposing target, fight]
+        //
+        // Canonicalize that authored order to the same four-effect shape used
+        // by the renderer and legality checks. The positional ownership kept
+        // by `normalize_cross_segment_fight_sequences` intentionally leaves
+        // both target declarations in the first presentation segment.
+        if idx + 3 < effects.len()
+            && let Some((friendly_tag, friendly_target)) = tagged_target_only(&effects[idx])
+            && let Some(conditional) =
+                effects[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(opposing_target) = untagged_target_only(&effects[idx + 2])
+            && let Some(friendly_filter) = explicit_target_object_filter(friendly_target)
+            && let Some(opposing_filter) = explicit_target_object_filter(opposing_target)
+            && is_opposing_then_friendly_creature_pair(opposing_filter, friendly_filter)
+            && conditional.if_false.is_empty()
+            && matches!(
+                &conditional.condition,
+                Condition::TaggedObjectMatches(tag, _) if tag == friendly_tag
+            )
+            && let [branch_effect] = conditional.if_true.as_slice()
+            && effect_outer_tag(branch_effect) == Some(friendly_tag)
+            && let Some(fight) = effects[idx + 3].downcast_ref::<crate::effects::FightEffect>()
+            && matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag == friendly_tag)
+            && &fight.creature2 == opposing_target
+            && let Some(fixed_branch) = normalize_conditional_branch_target(
+                &conditional.if_true,
+                friendly_tag,
+                friendly_filter,
+            )
+        {
+            let opposing_tag = TagKey::from(format!("{}_opposing_target", friendly_tag.as_str()));
+            rewritten.push(
+                Effect::new(crate::effects::TargetOnlyEffect::new(
+                    opposing_target.clone(),
+                ))
+                .tag(opposing_tag.as_str()),
+            );
+            rewritten.push(effects[idx].clone());
+            rewritten.push(Effect::conditional(
+                conditional.condition.clone(),
+                fixed_branch,
+                Vec::new(),
+            ));
+            rewritten.push(Effect::fight(
+                ChooseSpec::Tagged(friendly_tag.clone()),
+                ChooseSpec::Tagged(opposing_tag),
+            ));
+            idx += 4;
+            continue;
+        }
+
         if idx + 3 < effects.len()
             && let Some(opposing_target) = untagged_target_only(&effects[idx])
             && let Some((friendly_tag, friendly_target)) = tagged_target_only(&effects[idx + 1])
@@ -1477,7 +1532,13 @@ fn single_conditional_result_is_continuous(
 
 fn rebind_tagged_condition(condition: &Condition, from_tag: &TagKey, to_tag: &TagKey) -> Condition {
     match condition {
-        Condition::TaggedObjectMatches(tag, filter) if tag == from_tag => {
+        // Coordinated target declarations carry an authored collection tag
+        // outside their independent target-slot tags. A singular trailing
+        // predicate ("if it's a Knight") belongs to the creature receiving
+        // the conditional action, not to that synthetic collection.
+        Condition::TaggedObjectMatches(tag, filter)
+            if tag == from_tag || tag.as_str() == CHOSEN_OBJECTS_TAG =>
+        {
             Condition::TaggedObjectMatches(to_tag.clone(), filter.clone())
         }
         _ => condition.clone(),
@@ -1486,10 +1547,18 @@ fn rebind_tagged_condition(condition: &Condition, from_tag: &TagKey, to_tag: &Ta
 
 fn tagged_target_only(effect: &Effect) -> Option<(&TagKey, &ChooseSpec)> {
     let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let target_only = tagged
+    if let Some(target_only) = tagged
         .effect
-        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    Some((&tagged.tag, &target_only.target))
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+    {
+        return Some((&tagged.tag, &target_only.target));
+    }
+
+    // A coordinated target declaration may carry a shared collection tag
+    // outside each independently targeted object. The inner tag is the
+    // actual target slot consumed by later actions; using the shared wrapper
+    // makes both targets appear identical and prevents fight-reference repair.
+    tagged_target_only(&tagged.effect)
 }
 
 fn random_single_tagged_destroy_tag(destroy: &crate::effects::DestroyEffect) -> Option<&TagKey> {

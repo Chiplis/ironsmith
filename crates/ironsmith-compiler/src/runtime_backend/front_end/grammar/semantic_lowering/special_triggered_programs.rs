@@ -12,6 +12,7 @@ pub(crate) enum SpecialTriggeredProgram {
     SecondSpellSuspend,
     DifferentNamesLibraryDivvy,
     OpponentCreatureMajorityConsult,
+    OpponentLandMajoritySearch,
     OpponentGraveyardMinorityReturn,
     RandomDiscardCreatureReturnUnlessLife { life: u32 },
     OpponentCombatAttackPile,
@@ -29,6 +30,7 @@ fn parse_special_triggered_program(input: &mut LexStream<'_>) -> WResult<Special
         parse_second_spell_suspend,
         parse_different_names_library_divvy,
         parse_opponent_creature_majority_consult,
+        parse_opponent_land_majority_search,
         parse_opponent_graveyard_minority_return,
         parse_random_discard_creature_return,
         parse_opponent_combat_attack_pile,
@@ -154,6 +156,31 @@ fn parse_opponent_graveyard_minority_return(
         ],
     )?;
     Ok(SpecialTriggeredProgram::OpponentGraveyardMinorityReturn)
+}
+
+fn parse_opponent_land_majority_search(
+    input: &mut LexStream<'_>,
+) -> WResult<SpecialTriggeredProgram> {
+    seek_phrase(input, &["at", "the", "beginning", "of", "each"])?;
+    seek_phrase(input, &["upkeep"])?;
+    seek_phrase(
+        input,
+        &[
+            "chooses", "target", "player", "who", "controls", "more", "lands",
+        ],
+    )?;
+    seek_phrase(
+        input,
+        &[
+            "may", "search", "their", "library", "for", "a", "basic", "land", "card",
+        ],
+    )?;
+    seek_phrase(
+        input,
+        &["put", "that", "card", "onto", "the", "battlefield"],
+    )?;
+    seek_phrase(input, &["then", "shuffle"])?;
+    Ok(SpecialTriggeredProgram::OpponentLandMajoritySearch)
 }
 
 fn parse_random_discard_creature_return(

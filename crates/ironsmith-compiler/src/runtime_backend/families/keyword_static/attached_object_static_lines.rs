@@ -482,6 +482,7 @@ pub(crate) fn parse_equipped_creature_has_line(
 pub(crate) fn parse_enchanted_creature_has_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
     let Some(has) = attached_grammar::parse_enchanted_has_tokens(tokens) else {
         return Ok(None);
     };
@@ -512,6 +513,38 @@ pub(crate) fn parse_enchanted_creature_has_line(
             display,
             condition,
         }]));
+    }
+
+    // A single `has` clause may grant ordinary keywords followed by a quoted
+    // activated ability. Parse those heterogeneous halves independently.
+    for split in attached_grammar::parse_attached_ability_splits_tokens(&ability_tokens)
+        .into_iter()
+        .rev()
+    {
+        let keyword_tokens = trim_edge_punctuation(split.keyword_tokens);
+        let activated_tokens = trim_edge_punctuation(split.granted_tokens);
+        let Some(mut grants) = parse_attached_keyword_action_grants(
+            subject,
+            &keyword_tokens,
+            condition.clone(),
+            &clause_text,
+            false,
+        )?
+        else {
+            continue;
+        };
+        let Some(parsed) = parse_attached_granted_activated_line(&activated_tokens)? else {
+            continue;
+        };
+        grants.push(StaticAbilityAst::AttachedObjectAbilityGrant {
+            ability: parsed,
+            display: format!(
+                "{subject} has {}",
+                display_text_for_tokens(&activated_tokens, true)
+            ),
+            condition: condition.clone(),
+        });
+        return Ok(Some(grants));
     }
 
     let Some(actions) = parse_ability_line(&ability_tokens) else {

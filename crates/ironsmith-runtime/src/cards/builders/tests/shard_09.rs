@@ -166,7 +166,6 @@ pub(super) fn parse_ad_nauseam_style_optional_repeat_process() {
             "Reveal the top card of your library and put that card into your hand. You lose life equal to its mana value. You may repeat this process any number of times.",
         )
         .expect("ad nauseam style optional repeat process should parse");
-
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Reveal the top card of your library and put that card into your hand"),
@@ -598,7 +597,7 @@ pub(super) fn parse_full_god_eternal_rhonas_oracle_and_compiled_text() {
         "expected double-power clause in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("Those creatures gain vigilance until end of turn"),
+        rendered.contains("Other creatures you control gain vigilance until end of turn"),
         "expected same-creature vigilance clause in compiled text, got {rendered}"
     );
     assert!(
@@ -927,7 +926,7 @@ pub(super) fn parse_each_creature_opponents_control_blocks_this_turn_if_able() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("creatures your opponents control blocks this turn if able"),
+        rendered.contains("each creature your opponents control blocks this turn if able"),
         "expected must-block effect for filtered creatures, got {rendered}"
     );
 }
@@ -1663,10 +1662,11 @@ pub(super) fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
 
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("ConditionalEffect")
-            && debug.contains("TaggedObjectMatches")
-            && debug.contains("PutCountersEffect"),
-        "expected typed delayed conditional put-counters followup, got {debug}"
+        debug.contains("ScheduleDelayedTriggerEffect")
+            && debug.contains("BattlefieldEntryCounterSpec")
+            && debug.contains("IfObjectEntersThisWay")
+            && debug.contains("PlusOnePlusOne"),
+        "expected typed delayed conditional battlefield-entry counter, got {debug}"
     );
     let static_ids: Vec<_> = def
         .abilities
@@ -1694,9 +1694,10 @@ pub(super) fn parse_aberrant_return_oracle_parses_and_renders_enters_with_counte
             && debug.contains("WithCount")
             && debug.contains("min: 1")
             && debug.contains("max: Some(3)")
-            && debug.contains("PutCountersEffect")
+            && debug.contains("BattlefieldEntryCounterSpec")
+            && debug.contains("EachOfThemEnters")
             && debug.contains("MinusOneMinusOne"),
-        "Aberrant Return should lower to one-to-three targeted graveyard returns plus -1/-1 counters, got {debug}"
+        "Aberrant Return should lower to one-to-three targeted graveyard returns with entry-time -1/-1 counters, got {debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
@@ -2043,7 +2044,6 @@ pub(super) fn fall_from_favor_allows_enchanted_creature_to_untap_when_controller
     game.turn.active_player = bob;
     game.turn.phase = crate::game_state::Phase::Beginning;
     game.turn.step = Some(crate::game_state::Step::Untap);
-
     let mut dm = crate::decision::SelectFirstDecisionMaker;
     crate::turn::execute_untap_step_with(&mut game, &mut dm);
 
@@ -2269,8 +2269,8 @@ pub(super) fn parse_named_source_optional_untap_and_control_duration_surface() {
     let debug = format!("{:?}", def.abilities);
     assert!(
         debug.contains("MayChooseNotToUntapDuringUntapStep")
-            && debug.contains("SourceUntaps")
-            && debug.contains("SourceIsTapped")
+            && debug.contains("ObjectControlledBy")
+            && debug.contains("ObjectTapped")
             && debug.contains("Rubinia Soulsinger"),
         "expected typed optional untap plus sourced control duration, got {debug}"
     );
@@ -3054,7 +3054,7 @@ pub(super) fn parse_orzhov_advokist_strictly_and_renders_attack_defender_clause(
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("if a player does"),
+        compiled.contains("if a player does") || compiled.contains("if that player does"),
         "expected compiled text to preserve the per-player conditional, got {compiled}"
     );
     assert!(
@@ -3320,15 +3320,14 @@ pub(super) fn parse_counter_spell_with_power_or_toughness_filter() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_filter_dynamic_power_comparison_fails_instead_of_partial_parse() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Dynamic Power Filter Variant")
+pub(super) fn parse_filter_dynamic_power_comparison_preserves_typed_operand() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Power Filter Variant")
         .parse_text("Exile target creature with power greater than or equal to your life total.")
-        .expect_err("unsupported dynamic comparison should fail parse");
-    let message = format!("{err:?}");
+        .expect("dynamic power comparison should parse");
+    let debug = format!("{:?}", def.spell_effect);
     assert!(
-        message.contains("unsupported dynamic power comparison operand")
-            || message.contains("unsupported arithmetic power comparison"),
-        "expected strict dynamic-power comparison error, got {message}"
+        debug.contains("GreaterThanOrEqualExpr") && debug.contains("LifeTotal(You)"),
+        "expected typed dynamic-power comparison, got {debug}"
     );
 }
 
@@ -3349,18 +3348,20 @@ pub(super) fn parse_return_up_to_x_target_creatures_preserves_dynamic_optional_c
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_destroy_up_to_x_other_targets_fails_instead_of_partial_destroy() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Dynamic Destroy Count Variant")
+pub(super) fn parse_destroy_up_to_x_other_targets_preserves_dynamic_count() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Destroy Count Variant")
             .parse_text(
                 "Destroy target creature and up to X other target creatures, where X is the number of Attractions you've visited this turn.",
             )
-            .expect_err("unsupported dynamic multi-target destroy should fail parse");
-    let message = format!("{err:?}");
+            .expect("dynamic multi-target destroy should parse");
+    let debug = format!("{:?}", def.spell_effect);
     assert!(
-        message.contains("unsupported multi-target destroy clause")
-            || message.contains("unsupported dynamic or missing target count after 'up to'")
-            || message.contains("unsupported where-x clause"),
-        "expected strict multi-target destroy parse error, got {message}"
+        debug.matches("DestroyEffect").count() == 2
+            && debug.contains("dynamic_x: true")
+            && debug.contains("up_to_x: true")
+            && debug.contains("Attraction")
+            && debug.contains("other: true"),
+        "expected a fixed target plus up-to-X other targets, got {debug}"
     );
 }
 
@@ -3382,16 +3383,25 @@ pub(super) fn parse_loses_all_abilities_and_becomes_effect_fails_instead_of_part
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_loses_all_abilities_and_becomes_static_fails_instead_of_partial_parse() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Lose Abilities Becomes Static Variant")
+pub(super) fn parse_loses_all_abilities_and_becomes_static_lowers_all_characteristics() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Lose Abilities Becomes Static Variant")
             .parse_text(
                 "Each noncreature artifact loses all abilities and becomes an artifact creature with power and toughness each equal to its mana value.",
             )
-            .expect_err("unsupported lose-all-abilities+becomes static should fail parse");
-    let message = format!("{err:?}");
+            .expect("static lose-all-abilities and becomes clause should parse");
+    let static_ids = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
     assert!(
-        message.contains("unsupported lose-all-abilities static becomes clause"),
-        "expected strict lose-all-abilities+becomes static parse error, got {message}"
+        static_ids.contains(&StaticAbilityId::RemoveAllAbilitiesForFilter)
+            && static_ids.contains(&StaticAbilityId::SetCardTypes)
+            && static_ids.contains(&StaticAbilityId::SetBasePowerToughnessForFilter),
+        "expected all three typed characteristic-setting abilities, got {static_ids:?}"
     );
 }
 

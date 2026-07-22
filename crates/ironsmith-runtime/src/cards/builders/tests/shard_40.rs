@@ -200,7 +200,7 @@ pub(super) fn prefixed_d20_tables_preserve_their_numeric_rows() {
         ),
         (
             "Scion of Stygia",
-            "When this creature enters, choose target creature an opponent controls, then roll a d20.\n1—9 | Tap that creature.\n10—20 | Tap that creature. It doesn't untap during its controller's next untap step.",
+            "When this creature enters, choose target creature an opponent controls, then roll a d20.\n1—9 | Tap that creature.\n10—20 | Tap that creature. That creature doesn't untap during its controller's next untap step.",
         ),
         (
             "Spiked Pit Trap",
@@ -240,11 +240,11 @@ pub(super) fn coin_flip_outcomes_stay_bound_to_the_flip_that_produced_them() {
         ),
         (
             "Krark, the Thumbless",
-            "Whenever you cast an instant or sorcery spell, flip a coin. If you lose the flip, return that spell to its owner's hand. If you win the flip, copy that spell, and you may choose new targets for the copy.",
+            "Whenever you cast an instant or sorcery spell, flip a coin. If you lose the flip, return that spell to its owner's hand. If you win the flip, copy that spell and you may choose new targets for the copy.",
         ),
         (
             "Krark, the Thumbless // Krark, the Thumbless",
-            "Whenever you cast an instant or sorcery spell, flip a coin. If you lose the flip, return that spell to its owner's hand. If you win the flip, copy that spell, and you may choose new targets for the copy.",
+            "Whenever you cast an instant or sorcery spell, flip a coin. If you lose the flip, return that spell to its owner's hand. If you win the flip, copy that spell and you may choose new targets for the copy.",
         ),
         (
             "Mijae Djinn",

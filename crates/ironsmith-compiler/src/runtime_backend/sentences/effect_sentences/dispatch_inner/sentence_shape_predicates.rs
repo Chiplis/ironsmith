@@ -932,6 +932,14 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(result);
     }
 
+    // Explicit player offers must retain both their actor and optionality
+    // before broad subject/verb parsing claims the action. This is especially
+    // important for split actors such as "that player or that permanent's
+    // controller may ...", whose second branch is otherwise discarded.
+    if super::parse_leading_player_may_lexed(tokens).is_some() {
+        return super::parse_effect_chain_lexed(tokens);
+    }
+
     fn search_followup_shuffle_player(effect: &EffectAst) -> Option<PlayerAst> {
         match effect {
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -974,6 +982,13 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         }
     }
 
+    // A delayed trigger may contain a compound damage fanout as its payload.
+    // Preserve the outer `whenever ... this turn` scope before the broad
+    // fanout recognizer examines the whole sentence as a direct action.
+    if let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)? {
+        return Ok(effects);
+    }
+
     if let Some(effects) = super::fanout_family::parse_compound_damage_fanout_sentence(tokens)? {
         return Ok(effects);
     }
@@ -1000,23 +1015,60 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     }
     if let Some(schedule) =
         effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
-        && schedule.step == effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::EndStep
-        && schedule.start_next_turn
     {
         let effects = parse_effect_sentence_lexed_inner(schedule.effect_tokens)?;
         if effects.is_empty() {
             return Err(CardTextError::ParseError(
-                "delayed end-step sentence missing effect payload".to_string(),
+                "delayed schedule sentence missing effect payload".to_string(),
             ));
         }
-        let player = match schedule.player {
-            PlayerAst::You | PlayerAst::Implicit => PlayerAst::You,
-            PlayerAst::That => PlayerAst::That,
-            PlayerAst::Target => PlayerAst::Target,
-            PlayerAst::TargetOpponent => PlayerAst::TargetOpponent,
-            _ => PlayerAst::Any,
+        let delayed = match schedule.step {
+            effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::Upkeep => {
+                EffectAst::DelayedUntilNextUpkeep {
+                    player: schedule.player,
+                    effects,
+                }
+            }
+            effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::DrawStep => {
+                EffectAst::DelayedUntilNextDrawStep {
+                    player: schedule.player,
+                    effects,
+                }
+            }
+            effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::MainPhase => {
+                let player = match schedule.player {
+                    PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                    PlayerAst::That => PlayerFilter::IteratedPlayer,
+                    PlayerAst::Target => PlayerFilter::target_player(),
+                    PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                    _ => PlayerFilter::Any,
+                };
+                EffectAst::DelayedUntilNextMainPhase { player, effects }
+            }
+            effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::EndStep
+                if schedule.start_next_turn =>
+            {
+                let player = match schedule.player {
+                    PlayerAst::You | PlayerAst::Implicit => PlayerAst::You,
+                    PlayerAst::That => PlayerAst::That,
+                    PlayerAst::Target => PlayerAst::Target,
+                    PlayerAst::TargetOpponent => PlayerAst::TargetOpponent,
+                    _ => PlayerAst::Any,
+                };
+                EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects }
+            }
+            effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::EndStep => {
+                let player = match schedule.player {
+                    PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
+                    PlayerAst::That => PlayerFilter::IteratedPlayer,
+                    PlayerAst::Target => PlayerFilter::target_player(),
+                    PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
+                    _ => PlayerFilter::Any,
+                };
+                EffectAst::DelayedUntilNextEndStep { player, effects }
+            }
         };
-        return Ok(vec![EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects }]);
+        return Ok(vec![delayed]);
     }
     if let Some(effects) = super::subject_verb_primitives::
         parse_sentence_you_and_attacking_player_each_draw_and_lose(
@@ -1090,10 +1142,6 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
 
-    if let Some(effects) = parse_sentence_delayed_trigger_this_turn(tokens)? {
-        return Ok(effects);
-    }
-
     if let Some(effects) = super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
     {
         return Ok(effects);
@@ -1103,31 +1151,20 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
 
-    if let Some(effects) = parse_manifest_dread_graveyard_card_to_hand(tokens) {
-        return Ok(effects);
+    // Matching-spell cost reductions can also be phrased with a leading
+    // duration ("Until your next turn, ... spells ... cost ... less"). Give
+    // that typed shape precedence over the generic chain parser, which can
+    // otherwise reinterpret the spell restriction as a static ability grant
+    // to an inferred object.
+    if let Some(effect) = lower_matching_spell_cost_reduction_sentence(tokens) {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Cost subject=spell recognizer=matching-spell-reduction",
+        );
+        return Ok(vec![effect]);
     }
 
-    if let Some(schedule) =
-        effect_grammar::delayed_sentence_shapes::parse_delayed_schedule_sentence_shape(tokens)
-        && schedule.step == effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::MainPhase
-    {
-        let effects = parse_effect_sentence_lexed_inner(schedule.effect_tokens)?;
-        if effects.is_empty() {
-            return Err(CardTextError::ParseError(
-                "delayed main-phase sentence missing effect payload".to_string(),
-            ));
-        }
-        let player = match schedule.player {
-            PlayerAst::You | PlayerAst::Implicit => PlayerFilter::You,
-            PlayerAst::That => PlayerFilter::IteratedPlayer,
-            PlayerAst::Target => PlayerFilter::target_player(),
-            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-            _ => PlayerFilter::Any,
-        };
-        return Ok(vec![EffectAst::DelayedUntilNextMainPhase {
-            player,
-            effects,
-        }]);
+    if let Some(effects) = parse_manifest_dread_graveyard_card_to_hand(tokens) {
+        return Ok(effects);
     }
 
     if let Some(effects) =

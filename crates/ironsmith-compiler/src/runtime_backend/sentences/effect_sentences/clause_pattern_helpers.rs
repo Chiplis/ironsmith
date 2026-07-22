@@ -190,6 +190,29 @@ pub(crate) fn parse_choose_target_and_verb_clause(
 pub(crate) fn parse_copy_spell_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // Preserve the optionality and actor of clauses such as "that permanent's
+    // controller may copy this spell". This helper is reached before the
+    // generic leading-may dispatcher on the subject/verb route, so parse the
+    // action after `may`, bind its implicit actor, and retain the wrapper here.
+    if let Some(player) = super::chain_carry::parse_leading_player_may_lexed(tokens) {
+        let stripped = super::chain_carry::remove_through_first_word(tokens);
+        let Some(mut effect) = parse_copy_spell_clause(&stripped)? else {
+            return Ok(None);
+        };
+        super::chain_carry::bind_implicit_player_context(&mut effect, player);
+        return Ok(Some(EffectAst::MayByPlayer {
+            player,
+            effects: vec![effect],
+        }));
+    }
+    if super::super::grammar::effects::clause_dispatch_shapes::parse_leading_may_clause_shape(
+        tokens,
+    )
+    .is_some()
+    {
+        return Ok(None);
+    }
+
     fn target_from_shape(shape: clause_shapes::CopyTargetShape<'_>) -> Option<TargetAst> {
         match shape {
             clause_shapes::CopyTargetShape::Source => Some(TargetAst::Source(None)),
@@ -1102,16 +1125,21 @@ fn parse_keyword_value_tokens(
     mechanic: &str,
     clause_text: &str,
 ) -> Result<Value, CardTextError> {
-    let Some((value, used)) = parse_value(tokens) else {
+    let Some((mut value, used)) = parse_value(tokens) else {
         return Err(CardTextError::ParseError(format!(
             "missing {mechanic} amount (clause: '{clause_text}')"
         )));
     };
-    if used != tokens.len() {
+    let trailing = trim_commas(&tokens[used..]);
+    if trailing.is_empty() {
+        return Ok(value);
+    }
+    let Some(where_value) = parse_value_binding_clause(&trailing) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported {mechanic} amount tail (clause: '{clause_text}')"
         )));
-    }
+    };
+    value = super::super::util::replace_unbound_x_with_value(value, &where_value, clause_text)?;
     Ok(value)
 }
 
@@ -1195,11 +1223,6 @@ pub(crate) fn parse_keyword_mechanic_clause(
                 predicate: IfResultPredicate::Value(predicate),
                 effects: vec![action],
             }
-        }
-        clause_shapes::KeywordMechanicShape::Unsupported => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported keyword effect clause (clause: '{clause_text}')"
-            )));
         }
         clause_shapes::KeywordMechanicShape::Phase { direction, subject } => match subject {
             clause_shapes::PhaseSubjectShape::All(filter_tokens) => {

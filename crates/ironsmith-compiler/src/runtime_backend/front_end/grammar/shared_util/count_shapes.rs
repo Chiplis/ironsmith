@@ -21,6 +21,26 @@ struct ForEachHead {
     other: bool,
 }
 
+fn parse_for_each_object_filter_words(
+    words: &[&str],
+    leading_other: bool,
+) -> Option<crate::target::ObjectFilter> {
+    if !leading_other {
+        return parse_object_filter_words(words, false).ok();
+    }
+
+    // `parse_for_each_head` consumes the leading "other" so specialized
+    // count shapes do not have to account for it. Restore that authored token
+    // for object-filter parsing instead of passing `other = true` globally:
+    // in "other Assassins you control and Assassin cards in your graveyard"
+    // the qualifier belongs only to the first independently scoped arm.
+    let mut restored = Vec::with_capacity(words.len() + 1);
+    restored.push("other");
+    restored.extend_from_slice(words);
+    let tokens = synthetic_word_tokens(&restored);
+    crate::runtime_backend::object_filters::parse_object_filter(&tokens, false).ok()
+}
+
 pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
@@ -201,7 +221,8 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 None
             };
             if !filter_words.is_empty()
-                && let Ok(mut filter) = parse_object_filter_words(filter_words, head.other)
+                && let Some(mut filter) =
+                    parse_for_each_object_filter_words(filter_words, head.other)
             {
                 if filter_words
                     .iter()
@@ -233,8 +254,8 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             .iter()
             .any(|word| matches!(*word, "card" | "cards"));
         for candidate_end in (idx + 1..this_way_start).rev() {
-            if let Ok(mut filter) =
-                parse_object_filter_words(&words[idx..candidate_end], head.other)
+            if let Some(mut filter) =
+                parse_for_each_object_filter_words(&words[idx..candidate_end], head.other)
             {
                 if has_explicit_card_noun {
                     filter.set_explicit_card_noun(true);
@@ -350,7 +371,7 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
         }
     }
 
-    let filter = parse_object_filter_words(&words[idx..filter_end], head.other).ok()?;
+    let filter = parse_for_each_object_filter_words(&words[idx..filter_end], head.other)?;
     Some((Value::Count(filter), filter_end))
 }
 
@@ -612,6 +633,34 @@ mod tests {
             parse_for_each_count_value_words(&["for", "each", "creature", "in", "your", "party"]),
             Some((Value::PartySize(PlayerFilter::You), 6))
         );
+    }
+
+    #[test]
+    fn leading_other_remains_local_to_the_first_scoped_count_arm() {
+        let words = [
+            "for",
+            "each",
+            "other",
+            "assassin",
+            "you",
+            "control",
+            "and",
+            "each",
+            "assassin",
+            "card",
+            "in",
+            "your",
+            "graveyard",
+        ];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("compound count should parse");
+        assert_eq!(used, words.len());
+        let Value::Count(filter) = value else {
+            panic!("expected object count");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(filter.any_of[0].other);
+        assert!(!filter.any_of[1].other);
     }
 
     #[test]

@@ -6,7 +6,16 @@ use winnow::prelude::*;
 use super::super::super::{leaf, primitives};
 use super::common;
 
-const TAGGED_REFERENCES: &[&[&str]] = &[&["it"], &["that", "card"], &["that", "token"]];
+const TAGGED_REFERENCES: &[&[&str]] = &[
+    &["it"],
+    &["that", "card"],
+    &["that", "creature"],
+    &["the", "creature"],
+    &["that", "permanent"],
+    &["the", "permanent"],
+    &["that", "token"],
+    &["the", "token"],
+];
 const ONE_OF_TAGGED_SET_REFERENCES: &[&[&str]] = &[&["one", "of", "them"]];
 const CHOICE_SUFFIXES: &[&[&str]] = &[
     &["of", "their", "choice"],
@@ -332,6 +341,25 @@ mod tests {
             parser_token_word_refs(shape.filter_tokens),
             ["that", "token"]
         );
+    }
+
+    #[test]
+    fn sacrifice_object_shape_preserves_definite_object_references() {
+        for text in [
+            "that creature",
+            "the creature",
+            "that permanent",
+            "the permanent",
+            "that token",
+            "the token",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let shape = parse_sacrifice_object_shape(&tokens);
+            assert!(
+                shape.tagged_reference.is_some(),
+                "{text} should remain a reference to the established object"
+            );
+        }
     }
 
     #[test]

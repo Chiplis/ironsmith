@@ -150,21 +150,29 @@ fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
             normalized.push_str(segment);
             continue;
         }
-        normalized.push_str(
-            &segment
-                .replace("You draw a card", "Draw a card")
-                .replace("you draw a card", "draw a card")
-                .replace("You draw two cards", "Draw two cards")
-                .replace("you draw two cards", "draw two cards")
-                .replace("You draw 2 cards", "Draw two cards")
-                .replace("you draw 2 cards", "draw two cards")
-                .replace(". you draw a card", ". Draw a card")
-                .replace(". draw a card", ". Draw a card")
-                .replace(". you draw two cards", ". Draw two cards")
-                .replace(". you draw 2 cards", ". Draw two cards")
-                .replace(". draw two cards", ". Draw two cards")
-                .replace(". draw 2 cards", ". Draw two cards"),
-        );
+        let mut segment = segment.to_string();
+        if let Some(rest) = segment.strip_prefix("You draw ") {
+            segment = format!("Draw {rest}");
+        } else if let Some(rest) = segment.strip_prefix("you draw ") {
+            segment = format!("draw {rest}");
+        }
+        for (subject, imperative) in [
+            (": You draw ", ": Draw "),
+            (": you draw ", ": draw "),
+            (". You draw ", ". Draw "),
+            (". you draw ", ". Draw "),
+            ("— You draw ", "— Draw "),
+            ("— you draw ", "— draw "),
+            (", You draw ", ", draw "),
+            (", you draw ", ", draw "),
+            ("instead You draw ", "instead draw "),
+            ("instead you draw ", "instead draw "),
+            ("then You draw ", "then draw "),
+            ("then you draw ", "then draw "),
+        ] {
+            segment = segment.replace(subject, imperative);
+        }
+        normalized.push_str(&segment);
     }
     normalized
 }
@@ -331,18 +339,6 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         );
     }
 
-    if let Some((_, rest)) = normalized.split_once('—') {
-        let rest = rest.trim();
-        let lower = rest.to_ascii_lowercase();
-        if lower
-            == "whenever one or more other creature artifacts you control die, draw a card. this ability triggers only once each turn."
-            || lower
-                == "whenever one or more other creatures and/or artifacts you control die, draw a card. this ability triggers only once each turn."
-        {
-            normalized = "Whenever other creature artifact you control dies, you draw a card. This ability triggers only once each turn.".to_string();
-        }
-    }
-
     if normalized.eq_ignore_ascii_case(
         "Search your library for three cards and reveal them. Target opponent chooses one of them. Put the chosen card into your hand and the rest into your graveyard. Then shuffle.",
     ) {
@@ -467,6 +463,19 @@ mod tests {
         assert_eq!(
             normalize_debug_safe_spelling_surface("You draw two cards."),
             "Draw two cards."
+        );
+    }
+
+    #[test]
+    fn cleanup_uses_imperative_draw_after_prior_sentence() {
+        let triggered = "Whenever this creature attacks, each player discards a card. You draw a card for each card discarded this way.";
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(triggered),
+            "Whenever this creature attacks, each player discards a card. Draw a card for each card discarded this way."
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface("{T}: You draw a card."),
+            "{T}: Draw a card."
         );
     }
 

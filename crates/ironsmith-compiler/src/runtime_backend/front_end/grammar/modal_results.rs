@@ -230,10 +230,15 @@ fn parse_typed_prior_effect_result_surface(
     };
     let action = filter.prior_effect_action_surface()?;
     filter.set_prior_effect_action_surface(None);
-    // The antecedent result memory provides identity and the action provides
-    // the zone transition. Neither an implicit tag nor a parser-default zone
-    // belongs in the semantic characteristic filter.
-    filter.tagged_constraints.clear();
+    // The antecedent result memory provides the subject identity and the
+    // action provides the zone transition. Drop only an implicit identity
+    // constraint; comparison constraints remain semantic characteristics.
+    // For example, "a card with the chosen name was milled this way" must
+    // retain its SameNameAsTagged(__chosen_name__) comparison.
+    filter.tagged_constraints.retain(|constraint| {
+        !(constraint.tag.as_str() == crate::cards::builders::IT_TAG
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
+    });
     filter.zone = None;
 
     let normalized = normalized_word_tokens(tokens);
@@ -734,5 +739,21 @@ mod tests {
             let actual = parse_if_result_predicate_lexed_tokens(&tokens);
             assert_eq!(actual, Some(expected));
         }
+    }
+
+    #[test]
+    fn typed_prior_result_preserves_chosen_name_comparison() {
+        let tokens = lex_line("a card with the chosen name was milled this way", 0).unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) =
+            parse_if_result_predicate_lexed_tokens(&tokens)
+        else {
+            panic!("expected typed prior-effect result");
+        };
+
+        assert_eq!(surface.action, PriorEffectAction::Milled);
+        assert!(surface.filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "__chosen_name__"
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
+        }));
     }
 }

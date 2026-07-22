@@ -999,7 +999,7 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
                 tag: TagKey::from(IT_TAG),
                 relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
             });
-        TargetAst::Object(filter, span_from_tokens(source_tokens), None)
+        TargetAst::Object(filter, None, span_from_tokens(source_tokens))
     } else {
         source.clone()
     };

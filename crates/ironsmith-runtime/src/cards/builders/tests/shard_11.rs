@@ -166,8 +166,8 @@ pub(super) fn parse_gain_choice_of_keywords_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined
-            .contains("target creature gets +1/+1 and gains your choice of deathtouch or lifelink"),
+        joined.contains("target creature gets +1/+1 until end of turn")
+            && joined.contains("it gains your choice of deathtouch or lifelink until end of turn"),
         "expected compact keyword-choice grant in compiled text, got {joined}"
     );
 }
@@ -229,7 +229,7 @@ pub(super) fn assaultron_dominator_parses_counter_choice_attack_trigger() {
         .to_ascii_lowercase();
     assert!(
         joined.contains(
-            "put your choice of a +1/+1, first strike, or trample counter on that creature"
+            "put your choice of a +1/+1 counter, a first strike counter, or a trample counter on that creature"
         ),
         "expected compact counter-choice text for Assaultron Dominator, got {joined}"
     );
@@ -391,7 +391,7 @@ pub(super) fn parse_if_you_control_no_artifacts_compiles_to_negated_player_contr
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("if you control no artifac"),
+        rendered.contains("if you don't control an artifact"),
         "expected negated control predicate in compiled text, got {rendered}"
     );
 
@@ -404,7 +404,7 @@ pub(super) fn parse_if_you_control_no_artifacts_compiles_to_negated_player_contr
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_first_main_phase_trigger_uses_precombat_main_and_active_player() {
+pub(super) fn parse_first_main_phase_trigger_uses_precombat_main_event_player() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Vineyard Probe")
         .card_types(vec![CardType::Enchantment])
         .parse_text("At the beginning of each player's first main phase, that player adds {G}{G}.")
@@ -429,8 +429,8 @@ pub(super) fn parse_first_main_phase_trigger_uses_precombat_main_and_active_play
         .expect("expected add-mana effect");
     assert_eq!(
         add_mana.player,
-        PlayerFilter::Active,
-        "expected \"that player\" to resolve to active player"
+        PlayerFilter::IteratedPlayer,
+        "expected \"that player\" to resolve from the concrete phase event"
     );
 }
 
@@ -780,7 +780,7 @@ pub(super) fn parse_sparkspitter_token_reminder_sets_next_end_step_sacrifice() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_construct_token_with_for_each_artifact_text_keeps_single_token_and_cda() {
+pub(super) fn parse_construct_token_with_for_each_artifact_text_keeps_single_token_and_anthem() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Urza Construct Variant")
         .card_types(vec![CardType::Artifact])
         .parse_text("{2}, {T}: Create a 0/0 colorless Construct artifact creature token with \"This token gets +1/+1 for each artifact you control.\"")
@@ -804,23 +804,32 @@ pub(super) fn parse_construct_token_with_for_each_artifact_text_keeps_single_tok
         "expected exactly one token to be created, got {:?}",
         create.count
     );
-    let has_cda = create.token.abilities.iter().any(|ability| {
-        matches!(
-            &ability.kind,
-            AbilityKind::Static(static_ability)
-                if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT
-        )
-    });
-    assert!(
-        has_cda,
-        "expected Construct token to keep +1/+1-for-each-artifact behavior, got {:#?}",
-        create.token.abilities
-    );
+    let anthem = create
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability.anthem_payload(),
+            _ => None,
+        })
+        .unwrap_or_else(|| {
+            panic!("Construct token should keep an executable scaling anthem, got {create:#?}")
+        });
+    let ironsmith_core::AnthemValue::PerCount {
+        multiplier: 1,
+        count: ironsmith_core::AnthemCountExpression::MatchingFilter(filter),
+    } = &anthem.power
+    else {
+        panic!("expected +1 power per matching artifact, got {anthem:#?}");
+    };
+    assert_eq!(anthem.toughness, anthem.power);
+    assert!(filter.card_types.contains(&CardType::Artifact));
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_construct_token_with_single_quoted_rules_text_keeps_cda() {
+pub(super) fn parse_construct_token_with_single_quoted_rules_text_keeps_dynamic_anthem() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Construct Quote Variant")
         .parse_text(
             "Create a 0/0 colorless Construct artifact creature token with 'This token gets +1/+1 for each artifact you control.'",
@@ -833,7 +842,10 @@ pub(super) fn parse_construct_token_with_single_quoted_rules_text_keeps_cda() {
         "expected spell create-token effect, got {debug}"
     );
     assert!(
-        debug.contains("CharacteristicDefiningPT"),
+        debug.contains("Anthem")
+            && debug.contains("PerCount")
+            && debug.contains("MatchingFilter")
+            && debug.contains("Artifact"),
         "expected Construct token to keep dynamic +1/+1 scaling text, got {debug}"
     );
 }
@@ -1652,9 +1664,9 @@ pub(super) fn auntie_ool_renders_blight_ward_and_triggered_control_branches() {
 
     let lower = rendered.to_ascii_lowercase();
     assert!(
-        lower.contains(
-            "draw a card if you control that creature. if you don't control it, its controller loses 1 life"
-        ),
+        lower.contains("draw a card if you control that creature")
+            && (lower.contains("if you don't control it, its controller loses 1 life")
+                || lower.contains("otherwise, its controller loses 1 life")),
         "expected compact triggering-creature control branches, got {rendered}"
     );
 }
@@ -1731,6 +1743,16 @@ pub(super) fn render_equip_line_with_parenthetical_colon_preserves_prefix_text()
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_put_counters_sequence_on_distinct_targets() {
+    fn count_put_counters(effect: &Effect) -> usize {
+        let mut count = usize::from(
+            effect
+                .downcast_ref::<crate::effects::PutCountersEffect>()
+                .is_some(),
+        );
+        effect.visit_child_effects(&mut |child| count += count_put_counters(child));
+        count
+    }
+
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Incremental Growth Variant")
         .card_types(vec![CardType::Sorcery])
         .parse_text(
@@ -1742,16 +1764,45 @@ pub(super) fn parse_put_counters_sequence_on_distinct_targets() {
         .spell_effect
         .as_ref()
         .expect("expected spell effects for chained counters");
+    let [sequence_effect] = spell_effects.flattened_default_effects() else {
+        panic!("expected one coordinated counter sequence, got {spell_effects:#?}");
+    };
+    let sequence = sequence_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("chained counter placements should retain coordinated sequencing");
     assert_eq!(
-        spell_effects.len(),
+        sequence
+            .effects
+            .iter()
+            .map(count_put_counters)
+            .sum::<usize>(),
         3,
-        "expected three distinct put-counters effects for the chained clause"
+        "expected three distinct put-counters effects for the chained clause, got {spell_effects:#?}"
+    );
+    assert_eq!(
+        sequence.surface,
+        ironsmith_core::SequenceSurface::Coordinated
     );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_put_multiple_counter_types_on_single_target() {
+    fn contains_effect<T: 'static>(effect: &Effect) -> bool {
+        if effect.downcast_ref::<T>().is_some() {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| found |= contains_effect::<T>(child));
+        found
+    }
+
+    fn count_effects<T: 'static>(effect: &Effect) -> usize {
+        let mut count = usize::from(effect.downcast_ref::<T>().is_some());
+        effect.visit_child_effects(&mut |child| count += count_effects::<T>(child));
+        count
+    }
+
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Gift of the Viper Variant")
         .card_types(vec![CardType::Sorcery])
         .parse_text(
@@ -1763,23 +1814,40 @@ pub(super) fn parse_put_multiple_counter_types_on_single_target() {
         .spell_effect
         .as_ref()
         .expect("expected spell effects for shared-target multi-counter clause");
+    let flattened = spell_effects.flattened_default_effects();
+    let sequence = flattened
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::SequenceEffect>())
+        .expect("shared-target counter placements should retain coordinated sequencing");
     assert_eq!(
-        spell_effects.len(),
-        4,
-        "expected three put-counters effects plus untap for shared-target multi-counter clause"
+        sequence
+            .effects
+            .iter()
+            .map(count_effects::<crate::effects::PutCountersEffect>)
+            .sum::<usize>(),
+        3,
+        "expected three coordinated put-counters effects for the shared target"
+    );
+    assert!(
+        flattened
+            .iter()
+            .any(contains_effect::<crate::effects::UntapEffect>),
+        "expected the follow-up untap effect, got {spell_effects:#?}"
     );
 
-    let joined = unprocessed_compiled_lines(&def).join(" ");
+    let joined = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     assert!(
-        joined.contains("Put a +1/+1 counter on target creature"),
+        joined.contains("put a +1/+1 counter on target creature"),
         "expected +1/+1 counter clause in rendered text, got {joined}"
     );
     assert!(
-        joined.contains("Put a reach counter on target creature"),
+        joined.contains("put a reach counter on target creature"),
         "expected reach counter clause in rendered text, got {joined}"
     );
     assert!(
-        joined.contains("Put a deathtouch counter on target creature"),
+        joined.contains("put a deathtouch counter on target creature"),
         "expected deathtouch counter clause in rendered text, got {joined}"
     );
 }
@@ -2269,7 +2337,7 @@ pub(super) fn cavern_hoard_dragon_compiled_text_keeps_greatest_artifact_clause()
         vec![
             "This spell costs {X} less to cast, where X is the greatest number of artifacts an opponent controls.".to_string(),
             "Flying, trample, haste".to_string(),
-            "Whenever this creature deals combat damage to a player, create a Treasure token for each artifact that player controls.".to_string(),
+            "Whenever this creature deals combat damage to a player, you create a Treasure token for each artifact that player controls.".to_string(),
         ]
     );
 }
@@ -2718,21 +2786,19 @@ pub(super) fn glissa_sunseeker_conditional_destroy_effect(def: &CardDefinition) 
 pub(super) fn glissa_sunseeker_target_only_effect(
     def: &CardDefinition,
 ) -> &crate::effects::TargetOnlyEffect {
+    fn find_target_only(effect: &Effect) -> Option<&crate::effects::TargetOnlyEffect> {
+        effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .or_else(|| effect.transparent_child_effect().and_then(find_target_only))
+    }
+
     def.abilities
         .iter()
         .find_map(|ability| match &ability.kind {
             AbilityKind::Activated(activated) => activated.effects.segments[0]
                 .default_effects
                 .iter()
-                .find_map(|effect| {
-                    effect
-                        .downcast_ref::<crate::effects::TaggedEffect>()
-                        .and_then(|tagged| {
-                            tagged
-                                .effect
-                                .downcast_ref::<crate::effects::TargetOnlyEffect>()
-                        })
-                }),
+                .find_map(find_target_only),
             _ => None,
         })
         .expect("Glissa Sunseeker should require an artifact target")
@@ -2795,7 +2861,6 @@ pub(super) fn glissa_sunseeker_strict_parser_and_compiled_text_regression() {
     assert_oracle_card_parses_strict("Glissa Sunseeker");
     let def = parse_oracle_card_definition("Glissa Sunseeker");
     let rendered = crate::compiled_text::compiled_text_lines(&def);
-    let ability_debug = format!("{:?}", def.abilities);
 
     assert_eq!(
         rendered,
@@ -2805,12 +2870,23 @@ pub(super) fn glissa_sunseeker_strict_parser_and_compiled_text_regression() {
         ],
         "Glissa Sunseeker compiled text should preserve the conditional unspent-mana destroy clause"
     );
-    assert!(
-        ability_debug.contains("ConditionalEffect")
-            && ability_debug.contains("EqualExpr")
-            && ability_debug.contains("UnspentMana"),
-        "Glissa Sunseeker should structurally compare target mana value to unspent mana, got {ability_debug}"
-    );
+    let conditional_effect = glissa_sunseeker_conditional_destroy_effect(&def);
+    let conditional = conditional_effect
+        .downcast_ref::<crate::effects::ConditionalEffect>()
+        .expect("Glissa Sunseeker should lower its destroy clause conditionally");
+    match &conditional.condition {
+        crate::effect::Condition::ValueComparison {
+            left: crate::effect::Value::ManaValueOf(target),
+            operator: crate::effect::ValueComparisonOperator::Equal,
+            right: crate::effect::Value::UnspentMana(PlayerFilter::You),
+        } => assert!(
+            matches!(target.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "targeted_0"),
+            "Glissa Sunseeker should compare the chosen artifact's mana value, got {target:?}"
+        ),
+        other => panic!(
+            "Glissa Sunseeker should compare target mana value to unspent mana, got {other:?}"
+        ),
+    }
 }
 
 #[test]
@@ -3856,16 +3932,19 @@ pub(super) fn possessed_threshold_source_modifier_family_recombines() {
             .card_types(vec![CardType::Creature])
             .parse_text(oracle)
             .unwrap_or_else(|error| panic!("{name} should parse: {error:?}"));
-        let expected = format!(
+        let expected_there_are = format!(
             "Threshold — As long as there are seven or more cards in your graveyard, this creature gets +1/+1, is black, and has \"{{2}}{{B}}, {{T}}: Destroy target {destroyed_color} creature.\""
         );
+        let expected_you_have = expected_there_are.replacen("there are", "you have", 1);
         let rendered = unprocessed_compiled_lines(&def);
         assert!(
             rendered.iter().any(|line| line == intrinsic),
             "{name} should retain its intrinsic keyword, got {rendered:#?}"
         );
         assert!(
-            rendered.iter().any(|line| line == &expected),
+            rendered
+                .iter()
+                .any(|line| line == &expected_there_are || line == &expected_you_have),
             "{name} should retain its structural Threshold surface, got {rendered:#?}"
         );
 

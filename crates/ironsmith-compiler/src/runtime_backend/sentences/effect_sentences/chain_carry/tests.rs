@@ -18,6 +18,37 @@ use super::{
 use crate::runtime_backend::front_end::shared::util::with_source_reference_context;
 
 #[test]
+fn convert_then_adapt_keeps_both_executable_keyword_actions() {
+    let tokens = lex_line("Convert this creature, then adapt 3.", 0)
+        .expect("convert/adapt chain should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("convert/adapt chain should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("Convert"), "{debug}");
+    assert!(debug.contains("Adapt"), "{debug}");
+    assert!(!debug.contains("KeywordFallback"), "{debug}");
+}
+
+#[test]
+fn result_prefixed_inline_consult_keeps_its_complete_disposition() {
+    let tokens = lex_line(
+        "If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value, put it onto the battlefield, then put the rest on the bottom of your library in a random order.",
+        0,
+    )
+    .expect("result-prefixed consult should lex");
+    let effects = parse_effect_sentence_lexed(&tokens).expect("complete consult should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("IfResult"), "{debug}");
+    assert!(debug.contains("ConsultTopOfLibrary"), "{debug}");
+    assert!(debug.contains("MoveToZone"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
 fn duration_scoped_combat_damage_trigger_reaches_the_trigger_parser_intact() {
     for (text, expected_effect, expected_either_surface) in [
         (
@@ -790,6 +821,7 @@ fn tap_then_next_untap_conjunction_keeps_coordinated_surface() {
                     restriction: crate::effect::Restriction::Untap(_),
                     duration: crate::effect::Until::ControllersNextUntapStep,
                     condition: None,
+                    ..
                 },
                 ..
             }))
@@ -1353,6 +1385,37 @@ fn leading_player_may_probe_accepts_that_player_or_target_controller_clauses() {
     assert_eq!(
         parse_leading_player_may_lexed(&tokens),
         Some(PlayerAst::ThatPlayerOrTargetController)
+    );
+}
+
+#[test]
+fn effect_sentence_keeps_split_target_actor_and_optional_payment() {
+    let tokens = lex_line(
+        "Then that player or that permanent's controller may pay {R}{R}.",
+        0,
+    )
+    .expect("chain payment sentence should lex");
+
+    let effects = parse_effect_sentence_inner_lexed(&tokens)
+        .expect("chain payment sentence should preserve its actor and optionality");
+    let [
+        EffectAst::MayByPlayer {
+            player: PlayerAst::ThatPlayerOrTargetController,
+            effects: payment,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected a split-actor optional payment, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            payment.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PayMana { .. },
+                ..
+            })]
+        ),
+        "expected one typed mana payment, got {payment:#?}"
     );
 }
 

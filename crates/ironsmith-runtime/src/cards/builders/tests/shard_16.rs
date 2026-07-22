@@ -107,7 +107,7 @@ pub(super) fn parse_oracle_doomskar_warrior_strict_parse_and_render_regression()
             && rendered.contains("deals combat damage to a player")
             && rendered.contains("deals combat damage to a battle")
             && rendered.contains("look at that many cards from the top of your library")
-            && rendered.contains("put it into your hand")
+            && rendered.contains("put that card into your hand")
             && rendered.contains("Put the rest on the bottom of your library in a random order"),
         "expected Doomskar Warrior rendered text to preserve backup, trample, player-or-battle trigger, event count, and reveal/rest clauses, got {rendered}"
     );
@@ -1108,7 +1108,7 @@ pub(super) fn parse_oracle_master_biomancer_etb_mutant_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("each other creature you control enters with")
+        rendered.contains("other creatures you control enter with")
             && rendered.contains("additional +1/+1 counters")
             && rendered.contains("equal to this creature's power")
             && rendered.contains("mutant"),
@@ -1255,7 +1255,7 @@ pub(super) fn parse_oracle_arwen_weaver_of_hope_dynamic_etb_counters_regression(
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("each other creature you control enters with")
+        rendered.contains("other creatures you control enter with")
             && rendered.contains("additional +1/+1 counters")
             && (rendered.contains("equal to arwen's toughness")
                 || rendered.contains("equal to this creature's toughness")),
@@ -1284,10 +1284,8 @@ pub(super) fn parse_oracle_grumgully_the_generous_etb_counter_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("each other")
-            && rendered
-                .contains("creature you control enters with an additional +1/+1 counter on it")
-            && (rendered.contains("non-human") || rendered.contains("nonhuman")),
+        rendered.contains("other non-human creatures you control enter")
+            && rendered.contains("with an additional +1/+1 counter on them"),
         "expected Grumgully, the Generous to render its ETB counter text, got {rendered}"
     );
     assert!(
@@ -1416,7 +1414,7 @@ pub(super) fn oracle_render_regression_named_cards_compile_cleanly() {
             && boseiju.contains("artifact")
             && boseiju.contains("enchantment")
             && boseiju.contains("land")
-            && boseiju.contains("That permanent's controller may search their library")
+            && boseiju.contains("That player may search their library")
             && boseiju.contains(
                 "This ability costs {1} less to activate for each legendary creature you control"
             ),
@@ -1565,10 +1563,7 @@ pub(super) fn proud_pack_rhino_modal_etb_renders_with_bullets() {
     let shield_mode = shield_effect
         .downcast_ref::<crate::effects::PutCountersEffect>()
         .expect("first mode should put a shield counter");
-    assert_eq!(
-        shield_mode.counter_type,
-        crate::object::CounterType::Named("shield")
-    );
+    assert_eq!(shield_mode.counter_type, crate::object::CounterType::Shield);
     assert_eq!(shield_mode.amount, Value::Fixed(1));
     match shield_mode.target.base() {
         ChooseSpec::Object(filter) => {
@@ -1646,7 +1641,7 @@ pub(super) fn proud_pack_rhino_shield_mode_puts_shield_counter_on_target_permane
     assert_eq!(
         game.object(target_id).and_then(|object| object
             .counters
-            .get(&crate::object::CounterType::Named("shield"))
+            .get(&crate::object::CounterType::Shield)
             .copied()),
         Some(1),
         "target permanent should receive exactly one shield counter"
@@ -2099,10 +2094,8 @@ pub(super) fn parse_oracle_chaos_warp_shuffle_clause_regression() {
 
     let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
-        debug.contains("movetozoneeffect")
-            && debug.contains("zone: library")
-            && debug.contains("shufflelibraryeffect"),
-        "expected Chaos Warp to move the permanent into a library and shuffle, got {debug}"
+        debug.contains("shuffleobjectsintolibraryeffect"),
+        "expected Chaos Warp to atomically move the permanent into its owner's library and shuffle, got {debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)
@@ -2124,10 +2117,8 @@ pub(super) fn parse_oracle_oblation_shuffle_clause_regression() {
 
     let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
-        debug.contains("movetozoneeffect")
-            && debug.contains("zone: library")
-            && debug.contains("shufflelibraryeffect"),
-        "expected Oblation to move the permanent into a library and shuffle, got {debug}"
+        debug.contains("shuffleobjectsintolibraryeffect"),
+        "expected Oblation to atomically move the permanent into its owner's library and shuffle, got {debug}"
     );
 
     let rendered = unprocessed_compiled_lines(&def)

@@ -1478,6 +1478,11 @@ fn advance_reference_frame_for_effect(
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
         }
         EffectAst::MayByPlayer { player, effects } => {
+            // The named decider is also the actor for references inside the
+            // optional instruction. Bind it before walking the body so a
+            // relative filter cannot capture an older player antecedent.
+            // Re-track it afterward to keep that actor as the exported player.
+            track_effect_player(player.clone(), frame, true, true)?;
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
             track_effect_player(player.clone(), frame, true, true)?;
         }
@@ -1553,7 +1558,7 @@ fn advance_reference_frame_for_effect(
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
-        | EffectAst::AnyPlayerMay { effects }
+        | EffectAst::AnyPlayerMay { effects, .. }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachTaggedPlayer { effects, .. } => {
             advance_effects_in_iterated_player_context(&effects, id_gen, frame, None)?;
@@ -1826,14 +1831,16 @@ fn annotate_effect_sequence_with_env_internal(
             out_env.source_object_antecedent = true;
             out_env.last_object_tag = in_env.last_object_tag.clone();
         }
+        let exports_typed_result_for_fallback =
+            typed_result_gate_exports_outcome_to_fallback(&effect, remaining.first());
         if let Some(id) = assigned_effect_id
-            && !matches!(
+            && (!matches!(
                 effect,
                 EffectAst::ResolvedIfResult { .. }
                     | EffectAst::ResolvedWhenResult { .. }
                     | EffectAst::IfResult { .. }
                     | EffectAst::WhenResult { .. }
-            )
+            ) || exports_typed_result_for_fallback)
         {
             out_env.last_effect_id = RefState::Known(id);
         }
@@ -1987,6 +1994,42 @@ fn maybe_assign_effect_result_id(
     Some(id)
 }
 
+/// A typed `... this way` gate followed by `otherwise` makes the gate itself,
+/// rather than its original producer, the fallback antecedent. For example,
+/// after “If you reveal a card named N this way, ... Otherwise, ...”, the
+/// fallback runs when the name test fails even though the search/reveal action
+/// succeeded. The parser represents that surface as a typed result predicate
+/// followed by `DidNot`, so export the gate's assigned result ID for that
+/// narrow shape.
+fn typed_result_gate_exports_outcome_to_fallback(
+    effect: &EffectAst,
+    next: Option<&EffectAst>,
+) -> bool {
+    let is_typed_result_gate = matches!(
+        effect,
+        EffectAst::IfResult {
+            predicate: IfResultPredicate::PriorEffectResult(_),
+            ..
+        } | EffectAst::ResolvedIfResult {
+            predicate: IfResultPredicate::PriorEffectResult(_),
+            ..
+        }
+    );
+    let is_fallback = matches!(
+        next,
+        Some(
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::DidNot,
+                ..
+            } | EffectAst::ResolvedIfResult {
+                predicate: IfResultPredicate::DidNot,
+                ..
+            }
+        )
+    );
+    is_typed_result_gate && is_fallback
+}
+
 fn effect_is_searched_library_gate(effect: &EffectAst) -> bool {
     matches!(
         effect,
@@ -2082,7 +2125,7 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachPlayer { effects }
-        | EffectAst::AnyPlayerMay { effects }
+        | EffectAst::AnyPlayerMay { effects, .. }
         | EffectAst::ForEachTargetPlayers { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::ForEachTagged { effects, .. }
@@ -2739,7 +2782,11 @@ fn resolve_effect_sequence_references_with_state(
                 | EffectAst::IfResult { .. }
                 | EffectAst::WhenResult { .. }
         ) {
-            saved_last_effect_id
+            if typed_result_gate_exports_outcome_to_fallback(&effect, remaining.first()) {
+                assigned_effect_id.or(saved_last_effect_id)
+            } else {
+                saved_last_effect_id
+            }
         } else {
             // Keep the last deliberately exported result across intervening
             // effects that do not produce a result ID of their own. The

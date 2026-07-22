@@ -549,7 +549,7 @@ fn parse_divided_damage_target(
             tag: TagKey::from(IT_TAG),
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
-        TargetAst::Object(filter, span_from_tokens(shape.target_tokens), None)
+        TargetAst::Object(filter, None, span_from_tokens(shape.target_tokens))
     } else {
         parse_target_phrase(shape.target_tokens)?
     };

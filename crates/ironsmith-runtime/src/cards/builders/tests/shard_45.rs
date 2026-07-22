@@ -140,7 +140,7 @@ pub(super) fn source_linked_reanimation_and_returned_animation_keep_authored_sur
     .join("\n");
     assert_eq!(
         excava,
-        "Flying, haste\nWhenever Excava attacks, return up to one target artifact, creature, or non-Aura enchantment card with mana value 3 or less from your graveyard to the battlefield with a finality counter on it. It's 1/1 Spirit creature with flying in addition to its other types.",
+        "Flying, haste\nWhenever Excava attacks, return up to one target artifact, creature, or non-Aura enchantment card with mana value 3 or less from your graveyard to the battlefield with a finality counter on it. It's a 1/1 Spirit creature with flying in addition to its other types.",
         "the final scored surface should preserve Excava's singular linked animation"
     );
     assert!(
@@ -150,7 +150,7 @@ pub(super) fn source_linked_reanimation_and_returned_animation_keep_authored_sur
         "Excava should preserve the branch-local non-Aura exclusion: {excava}"
     );
     assert!(
-        excava.contains("It's 1/1 Spirit creature with flying in addition to its other types"),
+        excava.contains("It's a 1/1 Spirit creature with flying in addition to its other types"),
         "Excava returns at most one object, so its linked animation is singular: {excava}"
     );
 

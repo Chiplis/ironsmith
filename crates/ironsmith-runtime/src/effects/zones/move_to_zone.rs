@@ -412,7 +412,15 @@ impl EffectExecutor for MoveToZoneEffect {
             }
         }
         if object_ids.is_empty() {
-            return Ok(EffectOutcome::target_invalid());
+            // Tagged references are internal results of earlier instructions,
+            // not declared targets. If an earlier search/reveal found no
+            // object, moving "that card" simply does nothing and later
+            // instructions in the same sequence still resolve.
+            return if matches!(self.target.base(), ChooseSpec::Tagged(_)) {
+                Ok(EffectOutcome::resolved())
+            } else {
+                Ok(EffectOutcome::target_invalid())
+            };
         }
         let orders_library = self.zone == Zone::Library && self.library_order.is_some();
         if let Some(order) = self.library_order.as_ref()
@@ -498,7 +506,9 @@ impl EffectExecutor for MoveToZoneEffect {
                             object_id,
                             &self.enters_with_counters,
                         )?;
-                        let options = options.with_initial_counters(initial_counters);
+                        let options = options
+                            .with_initial_counters(initial_counters)
+                            .transformed(self.enters_transformed);
                         if self.enters_face_down
                             && let Some(card) = game.object_mut(object_id)
                         {

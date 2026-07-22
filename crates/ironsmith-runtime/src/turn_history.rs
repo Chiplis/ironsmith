@@ -1121,18 +1121,27 @@ pub(crate) fn resolve_turn_history_count(
             history
                 .projected_records()
                 .filter_map(|record| {
-                    let event = record.event.downcast::<ZoneChangeEvent>()?;
-                    if !event.is_etb() {
-                        return None;
-                    }
-                    if !event.snapshots().is_empty() {
-                        Some(event.snapshots().to_vec())
-                    } else {
-                        record
+                    if let Some(event) = record.event.downcast::<ZoneChangeEvent>() {
+                        if !event.is_etb() {
+                            return None;
+                        }
+                        if !event.snapshots().is_empty() {
+                            return Some(event.snapshots().to_vec());
+                        }
+                        return record
                             .object_snapshot
                             .clone()
-                            .map(|snapshot| vec![snapshot])
+                            .map(|snapshot| vec![snapshot]);
                     }
+
+                    if record.event.downcast::<EnterBattlefieldEvent>().is_some() {
+                        return record
+                            .object_snapshot
+                            .clone()
+                            .map(|snapshot| vec![snapshot]);
+                    }
+
+                    None
                 })
                 .flatten()
                 .filter(|snapshot| historical_filter.matches_snapshot(snapshot, filter_ctx, game))

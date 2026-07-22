@@ -5161,13 +5161,14 @@ pub(super) fn continue_activation(
                     .iter()
                     .enumerate()
                     .map(|(index, branch)| {
-                        let legal = crate::decision::activation_total_cost_is_payable_with_view(
-                            game,
-                            pending.activator,
-                            pending.source,
-                            branch,
-                            &view,
-                        );
+                        let legal =
+                            crate::decision::activation_total_cost_branch_is_payable_with_view(
+                                game,
+                                pending.activator,
+                                pending.source,
+                                branch,
+                                &view,
+                            );
                         crate::decisions::context::SelectableOption::with_legality(
                             index,
                             branch.display(),

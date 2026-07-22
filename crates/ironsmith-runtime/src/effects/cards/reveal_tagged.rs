@@ -13,19 +13,8 @@ use crate::tag::TagKey;
 pub type RevealTaggedEffect = ironsmith_core::RevealTaggedEffect;
 
 impl EffectExecutor for RevealTaggedEffect {
-    fn supports_simultaneous_player_action(&self) -> bool {
+    fn is_read_only_simultaneous_player_action(&self) -> bool {
         true
-    }
-
-    fn prepare_simultaneous_player_action(
-        &self,
-        _game: &GameState,
-        ctx: &mut ExecutionContext,
-    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
-            iterated_player: ctx.iteration.iterated_player,
-        }))
     }
 
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {

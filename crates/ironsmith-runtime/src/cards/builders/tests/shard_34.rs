@@ -132,6 +132,20 @@ fn unwrap_conditional_fight_action(effect: &crate::effect::Effect) -> &crate::ef
     effect
 }
 
+fn conditional_fight_target(
+    effect: &crate::effect::Effect,
+) -> Option<(&crate::tag::TagKey, &crate::effects::TargetOnlyEffect)> {
+    let tagged = effect.downcast_ref::<TaggedEffect>()?;
+    if let Some(target) = tagged.effect.downcast_ref::<TargetOnlyEffect>() {
+        return Some((&tagged.tag, target));
+    }
+
+    // Coordinated target pairs also carry an outer collection tag. The inner
+    // tag attached directly to TargetOnlyEffect is the independent target
+    // slot consumed by the conditional action and the fight.
+    conditional_fight_target(&tagged.effect)
+}
+
 fn assert_conditional_fight_action_targets(
     effect: &crate::effect::Effect,
     target_tag: &crate::tag::TagKey,
@@ -208,24 +222,14 @@ pub(super) fn conditional_fight_cards_reuse_their_two_explicit_targets() {
             );
         };
 
-        let first = first_effect
-            .downcast_ref::<TaggedEffect>()
-            .expect("first creature target should be tagged");
-        let second = second_effect
-            .downcast_ref::<TaggedEffect>()
+        let (first_tag, first_target) =
+            conditional_fight_target(first_effect).expect("first creature target should be tagged");
+        let (second_tag, second_target) = conditional_fight_target(second_effect)
             .expect("second creature target should be tagged");
         assert_ne!(
-            first.tag, second.tag,
+            first_tag, second_tag,
             "{name}'s two target declarations must use distinct target slots"
         );
-        let first_target = first
-            .effect
-            .downcast_ref::<TargetOnlyEffect>()
-            .expect("first tagged effect should declare a target");
-        let second_target = second
-            .effect
-            .downcast_ref::<TargetOnlyEffect>()
-            .expect("second tagged effect should declare a target");
         assert!(first_target.target.is_target(), "{name}: {first_target:#?}");
         assert!(
             second_target.target.is_target(),
@@ -238,22 +242,22 @@ pub(super) fn conditional_fight_cards_reuse_their_two_explicit_targets() {
         assert!(conditional.if_false.is_empty(), "{name}: {conditional:#?}");
         assert!(!conditional.if_true.is_empty(), "{name}: {conditional:#?}");
         for action in &conditional.if_true {
-            assert_conditional_fight_action_targets(action, &first.tag, name);
+            assert_conditional_fight_action_targets(action, first_tag, name);
         }
 
         let fight = fight_effect
             .downcast_ref::<crate::effects::FightEffect>()
             .expect("fourth effect should make the chosen creatures fight");
         assert!(
-            matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag == &first.tag)
-                && matches!(&fight.creature2, ChooseSpec::Tagged(tag) if tag == &second.tag),
+            matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag == first_tag)
+                && matches!(&fight.creature2, ChooseSpec::Tagged(tag) if tag == second_tag),
             "{name}'s fight must reuse both explicit target slots: {fight:#?}"
         );
         if name == "Joust" {
             assert!(
                 matches!(
                     &conditional.condition,
-                    crate::ConditionExpr::TaggedObjectMatches(tag, _) if tag == &first.tag
+                    crate::ConditionExpr::TaggedObjectMatches(tag, _) if tag == first_tag
                 ),
                 "Joust's Knight predicate must inspect the creature you control: {conditional:#?}"
             );

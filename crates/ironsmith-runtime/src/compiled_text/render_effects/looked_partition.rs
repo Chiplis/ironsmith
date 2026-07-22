@@ -285,6 +285,27 @@ pub(super) fn describe_self_look_reorder_then_may_shuffle(
     ))
 }
 
+/// Compacts the same self-library procedure when no optional shuffle follows.
+/// The shared tag proves that the reordered cards are exactly those just
+/// looked at, so the two runtime effects form one authored instruction.
+pub(super) fn describe_self_look_reorder(effects: &[&Effect]) -> Option<(String, usize)> {
+    let [look_effect, reorder_effect] = effects.get(..2)? else {
+        return None;
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let reorder = reorder_effect.downcast_ref::<crate::effects::ReorderLibraryTopEffect>()?;
+    if look.reveal || look.player != PlayerFilter::You || reorder.tag != look.tag {
+        return None;
+    }
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some((
+        format!(
+            "Look at the top {count} {noun} of your library{where_clause}, then put them back in any order"
+        ),
+        2,
+    ))
+}
+
 /// Compacts a structurally complete partition of a looked-card pool:
 /// choose a subset, tag its exact complement, then move the two groups to
 /// independently ordered destinations. The exact tag relationships are the
@@ -1021,8 +1042,17 @@ pub(super) fn describe_looked_card_selected_hand_remainder_bottom(
         return None;
     }
 
-    let selected_count =
-        small_number_word(selected_count as u32).unwrap_or_else(|| selected_count.to_string());
+    let selected_phrase = if selected_count == 1 {
+        if matches!(look.count.unhinted(), Value::Fixed(_)) {
+            "one of them".to_string()
+        } else {
+            "one of those cards".to_string()
+        }
+    } else {
+        let selected_count =
+            small_number_word(selected_count as u32).unwrap_or_else(|| selected_count.to_string());
+        format!("{selected_count} of those cards")
+    };
     let (look_count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
     let order = match remainder.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
@@ -1031,7 +1061,7 @@ pub(super) fn describe_looked_card_selected_hand_remainder_bottom(
 
     Some((
         format!(
-            "Look at the top {look_count} {noun} of your library{where_clause}. Put {selected_count} of those cards into your hand and the rest on the bottom of your library{order}"
+            "Look at the top {look_count} {noun} of your library{where_clause}. Put {selected_phrase} into your hand and the rest on the bottom of your library{order}"
         ),
         4,
     ))
@@ -1451,6 +1481,71 @@ fn exact_tagged_remainder_to_graveyard(
         && !move_to_zone.to_top
         && move_to_zone.library_order.is_none()
         && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+}
+
+pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
+    effects: &[Effect],
+) -> Option<String> {
+    let (look_effect, reveal_effect, choose_effect, move_effect, remainder_effect) = match effects {
+        [look, choose, move_effect, remainder] => (look, None, choose, move_effect, remainder),
+        [look, reveal, choose, move_effect, remainder] => {
+            (look, Some(reveal), choose, move_effect, remainder)
+        }
+        _ => return None,
+    };
+    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    if look.player != PlayerFilter::You {
+        return None;
+    }
+    if let Some(reveal_effect) = reveal_effect {
+        let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+        if reveal.tag != look.tag {
+            return None;
+        }
+    }
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    if choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || choose.count.is_any_number()
+        || !choose_references_tag(choose, &look.tag)
+        || !exact_tagged_remainder_to_graveyard(remainder_effect, &look.tag, &choose.tag)
+    {
+        return None;
+    }
+    let (_, for_each) = for_each_tagged_for_compaction(move_effect)?;
+    let [move_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    if for_each.tag != choose.tag {
+        return None;
+    }
+    let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || !matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let selection = describe_looked_battlefield_selection(choose)?;
+    let (count_text, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    let opener = if look.reveal || reveal_effect.is_some() {
+        "Reveal"
+    } else {
+        "Look at"
+    };
+    let control_suffix = match move_to_zone.battlefield_controller {
+        crate::effects::BattlefieldController::Preserve => "",
+        crate::effects::BattlefieldController::Owner => " under its owner's control",
+        crate::effects::BattlefieldController::You => " under your control",
+    };
+    let battlefield_suffix = format!(
+        "{}{control_suffix}",
+        describe_battlefield_entry_state_for_looked_move(move_to_zone)
+    );
+    Some(format!(
+        "{opener} the top {count_text} {noun} of your library{where_clause}. Put {selection} from among them onto the battlefield{battlefield_suffix}. Put the rest into your graveyard"
+    ))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

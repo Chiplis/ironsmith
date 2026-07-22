@@ -212,7 +212,7 @@ pub(super) fn blood_tyrant_strict_parser_text_and_structure_regression() {
 
     assert!(
         rendered.contains(
-            "At the beginning of your upkeep, each player loses 1 life, then put a +1/+1 counter on this creature for each 1 life lost this way"
+            "At the beginning of your upkeep, each player loses 1 life. Put a +1/+1 counter on this creature for each 1 life lost this way"
         ),
         "Blood Tyrant should render the life-lost counter clause, got {rendered}"
     );
@@ -318,7 +318,7 @@ pub(super) fn sulfuric_vortex_oracle_parses_strictly_and_renders_life_replacemen
 
     assert_eq!(
         rendered,
-        "At the beginning of each player's upkeep, this enchantment deals 2 damage to that player.\nIf a player would gain life, that player gains no life instead."
+        "At the beginning of each player's upkeep, this enchantment deals 2 damage to them.\nIf a player would gain life, that player gains no life instead."
     );
     assert!(
         ability_debug.contains("BeginningOfUpkeepTrigger")
@@ -735,6 +735,21 @@ pub(super) fn sengir_the_dark_baron_strict_parser_text_and_structure_regression(
             && ability_debug.contains("LifeTotalAsTurnBegan"),
         "expected player-loses-game trigger to lower to life-total-as-turn-began gain life, got {ability_debug}"
     );
+    let life_gain = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .flat_map(|triggered| triggered.effects.flattened_default_effects())
+        .find_map(|effect| effect.downcast_ref::<crate::effects::GainLifeEffect>())
+        .expect("Sengir should have a typed life-gain effect");
+    assert_eq!(
+        life_gain.amount,
+        crate::effect::Value::LifeTotalAsTurnBegan(PlayerFilter::IteratedPlayer),
+        "the life value must remain bound to the player who lost the game"
+    );
 }
 
 #[test]
@@ -818,6 +833,7 @@ pub(super) fn sengir_the_dark_baron_another_player_loses_game_gains_life_from_tu
     let alice = PlayerId::from_index(0);
     let bob = PlayerId::from_index(1);
     let sengir_id = game.create_object_from_definition(&def, alice, Zone::Battlefield);
+    game.player_mut(alice).expect("alice exists").life = 10;
 
     stage_life_loss(&mut game, bob, 5);
     assert_eq!(game.player(bob).expect("bob exists").life, 15);
@@ -851,7 +867,7 @@ pub(super) fn sengir_the_dark_baron_another_player_loses_game_gains_life_from_tu
 
     assert_eq!(
         game.player(alice).expect("alice exists").life,
-        40,
+        30,
         "Sengir should gain life equal to Bob's life total as the turn began, not Bob's current life total"
     );
 }
@@ -2294,7 +2310,7 @@ pub(super) fn death_in_heaven_strict_parser_and_compiled_text_regression() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains(
-            "put all creature cards exiled with this enchantment onto the battlefield face down under your control"
+            "put all creature cards exiled with this card onto the battlefield face down under your control"
         ),
         "Death in Heaven chapter III should render the source-linked face-down return, got {rendered}"
     );
@@ -3089,7 +3105,7 @@ pub(super) fn selvala_eager_trailblazer_strict_parser_text_and_structure_regress
         rendered.contains("Vigilance")
             && rendered.contains("Whenever you cast a creature spell")
             && rendered.contains(
-                "Choose a color. Add one mana of that color for each different power among creatures you control"
+                "You choose a color. Add one mana of the chosen color for each different power among creatures you control"
             ),
         "expected Selvala's keyword, token trigger, and distinct-power mana clause to render, got {rendered}"
     );
@@ -3643,6 +3659,32 @@ pub(super) fn resolve_path_of_the_pyromancer_with_votes(
     let alice = PlayerId::from_index(0);
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let current_plane =
+        CardDefinitionBuilder::new(CardId::from_raw(91_102), "Path Test Plane").build();
+    let next_plane =
+        CardDefinitionBuilder::new(CardId::from_raw(91_103), "Path Test Destination").build();
+    let current_plane_id = game.create_object_from_definition(&current_plane, alice, Zone::Command);
+    let next_plane_id = game.create_object_from_definition(&next_plane, alice, Zone::Command);
+    game.planechase = Some(crate::game_state::PlanechaseState {
+        decks: std::collections::HashMap::from([(alice, vec![next_plane_id, current_plane_id])]),
+        communal_deck: None,
+        deck_owners: std::collections::HashMap::from([
+            (current_plane_id, alice),
+            (next_plane_id, alice),
+        ]),
+        card_kinds: std::collections::HashMap::from([
+            (current_plane_id, crate::game_state::PlanarCardKind::Plane),
+            (next_plane_id, crate::game_state::PlanarCardKind::Plane),
+        ]),
+        face_up: Vec::new(),
+        planar_controller: alice,
+        planar_controllers: std::collections::HashSet::from([alice]),
+        face_up_controllers: std::collections::HashMap::new(),
+        voluntary_rolls_this_turn: std::collections::HashMap::new(),
+        planeswalk_count: 0,
+    });
+    game.reveal_starting_plane()
+        .expect("Path runtime fixture should reveal its starting plane");
     let filler = vanilla_sorcery_for_path_test(91_101, "Path Filler");
     for _ in 0..3 {
         game.create_object_from_definition(&filler, alice, Zone::Hand);
@@ -3653,7 +3695,7 @@ pub(super) fn resolve_path_of_the_pyromancer_with_votes(
     let source = game.create_object_from_definition(&def, alice, Zone::Stack);
     let mut dm = PathVoteDecisionMaker { votes };
     let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm);
-    let events = crate::game_loop::execute_resolution_program(
+    let mut events = crate::game_loop::execute_resolution_program(
         &mut game,
         &mut ctx,
         alice,
@@ -3663,6 +3705,10 @@ pub(super) fn resolve_path_of_the_pyromancer_with_votes(
         &[],
     )
     .expect("Path of the Pyromancer should resolve");
+    // Planeswalking performs a real game-state transition and queues its
+    // observable keyword event on GameState. This direct-program harness does
+    // not run the stack-resolution drain that production play does.
+    events.extend(game.take_pending_trigger_events());
     (game, events)
 }
 
@@ -3688,6 +3734,35 @@ fn first_created_token_definition(definition: &CardDefinition) -> CardDefinition
         }
         if let Some(with_id) = effect.downcast_ref::<WithIdEffect>() {
             return from_effect(&with_id.effect);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence.effects.iter().find_map(from_effect);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+            return may.effects.iter().find_map(from_effect);
+        }
+        if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachObject>() {
+            return for_each.effects.iter().find_map(from_effect);
+        }
+        if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() {
+            return for_each.effects.iter().find_map(from_effect);
+        }
+        if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+            return for_players.effects.iter().find_map(from_effect);
+        }
+        if let Some(conditional) = effect.downcast_ref::<crate::effects::ConditionalEffect>() {
+            return conditional
+                .if_true
+                .iter()
+                .chain(&conditional.if_false)
+                .find_map(from_effect);
+        }
+        if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+            return if_effect
+                .then
+                .iter()
+                .chain(&if_effect.else_)
+                .find_map(from_effect);
         }
         None
     }
@@ -3756,16 +3831,13 @@ pub(super) fn spirit_token_reciprocal_blocking_cards_compile_one_typed_rule_surf
         );
 
         let rule_debug = format!("{:#?}", rule_abilities[0]);
-        let compact_rule_debug = rule_debug.split_whitespace().collect::<Vec<_>>().join(" ");
         assert_eq!(
             rule_debug.matches("BlockSpecificAttacker").count(),
             2,
             "{name} should lower both blocking directions: {rule_debug}"
         );
         assert_eq!(
-            compact_rule_debug
-                .matches("excluded_subtypes: [ Spirit,")
-                .count(),
+            rule_debug.matches("excluded_subtypes: [Spirit]").count(),
             2,
             "{name} should type both non-Spirit filters: {rule_debug}"
         );

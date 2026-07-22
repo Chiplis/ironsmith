@@ -736,7 +736,7 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
         | EffectAst::UnlessPays { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
-        | EffectAst::AnyPlayerMay { effects }
+        | EffectAst::AnyPlayerMay { effects, .. }
         | EffectAst::ResolvedIfResult { effects, .. }
         | EffectAst::ResolvedWhenResult { effects, .. }
         | EffectAst::IfResult { effects, .. }

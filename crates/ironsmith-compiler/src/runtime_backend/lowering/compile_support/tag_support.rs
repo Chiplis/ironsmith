@@ -399,10 +399,30 @@ fn effect_references_tag_in_object_position(effect: &EffectAst, tag: &str) -> bo
 }
 
 pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
+    let comparison_references_tag = |comparison: &crate::filter::Comparison| match comparison {
+        crate::filter::Comparison::EqualExpr(value)
+        | crate::filter::Comparison::NotEqualExpr(value)
+        | crate::filter::Comparison::LessThanExpr(value)
+        | crate::filter::Comparison::LessThanOrEqualExpr(value)
+        | crate::filter::Comparison::GreaterThanExpr(value)
+        | crate::filter::Comparison::GreaterThanOrEqualExpr(value) => {
+            value_references_tag(value, tag)
+        }
+        _ => false,
+    };
     filter
         .tagged_constraints
         .iter()
         .any(|constraint| constraint.tag.as_str() == tag)
+        || [
+            filter.power.as_ref(),
+            filter.toughness.as_ref(),
+            filter.mana_value.as_ref(),
+            filter.color_count.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        .any(comparison_references_tag)
         || filter
             .controller
             .as_ref()

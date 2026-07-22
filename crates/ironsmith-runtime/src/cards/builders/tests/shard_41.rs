@@ -137,7 +137,7 @@ pub(super) fn residual_number_equal_cards_preserve_linkage_and_sentence_structur
         ),
         (
             "Primo, the Unbounded",
-            "Primo enters with twice X +1/+1 counters on it.",
+            "This creature enters with twice X +1/+1 counters on it.",
         ),
         (
             "Primo, the Unbounded",
@@ -145,7 +145,7 @@ pub(super) fn residual_number_equal_cards_preserve_linkage_and_sentence_structur
         ),
         (
             "Ruthless Technomancer",
-            "When this creature enters, you may sacrifice another creature you control. If you do, create a number of Treasure tokens equal to that creature's power.",
+            "When this creature enters, you may sacrifice another creature. If you do, create a number of Treasure tokens equal to its power.",
         ),
         (
             "Ruthless Technomancer",
@@ -201,7 +201,7 @@ pub(super) fn optional_singular_exile_permission_keeps_the_same_card_link() {
     );
     assert!(
         compiled.contains(
-            "You may exile one of them from your graveyard. If you do, you may cast that card this turn"
+            "Whenever you discard one or more nonland cards, you may exile one of them from your graveyard. If you do, you may cast that card this turn"
         ),
         "{compiled}"
     );
@@ -481,7 +481,7 @@ pub(super) fn self_replacement_branches_reuse_their_typed_target_identity() {
         ),
         (
             "Grey Knight Paragon",
-            "exile it instead",
+            "exile that creature instead",
             "exile target attacking creature",
         ),
         (

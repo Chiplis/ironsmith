@@ -191,23 +191,23 @@ pub(super) fn adjacent_counter_grants_do_not_invent_an_authored_conjunction() {
     let cases = [
         (
             "Ajani, Valiant Protector",
-            "where X is your life total, then it gains trample until end of turn",
+            "where X is your life total. It gains trample until end of turn",
         ),
         (
             "Estinien Varlineau",
-            "put a +1/+1 counter on Estinien Varlineau, then it gains flying until end of turn",
+            "put a +1/+1 counter on Estinien Varlineau. It gains flying until end of turn",
         ),
         (
             "Tales of Master Seshiro",
-            "Put a +1/+1 counter on target creature or Vehicle you control, then it gains vigilance until end of turn",
+            "Put a +1/+1 counter on target creature or Vehicle you control. It gains vigilance until end of turn",
         ),
         (
             "Baylen, the Haymaker",
-            "Put three +1/+1 counters on Baylen, then it gains trample until end of turn",
+            "Put three +1/+1 counters on Baylen. It gains trample until end of turn",
         ),
         (
             "Silvar, Devourer of the Free",
-            "Put a +1/+1 counter on Silvar, then it gains indestructible until end of turn",
+            "Put a +1/+1 counter on Silvar. It gains indestructible until end of turn",
         ),
     ];
 

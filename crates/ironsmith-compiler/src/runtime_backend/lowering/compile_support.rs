@@ -1442,16 +1442,54 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
                 }
             }
         }
-        Value::CreaturesDiedThisTurnControlledBy(filter) => {
-            bind_relative_iterated_player_filter_to_player_filter(filter, player_filter);
-        }
-        Value::Devotion { player, .. } | Value::DevotionToChosenColor(player) => {
-            bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
-        }
-        Value::HalfLifeTotalRoundedUp(player)
+        Value::CreaturesDiedThisTurnControlledBy(player)
+        | Value::CountPlayers(player)
+        | Value::PartySize(player)
+        | Value::LifeTotal(player)
+        | Value::LifeTotalAsTurnBegan(player)
+        | Value::LifeTotalDifference(player)
+        | Value::UnspentMana(player)
+        | Value::Speed(player)
+        | Value::StartingLifeTotal(player)
+        | Value::CardsInHand(player)
+        | Value::CardsInLibrary(player)
+        | Value::DevotionToChosenColor(player)
+        | Value::LifeGainedThisTurn(player)
+        | Value::LifeLostThisTurn(player)
+        | Value::CardsDiscardedThisTurn(player)
+        | Value::DamageDealtToPlayersThisTurn(player)
+        | Value::NoncombatDamageDealtToPlayersThisTurn(player)
+        | Value::MaxCardsDrawnThisTurn(player)
+        | Value::MaxDiceRolledThisTurn(player)
+        | Value::LandsEnteredBattlefieldThisTurn(player)
+        | Value::MaxCardsInHand(player)
+        | Value::CardsInGraveyard(player)
+        | Value::SpellsCastThisTurn(player)
+        | Value::SpellsCastBeforeThisTurn(player)
+        | Value::CommanderCastCount(player)
+        | Value::CardTypesInGraveyard(player)
+        | Value::PlayerCounters(player, _)
+        | Value::PlayerVoteCount(player)
+        | Value::Devotion { player, .. }
+        | Value::HalfLifeTotalRoundedUp(player)
         | Value::HalfLifeTotalRoundedDown(player)
         | Value::HalfStartingLifeTotalRoundedUp(player)
         | Value::HalfStartingLifeTotalRoundedDown(player) => {
+            bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
+        }
+        Value::PlayersWhoControlMoreThanYou { players, filter }
+        | Value::PlayersWhoControlAtLeastMoreThanYou {
+            players, filter, ..
+        }
+        | Value::SpellsCastThisTurnMatching {
+            player: players,
+            filter,
+            ..
+        } => {
+            bind_relative_iterated_player_filter_to_player_filter(players, player_filter);
+            bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
+        }
+        Value::NoncombatDamageDealtBySourcesControlledThisTurn { player, .. } => {
             bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
         }
         Value::PowerOf(spec)
@@ -1552,15 +1590,25 @@ pub(crate) fn hand_exile_filter_and_count(
 }
 
 fn normalize_hand_or_graveyard_cross_zone_filter(filter: &mut ObjectFilter) {
-    if filter.zone != Some(Zone::Battlefield) || filter.any_of.is_empty() {
+    if filter.any_of.is_empty() {
         return;
     }
 
-    let has_hand_or_graveyard_zone = filter
+    let branch_zones = filter
         .any_of
         .iter()
-        .any(|option| matches!(option.zone, Some(Zone::Hand | Zone::Graveyard)));
-    if has_hand_or_graveyard_zone {
+        .filter_map(|option| option.zone)
+        .collect::<Vec<_>>();
+    let has_hand_or_graveyard_zone = branch_zones
+        .iter()
+        .any(|zone| matches!(zone, Zone::Hand | Zone::Graveyard));
+    // A parsed union may retain either the implicit battlefield default or
+    // its first branch as the outer zone. The executable choice must instead
+    // search every authored branch zone.
+    if has_hand_or_graveyard_zone
+        && (filter.zone == Some(Zone::Battlefield)
+            || filter.zone.is_some_and(|zone| branch_zones.contains(&zone)))
+    {
         filter.zone = None;
         filter.controller = None;
     }
@@ -1591,10 +1639,90 @@ fn hand_or_graveyard_choice_zones(filter: &ObjectFilter) -> Option<Vec<Zone>> {
     }
 }
 
+fn merge_cross_zone_player_scope(
+    outer: &ObjectFilter,
+    shared: &ObjectFilter,
+) -> Option<ObjectFilter> {
+    fn merge_scope_field<T: PartialEq>(base: &mut Option<T>, overlay: Option<T>) -> bool {
+        match (base.as_ref(), overlay) {
+            (_, None) => true,
+            (None, Some(value)) => {
+                *base = Some(value);
+                true
+            }
+            (Some(existing), Some(value)) => existing == &value,
+        }
+    }
+
+    let mut remaining_outer = outer.clone();
+    let owner = remaining_outer.owner.take();
+    let controller = remaining_outer.controller.take();
+    let cast_by = remaining_outer.cast_by.take();
+    if remaining_outer != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut merged = shared.clone();
+    if !merge_scope_field(&mut merged.owner, owner)
+        || !merge_scope_field(&mut merged.controller, controller)
+        || !merge_scope_field(&mut merged.cast_by, cast_by)
+    {
+        return None;
+    }
+    Some(merged)
+}
+
 fn strip_choice_zones_from_filter(filter: &mut ObjectFilter, zones: &[Zone]) {
     if zones.len() > 1 && filter.zone.is_some_and(|zone| zones.contains(&zone)) {
         filter.zone = None;
     }
+
+    // Zone-distributed branches such as "an Aura or Equipment card from your
+    // hand or graveyard" carry the same non-zone predicate twice. Factor that
+    // predicate back out before lowering so rendering and runtime matching do
+    // not duplicate it or accidentally retain only the first zone.
+    if !filter.any_of.is_empty() {
+        let mut shared = None::<ObjectFilter>;
+        let factorizable = filter.any_of.iter().all(|option| {
+            let mut bare = option.clone();
+            let Some(zone) = bare.zone.take() else {
+                return false;
+            };
+            if !zones.contains(&zone) {
+                return false;
+            }
+            if let Some(existing) = &shared {
+                existing == &bare
+            } else {
+                shared = Some(bare);
+                true
+            }
+        });
+        if factorizable && let Some(shared) = shared {
+            let mut outer = filter.clone();
+            outer.any_of.clear();
+
+            // Zone-only arms contribute no object predicate. Preserve any
+            // owner, type, or exclusion constraints carried by the outer
+            // filter instead of replacing them with an empty arm.
+            if shared == ObjectFilter::default() {
+                *filter = outer;
+                return;
+            }
+            if outer == ObjectFilter::default() || outer == shared {
+                *filter = shared;
+                return;
+            }
+            // Some grammar paths retain only the player scope outside the
+            // zone-distributed predicate. Fold that scope into the shared
+            // predicate instead of rendering both as alternatives.
+            if let Some(merged) = merge_cross_zone_player_scope(&outer, &shared) {
+                *filter = merged;
+                return;
+            }
+        }
+    }
+
     filter.any_of.retain(|option| {
         let mut bare = option.clone();
         let Some(zone) = bare.zone.take() else {
@@ -1602,6 +1730,16 @@ fn strip_choice_zones_from_filter(filter: &mut ObjectFilter, zones: &[Zone]) {
         };
         bare != ObjectFilter::default() || !zones.contains(&zone)
     });
+}
+
+pub(crate) fn normalized_hand_or_graveyard_choice_filter(
+    filter: &ObjectFilter,
+) -> Option<(ObjectFilter, Vec<Zone>)> {
+    let mut filter = filter.clone();
+    normalize_hand_or_graveyard_cross_zone_filter(&mut filter);
+    let zones = hand_or_graveyard_choice_zones(&filter)?;
+    strip_choice_zones_from_filter(&mut filter, &zones);
+    Some((filter, zones))
 }
 
 pub(crate) fn lower_hand_exile_target(

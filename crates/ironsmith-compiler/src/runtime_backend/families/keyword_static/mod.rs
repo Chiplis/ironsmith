@@ -1311,6 +1311,28 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
 fn parse_static_ability_ast_line_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // Bolster and adapt are executable keyword actions, including when they
+    // appear after a trigger comma, activation colon, or sentence boundary.
+    // Letting the broad keyword-line grammar claim them produces a static AST
+    // that cannot be lowered and prevents the effect parser from seeing them.
+    let mut inside_quote = false;
+    let starts_executable_keyword_clause = tokens.iter().enumerate().any(|(index, token)| {
+        if token.kind == TokenKind::Quote {
+            inside_quote = !inside_quote;
+            return false;
+        }
+        !inside_quote
+            && matches!(token.parser_word_pieces(), [piece] if matches!(piece.text.as_str(), "bolster" | "adapt"))
+            && (index == 0
+                || tokens.get(index - 1).is_some_and(|previous| {
+                    matches!(previous.kind, TokenKind::Comma | TokenKind::Colon | TokenKind::Period)
+                        || previous.is_word("then")
+                }))
+    });
+    if starts_executable_keyword_clause {
+        return Ok(None);
+    }
+
     // Pay-life ETB replacements span two sentences. Parse the complete
     // compound before the generic sentence splitter can reinterpret the
     // "if you don't, it enters tapped" suffix as a standalone static line.

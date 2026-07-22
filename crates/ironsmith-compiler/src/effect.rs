@@ -5,7 +5,7 @@ use crate::effects::{
 pub use ironsmith_core::{
     ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, Comparison, Condition,
     ConditionalModeRange, DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode,
-    EffectPredicate, EventValueSpec, ManaSpendPermission, Restriction,
+    EffectPredicate, EventValueSpec, ManaSpendPermission, Restriction, RestrictionStart,
     SearchResultReferenceSurface, SearchSelectionMode, Until, Value, ValueComparisonOperator,
 };
 use std::any::Any;
@@ -2262,6 +2262,18 @@ impl Effect {
 
     pub fn cant_until(restriction: Restriction, until: Until) -> Self {
         Self::new(crate::effects::CantEffect::new(restriction, until))
+    }
+
+    pub fn cant_starting(
+        restriction: Restriction,
+        until: Until,
+        start: crate::effect::RestrictionStart,
+    ) -> Self {
+        Self::new(crate::effects::CantEffect::starting(
+            restriction,
+            until,
+            start,
+        ))
     }
 
     pub fn extra_turn_player(player: crate::target::PlayerFilter) -> Self {

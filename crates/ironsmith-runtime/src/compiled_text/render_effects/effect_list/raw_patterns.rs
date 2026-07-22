@@ -105,7 +105,8 @@
             return prefix;
         }
         let suffix = describe_effect_list(&effects[2..]);
-        return format!("{prefix}. {}", suffix.trim_end_matches('.'));
+        let suffix = normalize_imperative_you_clause(suffix.trim_end_matches('.'));
+        return format!("{prefix}. {}", capitalize_first(&suffix));
     }
 
 
@@ -285,6 +286,20 @@
     }
     if let Some(compact) = describe_reveal_hand_choose_two_filters_then_discard(&raw_effects) {
         return compact;
+    }
+    if raw_effects.len() == 4
+        && let Some(target_only) = raw_effects[0]
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && let Some(look) = raw_effects[1].downcast_ref::<crate::effects::LookAtHandEffect>()
+        && let Some(compact) = describe_reveal_hand_choose_discard(&raw_effects[1..])
+    {
+        let ordinary_subject = capitalize_first(&describe_choose_spec(&look.target));
+        let target_subject = capitalize_first(&describe_choose_spec(&ChooseSpec::target(
+            target_only.target.clone(),
+        )));
+        if let Some(rest) = compact.strip_prefix(&ordinary_subject) {
+            return format!("{target_subject}{rest}");
+        }
     }
     if raw_effects.len() == 4
         && raw_effects[0]
@@ -470,10 +485,10 @@
     if let Some(compact) = describe_each_opponent_exile_top_then_cast_until_eot_any_color(effects) {
         return compact;
     }
-    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
+    if let Some(compact) = describe_id_backed_prior_action_count_consumer(effects) {
         return compact;
     }
-    if let Some(compact) = describe_id_backed_prior_action_count_consumer(effects) {
+    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {

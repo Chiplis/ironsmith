@@ -780,8 +780,10 @@ fn token_rule_is_already_lowered_by_specialized_shape(
         return true;
     }
 
-    if matches!(definition, TokenDefinitionSpec::Construct(_))
-        && all(&["artifact", "control"])
+    if matches!(
+        definition,
+        TokenDefinitionSpec::Construct(construct) if construct.artifact_scaling.is_some()
+    ) && all(&["artifact", "control"])
         && (all(&["gets", "+1/+1", "each"]) || all(&["power", "toughness", "equal", "number"]))
     {
         // The typed Construct blueprint already carries the source rule. A

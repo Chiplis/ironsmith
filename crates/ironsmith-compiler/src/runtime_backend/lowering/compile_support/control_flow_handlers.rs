@@ -1191,6 +1191,25 @@ fn vote_option_ast_uses_iterated_player(effects: &[EffectAst]) -> bool {
     vote_option_ast_uses_iterated_player_in_scope(effects, false)
 }
 
+fn vote_extra_amount(effect: &EffectAst) -> Option<(u32, bool)> {
+    match effect {
+        EffectAst::VoteExtra { count, optional } => Some((*count, *optional)),
+        EffectAst::May { effects } => match effects.as_slice() {
+            [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
+            _ => None,
+        },
+        EffectAst::MayByPlayer { player, effects }
+            if matches!(player, PlayerAst::You | PlayerAst::Implicit) =>
+        {
+            match effects.as_slice() {
+                [EffectAst::VoteExtra { count, .. }] => Some((*count, true)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn compile_vote_sequence(
     effects: &[AnnotatedEffect],
     ctx: &mut EffectLoweringContext,
@@ -1288,21 +1307,22 @@ pub(crate) fn compile_vote_sequence(
         .enumerate()
         .skip(1)
         .filter_map(|(idx, annotated)| match &annotated.effect {
-            EffectAst::VoteOption { .. } | EffectAst::VoteExtra { .. } => Some(idx + 1),
+            EffectAst::VoteOption { .. } => Some(idx + 1),
             EffectAst::Conditional { predicate, .. } if is_vote_related_predicate(predicate) => {
                 Some(idx + 1)
             }
+            effect if vote_extra_amount(effect).is_some() => Some(idx + 1),
             _ => None,
         })
         .last()
         .unwrap_or(1);
 
     for annotated in effects.iter().take(consumed).skip(1) {
-        if let EffectAst::VoteExtra { count, optional } = &annotated.effect {
-            if *optional {
-                extra_optional = extra_optional.saturating_add(*count);
+        if let Some((count, optional)) = vote_extra_amount(&annotated.effect) {
+            if optional {
+                extra_optional = extra_optional.saturating_add(count);
             } else {
-                extra_mandatory = extra_mandatory.saturating_add(*count);
+                extra_mandatory = extra_mandatory.saturating_add(count);
             }
         }
     }
@@ -1323,14 +1343,11 @@ pub(crate) fn compile_vote_sequence(
             apply_local_reference_env(ctx, &annotated.in_env);
             ctx.auto_tag_object_targets =
                 ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
-            match &annotated.effect {
-                EffectAst::VoteExtra { .. } => {}
-                _ => {
-                    let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
-                    compiled.extend(followups);
-                    for choice in followup_choices {
-                        push_choice(&mut choices, choice);
-                    }
+            if vote_extra_amount(&annotated.effect).is_none() {
+                let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                compiled.extend(followups);
+                for choice in followup_choices {
+                    push_choice(&mut choices, choice);
                 }
             }
             apply_local_reference_env(ctx, &annotated.out_env);
@@ -1354,14 +1371,11 @@ pub(crate) fn compile_vote_sequence(
             apply_local_reference_env(ctx, &annotated.in_env);
             ctx.auto_tag_object_targets =
                 ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
-            match &annotated.effect {
-                EffectAst::VoteExtra { .. } => {}
-                _ => {
-                    let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
-                    compiled.extend(followups);
-                    for choice in followup_choices {
-                        push_choice(&mut choices, choice);
-                    }
+            if vote_extra_amount(&annotated.effect).is_none() {
+                let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                compiled.extend(followups);
+                for choice in followup_choices {
+                    push_choice(&mut choices, choice);
                 }
             }
             apply_local_reference_env(ctx, &annotated.out_env);
@@ -1382,7 +1396,7 @@ pub(crate) fn compile_vote_sequence(
         ctx.auto_tag_object_targets =
             ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
         match &annotated.effect {
-            EffectAst::VoteExtra { .. } => {}
+            effect if vote_extra_amount(effect).is_some() => {}
             EffectAst::VoteOption { option, effects } => {
                 let mut option_effects_ast = effects.clone();
                 force_implicit_vote_token_controller_you(&mut option_effects_ast);

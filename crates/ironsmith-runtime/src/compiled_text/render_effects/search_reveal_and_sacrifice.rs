@@ -1,10 +1,24 @@
 use super::*;
 
-pub(super) fn describe_choose_color_reveal_hand_discard_that_color(
+pub(in crate::compiled_text) fn describe_choose_color_reveal_hand_discard_that_color(
     effects: &[&Effect],
 ) -> Option<String> {
-    let [choose_color_effect, look_effect, discard_effect] = effects else {
-        return None;
+    let (choose_color_effect, look_effect, discard_effect) = match effects {
+        [choose_color_effect, look_effect, discard_effect] => {
+            (*choose_color_effect, *look_effect, *discard_effect)
+        }
+        [
+            choose_color_effect,
+            target_only_effect,
+            look_effect,
+            discard_effect,
+        ] if target_only_effect
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+            .is_some() =>
+        {
+            (*choose_color_effect, *look_effect, *discard_effect)
+        }
+        _ => return None,
     };
     let choose_color = choose_color_effect.downcast_ref::<crate::effects::ChooseColorEffect>()?;
     if choose_color.chooser != PlayerFilter::You {
@@ -20,12 +34,16 @@ pub(super) fn describe_choose_color_reveal_hand_discard_that_color(
         || discard.any_number
         || !player_filters_refer_to_same_player(&discard.player, &look_player)
         || !discard.card_filter.as_ref().is_some_and(|filter| {
-            filter.owner.as_ref() == Some(&look_player) && filter.chosen_color
+            filter
+                .owner
+                .as_ref()
+                .is_some_and(|owner| player_filters_refer_to_same_player(owner, &look_player))
+                && filter.chosen_color
         })
     {
         return None;
     }
-    let Value::Count(count_filter) = &discard.count else {
+    let Value::Count(count_filter) = discard.count.unhinted() else {
         return None;
     };
     if count_filter.zone != Some(Zone::Hand) || !count_filter.chosen_color {
@@ -483,9 +501,7 @@ pub(super) fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) 
     let [copy_effect] = for_each.effects.as_slice() else {
         return None;
     };
-    let tagged_copy = copy_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let copy = tagged_copy
-        .effect
+    let copy = unwrap_basic_tag_wrappers(copy_effect)
         .downcast_ref::<crate::effects::CreateTokenCopyEffect>()?;
     if !choose.count.dynamic_x
         || choose.count.up_to_x
@@ -507,6 +523,10 @@ pub(super) fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) 
         || copy.enters_tapped
         || copy.has_haste
         || copy.enters_attacking
+        || copy.attack_target_mode.is_some()
+        || copy.exile_at_end_of_combat
+        || copy.sacrifice_at_next_end_step
+        || copy.exile_at_next_end_step
         || copy.pt_adjustment.is_some()
         || !copy.added_card_types.is_empty()
         || !copy.added_subtypes.is_empty()
@@ -528,14 +548,21 @@ pub(super) fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) 
 pub(super) fn describe_counter_artifact_ability_destroy_source(
     effects: &[&Effect],
 ) -> Option<String> {
+    if let [sequence_effect] = effects
+        && let Some(sequence) = structural_unwrap_render_wrappers(sequence_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        let nested = sequence.effects.iter().collect::<Vec<_>>();
+        return describe_counter_artifact_ability_destroy_source(&nested);
+    }
+
     let [counter_effect, conditional_effect] = effects else {
         return None;
     };
-    let tagged_counter = counter_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let counter = tagged_counter
-        .effect
+    let counter = structural_unwrap_render_wrappers(counter_effect)
         .downcast_ref::<crate::effects::CounterEffect>()?;
-    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let conditional = structural_unwrap_render_wrappers(conditional_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
     let ChooseSpec::Target(target) = &counter.target else {
         return None;
     };
@@ -545,8 +572,9 @@ pub(super) fn describe_counter_artifact_ability_destroy_source(
     let [destroy_effect] = conditional.if_true.as_slice() else {
         return None;
     };
-    let destroy = destroy_effect.downcast_ref::<crate::effects::DestroyEffect>()?;
-    let ChooseSpec::Object(destroy_filter) = &destroy.spec else {
+    let destroy = structural_unwrap_render_wrappers(destroy_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    let ChooseSpec::Object(destroy_filter) = destroy.spec.base() else {
         return None;
     };
     if counter_filter.stack_kind != Some(StackObjectKind::ActivatedAbility)
@@ -2095,10 +2123,17 @@ pub(super) fn tagged_target_only_effect(
     effect: &Effect,
 ) -> Option<(&crate::TagKey, &crate::effects::TargetOnlyEffect)> {
     let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    let target_only = tagged
+    if let Some(target_only) = tagged
         .effect
-        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
-    Some((&tagged.tag, target_only))
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+    {
+        return Some((&tagged.tag, target_only));
+    }
+
+    // Shared collection tags may wrap an independently tagged target slot.
+    // Render relationships through the innermost tag attached directly to
+    // the declaration, not through the collection tag shared by its peers.
+    tagged_target_only_effect(&tagged.effect)
 }
 
 pub(super) fn plural_tagged_target_reference(target: &ChooseSpec) -> Option<String> {
@@ -2908,6 +2943,101 @@ pub(super) fn describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom
     ))
 }
 
+/// Render the equivalent nested form produced when the declined optional hand
+/// move is represented by a `WithId`/`If(DidNotHappen)` inside the matching
+/// branch and the nonmatching branch repeats the same bottom placement.
+pub(in crate::compiled_text) fn describe_nested_look_top_card_matching_hand_else_bottom(
+    look_at_top: &crate::effects::LookAtTopCardsEffect,
+    conditional: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    if look_at_top.player != PlayerFilter::You || look_at_top.count != Value::Fixed(1) {
+        return None;
+    }
+    let selection =
+        describe_tagged_condition_card_selection(&conditional.condition, look_at_top.tag.as_str())?;
+    let [with_id_effect, declined_effect] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let [nonmatching_bottom] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may.decider != Some(PlayerFilter::You)
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+    {
+        return None;
+    }
+    let hand_effects = match may.effects.as_slice() {
+        [effect] => effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .map(|sequence| sequence.effects.as_slice())
+            .unwrap_or(may.effects.as_slice()),
+        effects => effects,
+    };
+    let [reveal_effect, move_effect] = hand_effects else {
+        return None;
+    };
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let move_to_hand = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if reveal.tag != look_at_top.tag
+        || move_to_hand.zone != Zone::Hand
+        || move_to_hand.to_top
+        || !matches!(move_to_hand.target.base(), ChooseSpec::Tagged(tag) if tag == &look_at_top.tag)
+    {
+        return None;
+    }
+
+    let declined = declined_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if declined.condition != with_id.id
+        || declined.predicate != EffectPredicate::DidNotHappen
+        || !declined.else_.is_empty()
+    {
+        return None;
+    }
+    let [declined_bottom] = declined.then.as_slice() else {
+        return None;
+    };
+    let is_matching_bottom = |effect: &Effect| {
+        let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() else {
+            return false;
+        };
+        let [move_effect] = may.effects.as_slice() else {
+            return false;
+        };
+        let Some(move_to_bottom) = structural_unwrap_render_wrappers(move_effect)
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        else {
+            return false;
+        };
+        may.decider == Some(PlayerFilter::You)
+            && may.fallback == crate::decision::FallbackStrategy::Decline
+            && move_to_bottom.zone == Zone::Library
+            && !move_to_bottom.to_top
+            && matches!(move_to_bottom.target.base(), ChooseSpec::Tagged(tag) if tag == &look_at_top.tag)
+    };
+    if !is_matching_bottom(declined_bottom) || !is_matching_bottom(nonmatching_bottom) {
+        return None;
+    }
+
+    let (matching, antecedent) = if let Some((left, right)) = selection.split_once(" or ") {
+        (
+            format!(
+                "{} or {}",
+                with_indefinite_article(left),
+                with_indefinite_article(right)
+            ),
+            "the card",
+        )
+    } else {
+        (with_indefinite_article(&selection), "it")
+    };
+    Some(format!(
+        "Look at the top card of your library. If it's {matching}, you may reveal it and put it into your hand. If you don't put {antecedent} into your hand, you may put it on the bottom of your library"
+    ))
+}
+
 pub(super) fn describe_counter_constraint(counter: crate::filter::CounterConstraint) -> String {
     match counter {
         crate::filter::CounterConstraint::Any => "a counter".to_string(),
@@ -3070,7 +3200,21 @@ fn consult_match_move_to_zone<'a>(
 /// Render reveal-until programs as collection moves rather than exposing the
 /// implementation's per-object loop. The all/match/remainder tags prove which
 /// revealed cards move to the primary destination and which go to the bottom.
-fn describe_consult_reveal_move_matches_then_bottom(effects: &[&Effect]) -> Option<String> {
+pub(super) fn describe_consult_reveal_move_matches_then_bottom(
+    effects: &[&Effect],
+) -> Option<String> {
+    if let [consult_effect, sequence_effect] = effects
+        && let Some(sequence) = unwrap_basic_tag_wrappers(sequence_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && let [move_effect, remainder_effect] = sequence.effects.as_slice()
+    {
+        return describe_consult_reveal_move_matches_then_bottom(&[
+            *consult_effect,
+            move_effect,
+            remainder_effect,
+        ]);
+    }
+
     let [consult_effect, move_effect, remainder_effect] = effects else {
         return None;
     };
@@ -3081,8 +3225,8 @@ fn describe_consult_reveal_move_matches_then_bottom(effects: &[&Effect]) -> Opti
         .is_some();
     let consult_produces_multiple_matches = matches!(
         &consult.stop_rule,
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(count))
-            if *count > 1
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count)
+            if count != &Value::Fixed(1)
     );
     if !move_uses_iteration && !consult_produces_multiple_matches {
         // Direct singular moves already have established renderers that retain
@@ -3146,7 +3290,14 @@ fn describe_consult_reveal_move_matches_then_bottom(effects: &[&Effect]) -> Opti
                 false,
             )
         }
-        _ => return None,
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            let plural_selection = pluralize_noun_phrase(strip_leading_article(&selection));
+            (
+                format!("{} {plural_selection}", describe_value(count)),
+                "those cards".to_string(),
+                false,
+            )
+        }
     };
     let order_text = match remainder.order {
         LibraryBottomOrder::Random => " in a random order",
@@ -3926,6 +4077,11 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
 }
 
 pub(super) fn describe_life_amount_phrase(amount: &Value) -> String {
+    if amount.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        && let Some(basis) = describe_where_x_basis(amount)
+    {
+        return format!("X life, where X is {basis}");
+    }
     if let Some(backref) = describe_scalar_life_backref(amount) {
         return format!("{backref} life");
     }
@@ -4068,6 +4224,19 @@ pub(super) fn describe_for_players_simple_iterated_action(
     let verb = |you: &'static str, other: &'static str| {
         if subject == "You" { you } else { other }
     };
+
+    if let Some(cant) = effect.downcast_ref::<crate::effects::CantEffect>()
+        && matches!(
+            cant.start,
+            crate::effect::RestrictionStart::NextTurn(PlayerFilter::IteratedPlayer)
+        )
+    {
+        let inner = describe_effect(effect);
+        let rest = inner
+            .strip_prefix("that player ")
+            .or_else(|| inner.strip_prefix("That player "))?;
+        return Some(format!("{subject} {rest}"));
+    }
 
     if let Some(lose) = effect.downcast_ref::<crate::effects::LoseLifeEffect>()
         && matches!(

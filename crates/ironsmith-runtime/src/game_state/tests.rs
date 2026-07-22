@@ -2043,8 +2043,8 @@ fn multiplayer_leave_game_800_4i_k_m_preserves_lki_and_expires_at_would_be_turn(
         "Bob's future turn is skipped"
     );
     assert_eq!(game.calculated_power(target), Some(2));
-    assert!(!game.effect_store.goad_effects[0].is_active(&game, game.turn.turn_number));
-    assert!(!game.effect_store.restriction_effects[0].is_active(&game, game.turn.turn_number));
+    assert!(game.effect_store.goad_effects.is_empty());
+    assert!(game.effect_store.restriction_effects.is_empty());
 }
 
 #[test]

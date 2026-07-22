@@ -2839,11 +2839,11 @@ mod tests {
     }
 
     #[test]
-    fn test_semantic_clauses_preserve_that_object_reference() {
+    fn test_semantic_clauses_normalize_that_object_reference() {
         let clauses = semantic_clauses("Whenever this creature enters, return that object.");
         assert_eq!(
             clauses,
-            vec!["Whenever this creature enters, return that object".to_string()]
+            vec!["Whenever this creature enters, return it".to_string()]
         );
     }
 
@@ -3091,7 +3091,7 @@ mod tests {
     }
 
     #[test]
-    fn test_semantic_clauses_normalize_for_each_scope_then_put_on_that_object() {
+    fn test_semantic_clauses_normalize_for_each_scope_then_put_on_it() {
         let clauses = semantic_clauses(
             "Whenever this creature attacks, for each attacking creature, Put a +1/+1 counter on that object.",
         );
@@ -3101,7 +3101,8 @@ mod tests {
                 .any(|clause| clause.contains("for each attacking creature"))
                 && clauses
                     .iter()
-                    .any(|clause| clause.contains("Put a +1/+1 counter on that object"))
+                    .any(|clause| clause.contains("Put a +1/+1 counter on it")),
+            "unexpected semantic clauses: {clauses:?}"
         );
     }
 

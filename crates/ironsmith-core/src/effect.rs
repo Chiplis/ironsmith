@@ -132,6 +132,10 @@ pub enum ContinuousDurationPredicate {
     All(Vec<ContinuousDurationPredicate>),
     ObjectOnBattlefield(ContinuousDurationObject),
     ObjectTapped(ContinuousDurationObject),
+    ObjectControlledBy {
+        object: ContinuousDurationObject,
+        player: ContinuousDurationPlayer,
+    },
     ObjectHasCounter {
         object: ContinuousDurationObject,
         counter_type: CounterType,
@@ -2235,6 +2239,8 @@ pub enum MoveToZoneVerbSurface {
 pub enum BattlefieldEntryCounterSurface {
     /// "It enters with ..."
     Inline,
+    /// "Each of them enters with ..."
+    EachOfThemEnters,
     /// "If a creature enters this way, it enters with ..."
     IfObjectEntersThisWay,
     /// "If it enters as a creature, it enters with ..."
@@ -2332,6 +2338,9 @@ pub struct MoveToZoneEffect {
     pub enters_attacking: bool,
     pub attack_target_mode: Option<MoveToZoneAttackTargetMode>,
     pub enters_face_down: bool,
+    /// Whether a transforming double-faced card enters with its back face up.
+    /// This is part of the zone-change instruction, not a later transform action.
+    pub enters_transformed: bool,
     pub transfer_exiled_with_source_links: bool,
 }
 
@@ -2360,6 +2369,7 @@ impl MoveToZoneEffect {
             enters_attacking: false,
             attack_target_mode: None,
             enters_face_down: false,
+            enters_transformed: false,
             transfer_exiled_with_source_links: false,
         }
     }
@@ -2464,6 +2474,11 @@ impl MoveToZoneEffect {
 
     pub fn face_down(mut self) -> Self {
         self.enters_face_down = true;
+        self
+    }
+
+    pub fn transformed(mut self) -> Self {
+        self.enters_transformed = true;
         self
     }
 }
@@ -3910,12 +3925,32 @@ impl ExileEffect {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct TagMatchingObjectsEffect {
     pub filter: ObjectFilter,
     pub zone: Option<crate::zone::Zone>,
     pub additional_zones: Vec<crate::zone::Zone>,
     pub tag: crate::tag::TagKey,
+    /// When nonempty, build the output from these existing tagged snapshots
+    /// instead of rescanning the current game zones. This is used for unions
+    /// of objects that were actually affected by preceding effects, including
+    /// objects that have since changed zones.
+    pub source_tags: Vec<crate::tag::TagKey>,
+}
+
+impl std::fmt::Debug for TagMatchingObjectsEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut debug = f.debug_struct("TagMatchingObjectsEffect");
+        debug
+            .field("filter", &self.filter)
+            .field("zone", &self.zone)
+            .field("additional_zones", &self.additional_zones)
+            .field("tag", &self.tag);
+        if !self.source_tags.is_empty() {
+            debug.field("source_tags", &self.source_tags);
+        }
+        debug.finish()
+    }
 }
 
 impl TagMatchingObjectsEffect {
@@ -3925,7 +3960,19 @@ impl TagMatchingObjectsEffect {
             zone: None,
             additional_zones: Vec::new(),
             tag: tag.into(),
+            source_tags: Vec::new(),
         }
+    }
+
+    /// Use the union of existing tagged snapshots as this capture's source.
+    /// The filter and zones remain descriptive metadata for later consumers
+    /// and compiled-text rendering.
+    pub fn from_tagged_sources(
+        mut self,
+        source_tags: impl IntoIterator<Item = crate::tag::TagKey>,
+    ) -> Self {
+        self.source_tags = source_tags.into_iter().collect();
+        self
     }
 
     pub fn in_zone(mut self, zone: crate::zone::Zone) -> Self {

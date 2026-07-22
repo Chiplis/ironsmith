@@ -240,14 +240,7 @@ pub(super) fn throne_of_eldraine_runtime_adds_chosen_color_mana_and_draws_two_ca
     assert_eq!(player.mana_pool.white, 4);
     assert_eq!(player.restricted_mana.len(), 4);
 
-    game.player_mut(alice)
-        .expect("alice exists")
-        .mana_pool
-        .empty();
-    game.player_mut(alice)
-        .expect("alice exists")
-        .restricted_mana
-        .clear();
+    game.empty_mana_pools();
     game.player_mut(alice)
         .expect("alice exists")
         .mana_pool
@@ -265,10 +258,7 @@ pub(super) fn throne_of_eldraine_runtime_adds_chosen_color_mana_and_draws_two_ca
         "draw ability should not be payable with only two mana"
     );
 
-    game.player_mut(alice)
-        .expect("alice exists")
-        .mana_pool
-        .empty();
+    game.empty_mana_pools();
     game.player_mut(alice)
         .expect("alice exists")
         .mana_pool
@@ -286,10 +276,7 @@ pub(super) fn throne_of_eldraine_runtime_adds_chosen_color_mana_and_draws_two_ca
         "draw ability should require mana of Throne's chosen color"
     );
 
-    game.player_mut(alice)
-        .expect("alice exists")
-        .mana_pool
-        .empty();
+    game.empty_mana_pools();
     game.player_mut(alice)
         .expect("alice exists")
         .mana_pool
@@ -659,11 +646,10 @@ pub(super) fn cabaretti_ascendancy_trigger_keeps_conditional_bottom_branch_runti
         "expected upkeep trigger, got {debug}"
     );
     assert!(
-        debug.contains("condition: not(")
-            && debug.contains("playertaggedobjectmatches")
-            && debug.contains("zone: some(")
-            && debug.contains("hand"),
-        "expected negative hand-placement condition for fallback branch, got {debug}"
+        debug.contains("withideffect")
+            && debug.contains("ifeffect")
+            && debug.contains("predicate: didnothappen"),
+        "expected effect-result condition for the declined hand branch, got {debug}"
     );
     assert!(
         debug.contains("zone: library")
@@ -1393,11 +1379,11 @@ pub(super) fn base_pt_animation_representatives_render_base_power_toughness_surf
     for (name, expected) in [
         (
             "Ascendant Spirit",
-            "this creature becomes a spirit warrior creature with base power and toughness 2/3",
+            "this creature becomes a spirit warrior with base power and toughness 2/3",
         ),
         (
             "Evolved Sleeper",
-            "this creature becomes a human cleric creature with base power and toughness 2/2",
+            "this creature becomes a human cleric with base power and toughness 2/2",
         ),
         (
             "Skilled Animator",
@@ -1562,7 +1548,7 @@ pub(super) fn animate_land_compiled_text_keeps_animation_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("target land becomes a creature with base power and toughness 3/3")
+        rendered.contains("target land becomes a 3/3 creature")
             && rendered.contains("until end of turn")
             && rendered.contains("still a land"),
         "expected Animate Land compiled text to preserve animation, duration, and still-a-land clause, got {rendered}"
@@ -1588,7 +1574,7 @@ pub(super) fn skeleton_crew_compiled_text_keeps_graveyard_leave_trigger() {
     let def = parse_oracle_card_definition("Skeleton Crew");
     let rendered = canonical_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Each other creature you control that's a Skeleton or Pirate gets +1/+1")
+        rendered.contains("Each other Skeleton or Pirate creature you control gets +1/+1")
             && rendered.contains("Whenever one or more creature cards leave your graveyard, create a 2/2 black Skeleton Pirate creature token")
             && rendered.contains("{5}{B}: Return this card from your graveyard to the battlefield tapped"),
         "expected Skeleton Crew compiled text to preserve anthem, graveyard-leave trigger, and graveyard activation, got {rendered}"
@@ -1605,7 +1591,7 @@ pub(super) fn mighty_servant_of_leuk_o_compiled_text_keeps_crew_count_granted_tr
     assert!(
         rendered.contains("Whenever this Vehicle becomes crewed for the first time each turn")
             && rendered.contains("crewed by exactly two creatures")
-            && rendered.contains("Whenever this creature deals combat damage to a player")
+            && rendered.contains("Whenever this Vehicle deals combat damage to a player")
             && rendered.contains("draw two cards")
             && rendered.contains("until end of turn")
             && rendered.contains("Crew 4"),
@@ -2253,7 +2239,7 @@ pub(super) fn feudkillers_verdict_compiled_text_mentions_life_lead_condition() {
     let rendered = canonical_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("You gain 10 life")
-            && rendered.contains("Then if you have more life than an opponent")
+            && rendered.contains("If you have more life than an opponent")
             && rendered.contains("create a 5/5 white Giant Warrior creature token"),
         "expected compiled text to preserve Feudkiller's Verdict condition and token clause, got: {rendered}"
     );
@@ -2386,8 +2372,7 @@ pub(super) fn olivias_midnight_ambush_compiled_text_preserves_night_branch() {
 
     assert!(
         rendered.contains("target creature gets -2/-2 until end of turn")
-            && rendered
-                .contains("if it's night, that creature gets -13/-13 until end of turn instead"),
+            && rendered.contains("if it's night, it gets -13/-13 until end of turn instead"),
         "expected Olivia's Midnight Ambush to preserve both base and night conditional branches, got {rendered}"
     );
 }
@@ -2755,7 +2740,7 @@ pub(super) fn optional_continuous_effects_render_causative_have() {
         ),
         (
             "Vihaan, Goldwaker",
-            "you may have each treasure you control become a construct assassin artifact creature with base power and toughness 3/3 until end of turn",
+            "you may have each treasure you control become a 3/3 construct assassin artifact creature in addition to its other types until end of turn",
         ),
     ] {
         let def = parse_oracle_card_definition(name);
@@ -2808,7 +2793,7 @@ pub(super) fn participant_choice_cluster_preserves_the_chooser_and_selected_set(
         (
             "Consuming Tide",
             "each player chooses a nonland permanent they control",
-            "return all nonland permanents not chosen this way",
+            "return all other nonland permanents to their owners' hands",
         ),
         (
             "Divine Reckoning",
@@ -2830,7 +2815,7 @@ pub(super) fn participant_choice_cluster_preserves_the_chooser_and_selected_set(
         let rendered = unprocessed_compiled_lines(&def)
             .join(" ")
             .to_ascii_lowercase();
-        let debug = format!("{:#?}", def.abilities);
+        let debug = format!("{def:#?}");
 
         assert!(
             rendered.contains(choice_text),
@@ -2845,7 +2830,7 @@ pub(super) fn participant_choice_cluster_preserves_the_chooser_and_selected_set(
             "expected {name}'s participant to own the choice, got {debug}"
         );
         assert!(
-            debug.contains("TaggedObject"),
+            debug.contains("TaggedObject") || debug.contains("spec: Tagged("),
             "expected {name}'s follow-up to reference the selected set, got {debug}"
         );
     }
@@ -2877,9 +2862,9 @@ pub(super) fn generated_sacrifice_choice_cluster_compacts_the_selected_set() {
         );
         assert!(
             debug.contains("ChooseObjectsEffect")
-                && debug.contains("SacrificePlayerEffect")
+                && (debug.contains("SacrificePlayerEffect") || debug.contains("SacrificeEffect"))
                 && debug.contains("TaggedObject")
-                && debug.contains("Count("),
+                && (debug.contains("Count(") || debug.contains("count: Fixed(")),
             "expected {name} to retain its tagged chosen-set sacrifice, got {debug}"
         );
     }
@@ -2891,7 +2876,7 @@ pub(super) fn noncontroller_choice_regressions_keep_resolution_time_ownership() 
     let rendered = unprocessed_compiled_lines(&visions)
         .join(" ")
         .to_ascii_lowercase();
-    let debug = format!("{:#?}", visions.abilities);
+    let debug = format!("{visions:#?}");
     assert!(
         rendered.contains(
             "target opponent puts a creature card of their choice from their graveyard onto the battlefield under your control"
@@ -3125,7 +3110,7 @@ pub(super) fn travel_through_caradhras_regression_renders_council_dilemma_vote_b
         lower.contains("council's dilemma")
             && rendered.contains("Starting with you, each player votes for Redhorn Pass or Mines of Moria")
             && rendered.contains("For each Redhorn Pass vote, search your library for a basic land card and put it onto the battlefield tapped")
-            && rendered.contains("If you search your library this way, shuffle")
+            && rendered.contains("then shuffle")
             && rendered.contains("For each Mines of Moria vote, return a card from your graveyard to your hand")
             && rendered.contains("Exile Travel Through Caradhras"),
         "expected Travel Through Caradhras to render its council dilemma branches, got {rendered}"

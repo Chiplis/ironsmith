@@ -34,6 +34,12 @@ fn parses_all_special_triggered_programs() {
     );
     assert_eq!(
         parse(
+            "At the beginning of each player's upkeep, that player chooses target player who controls more lands than they do and is their opponent. The first player may search their library for a basic land card, put that card onto the battlefield, then shuffle."
+        ),
+        Some(SpecialTriggeredProgram::OpponentLandMajoritySearch)
+    );
+    assert_eq!(
+        parse(
             "At the beginning of each player's upkeep, that player chooses target player whose graveyard has fewer creature cards than their graveyard. Return a creature card from their graveyard to their hand."
         ),
         Some(SpecialTriggeredProgram::OpponentGraveyardMinorityReturn)

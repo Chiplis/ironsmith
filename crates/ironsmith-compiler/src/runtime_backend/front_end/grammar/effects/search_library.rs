@@ -1159,14 +1159,16 @@ pub(crate) fn derive_search_library_subject_routing_lexed(
         THAT_PLAYER_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
-        // Keep this as a discourse-level player reference. Lowering binds the
-        // library filter to the resolved `That` subject: a preceding target in
-        // ordinary spell text, or IteratedPlayer only inside a real loop.
+        // Keep this as a discourse-level player reference. The contextual
+        // placeholder resolves to a preceding target in ordinary spell text
+        // and remains IteratedPlayer only inside a real player loop.
+        forced_library_owner = Some(PlayerFilter::IteratedPlayer);
     } else if search_word_stream_starts_with_any(
         search_body_words,
         THAT_PLAYER_GRAVEYARD_HAND_LIBRARY_FOR_PREFIX_PATTERN,
     ) {
         player = PlayerAst::That;
+        forced_library_owner = Some(PlayerFilter::IteratedPlayer);
         search_zones_override = Some(vec![Zone::Graveyard, Zone::Hand, Zone::Library]);
     } else if search_word_stream_starts_with_any(
         search_body_words,
@@ -1814,7 +1816,10 @@ mod tests {
             .expect("that-player search should route");
 
         assert_eq!(routing.player, PlayerAst::That);
-        assert_eq!(routing.forced_library_owner, None);
+        assert_eq!(
+            routing.forced_library_owner,
+            Some(PlayerFilter::IteratedPlayer)
+        );
         assert_eq!(routing.search_player_target, None);
     }
 }

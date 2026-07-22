@@ -144,8 +144,22 @@ fn explicit_granted_keyword_label(display: &str) -> Option<String> {
         .then_some(lower)
 }
 
+fn capitalize_excluded_subtype_terms(filter: &ObjectFilter, mut text: String) -> String {
+    for subtype in &filter.excluded_subtypes {
+        let canonical = subtype.to_string();
+        text = text.replace(
+            &format!("non-{}", canonical.to_ascii_lowercase()),
+            &format!("non-{canonical}"),
+        );
+    }
+    text
+}
+
 fn subject_text(filter: &ObjectFilter) -> String {
-    attached_subject(filter).unwrap_or_else(|| filter.description())
+    capitalize_excluded_subtype_terms(
+        filter,
+        attached_subject(filter).unwrap_or_else(|| filter.description()),
+    )
 }
 
 fn strip_plural_subject_article(subject: &str) -> &str {
@@ -550,7 +564,7 @@ fn grant_subject_with_set_quantifier(
     filter: &ObjectFilter,
     surface: Option<ironsmith_core::SetQuantifierSurface>,
 ) -> (String, bool) {
-    match surface {
+    let (subject, singular) = match surface {
         Some(ironsmith_core::SetQuantifierSurface::Each) => {
             let mut subject = strip_article(filter.description());
             if subject.starts_with("another ") {
@@ -563,7 +577,8 @@ fn grant_subject_with_set_quantifier(
             false,
         ),
         None => (grant_subject_text(filter), false),
-    }
+    };
+    (capitalize_excluded_subtype_terms(filter, subject), singular)
 }
 
 fn describe_filter_comparison(cmp: &crate::filter::Comparison) -> String {
@@ -616,6 +631,15 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
             ));
     if !is_spell_subject {
         return None;
+    }
+
+    // A spell's controller is independent of who cast it (most visibly for
+    // spell copies).  The specialized spell subject below is useful for cast
+    // and origin-zone clauses, but it does not model controller qualifiers.
+    // Stack filters already have an exact generic description for those, so
+    // preserve that description instead of silently dropping the constraint.
+    if matches!(filter.zone, Some(Zone::Stack)) && filter.controller.is_some() {
+        return Some(pluralized_subject_text(filter));
     }
 
     let mut qualifiers = Vec::new();
@@ -2432,6 +2456,10 @@ impl StaticAbilityKind for Anthem {
         StaticAbilityId::Anthem
     }
 
+    fn structural_effect_filter(&self) -> Option<&ObjectFilter> {
+        (!self.source_only).then_some(&self.filter)
+    }
+
     fn display(&self) -> String {
         let subject = if self.source_only {
             "this creature".to_string()
@@ -3286,7 +3314,10 @@ fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
 fn static_condition_is_during_your_turn(condition: &crate::ConditionExpr) -> bool {
     matches!(
         condition,
-        crate::ConditionExpr::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn)
+        crate::ConditionExpr::YourTurn
+            | crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringYourTurn
+            )
     )
 }
 
@@ -3592,6 +3623,10 @@ impl RemoveAllAbilitiesForFilter {
 impl StaticAbilityKind for RemoveAllAbilitiesForFilter {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::RemoveAllAbilitiesForFilter
+    }
+
+    fn structural_effect_filter(&self) -> Option<&ObjectFilter> {
+        Some(&self.filter)
     }
 
     fn display(&self) -> String {
@@ -4230,6 +4265,10 @@ impl PartialEq for SetColorsForFilter {
 impl StaticAbilityKind for SetColorsForFilter {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::SetColors
+    }
+
+    fn structural_effect_filter(&self) -> Option<&ObjectFilter> {
+        Some(&self.filter)
     }
 
     fn display(&self) -> String {

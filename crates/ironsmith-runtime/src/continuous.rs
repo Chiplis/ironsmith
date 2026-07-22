@@ -3378,6 +3378,9 @@ pub(crate) fn continuous_duration_predicate_matches(
                 continuous_duration_object_is_visible(game, id) && game.is_tapped(id)
             })
         }
+        Predicate::ObjectControlledBy { object, player } => continuous_duration_object_id(object)
+            .zip(continuous_duration_player_id(player))
+            .is_some_and(|(object, player)| game.current_controller(object) == Some(player)),
         Predicate::ObjectHasCounter {
             object,
             counter_type,

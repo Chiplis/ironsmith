@@ -2833,10 +2833,18 @@ impl SetBasePowerToughnessEffect {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum RestrictionStart {
+    #[default]
+    Immediate,
+    NextTurn(PlayerFilter),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CantEffect {
     pub restriction: Restriction,
     pub duration: Until,
+    pub start: RestrictionStart,
 }
 
 impl CantEffect {
@@ -2844,11 +2852,28 @@ impl CantEffect {
         Self {
             restriction,
             duration,
+            start: RestrictionStart::Immediate,
+        }
+    }
+
+    pub fn starting(restriction: Restriction, duration: Until, start: RestrictionStart) -> Self {
+        Self {
+            restriction,
+            duration,
+            start,
         }
     }
 
     pub fn until_end_of_turn(restriction: Restriction) -> Self {
         Self::new(restriction, Until::EndOfTurn)
+    }
+
+    pub fn during_next_turn(restriction: Restriction, player: PlayerFilter) -> Self {
+        Self::starting(
+            restriction,
+            Until::EndOfTurn,
+            RestrictionStart::NextTurn(player),
+        )
     }
 }
 

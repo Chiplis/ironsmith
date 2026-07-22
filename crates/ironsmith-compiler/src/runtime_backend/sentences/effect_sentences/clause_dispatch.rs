@@ -24,7 +24,9 @@ use super::super::lexer::{
     LexedClause, OwnedLexToken, contains_token_word, parser_token_word_positions, trim_lexed_commas,
 };
 use super::super::object_filters::parse_object_filter;
-use super::super::permission_helpers::parse_cast_or_play_tagged_clause;
+use super::super::permission_helpers::{
+    parse_additional_land_plays_clause, parse_cast_or_play_tagged_clause,
+};
 use super::super::util::{
     parse_subject, parse_target_phrase, parse_value, parser_trace, parser_trace_stack,
     span_from_tokens, trim_commas,
@@ -1239,6 +1241,23 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         tokens
     };
 
+    // A standalone effect sentence reaches clause dispatch directly, without
+    // passing through the coordinated-chain parser. Preserve the dedicated
+    // sequential-offer model for "any player may sacrifice ..." here too:
+    // PlayerFilter::Any is not itself an actor and must not become the chooser
+    // or sacrificing player for a single MayEffect.
+    if let Some(shape) = effect_grammar::parse_any_player_may_sacrifice_shape(tokens) {
+        let sacrifice = parse_sacrifice(
+            shape.action_tokens,
+            Some(SubjectAst::Player(PlayerAst::That)),
+            None,
+        )?;
+        return Ok(EffectAst::AnyPlayerMay {
+            players: PlayerFilter::Any,
+            effects: vec![sacrifice],
+        });
+    }
+
     // `assigns no combat damage` is a complete effect even when Oracle
     // coordinates another effect after it. The direct shape intentionally
     // requires a sentence boundary, so split this prefix before dispatching
@@ -1343,6 +1362,16 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
     }
 
     if let Some(shape) = clause_grammar::parse_leading_may_clause_shape(tokens) {
+        // In permission text such as "You may play an additional land this
+        // turn", "may" describes the granted game-rule permission. It is not
+        // an optional resolution action and therefore must not become a
+        // MayEffect decision at resolution time.
+        if let Some(mut permission) = parse_additional_land_plays_clause(shape.effect_tokens)? {
+            if let clause_grammar::LeadingMayActorShape::Player(player) = shape.actor {
+                bind_implicit_player_context(&mut permission, player);
+            }
+            return Ok(permission);
+        }
         let mut effects = parse_effect_chain_with_subject_verb_primitives(shape.effect_tokens)?;
         return Ok(match shape.actor {
             clause_grammar::LeadingMayActorShape::Player(player) => {
@@ -2353,6 +2382,45 @@ mod tests {
             parse_effect_clause(&tokens)
                 .unwrap_or_else(|err| panic!("common player clause should parse: {text}: {err:?}"));
         }
+    }
+
+    #[test]
+    fn any_player_sacrifice_offer_keeps_sequential_player_semantics() {
+        let tokens = lex_line("Any player may sacrifice two creatures of their choice.", 0)
+            .expect("lex any-player sacrifice offer");
+        let effect = parse_effect_clause(&tokens).expect("parse any-player sacrifice offer");
+
+        let EffectAst::AnyPlayerMay { players, effects } = effect else {
+            panic!("expected typed any-player offer, got {effect:#?}");
+        };
+        assert_eq!(players, PlayerFilter::Any);
+        let [
+            EffectAst::Sequence {
+                effects: sacrifice_steps,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected a choose-and-sacrifice sequence, got {effects:#?}");
+        };
+        assert!(
+            matches!(
+                sacrifice_steps.as_slice(),
+                [
+                    EffectAst::ChooseObjects {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        subject: crate::runtime_backend::ast::SubjectVerbSubjectAst {
+                            player: PlayerAst::That,
+                            ..
+                        },
+                        action: SubjectVerbActionAst::SacrificeAll { .. },
+                    })
+                ]
+            ),
+            "expected both choice and sacrifice to stay bound to the offered player, got {sacrifice_steps:#?}"
+        );
     }
 
     #[test]

@@ -197,13 +197,16 @@ fn reconcile_may_decider_scoped_search_effect(
         && let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
         && choose.is_search
         && choose.zone == Some(Zone::Library)
-        && choose.filter.owner == Some(PlayerFilter::You)
-        && (&choose.chooser == decider
-            || (force_search_scope && choose.chooser == PlayerFilter::You))
+        && ((choose.filter.owner == Some(PlayerFilter::You) && &choose.chooser == decider)
+            || (force_search_scope
+                && choose.chooser == PlayerFilter::You
+                && matches!(choose.filter.owner.as_ref(), Some(owner) if owner == decider)))
     {
         let mut choose = choose.clone();
         choose.chooser = decider.clone();
-        choose.filter.owner = Some(decider.clone());
+        if choose.filter.owner == Some(PlayerFilter::You) {
+            choose.filter.owner = Some(decider.clone());
+        }
         return Effect::new(choose);
     }
 
@@ -230,7 +233,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
             action:
                 SubjectVerbActionAst::BecomeCopy {
                     target,
-                    source: TargetAst::Tagged(source_tag, _),
+                    source,
                     duration,
                     preserve_source_abilities,
                     name_override,
@@ -251,9 +254,18 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
     else {
         return Ok(None);
     };
-    if source_tag.as_str() != IT_TAG {
-        return Ok(None);
-    }
+    let source_reference_span = match source {
+        TargetAst::Tagged(source_tag, span) if source_tag.as_str() == IT_TAG => *span,
+        TargetAst::Object(source_filter, _, reference_span)
+            if source_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }) =>
+        {
+            *reference_span
+        }
+        _ => return Ok(None),
+    };
     if !matches!(
         target,
         TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
@@ -280,7 +292,7 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
 
     let rewritten = EffectAst::subject_verb_become_copy(
         TargetAst::Object(target_filter, None, None),
-        TargetAst::Tagged(prior_choice_tag, None),
+        TargetAst::Tagged(prior_choice_tag, source_reference_span),
         duration.clone(),
         *preserve_source_abilities,
         name_override.clone(),
@@ -359,7 +371,14 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             // The may-decider ("you" in "you may …") is the chooser, not a
             // referenced player; don't let it shadow "that player" inside the may
             // ("you may have that player lose 2 life" → the triggering opponent).
-            ctx.last_player_filter = saved_last_player_filter;
+            // An iterated "that player may" actor is different: relative
+            // filters inside that offer name the same participant and must not
+            // fall back to the trigger's broad lexical player filter.
+            ctx.last_player_filter = if matches!(player_filter, PlayerFilter::IteratedPlayer) {
+                Some(PlayerFilter::IteratedPlayer)
+            } else {
+                saved_last_player_filter
+            };
             let (inner_effects, inner_choices) =
                 compile_effects_preserving_last_effect(effects, ctx)?;
             if inner_effects.is_empty() {
@@ -377,7 +396,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let effect = Effect::may_player(player_filter, inner_effects);
             (vec![effect], choices)
         }
-        EffectAst::AnyPlayerMay { effects } => {
+        EffectAst::AnyPlayerMay { players, effects } => {
             if effects.is_empty() {
                 return Err(CardTextError::ParseError(
                     "empty any-player-may effect branch is unsupported".to_string(),
@@ -390,7 +409,7 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_player_context(&offers, ctx, None)?;
             let effect = Effect::new(crate::effects::ForPlayersEffect {
-                filter: PlayerFilter::Any,
+                filter: players.clone(),
                 effects: inner_effects,
                 starting_with_controller: true,
                 stop_after_first_happened: true,

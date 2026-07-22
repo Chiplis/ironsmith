@@ -935,7 +935,7 @@ impl KeywordAction {
             Self::ProtectionFromEachManaValueAmong(filter) => {
                 format!(
                     "Protection from each mana value among {}",
-                    filter.description()
+                    crate::static_abilities::describe_protection_mana_value_scope(filter)
                 )
             }
             Self::ProtectionFromCardType(card_type) => format!(

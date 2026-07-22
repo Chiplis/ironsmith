@@ -290,7 +290,7 @@ pub(super) fn will_kenrith_strict_parser_compiled_text_and_model_regression() {
     );
     assert!(
         rendered.contains(
-            "Target player draws two cards. Until your next turn, each card in that player's hand gains instant, sorcery, and planeswalker spells cost {2} less to cast."
+            "Target player draws two cards. Until your next turn, instant, sorcery, and planeswalker spells that player casts cost {2} less to cast."
         ),
         "expected Will Kenrith -2 compiled text to preserve target-player cost reduction, got {rendered}"
     );
@@ -309,8 +309,9 @@ pub(super) fn will_kenrith_strict_parser_compiled_text_and_model_regression() {
         abilities_debug.contains("SetPowerToughness")
             && abilities_debug.contains("RemoveAllAbilities")
             && abilities_debug.contains("max: Some")
-            && abilities_debug.contains("CostReduction")
-            && abilities_debug.contains("until: YourNextTurn")
+            && abilities_debug.contains("GrantNextSpellCostReductionEffect")
+            && abilities_debug.contains("applies_to_all_matching_this_turn: true")
+            && abilities_debug.contains("duration: YourNextTurn")
             && abilities_debug.contains("CreateEmblemEffect"),
         "expected Will Kenrith to model shared targets, timed cost reduction, and target-player emblem, got {abilities_debug}"
     );

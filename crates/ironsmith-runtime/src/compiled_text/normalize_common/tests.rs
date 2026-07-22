@@ -7,6 +7,14 @@ fn relative_object_pluralization_keeps_creation_provenance_postpositive() {
         "tokens created with this enchantment"
     );
 }
+
+#[test]
+fn relative_object_pluralization_keeps_attachment_anchor_singular() {
+    assert_eq!(
+        pluralize_relative_object_phrase("Aura attached to that creature"),
+        "Auras attached to that creature"
+    );
+}
 use crate::target::{TaggedObjectConstraint, TaggedOpbjectRelation};
 
 #[test]
@@ -84,6 +92,33 @@ fn negated_source_tapped_condition_renders_as_untapped() {
     let condition = Condition::Not(Box::new(Condition::SourceIsTapped));
 
     assert_eq!(describe_condition(&condition), "this source is untapped");
+}
+
+#[test]
+fn negated_player_cast_spell_condition_uses_havent_cast_surface() {
+    let condition = Condition::Not(Box::new(Condition::PlayerCastSpellsThisTurnOrMore {
+        player: PlayerFilter::You,
+        count: 1,
+    }));
+
+    assert_eq!(
+        describe_condition(&condition),
+        "you haven't cast a spell this turn"
+    );
+}
+
+#[test]
+fn dice_roll_threshold_condition_uses_rolled_dice_surface() {
+    let condition = Condition::ValueComparison {
+        left: Value::MaxDiceRolledThisTurn(PlayerFilter::You),
+        operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+        right: Value::Fixed(3),
+    };
+
+    assert_eq!(
+        describe_condition(&condition),
+        "you've rolled three or more dice this turn"
+    );
 }
 
 #[test]
@@ -728,6 +763,32 @@ fn normalize_another_creatures_plural_typo_without_touching_singular() {
             "Whenever another creature you control enters, you gain 1 life."
         ),
         "Whenever another creature you control enters, you gain 1 life."
+    );
+}
+
+#[test]
+fn normalize_composed_quantifiers_articles_and_plural_references() {
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Whenever a red source you control deals damage to one or more one or more permanents and/or players, put a +1/+1 counter on this creature."
+        ),
+        "Whenever a red source you control deals damage to one or more permanents and/or players, put a +1/+1 counter on this creature."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "They reveal cards from the top of their library until they reveal creature card."
+        ),
+        "They reveal cards from the top of their library until they reveal a creature card."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing("Return those creatures to its owner's hand."),
+        "Return those creatures to their owners' hands."
+    );
+    assert_eq!(
+        normalize_common_semantic_phrasing(
+            "Other creatures you control get +2/+2 and gains trample until end of turn."
+        ),
+        "Other creatures you control get +2/+2 and gain trample until end of turn."
     );
 }
 
@@ -2230,7 +2291,7 @@ fn plain_type_setting_animation_omits_addition_surface() {
     );
     assert_eq!(
         describe_apply_continuous_effect(&reset).as_deref(),
-        Some("This permanent becomes an enchantment")
+        Some("this source becomes an enchantment")
     );
 
     let mut land_reset = crate::effects::ApplyContinuousEffect::with_spec(

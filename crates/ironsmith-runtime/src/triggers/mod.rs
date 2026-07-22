@@ -659,6 +659,17 @@ impl Trigger {
         Self::new(ThisDealsCombatDamageToPlayerTrigger::new(player))
     }
 
+    /// Create a combat-damage trigger while preserving how the source was
+    /// named in the authored text.
+    pub fn this_deals_combat_damage_to_player_with_surface(
+        player: PlayerFilter,
+        surface: crate::target::SourceReferenceSurface,
+    ) -> Self {
+        Self::new(ThisDealsCombatDamageToPlayerTrigger::with_source_surface(
+            player, surface,
+        ))
+    }
+
     /// Create a "when this creature deals combat damage" trigger.
     pub fn this_deals_combat_damage() -> Self {
         Self::new(ThisDealsDamageTrigger::new().combat_only())

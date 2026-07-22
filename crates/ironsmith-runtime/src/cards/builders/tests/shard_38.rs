@@ -86,7 +86,10 @@ pub(super) fn sacrificed_this_way_predicates_survive_source_effects() {
         } else {
             assert!(debug.contains("sacrifice_cost_0"), "{name}: {debug}");
         }
-        assert!(debug.contains("TaggedObjectMatches"), "{name}: {debug}");
+        assert!(
+            debug.contains("PriorEffectResult") && debug.contains("Sacrificed"),
+            "{name}: {debug}"
+        );
         match name {
             "Boneyard Desecrator" => assert!(
                 compiled.contains("if an outlaw was sacrificed this way, create a treasure token"),
@@ -99,7 +102,7 @@ pub(super) fn sacrificed_this_way_predicates_survive_source_effects() {
             "Warren Weirding" => {
                 assert!(
                     compiled.contains(
-                        "if a goblin is sacrificed this way, that player creates two 1/1 black goblin rogue creature tokens"
+                        "if a goblin was sacrificed this way, that player creates two 1/1 black goblin rogue creature tokens"
                     ),
                     "{name}: {compiled}"
                 );

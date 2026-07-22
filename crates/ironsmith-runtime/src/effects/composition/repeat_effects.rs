@@ -1,11 +1,66 @@
 use crate::effect::{Effect, EffectOutcome, OutcomeStatus, OutcomeValue};
 use crate::effects::{EffectExecutor, SequenceEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
+use crate::events::ZoneChangeEvent;
 use crate::filter::Comparison;
 use crate::game_state::GameState;
 use crate::resolve_value;
+use crate::triggers::TriggerEvent;
+use crate::zone::Zone;
 
 pub type RepeatEffectsEffect = ironsmith_core::RepeatEffectsEffect<Effect>;
+
+fn coalesce_vote_token_entry_events(
+    game: &mut GameState,
+    pending_start: usize,
+    object_ids: &[crate::ids::ObjectId],
+    ctx: &ExecutionContext,
+) {
+    if object_ids.len() <= 1 {
+        return;
+    }
+
+    let removed = game.remove_pending_trigger_events_matching_from(pending_start, |event| {
+        event
+            .downcast::<ZoneChangeEvent>()
+            .is_some_and(|zone_change| {
+                zone_change.from == Zone::Command
+                    && zone_change.to == Zone::Battlefield
+                    && zone_change
+                        .objects
+                        .iter()
+                        .all(|object_id| object_ids.contains(object_id))
+            })
+    });
+    if removed.is_empty() {
+        return;
+    }
+
+    let cause = removed
+        .iter()
+        .find_map(|event| {
+            event
+                .downcast::<ZoneChangeEvent>()
+                .map(|zone_change| zone_change.cause.clone())
+        })
+        .unwrap_or_else(crate::events::EventCause::effect);
+    let snapshots = removed
+        .iter()
+        .filter_map(|event| event.downcast::<ZoneChangeEvent>())
+        .flat_map(|zone_change| zone_change.snapshots().iter().cloned())
+        .collect();
+    let event = ZoneChangeEvent::batch_with_snapshots(
+        object_ids.to_vec(),
+        Zone::Command,
+        Zone::Battlefield,
+        cause,
+        snapshots,
+    );
+    game.queue_trigger_event(
+        ctx.provenance,
+        TriggerEvent::new_with_provenance(event, ctx.provenance),
+    );
+}
 
 impl EffectExecutor for RepeatEffectsEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
@@ -100,6 +155,20 @@ impl EffectExecutor for RepeatEffectsEffect {
         let mut all_events = Vec::new();
         let mut all_execution_facts = Vec::new();
         let mut all_output_objects = Vec::new();
+        // A voter-independent "for each [option] vote, create a token" clause
+        // lowers to RepeatEffectsEffect rather than living inside VoteEffect.
+        // It is still one token-creation instruction, so all of those tokens
+        // enter as one event. Keyword actions such as investigate remain
+        // repeated actions and intentionally do not take this path.
+        let batch_vote_tokens = matches!(self.count.unhinted(), crate::effect::Value::VoteCount(_))
+            && matches!(
+                self.effects.as_slice(),
+                [effect]
+                    if effect
+                        .downcast_ref::<crate::effects::CreateTokenEffect>()
+                        .is_some()
+            );
+        let pending_token_event_start = game.effect_store.pending_trigger_events.len();
 
         for _ in 0..count {
             let outcome = sequence.execute(game, ctx)?;
@@ -113,6 +182,14 @@ impl EffectExecutor for RepeatEffectsEffect {
                 }
             }
             if outcome.status.is_failure() {
+                if batch_vote_tokens {
+                    coalesce_vote_token_entry_events(
+                        game,
+                        pending_token_event_start,
+                        &all_output_objects,
+                        ctx,
+                    );
+                }
                 let value = if all_output_objects.is_empty() {
                     outcome.value
                 } else {
@@ -127,6 +204,14 @@ impl EffectExecutor for RepeatEffectsEffect {
             }
         }
 
+        if batch_vote_tokens {
+            coalesce_vote_token_entry_events(
+                game,
+                pending_token_event_start,
+                &all_output_objects,
+                ctx,
+            );
+        }
         Ok(EffectOutcome::with_details(
             OutcomeStatus::Succeeded,
             if all_output_objects.is_empty() {

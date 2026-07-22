@@ -775,6 +775,7 @@ mod tests {
         let alice_memory = crate::effect::OutcomeObjectMemory {
             object_id: alice_card,
             stable_id: crate::ids::StableId::from(alice_card),
+            name: "Alice Card".to_string(),
             controller: alice,
             owner: alice,
             zone: crate::zone::Zone::Library,
@@ -789,6 +790,7 @@ mod tests {
         let bob_memory = crate::effect::OutcomeObjectMemory {
             object_id: bob_card,
             stable_id: crate::ids::StableId::from(bob_card),
+            name: "Bob Card".to_string(),
             controller: bob,
             owner: bob,
             zone: crate::zone::Zone::Library,

@@ -449,6 +449,7 @@ pub(crate) enum TriggerSpec {
     },
     ThisDealsCombatDamageToPlayer {
         player: PlayerFilter,
+        source_surface: Option<crate::target::SourceReferenceSurface>,
     },
     DealsCombatDamageToPlayer {
         source: ObjectFilter,
@@ -1476,6 +1477,7 @@ pub(crate) enum SubjectVerbActionAst {
         battlefield_attacking: bool,
         battlefield_attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
         battlefield_face_down: bool,
+        battlefield_transformed: bool,
         attached_to: Option<TargetAst>,
         all: bool,
     },
@@ -1490,6 +1492,7 @@ pub(crate) enum SubjectVerbActionAst {
         filter: ObjectFilter,
         zones: Vec<Zone>,
         tag: TagKey,
+        source_tags: Vec<TagKey>,
     },
     Pump {
         power: Value,
@@ -1718,6 +1721,7 @@ pub(crate) enum SubjectVerbActionAst {
     Cant {
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
+        start: crate::effect::RestrictionStart,
         condition: Option<crate::ConditionExpr>,
     },
     CreateTokenCopy {
@@ -2971,6 +2975,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 battlefield_attacking,
                 battlefield_attack_target_player_or_planeswalker_controlled_by,
                 battlefield_face_down,
+                battlefield_transformed,
                 attached_to,
                 all,
             } => f
@@ -2997,6 +3002,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     battlefield_attack_target_player_or_planeswalker_controlled_by,
                 )
                 .field("battlefield_face_down", battlefield_face_down)
+                .field("battlefield_transformed", battlefield_transformed)
                 .field("attached_to", attached_to)
                 .field("all", all)
                 .finish(),
@@ -3012,12 +3018,22 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("explicit_declaration", explicit_declaration)
                 .finish(),
-            Self::TagMatchingObjects { filter, zones, tag } => f
-                .debug_struct("TagMatchingObjects")
-                .field("filter", filter)
-                .field("zones", zones)
-                .field("tag", tag)
-                .finish(),
+            Self::TagMatchingObjects {
+                filter,
+                zones,
+                tag,
+                source_tags,
+            } => {
+                let mut debug = f.debug_struct("TagMatchingObjects");
+                debug
+                    .field("filter", filter)
+                    .field("zones", zones)
+                    .field("tag", tag);
+                if !source_tags.is_empty() {
+                    debug.field("source_tags", source_tags);
+                }
+                debug.finish()
+            }
             Self::Pump {
                 power,
                 toughness,
@@ -3448,11 +3464,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::Cant {
                 restriction,
                 duration,
+                start,
                 condition,
             } => f
                 .debug_struct("Cant")
                 .field("restriction", restriction)
                 .field("duration", duration)
+                .field("start", start)
                 .field("condition", condition)
                 .finish(),
             Self::CreateTokenCopy { .. } => f.write_str("CreateTokenCopy"),

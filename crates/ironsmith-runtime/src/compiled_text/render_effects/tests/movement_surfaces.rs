@@ -63,6 +63,22 @@ fn bulk_battlefield_move_retains_printed_put_surface() {
 }
 
 #[test]
+fn bulk_battlefield_move_pluralizes_cards_from_hand() {
+    let put_all = crate::effects::ReturnAllToBattlefieldEffect::new(
+        ObjectFilter::land()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You),
+        false,
+    )
+    .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put);
+
+    assert_eq!(
+        describe_effect_list(&[Effect::new(put_all)]),
+        "Put all land cards in your hand onto the battlefield under their owners' control"
+    );
+}
+
+#[test]
 fn choose_then_move_retains_explicit_battlefield_controller_surface() {
     let tag = TagKey::from("chosen");
     let choose = crate::effects::ChooseObjectsEffect::new(

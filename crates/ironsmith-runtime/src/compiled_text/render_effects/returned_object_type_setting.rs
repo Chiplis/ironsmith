@@ -293,23 +293,25 @@ pub(super) fn describe_returned_battlefield_object_then_animated(
     describe_returned_battlefield_object_then_animated_pair(return_effect, animation_effect)
 }
 
-pub(super) fn describe_returned_battlefield_object_then_animated_pair(
+pub(in crate::compiled_text) fn describe_returned_battlefield_object_then_animated_pair(
     return_effect: &Effect,
     animation_effect: &Effect,
 ) -> Option<String> {
     let returned_tag = outer_object_tag(return_effect)?;
     let returned = unwrap_render_wrappers(return_effect);
-    let plural =
-        if let Some(move_to_zone) = returned.downcast_ref::<crate::effects::MoveToZoneEffect>() {
-            (move_to_zone.zone == Zone::Battlefield)
-                .then(|| choose_spec_allows_multiple(&move_to_zone.target))?
-        } else if let Some(return_from_graveyard) =
-            returned.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
-        {
-            choose_spec_allows_multiple(&return_from_graveyard.target)
-        } else {
-            return None;
-        };
+    let plural = if let Some(move_to_zone) =
+        returned.downcast_ref::<crate::effects::MoveToZoneEffect>()
+    {
+        (move_to_zone.zone == Zone::Battlefield).then(|| {
+            move_to_zone.target_plural_surface || choose_spec_allows_multiple(&move_to_zone.target)
+        })?
+    } else if let Some(return_from_graveyard) =
+        returned.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        choose_spec_allows_multiple(&return_from_graveyard.target)
+    } else {
+        return None;
+    };
 
     let animation = unwrap_render_wrappers(animation_effect)
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;

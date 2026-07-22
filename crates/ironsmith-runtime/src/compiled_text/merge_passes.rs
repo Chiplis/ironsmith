@@ -305,6 +305,34 @@ struct TypeAdditionLine {
     type_phrase: String,
 }
 
+fn normalize_all_permanent_spells_subject(subject: &str) -> Option<String> {
+    let lower = subject.to_ascii_lowercase();
+    let type_list = lower.strip_suffix(" spells you control")?;
+    let normalized_list = type_list.replace(", and ", ", ").replace(" and ", ", ");
+    let mut types = normalized_list
+        .split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>();
+    types.sort_unstable();
+    (types
+        == [
+            "artifact",
+            "battle",
+            "creature",
+            "enchantment",
+            "land",
+            "planeswalker",
+        ])
+    .then(|| "permanent spells you control".to_string())
+}
+
+fn normalize_type_addition_subject(subject: &str) -> String {
+    normalize_all_permanent_spells_subject(subject)
+        .or_else(|| normalize_nonbattlefield_owned_cards_subject(subject))
+        .unwrap_or_else(|| subject.trim().to_string())
+}
+
 fn parse_type_addition_line(line: &str) -> Option<TypeAdditionLine> {
     let trimmed = line.trim().trim_end_matches('.');
     let (subject, verb, predicate) = split_subject_predicate_clause(trimmed)?;
@@ -313,7 +341,7 @@ fn parse_type_addition_line(line: &str) -> Option<TypeAdditionLine> {
     }
     let type_phrase = subtype_addition_predicate(predicate)?;
     Some(TypeAdditionLine {
-        subject: subject.trim().to_string(),
+        subject: normalize_type_addition_subject(subject.trim()),
         verb: verb.trim().to_string(),
         type_phrase,
     })
@@ -627,7 +655,7 @@ fn can_merge_conditional_state_bundle(
     matches!(left.verb.as_str(), "is" | "are")
         && matches!(right.verb.as_str(), "is" | "are")
         && conditioned_subjects_equivalent(&left.subject, &right.subject)
-        && left.condition.eq_ignore_ascii_case(&right.condition)
+        && conditioned_conditions_equivalent(&left.condition, &right.condition, &left.subject)
 }
 
 fn conditioned_subjects_equivalent(left: &str, right: &str) -> bool {
@@ -643,6 +671,37 @@ fn conditioned_subject_key(subject: &str) -> String {
         return format!("creatures {rest}");
     }
     lower
+}
+
+fn conditioned_conditions_equivalent(left: &str, right: &str, subject: &str) -> bool {
+    if left.eq_ignore_ascii_case(right) {
+        return true;
+    }
+
+    let subject = conditioned_subject_key(subject);
+    let attached_subject = if subject.starts_with("enchanted ") {
+        Some("enchanted creature")
+    } else if subject.starts_with("equipped ") {
+        Some("equipped creature")
+    } else {
+        None
+    };
+
+    let condition_key = |condition: &str| {
+        let mut key = condition.trim().to_ascii_lowercase();
+        if let Some(attached_subject) = attached_subject {
+            for source_phrase in [
+                "the permanent this source is attached to",
+                "the permanent this aura is attached to",
+                "the permanent this equipment is attached to",
+            ] {
+                key = key.replace(source_phrase, attached_subject);
+            }
+        }
+        key
+    };
+
+    condition_key(left) == condition_key(right)
 }
 
 pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
@@ -973,11 +1032,14 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 if conditioned_subjects_equivalent(
                     &left_conditional.subject,
                     &right_conditional.subject,
-                ) && left_conditional
-                    .condition
-                    .eq_ignore_ascii_case(&right_conditional.condition)
-                    && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
-                {
+                ) && conditioned_conditions_equivalent(
+                    &left_conditional.condition,
+                    &right_conditional.condition,
+                    &left_conditional.subject,
+                ) && can_merge_subject_predicates(
+                    &left_conditional.verb,
+                    &right_conditional.verb,
+                ) {
                     let left_predicate =
                         normalize_keyword_predicate_case(&left_conditional.predicate);
                     let right_predicate =
@@ -1888,10 +1950,50 @@ fn merge_complementary_turn_keyword_grants(left: &str, right: &str) -> Option<St
     ))
 }
 
+fn parse_color_filtered_keyword_grant(line: &str) -> Option<(String, String, String)> {
+    let body = line.trim().trim_end_matches('.');
+    let rest = body.strip_prefix("Each ")?;
+    let (color, grant) = rest.split_once(' ')?;
+    if !matches!(color, "white" | "blue" | "black" | "red" | "green") {
+        return None;
+    }
+    let (subject, keyword) = grant.split_once(" has ")?;
+    let keyword = normalize_keyword_predicate_case(keyword.trim());
+    if subject.trim().is_empty() || !is_keyword_phrase(&keyword) {
+        return None;
+    }
+    Some((subject.trim().to_string(), color.to_string(), keyword))
+}
+
 pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String> {
     let mut merged = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     while idx < lines.len() {
+        if let Some((subject, first_color, first_keyword)) =
+            parse_color_filtered_keyword_grant(&lines[idx])
+        {
+            let mut predicates = vec![format!("{first_keyword} if it's {first_color}")];
+            let mut seen_colors = vec![first_color];
+            let mut consumed = 1usize;
+            while let Some((next_subject, color, keyword)) = lines
+                .get(idx + consumed)
+                .and_then(|line| parse_color_filtered_keyword_grant(line))
+            {
+                if !next_subject.eq_ignore_ascii_case(&subject)
+                    || seen_colors.iter().any(|seen| seen == &color)
+                {
+                    break;
+                }
+                predicates.push(format!("{keyword} if it's {color}"));
+                seen_colors.push(color);
+                consumed += 1;
+            }
+            if consumed >= 2 {
+                merged.push(format!("Each {subject} has {}", join_with_and(&predicates)));
+                idx += consumed;
+                continue;
+            }
+        }
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
             let right = lines[idx + 1].trim();
@@ -1906,10 +2008,11 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
             ) && conditioned_subjects_equivalent(
                 &left_conditional.subject,
                 &right_conditional.subject,
-            ) && left_conditional
-                .condition
-                .eq_ignore_ascii_case(&right_conditional.condition)
-                && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
+            ) && conditioned_conditions_equivalent(
+                &left_conditional.condition,
+                &right_conditional.condition,
+                &left_conditional.subject,
+            ) && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
             {
                 let left_predicate = normalize_keyword_predicate_case(&left_conditional.predicate);
                 let right_predicate =
@@ -2027,6 +2130,13 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some(line) = merge_split_plural_animation_bundle(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(line);
+            idx += 2;
+            continue;
+        }
         if let Some(line) = compact_single_line_plural_animation_bundle(&lines[idx]) {
             merged.push(line);
             idx += 1;
@@ -2222,6 +2332,42 @@ pub(super) fn merge_subject_animation_lines(lines: Vec<String>) -> Vec<String> {
     }
 
     merged
+}
+
+fn merge_split_plural_animation_bundle(animation: &str, modifiers: &str) -> Option<String> {
+    let animation = parse_conditional_subject_predicate(animation)?;
+    let modifiers = parse_conditional_subject_predicate(modifiers)?;
+    if !matches!(animation.verb.as_str(), "is" | "are")
+        || !is_creature_addition_predicate(&animation.predicate)
+        || !matches!(modifiers.verb.as_str(), "has" | "have" | "gains" | "gain")
+        || !conditioned_conditions_equivalent(
+            &animation.condition,
+            &modifiers.condition,
+            &animation.subject,
+        )
+        || !animation_subjects_equivalent(&animation.subject, &modifiers.subject)
+    {
+        return None;
+    }
+
+    let plural_payload = format!(
+        "creatures in addition to their other types and have {}",
+        modifiers.predicate
+    );
+    let payload = parse_plural_animation_payload(&plural_payload)?;
+    let subject = singularize_filter_subject(&modifiers.subject);
+    let condition = if animation
+        .condition
+        .eq_ignore_ascii_case("As long as it's your turn")
+    {
+        "During your turn".to_string()
+    } else {
+        animation.condition
+    };
+    Some(format!(
+        "{condition}, each {} is {payload}",
+        lowercase_first(&subject)
+    ))
 }
 
 fn compact_single_line_plural_animation_bundle(line: &str) -> Option<String> {
@@ -2732,6 +2878,12 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         return false;
     }
     let lower = trimmed.to_ascii_lowercase();
+    // Haunt is a standalone keyword line whose structural ability includes a
+    // target choice. It uses keyword punctuation, but must not merge into an
+    // adjacent intrinsic list such as "Flying, haunt".
+    if lower == "haunt" {
+        return true;
+    }
     if is_keyword_phrase(&lower) || normalize_keyword_list_phrase(&lower).is_some() {
         return true;
     }
@@ -2881,6 +3033,24 @@ mod tests {
             vec![
                 "As long as you control exactly one creature, that creature gets +2/+0 and has deathtouch and lifelink"
                     .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn merge_subject_has_keyword_lines_compacts_color_filtered_grants() {
+        let merged = merge_subject_has_keyword_lines(vec![
+            "Each white creature you control has vigilance.".to_string(),
+            "Each blue creature you control has hexproof.".to_string(),
+            "Each black creature you control has lifelink.".to_string(),
+            "Each red creature you control has first strike.".to_string(),
+            "Each green creature you control has trample.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Each creature you control has vigilance if it's white, hexproof if it's blue, lifelink if it's black, first strike if it's red, and trample if it's green"
             ]
         );
     }

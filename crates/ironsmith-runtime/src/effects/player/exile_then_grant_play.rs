@@ -16,6 +16,7 @@ pub struct ExileThenGrantPlayEffect {
     pub target: ChooseSpec,
     pub player: PlayerFilter,
     pub duration: GrantDuration,
+    pub available_starting_next_turn: bool,
 }
 
 impl ExileThenGrantPlayEffect {
@@ -24,7 +25,13 @@ impl ExileThenGrantPlayEffect {
             target,
             player,
             duration,
+            available_starting_next_turn: false,
         }
+    }
+
+    pub fn starting_next_turn(mut self) -> Self {
+        self.available_starting_next_turn = true;
+        self
     }
 }
 
@@ -75,13 +82,26 @@ impl EffectExecutor for ExileThenGrantPlayEffect {
                     expires_end_of_turn: expires,
                 },
             };
-            game.effect_store.grant_registry.grant_to_card(
-                exiled_id,
-                Zone::Exile,
-                player,
-                Grantable::PlayFrom,
-                grant_source,
-            );
+            if self.available_starting_next_turn {
+                game.effect_store
+                    .grant_registry
+                    .grant_to_card_starting_on_turn(
+                        exiled_id,
+                        Zone::Exile,
+                        player,
+                        Grantable::PlayFrom,
+                        game.turn.turn_number.saturating_add(1),
+                        grant_source,
+                    );
+            } else {
+                game.effect_store.grant_registry.grant_to_card(
+                    exiled_id,
+                    Zone::Exile,
+                    player,
+                    Grantable::PlayFrom,
+                    grant_source,
+                );
+            }
         }
 
         Ok(EffectOutcome::with_objects(result.new_object_ids))

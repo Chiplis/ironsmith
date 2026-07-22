@@ -1,11 +1,37 @@
 use super::*;
 
 pub(super) fn normalized_reminder_words<'a>(words: &'a [&'a str]) -> Vec<&'a str> {
-    if let Some(rest) = common::strip_phrase_prefix(words, &["it", "has"])
+    let words = if let Some(rest) = common::strip_phrase_prefix(words, &["it", "has"])
         .or_else(|| common::strip_phrase_prefix(words, &["they", "have"]))
     {
-        return rest.to_vec();
+        rest
+    } else {
+        words
+    };
+
+    // Possessive apostrophes are removed from parser words, so the authored
+    // "This token's power ..." surface arrives as "this tokens power ...".
+    // The characteristic sentence may be quoted inside the larger token
+    // definition rather than beginning the token slice. Normalize that
+    // explicit token reference to the same semantic subject as "Its power".
+    for subject in [
+        &["this", "tokens"][..],
+        &["this", "token"],
+        &["thiss", "token"],
+    ] {
+        if let Some(start) = common::phrase_offset(words, subject)
+            && let Some(tail) = words.get(start + subject.len()..)
+            && common::phrase_present(
+                tail,
+                &["power", "and", "toughness", "are", "each", "equal", "to"],
+            )
+        {
+            let mut normalized = vec!["its"];
+            normalized.extend_from_slice(tail);
+            return normalized;
+        }
     }
+
     for prefix in [
         &["when", "it"][..],
         &["whenever", "it"],

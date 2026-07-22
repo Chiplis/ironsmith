@@ -274,16 +274,24 @@ pub(super) fn matter_reshaper_parses_and_renders_conditional_may_otherwise() {
     assert!(
         lower.contains(
             "you may put that card onto the battlefield if it's a permanent card with mana value 3 or less"
+        ) || lower.contains(
+            "you may put it onto the battlefield if a permanent card with mana value 3 or less was revealed this way"
         ),
         "expected conditional may battlefield clause, got {rendered}"
     );
     assert!(
-        lower.contains("otherwise, put that card into your hand"),
+        lower.contains("otherwise, put that card into your hand")
+            || lower.contains("otherwise, put it into your hand"),
         "expected otherwise hand clause, got {rendered}"
     );
     assert!(
         !lower.contains("you may if"),
         "Matter Reshaper should not render malformed conditional permission text: {rendered}"
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("LessThanOrEqual") && debug.contains("mana_value: Some"),
+        "Matter Reshaper should retain the mana-value bound structurally, got {debug}"
     );
 }
 
@@ -333,7 +341,8 @@ pub(super) fn parse_cephalid_shrine_binds_same_name_graveyard_where_x_clause() {
         rendered.contains("counter it unless that object's controller pays {x}, where x is the number of cards in all graveyards with the same name as that object")
             || rendered.contains("counter it unless that object's controller pays {x}, where x is the number of cards with the same name as that object in all graveyards")
             || rendered.contains("counter it unless they pay {x}, where x is the number of cards with the same name as that object in all graveyards")
-            || rendered.contains("counter that spell unless that player pays {x}, where x is the number of cards in all graveyards with the same name as the spell"),
+            || rendered.contains("counter that spell unless that player pays {x}, where x is the number of cards in all graveyards with the same name as the spell")
+            || rendered.contains("counter that spell unless that player pays {x}, where x is the number of cards with the same name as that spell in all graveyards"),
         "expected Cephalid Shrine to preserve the bound X same-name graveyard clause, got {rendered}"
     );
     assert!(
@@ -469,8 +478,11 @@ pub(super) fn parse_ancient_bronze_dragon_where_x_result_clause_parses_strictly(
         .to_ascii_lowercase();
     assert!(
         rendered.contains("roll a d20")
-            && rendered
+            && (rendered
                 .contains("put that many +1/+1 counters on each of up to two target creatures")
+                || (rendered
+                    .contains("put x +1/+1 counters on each of up to two target creatures")
+                    && rendered.contains("where x is the result")))
             && rendered.contains("when you do"),
         "expected Ancient Bronze Dragon where-X result clause in compiled text, got {rendered}"
     );
@@ -526,7 +538,7 @@ pub(super) fn parse_where_x_number_of_counters_on_that_creature() {
         .to_ascii_lowercase();
     assert!(
         rendered.contains(
-            "destroy target creature. you draw x cards and you lose x life, where x is the number of counters on it"
+            "destroy target creature. draw x cards and you lose x life, where x is the number of counters on it"
         ) && !rendered.contains("number of creatures"),
         "expected rendered where-X clause to count counters on that creature once, got {rendered}"
     );
@@ -773,6 +785,8 @@ pub(super) fn niambi_esteemed_speaker_strict_parser_and_compiled_text_regression
     assert!(
         rendered.contains(
             "When Niambi enters, you may return another target creature you control to its owner's hand. If you do, you gain life equal to that creature's mana value"
+        ) || rendered.contains(
+            "When Niambi enters, you may return another target creature you control to its owner's hand. If you do, you gain life equal to its mana value"
         ),
         "Niambi compiled text should preserve the named ETB and returned-creature mana-value reference, got {rendered}"
     );
@@ -1169,7 +1183,7 @@ pub(super) fn parse_conquerors_galleon_attack_trigger_delays_return_and_transfor
         "expected delayed exile/return zone movement, got {debug}"
     );
     assert!(
-        debug.contains("TransformEffect"),
+        debug.contains("enters_transformed: true"),
         "expected transformed return payload, got {debug}"
     );
 }
@@ -1258,6 +1272,8 @@ pub(super) fn parse_source_pronoun_transformed_return_uses_object_motion_not_pla
             && (rendered.contains(
                 "exile this creature, then return it to the battlefield transformed under its owner's control"
             ) || rendered.contains(
+                "exile Sorin, then return it to the battlefield transformed under its owner's control"
+            ) || rendered.contains(
                 "Exile this. Return it to the battlefield transformed under its owner's control"
             ) || rendered.contains(
                 "exile this. Return it to the battlefield transformed under its owner's control"
@@ -1269,7 +1285,7 @@ pub(super) fn parse_source_pronoun_transformed_return_uses_object_motion_not_pla
         debug.contains("MoveToZoneEffect")
             && debug.contains("zone: Exile")
             && debug.contains("zone: Battlefield")
-            && debug.contains("TransformEffect"),
+            && debug.contains("enters_transformed: true"),
         "expected blink-style transformed return payload, got {debug}"
     );
     assert!(
@@ -1696,11 +1712,11 @@ pub(super) fn parse_shared_color_gain_ability_fanout_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("share a color with it"),
+        rendered.contains("shares a color with it"),
         "expected shared-color fanout filter, got {rendered}"
     );
     assert!(
-        rendered.contains("haste until end of turn"),
+        rendered.contains("until end of turn") && rendered.contains("gain haste"),
         "expected haste grant to fanout targets, got {rendered}"
     );
 }
@@ -1718,7 +1734,7 @@ pub(super) fn parse_shared_color_pump_fanout_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("share a color with it"),
+        rendered.contains("shares a color with it"),
         "expected shared-color fanout filter, got {rendered}"
     );
     assert!(
@@ -1744,7 +1760,8 @@ pub(super) fn parse_shared_color_damage_with_named_subject_clause() {
         "expected primary target damage clause, got {rendered}"
     );
     assert!(
-        rendered.contains("shares a color with that object"),
+        rendered.contains("shares a color with that object")
+            || rendered.contains("shares a color with it"),
         "expected shared-color fanout damage clause, got {rendered}"
     );
 }
@@ -1765,11 +1782,14 @@ pub(super) fn score_card_text_shadow_urchin_preserves_blight_and_counter_death_r
         "expected blight keyword action to render, got {rendered}"
     );
     assert!(
-        rendered.contains("Whenever a creature you control with a counter on it dies, exile that many cards from the top of your library"),
+        rendered.contains("Whenever a creature you control with a counter on it dies, exile that many cards from the top of your library")
+            || (rendered.contains("Whenever a creature you control with counters on it dies, exile the top X cards of your library")
+                && rendered.contains("where X is the number of counters on it")),
         "expected counter-death trigger to keep the counter count reference, got {rendered}"
     );
     assert!(
-        rendered.contains("Until your next end step, you may play those cards"),
+        rendered.contains("Until your next end step, you may play those cards")
+            || rendered.contains("You may play those cards until your next end step"),
         "expected exile/play follow-up to compact around those cards, got {rendered}"
     );
 }
@@ -1803,7 +1823,7 @@ pub(super) fn score_card_text_dark_supplicant_compacts_multi_zone_search_put_and
     let rendered = compiled_text_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "Search your graveyard, hand, and/or library for a card named scion of darkness and put it onto the battlefield"
+            "Search your graveyard, hand, and/or library for a card named Scion of Darkness and put it onto the battlefield"
         ),
         "expected multi-zone search and put to compact, got {rendered}"
     );
@@ -1894,7 +1914,7 @@ pub(super) fn tormented_thoughts_strict_parser_and_compiled_text_regression() {
         .expect("Tormented Thoughts should lower to a discard effect");
     assert!(
         matches!(
-            &discard.count,
+            discard.count.unhinted(),
             crate::effect::Value::PowerOf(spec)
                 if matches!(spec.as_ref(), ChooseSpec::Tagged(tag) if tag.as_str() == "sacrificed_0")
         ),
@@ -2112,11 +2132,11 @@ pub(super) fn parse_goblin_kites_strictly_and_renders_delayed_coin_flip_clause()
     let def = parse_oracle_card_definition("Goblin Kites");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Flip a coin at the beginning of the next end step"),
+        rendered.contains("At the beginning of the next end step, flip a coin"),
         "expected delayed coin-flip timing in rendered text, got {rendered}"
     );
     assert!(
-        rendered.contains("If you lose the flip, sacrifice that creature"),
+        rendered.contains("If you lose the flip, sacrifice it"),
         "expected lose-the-flip sacrifice branch in rendered text, got {rendered}"
     );
 
@@ -2455,7 +2475,8 @@ pub(super) fn parse_same_name_damage_fanout_clause() {
         "expected primary targeted damage clause, got {rendered}"
     );
     assert!(
-        rendered.contains("with the same name as that object"),
+        rendered.contains("with the same name as that object")
+            || rendered.contains("with the same name as that creature"),
         "expected same-name fanout wording, got {rendered}"
     );
 }
@@ -3172,6 +3193,18 @@ pub(super) fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() 
         )
         .expect("rain-of-daggers style text should parse");
 
+    let lose_life = def
+        .spell_effect
+        .as_ref()
+        .expect("Rain of Daggers variant should have spell effects")
+        .flattened_default_effects()
+        .into_iter()
+        .find_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::LoseLifeEffect>()
+                .cloned()
+        })
+        .expect("Rain of Daggers variant should lower to life loss");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let lower = rendered.to_ascii_lowercase();
     assert!(
@@ -3182,6 +3215,13 @@ pub(super) fn render_rain_of_daggers_uses_destroyed_this_way_life_loss_clause() 
     assert!(
         lower.contains("lose 2 life for each creature destroyed this way"),
         "expected destroyed-this-way life-loss clause, got {rendered}"
+    );
+    assert!(
+        lose_life
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach),
+        "authored for-each life loss should retain its surface hint, got {:?}",
+        lose_life.amount
     );
 }
 

@@ -2640,9 +2640,7 @@ pub(super) fn resculpt_strict_parser_and_compiled_text_regression() {
         "Resculpt should render the artifact-or-creature exile target, got {rendered}"
     );
     assert!(
-        rendered.contains(
-            "that object's controller creates a 4/4 blue and red Elemental creature token"
-        ),
+        rendered.contains("Its controller creates a 4/4 blue and red Elemental creature token"),
         "Resculpt should render the target controller token clause, got {rendered}"
     );
     assert!(

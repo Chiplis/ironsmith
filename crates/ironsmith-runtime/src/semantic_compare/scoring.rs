@@ -970,6 +970,63 @@ fn count_opponent_control_scope_mismatches(
     mismatches
 }
 
+fn has_you_control_object_scope(clause: &str) -> bool {
+    let lower = clause.to_ascii_lowercase();
+    [
+        "artifact",
+        "artifacts",
+        "creature",
+        "creatures",
+        "enchantment",
+        "enchantments",
+        "land",
+        "lands",
+        "permanent",
+        "permanents",
+        "planeswalker",
+        "planeswalkers",
+        "spell",
+        "spells",
+    ]
+    .into_iter()
+    .any(|noun| {
+        lower.contains(&format!("{noun} you control")) || lower.contains(&format!("your {noun}"))
+    })
+}
+
+fn count_you_control_scope_mismatches(
+    oracle_clauses: &[String],
+    oracle_tokens: &[Vec<String>],
+    compiled_clauses: &[String],
+    compiled_tokens: &[Vec<String>],
+) -> usize {
+    let mut mismatches = 0usize;
+
+    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
+        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
+            continue;
+        };
+        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
+        else {
+            continue;
+        };
+        if overlap < 0.55 {
+            continue;
+        }
+
+        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
+            continue;
+        };
+        if has_you_control_object_scope(oracle_clause)
+            != has_you_control_object_scope(compiled_clause)
+        {
+            mismatches += 1;
+        }
+    }
+
+    mismatches
+}
+
 fn directional_coverage(from: &[Vec<String>], to: &[Vec<String>]) -> f32 {
     if from.is_empty() {
         return if to.is_empty() { 1.0 } else { 0.0 };
@@ -1519,6 +1576,12 @@ pub fn compare_semantics_scored(
         &compiled_clauses,
         &compiled_tokens,
     );
+    let you_control_scope_mismatch_count = count_you_control_scope_mismatches(
+        &oracle_clauses,
+        &oracle_tokens,
+        &compiled_clauses,
+        &compiled_tokens,
+    );
 
     if let Some(cfg) = embedding {
         let oracle_emb = oracle_clauses
@@ -1573,6 +1636,11 @@ pub fn compare_semantics_scored(
     }
     if opponent_control_scope_mismatch_count > 0 {
         let penalty = 0.20 * opponent_control_scope_mismatch_count as f32;
+        similarity_score = (similarity_score - penalty).max(0.0);
+        mismatch = true;
+    }
+    if you_control_scope_mismatch_count > 0 {
+        let penalty = 0.20 * you_control_scope_mismatch_count as f32;
         similarity_score = (similarity_score - penalty).max(0.0);
         mismatch = true;
     }

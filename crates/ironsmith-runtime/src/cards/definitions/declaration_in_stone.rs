@@ -65,7 +65,7 @@ mod tests {
                     .nontoken()
                     .in_zone(Zone::Exile)
                     .match_tagged(
-                        crate::TagKey::from("__sentence_helper_exiled_l0_s0_e0"),
+                        crate::TagKey::from("linked_fanout_group_0"),
                         TaggedOpbjectRelation::IsTaggedObject,
                     )
             ),
@@ -74,35 +74,30 @@ mod tests {
         assert_eq!(
             investigate.player,
             PlayerFilter::AliasedControllerOf(ObjectRef::tagged(crate::TagKey::from(
-                "__sentence_helper_exiled_l0_s0_e0"
+                "linked_fanout_primary_0"
             ))),
             "investigate should be performed by the exiled creature's controller"
         );
 
         let debug = format!("{:?}", effects);
         assert!(
-            debug.contains("AliasedControllerOf(")
-                && debug.contains("__sentence_helper_exiled_l0_s0_e0"),
+            debug.contains("AliasedControllerOf(") && debug.contains("linked_fanout_primary_0"),
             "expected compiled investigate player to keep aliased controller tag, got {debug}"
         );
 
         let rendered =
             crate::compiled_text::unprocessed_compiled_lines(&declaration_in_stone()).join(" ");
-        // Honest surface (the oracle-verbatim compaction was a hand-written
-        // gate deleted as score laundering; the compact render is F-series
-        // renderer work).
         assert_eq!(
             rendered,
-            "Exile target creature, exile all other creatures with the same name as that object controlled by that object's controller, then that player investigates for each nontoken creature exiled this way.",
-            "expected honest wording for Declaration in Stone"
+            "Exile target creature and all other creatures its controller controls with the same name as that creature. That player investigates for each nontoken creature exiled this way.",
+            "expected the linked fanout and investigate follow-up to retain the authored surface"
         );
 
         let compiled =
             crate::compiled_text::unprocessed_compiled_lines(&declaration_in_stone()).join(" ");
         assert!(
-            compiled.contains(
-                "then that player investigates for each nontoken creature exiled this way"
-            ),
+            compiled
+                .contains("That player investigates for each nontoken creature exiled this way"),
             "expected compiled investigate follow-up, got {compiled}"
         );
     }

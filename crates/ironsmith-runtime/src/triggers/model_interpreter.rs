@@ -234,9 +234,17 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisDealsCombatDamageTo { filter } => {
             crate::triggers::Trigger::this_deals_combat_damage_to(filter)
         }
-        TriggerKind::ThisDealsCombatDamageToPlayer { player } => {
-            crate::triggers::Trigger::this_deals_combat_damage_to_player(player)
-        }
+        TriggerKind::ThisDealsCombatDamageToPlayer {
+            player,
+            source_surface,
+        } => match source_surface {
+            Some(surface) => {
+                crate::triggers::Trigger::this_deals_combat_damage_to_player_with_surface(
+                    player, surface,
+                )
+            }
+            None => crate::triggers::Trigger::this_deals_combat_damage_to_player(player),
+        },
         TriggerKind::DealsDamage {
             filter,
             source_surface,

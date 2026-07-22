@@ -670,6 +670,17 @@
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(for_each) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ForEachObject>()
+            && let Some(compact) = describe_choose_then_for_each_object_copy(choose, for_each)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
 
         if idx + 1 < filtered.len()
             && let Some(exiled_tag) =
@@ -894,12 +905,24 @@
             && let Some(compact) = describe_exile_then_return_transformed_with_counter(
                 filtered[idx],
                 filtered[idx + 1],
-                filtered[idx + 2],
+                Some(filtered[idx + 2]),
                 filtered[idx + 3],
             )
         {
             parts.push(compact);
             idx += 4;
+            continue;
+        }
+        if idx + 2 < filtered.len()
+            && let Some(compact) = describe_exile_then_return_transformed_with_counter(
+                filtered[idx],
+                filtered[idx + 1],
+                None,
+                filtered[idx + 2],
+            )
+        {
+            parts.push(compact);
+            idx += 3;
             continue;
         }
         if idx + 2 < filtered.len()
@@ -1078,12 +1101,11 @@
             idx += 2;
             continue;
         }
-        if idx + 2 < filtered.len()
-            && let Some(compact) =
-                describe_wrapped_search_for_each_then_conditional_shuffle(&filtered[idx..])
+        if let Some((compact, consumed)) =
+            describe_wrapped_search_for_each_then_conditional_shuffle(&filtered[idx..])
         {
             parts.push(compact);
-            idx += 3;
+            idx += consumed;
             continue;
         }
         if idx + 1 < filtered.len()
@@ -1689,6 +1711,18 @@
         {
             parts.push(compact);
             idx += 3;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(look_at_top) =
+                filtered[idx].downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+            && let Some(conditional) =
+                filtered[idx + 1].downcast_ref::<crate::effects::ConditionalEffect>()
+            && let Some(compact) =
+                describe_nested_look_top_card_matching_hand_else_bottom(look_at_top, conditional)
+        {
+            parts.push(compact);
+            idx += 2;
             continue;
         }
         if idx + 1 < filtered.len()
@@ -3295,6 +3329,30 @@
                 continue;
             }
         }
+        // A dynamic draw/life-loss pair with its own `where X is` clause is
+        // one authored sentence. Do not let the broad "action and draw"
+        // compactor consume the draw and strand the linked life loss in a
+        // second sentence.
+        if idx + 2 < filtered.len()
+            && unwrap_basic_tag_wrappers(filtered[idx])
+                .downcast_ref::<crate::effects::DestroyEffect>()
+                .is_some()
+            && let Some(draw) = filtered[idx + 1]
+                .downcast_ref::<crate::effects::DrawCardsEffect>()
+            && draw.count.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && let Some(lose) = filtered[idx + 2]
+                .downcast_ref::<crate::effects::LoseLifeEffect>()
+            && let Some(draw_and_lose) = describe_draw_then_lose_life(draw, lose)
+        {
+            let leading = describe_effect(filtered[idx]);
+            parts.push(format!(
+                "{}. {}",
+                leading.trim().trim_end_matches('.'),
+                capitalize_first(draw_and_lose.trim().trim_end_matches('.'))
+            ));
+            idx += 3;
+            continue;
+        }
         if let Some((compact, consumed)) =
             describe_longest_conjoined_counter_or_draw_sequence(&filtered[idx..])
         {
@@ -3334,10 +3392,19 @@
             let is_your_turn_followup = filtered[idx]
                 .downcast_ref::<crate::effects::ConditionalEffect>()
                 .is_some_and(|conditional| conditional.condition == Condition::YourTurn);
+            let is_prior_result_followup = filtered[idx]
+                .downcast_ref::<crate::effects::IfEffect>()
+                .is_some_and(|if_effect| {
+                    matches!(
+                        if_effect.predicate,
+                        EffectPredicate::PriorEffectResult(_)
+                    )
+                });
             if !parts.is_empty()
                 && rendered.starts_with("If ")
                 && !is_your_turn_followup
                 && !is_battlefield_move_result_followup
+                && !is_prior_result_followup
             {
                 rendered = format!("Then {}", lowercase_first(&rendered));
                 if let Some(comma_idx) = rendered.find(", ") {

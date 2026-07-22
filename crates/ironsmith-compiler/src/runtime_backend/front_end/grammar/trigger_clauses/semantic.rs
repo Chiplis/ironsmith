@@ -2312,6 +2312,10 @@ fn parse_trigger_clause_lexed_unstacked(
     if has_deal && trigger_pattern_accepts(&words, COMBAT_DAMAGE_TRIGGER_PATTERN) {
         if let Some(deals_idx) = trigger_atom_token(tokens, TriggerClauseAtom::Deal) {
             let subject_tokens = &tokens[..deals_idx];
+            let subject_words = ActivationRestrictionCompatWords::new(subject_tokens);
+            let subject_words = subject_words.to_word_refs();
+            let source_surface = source_reference_surface_for_words(&subject_words)
+                .or_else(|| this_source_surface_for_words(&subject_words));
             let player_subject = trigger_subject_player_selector_lexed(subject_tokens).is_some();
             let one_or_more = has_leading_one_or_more(subject_tokens) || player_subject;
             let source_filter = parse_attack_trigger_subject_filter_lexed(subject_tokens)?;
@@ -2344,7 +2348,10 @@ fn parse_trigger_clause_lexed_unstacked(
                                     TriggerSpec::DealsCombatDamageToPlayer { source, player }
                                 }
                             }
-                            None => TriggerSpec::ThisDealsCombatDamageToPlayer { player },
+                            None => TriggerSpec::ThisDealsCombatDamageToPlayer {
+                                player,
+                                source_surface: source_surface.clone(),
+                            },
                         });
                     }
 
@@ -2363,7 +2370,10 @@ fn parse_trigger_clause_lexed_unstacked(
                                 }
                             }
                             None if player == PlayerFilter::Any => {
-                                TriggerSpec::ThisDealsCombatDamageToPlayer { player }
+                                TriggerSpec::ThisDealsCombatDamageToPlayer {
+                                    player,
+                                    source_surface: source_surface.clone(),
+                                }
                             }
                             None => {
                                 return Err(CardTextError::ParseError(format!(

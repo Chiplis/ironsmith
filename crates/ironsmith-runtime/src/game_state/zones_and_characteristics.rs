@@ -3639,10 +3639,11 @@ impl GameState {
             if effect.is_active(self, current_turn) {
                 retained_restrictions.push(effect.clone());
                 active_restrictions.push(effect.clone());
-            } else if matches!(
-                effect.duration,
-                crate::effect::Until::ControllersNextUntapStep
-            ) && !effect.is_expired(current_turn)
+            } else if effect.is_pending()
+                || (matches!(
+                    effect.duration,
+                    crate::effect::Until::ControllersNextUntapStep
+                ) && !effect.is_expired(current_turn))
             {
                 retained_restrictions.push(effect.clone());
             }

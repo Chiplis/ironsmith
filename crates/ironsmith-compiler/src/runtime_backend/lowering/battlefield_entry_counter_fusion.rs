@@ -37,6 +37,14 @@ impl CounterFollowup {
             | Self::Conditional { tag, .. } => tag,
         }
     }
+
+    fn amount(&self) -> &crate::effect::Value {
+        match self {
+            Self::Direct { amount, .. }
+            | Self::ObjectConditional { amount, .. }
+            | Self::Conditional { amount, .. } => amount,
+        }
+    }
 }
 
 fn tagged_put_counters(
@@ -336,12 +344,21 @@ fn build_counter_spec(
             counter_type,
             amount,
             ..
-        } => BattlefieldEntryCounterSpec::new(
-            counter_type,
-            consume_inline_entry_surface(amount),
-            BattlefieldEntryCounterSurface::Inline,
-        )
-        .for_matching_object_optional(inferred_filter),
+        } => {
+            let surface = if amount
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
+            {
+                BattlefieldEntryCounterSurface::EachOfThemEnters
+            } else {
+                BattlefieldEntryCounterSurface::Inline
+            };
+            BattlefieldEntryCounterSpec::new(
+                counter_type,
+                consume_inline_entry_surface(amount),
+                surface,
+            )
+            .for_matching_object_optional(inferred_filter)
+        }
         CounterFollowup::ObjectConditional {
             counter_type,
             amount,
@@ -480,6 +497,61 @@ fn fuse_effect_list(effects: &mut Vec<Effect>) {
     }
 }
 
+/// Fuse an explicitly authored entry-time counter sentence with the move in
+/// the preceding source sentence. Ordinary later "put a counter" actions stay
+/// separate; only the InlineBattlefieldEntryCounter marker can cross a source
+/// sentence boundary.
+fn fuse_across_segment_boundaries(segments: &mut Vec<crate::resolution::ResolutionSegment>) {
+    let mut index = 0usize;
+    while index + 1 < segments.len() {
+        if !segments[index].self_replacements.is_empty()
+            || !segments[index + 1].self_replacements.is_empty()
+        {
+            index += 1;
+            continue;
+        }
+        let Some(producer) = segments[index].default_effects.last().cloned() else {
+            index += 1;
+            continue;
+        };
+        let Some(followup_effect) = segments[index + 1].default_effects.first() else {
+            index += 1;
+            continue;
+        };
+        let Some(followup) = counter_followup(followup_effect) else {
+            index += 1;
+            continue;
+        };
+        if !followup
+            .amount()
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        {
+            index += 1;
+            continue;
+        }
+        let Some(producer_tag) = entry_producer_tag(&producer) else {
+            index += 1;
+            continue;
+        };
+        if followup.tag() != &producer_tag {
+            index += 1;
+            continue;
+        }
+
+        let spec = build_counter_spec(&producer, followup, false);
+        let Some(rewritten) = attach_counter_to_producer(&producer, &producer_tag, &spec) else {
+            index += 1;
+            continue;
+        };
+        let producer_index = segments[index].default_effects.len() - 1;
+        segments[index].default_effects[producer_index] = rewritten;
+        segments[index + 1].default_effects.remove(0);
+        if segments[index + 1].default_effects.is_empty() {
+            segments.remove(index + 1);
+        }
+    }
+}
+
 pub(crate) fn fuse_program(program: &mut ResolutionProgram) {
     let mut segments = program.segments.clone();
     for segment in &mut segments {
@@ -488,5 +560,6 @@ pub(crate) fn fuse_program(program: &mut ResolutionProgram) {
             fuse_effect_list(&mut branch.replacement_effects);
         }
     }
+    fuse_across_segment_boundaries(&mut segments);
     *program = ResolutionProgram::new(segments);
 }

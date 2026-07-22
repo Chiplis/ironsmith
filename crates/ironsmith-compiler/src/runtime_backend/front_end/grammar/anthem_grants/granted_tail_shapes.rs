@@ -16,6 +16,7 @@ pub(crate) struct GrantedSubjectFacts {
     pub(crate) rejected_action: bool,
     pub(crate) has_may: bool,
     pub(crate) attached_subject: bool,
+    pub(crate) unbound_pronoun: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,10 +80,15 @@ pub(crate) fn parse_granted_ability_candidates(
 
 pub(crate) fn parse_granted_subject_facts(tokens: &[OwnedLexToken]) -> GrantedSubjectFacts {
     let tokens = trim_lexed_commas(tokens);
+    let words = tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .collect::<Vec<_>>();
     GrantedSubjectFacts {
         rejected_action: contains_parser(tokens, || parse_rejected_subject_action),
         has_may: contains_parser(tokens, || primitives::kw("may").void()),
         attached_subject: primitives::parse_prefix(tokens, parse_attached_subject_head).is_some(),
+        unbound_pronoun: matches!(words.as_slice(), ["it"] | ["they"] | ["them"]),
     }
 }
 

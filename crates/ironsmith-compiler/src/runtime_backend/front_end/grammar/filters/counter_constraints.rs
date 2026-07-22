@@ -88,6 +88,7 @@ fn parse_known_counter_type_word_slice(
         "energy" => CounterType::Energy,
         "experience" => CounterType::Experience,
         "age" => CounterType::Age,
+        "aim" => CounterType::Aim,
         "blood" => CounterType::Blood,
         "ice" => CounterType::Ice,
         "finality" => CounterType::Finality,
@@ -355,6 +356,12 @@ mod tests {
         assert_eq!(
             parse_counter_type_from_tokens(&compound),
             Some(CounterType::DoubleStrike)
+        );
+
+        let lore_with_target = lex_line("lore counters on target Saga", 0).unwrap();
+        assert_eq!(
+            parse_counter_type_from_tokens(&lore_with_target),
+            Some(CounterType::Lore)
         );
     }
 

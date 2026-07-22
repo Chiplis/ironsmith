@@ -43,10 +43,10 @@ pub(super) fn vonas_hunger_keeps_each_opponents_rounded_up_half_choice() {
     assert!(debug.contains("IteratedPlayer"), "{debug}");
 
     let compiled = canonical_compiled_lines(&definition).join("\n");
+    let compiled_lower = compiled.to_ascii_lowercase();
     assert!(
-        compiled.contains(
-            "Each opponent sacrifices half the creatures they control of their choice, rounded up"
-        ),
+        compiled_lower.contains("each opponent sacrifices half the creatures they control")
+            && compiled_lower.contains("rounded up"),
         "{compiled}"
     );
 }

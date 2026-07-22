@@ -11,6 +11,23 @@
         return String::new();
     }
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if let [choose_effect, for_each_effect] = sequence.effects.as_slice()
+            && let Some(choose) =
+                choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        {
+            if let Some(for_each) =
+                for_each_effect.downcast_ref::<crate::effects::ForEachObject>()
+                && let Some(compact) = describe_choose_then_for_each_object_copy(choose, for_each)
+            {
+                return compact;
+            }
+            if let Some(for_each) =
+                for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()
+                && let Some(compact) = describe_choose_then_for_each_copy(choose, for_each)
+            {
+                return compact;
+            }
+        }
         if let Some(compact) = describe_coordinated_sequence(sequence) {
             return compact;
         }
@@ -342,11 +359,22 @@
         // Inside an explicit per-object loop, the generic object reference is
         // unambiguously the current iterand. Keep this scoped to ForEachObject:
         // outside a loop, "that object" can be the only clear antecedent.
-        let effect_text = describe_effect_list(&for_each.effects)
+        let mut effect_text = describe_effect_list(&for_each.effects)
             .replace("That object's", "Its")
             .replace("that object's", "its")
             .replace("That object", "It")
             .replace("that object", "it");
+        if effect_text.contains("flip")
+            && effect_text.contains("combat damage that would be dealt by it")
+        {
+            effect_text = effect_text.replace(
+                "combat damage that would be dealt by it",
+                &format!(
+                    "combat damage that would be dealt by that {}",
+                    describe_iterated_object_reference_noun(&for_each.filter)
+                ),
+            );
+        }
         return format!(
             "For each {}, {}",
             filter_text,
@@ -500,6 +528,16 @@
         {
             return compact;
         }
+        // Keep exact multi-slot choice bundles ahead of broader per-player
+        // renderers that can truthfully, but noisily, spell out each slot.
+        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
+            return compact;
+        }
+        if let Some(compact) =
+            describe_for_players_choose_creature_then_destroy_rest(for_players)
+        {
+            return compact;
+        }
         if let Some(compact) = describe_for_players_correlated_result_loop(for_players) {
             return compact;
         }
@@ -532,9 +570,6 @@
         if let Some(compact) =
             describe_for_players_reveal_top_mana_value_life_then_put_into_hand(for_players)
         {
-            return compact;
-        }
-        if let Some(compact) = describe_for_players_choose_types_then_sacrifice_rest(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_split_piles_then_choose_sacrifice(for_players) {
@@ -1127,6 +1162,22 @@
             None => "",
         };
         let target = if move_to_zone.zone == Zone::Battlefield
+            && let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target)
+        {
+            let target_text =
+                describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
+            let from_text = match owner {
+                Some(owner) => format!(
+                    "{} graveyard",
+                    describe_possessive_graveyard_owner_filter(&owner)
+                ),
+                None if choose_spec_allows_multiple(&move_to_zone.target) => {
+                    "graveyards".to_string()
+                }
+                None => "a graveyard".to_string(),
+            };
+            format!("{target_text} from {from_text}")
+        } else if move_to_zone.zone == Zone::Battlefield
             && let Some(target) = describe_hand_or_graveyard_choice_target(&move_to_zone.target)
         {
             target
@@ -1136,6 +1187,15 @@
             "those cards".to_string()
         } else {
             describe_choose_spec(&move_to_zone.target)
+        };
+        let target = if move_to_zone.zone == Zone::Battlefield {
+            match target.to_ascii_lowercase().as_str() {
+                "him" | "her" | "them" => "it".to_string(),
+                "himself" | "herself" | "themselves" => "itself".to_string(),
+                _ => target,
+            }
+        } else {
+            target
         };
         let contextual_destination = match (
             move_to_zone.destination_player_surface.as_ref(),
@@ -1205,6 +1265,22 @@
                 }
             }
             Zone::Hand => {
+                if let Some(owner) = graveyard_owner_from_spec(&move_to_zone.target) {
+                    let target_text =
+                        describe_choose_spec_without_graveyard_zone(&move_to_zone.target);
+                    let from_text = match &owner {
+                        Some(owner) => format!(
+                            "{} graveyard",
+                            describe_possessive_graveyard_owner_filter(owner)
+                        ),
+                        None => "a graveyard".to_string(),
+                    };
+                    let to_text = contextual_destination.clone().unwrap_or_else(|| match &owner {
+                        Some(owner) => format!("{} hand", describe_possessive_player_filter(owner)),
+                        None => owner_hand_phrase_for_spec(&move_to_zone.target).to_string(),
+                    });
+                    return format!("Return {target_text} from {from_text} to {to_text}");
+                }
                 let is_put = matches!(move_to_zone.target.base(), ChooseSpec::Tagged(tag)
                     if tag.as_str().starts_with("revealed_")
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "revealed")
@@ -1352,6 +1428,11 @@
                 } else {
                     ""
                 };
+                let transformed_suffix = if move_to_zone.enters_transformed {
+                    " transformed"
+                } else {
+                    ""
+                };
                 let controller_suffix = match move_to_zone.battlefield_controller {
                     crate::effects::BattlefieldController::Preserve => "",
                     crate::effects::BattlefieldController::Owner => owner_control_suffix,
@@ -1363,11 +1444,11 @@
                         crate::effects::BattlefieldController::Owner
                     ) {
                         format!(
-                            "Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{controller_suffix}"
+                            "Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}"
                         )
                     } else {
                         format!(
-                            "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{controller_suffix}"
+                            "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}"
                         )
                     }
                 } else if let crate::target::ChooseSpec::Tagged(tag) = &move_to_zone.target
@@ -1377,11 +1458,11 @@
                         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled"))
                 {
                     format!(
-                        "Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{controller_suffix}"
+                        "Return {target} to the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}"
                     )
                 } else {
                     format!(
-                        "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{controller_suffix}"
+                        "Put {target} onto the battlefield{tapped_suffix}{attacking_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}"
                     )
                 }
             }
@@ -1671,10 +1752,67 @@
         {
             return "Destroy each artifact, creature, and enchantment with mana value less than or equal to the amount of {E} paid this way".to_string();
         }
+        if let ChooseSpec::All(filter) = destroy.spec.unhinted()
+            && filter.card_types.len() > 1
+        {
+            let mut remainder = filter.clone();
+            let card_types = std::mem::take(&mut remainder.card_types);
+            if remainder.zone == Some(Zone::Battlefield) {
+                remainder.zone = None;
+            }
+            remainder.set_explicit_card_noun(false);
+            if remainder == ObjectFilter::default() {
+                let plurals = card_types
+                    .iter()
+                    .map(|card_type| pluralize_noun_phrase(card_type.name()))
+                    .collect::<Vec<_>>();
+                return format!("Destroy all {}", join_with_and(&plurals));
+            }
+        }
+        if let ChooseSpec::All(filter) = destroy.spec.unhinted()
+            && filter.any_of.len() > 1
+        {
+            let mut outer_remainder = filter.clone();
+            let branches = std::mem::take(&mut outer_remainder.any_of);
+            if outer_remainder.zone == Some(Zone::Battlefield) {
+                outer_remainder.zone = None;
+            }
+            outer_remainder.set_explicit_card_noun(false);
+
+            if outer_remainder == ObjectFilter::default() {
+                let card_types = branches
+                    .into_iter()
+                    .map(|mut branch| {
+                        if branch.zone == Some(Zone::Battlefield) {
+                            branch.zone = None;
+                        }
+                        branch.set_explicit_card_noun(false);
+                        let [card_type] = branch.card_types.as_slice() else {
+                            return None;
+                        };
+                        let card_type = *card_type;
+                        branch.card_types.clear();
+                        (branch == ObjectFilter::default()).then_some(card_type)
+                    })
+                    .collect::<Option<Vec<_>>>();
+                if let Some(card_types) = card_types {
+                    let plurals = card_types
+                        .iter()
+                        .map(|card_type| pluralize_noun_phrase(card_type.name()))
+                        .collect::<Vec<_>>();
+                    return format!("Destroy all {}", join_with_and(&plurals));
+                }
+            }
+        }
         let where_clause = choose_spec_dynamic_count_value_where_clause(&destroy.spec)
             .or_else(|| choose_spec_filter_where_x_clause(&destroy.spec))
             .unwrap_or_default();
-        return format!("Destroy {}{where_clause}", describe_choose_spec(&destroy.spec));
+        let target = if matches!(destroy.spec.base(), ChooseSpec::Iterated) {
+            "that object".to_string()
+        } else {
+            describe_choose_spec(&destroy.spec)
+        };
+        return format!("Destroy {target}{where_clause}");
     }
     if let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() {
         if let Some(for_each) = unwrap_basic_tag_wrappers(&with_source.effect)
@@ -2085,6 +2223,12 @@
             let (amount, where_clause) = if let Some(where_x) =
                 describe_where_x_basis(&distributed.amount)
             {
+                let provenance = describe_distributed_damage_amount(&distributed.amount);
+                let where_x = if provenance == "that Equipment's mana value" {
+                    provenance
+                } else {
+                    where_x
+                };
                 ("X damage".to_string(), format!(", where X is {where_x}"))
             } else if matches!(
                 distributed.amount.unhinted(),
@@ -2118,6 +2262,12 @@
                     describe_distributed_damage_target(&distributed.target)
                 );
             }
+            let provenance = describe_distributed_damage_amount(&distributed.amount);
+            let where_x = if provenance == "that Equipment's mana value" {
+                provenance
+            } else {
+                where_x
+            };
             return format!(
                 "Deal X damage divided as you choose among {}, where X is {where_x}",
                 describe_distributed_damage_target(&distributed.target)
@@ -2674,6 +2824,18 @@
         return describe_return_all_to_battlefield_effect(return_all_to_battlefield);
     }
     if let Some(draw) = effect.downcast_ref::<crate::effects::DrawCardsEffect>() {
+        if draw.player == PlayerFilter::You
+            && draw
+                .count
+                .has_surface_hint(ValueSurfaceHint::AdditionalCards)
+        {
+            if let Some(dynamic) = describe_draw_for_each(draw)
+                && let Some(rest) = dynamic.strip_prefix("you draw ")
+            {
+                return format!("Draw {rest}");
+            }
+            return format!("Draw {}", describe_card_count(&draw.count));
+        }
         if let Some(dynamic_for_each) = describe_draw_for_each_turn_history(draw) {
             return dynamic_for_each;
         }
@@ -2883,6 +3045,28 @@
                 describe_for_each_count_filter(filter)
             );
         }
+        if let Value::Scaled(value, multiplier) = gain.amount.unhinted()
+            && let Value::Count(filter) = value.unhinted()
+        {
+            return format!(
+                "{} {} {} life for each {}",
+                player,
+                player_verb(&player, "gain", "gains"),
+                multiplier,
+                describe_for_each_count_filter(filter)
+            );
+        }
+        if let Value::Add(left, right) = gain.amount.unhinted()
+            && left.unhinted() == right.unhinted()
+            && let Value::Count(filter) = left.unhinted()
+        {
+            return format!(
+                "{} {} 2 life for each {}",
+                player,
+                player_verb(&player, "gain", "gains"),
+                describe_for_each_count_filter(filter)
+            );
+        }
         if let Value::CountScaled(filter, multiplier) = gain.amount.unhinted() {
             return format!(
                 "{} {} {} life for each {}",
@@ -3009,6 +3193,7 @@
         }
         if lose.amount.has_surface_hint(ValueSurfaceHint::ForEach) {
             let (basis, multiplier) = match lose.amount.unhinted() {
+                Value::Scaled(basis, multiplier) => (basis.as_ref(), *multiplier),
                 Value::Add(left, right) if left == right => (left.as_ref(), 2),
                 basis => (basis, 1),
             };
@@ -3113,6 +3298,28 @@
                 describe_for_each_count_filter(filter)
             );
         }
+        if let Value::Scaled(value, multiplier) = lose.amount.unhinted()
+            && let Value::Count(filter) = value.unhinted()
+        {
+            return format!(
+                "{} {} {} life for each {}",
+                player,
+                player_verb(&player, "lose", "loses"),
+                multiplier,
+                describe_for_each_count_filter(filter)
+            );
+        }
+        if let Value::Add(left, right) = lose.amount.unhinted()
+            && left.unhinted() == right.unhinted()
+            && let Value::Count(filter) = left.unhinted()
+        {
+            return format!(
+                "{} {} 2 life for each {}",
+                player,
+                player_verb(&player, "lose", "loses"),
+                describe_for_each_count_filter(filter)
+            );
+        }
         if let Value::CountScaled(filter, multiplier) = lose.amount.unhinted() {
             return format!(
                 "{} {} {} life for each {}",
@@ -3186,6 +3393,10 @@
                 discard.card_filter.as_ref(),
             )
             .is_none()
+            && !matches!(
+                (&discard.count, discard.card_filter.as_ref()),
+                (Value::Count(count_filter), Some(card_filter)) if count_filter == card_filter
+            )
             && let Some(where_x) = describe_where_x_basis(&discard.count)
         {
             return format!(
@@ -3274,6 +3485,12 @@
             );
         }
         if let Value::Count(filter) = amount {
+            let mut display_filter = filter.clone();
+            if display_filter.card_types == [CardType::Creature]
+                && !display_filter.subtypes.is_empty()
+            {
+                display_filter.card_types.clear();
+            }
             let has_tagged_shared_subtype = filter.tagged_constraints.iter().any(|constraint| {
                 matches!(constraint.tag.as_str(), "__it__" | "triggering")
                     && constraint.relation
@@ -3293,7 +3510,7 @@
             return format!(
                 "Add {} for each {}{}",
                 mana_text,
-                describe_for_each_count_filter(filter),
+                describe_for_each_count_filter(&display_filter),
                 describe_add_mana_destination_suffix(&add_scaled.player)
             );
         }
@@ -3691,6 +3908,14 @@
         let where_clause = choose_spec_dynamic_count_value_where_clause(&return_to_hand.spec)
             .or_else(|| choose_spec_filter_where_x_clause(&return_to_hand.spec))
             .unwrap_or_default();
+        let tagged_set_is_plural = matches!(return_to_hand.spec.base(), ChooseSpec::Tagged(_))
+            && (matches!(
+                return_to_hand.set_quantifier_surface,
+                Some(ironsmith_core::SetQuantifierSurface::Each)
+            ) || return_to_hand
+                .set_reference_surface
+                .as_deref()
+                .is_some_and(subject_is_plural));
         let target_text = if matches!(return_to_hand.spec.base(), ChooseSpec::Tagged(_)) {
             return_to_hand
                 .set_reference_surface
@@ -3711,7 +3936,13 @@
             target_text,
             contextual_hand
                 .as_deref()
-                .unwrap_or_else(|| owner_hand_phrase_for_spec(&return_to_hand.spec)),
+                .unwrap_or_else(|| {
+                    if tagged_set_is_plural {
+                        "their owners' hands"
+                    } else {
+                        owner_hand_phrase_for_spec(&return_to_hand.spec)
+                    }
+                }),
             where_clause
         );
     }
@@ -4465,10 +4696,32 @@
                 describe_choose_spec(&exchange_control.permanent1)
             );
         }
+        let mut permanent2 = describe_choose_spec(&exchange_control.permanent2);
+        if let Some(reference_tag) = exchange_control.permanent1_reference_tag.as_ref()
+            && let ChooseSpec::Object(filter) = exchange_control.permanent2.base()
+            && let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) =
+                filter.power.as_ref()
+            && let Value::PowerOf(spec) = value.unhinted()
+            && choose_spec_references_exact_tag(spec, reference_tag)
+        {
+            let noun = match exchange_control.permanent1.base() {
+                ChooseSpec::Object(filter)
+                    if filter.card_types.as_slice() == [CardType::Creature] =>
+                {
+                    "creature"
+                }
+                ChooseSpec::Object(filter)
+                    if filter.card_types.as_slice() == [CardType::Artifact] =>
+                {
+                    "artifact"
+                }
+                _ => "permanent",
+            };
+            permanent2 = permanent2.replace("its power", &format!("that {noun}'s power"));
+        }
         return format!(
-            "Exchange control of {} and {}{shared_suffix}",
+            "Exchange control of {} and {permanent2}{shared_suffix}",
             describe_choose_spec(&exchange_control.permanent1),
-            describe_choose_spec(&exchange_control.permanent2)
         );
     }
     if let Some(exchange_text_boxes) =
@@ -4732,7 +4985,22 @@
                             .is_none()
                 })
                 .collect::<Vec<_>>();
-            if let Some(inline) = describe_reveal_hand_choose_discard_inline(&visible) {
+            if let Some(mut inline) = describe_reveal_hand_choose_discard_inline(&visible) {
+                if let Some(target) = conditional.if_true.iter().find_map(|effect| {
+                    structural_unwrap_render_wrappers(effect)
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .filter(|target| !target.explicit_declaration)
+                }) && let Some(look) = visible.first().and_then(|effect| {
+                    effect.downcast_ref::<crate::effects::LookAtHandEffect>()
+                }) {
+                    let ordinary_subject = capitalize_first(&describe_choose_spec(&look.target));
+                    let target_subject = capitalize_first(&describe_choose_spec(
+                        &ChooseSpec::target(target.target.clone()),
+                    ));
+                    if let Some(rest) = inline.strip_prefix(&ordinary_subject) {
+                        inline = format!("{target_subject}{rest}");
+                    }
+                }
                 return format!(
                     "If {}, {}",
                     describe_condition(&conditional.condition),
@@ -4886,6 +5154,9 @@
             {
                 return format!("{true_branch} if {condition_text}");
             }
+            if matches!(conditional.condition, crate::effect::Condition::YourTurn) {
+                true_branch = lowercase_first(true_branch.trim());
+            }
             return format!("If {}, {}", condition_text, true_branch);
         }
         let condition_text = describe_condition(&conditional.condition);
@@ -4922,11 +5193,32 @@
             if is_reflexive_choose_one_followup(if_effect, &then_text) {
                 return format!("When you do, {}", lowercase_first(then_text.trim_start()));
             }
+            if matches!(
+                if_effect.predicate,
+                EffectPredicate::PriorEffectResult(_)
+            ) {
+                return format!(
+                    "If {}, {}",
+                    describe_effect_predicate(&if_effect.predicate),
+                    then_text
+                );
+            }
             return format!(
                 "If effect #{} {}, {}",
                 if_effect.condition.0,
                 describe_effect_predicate(&if_effect.predicate),
                 then_text
+            );
+        }
+        if matches!(
+            if_effect.predicate,
+            EffectPredicate::PriorEffectResult(_)
+        ) {
+            return format!(
+                "If {}, {}. Otherwise, {}",
+                describe_effect_predicate(&if_effect.predicate),
+                then_text,
+                else_text
             );
         }
         return format!(
@@ -5083,6 +5375,12 @@
                 describe_player_filter(decider)
             };
             let mut inner = describe_effect_list(&may.effects);
+            // When the chooser and searched-library owner are the same
+            // relative player, the inner renderer necessarily uses a
+            // possessive description (for example, "its controller's").
+            // Once that player is promoted to the subject of the outer may
+            // clause, Oracle uses the reflexive pronoun "their" instead.
+            inner = normalize_actor_owned_search_origin(decider, inner);
             if each_opponent {
                 inner = inner
                     .replace("an opponent's library", "their library")

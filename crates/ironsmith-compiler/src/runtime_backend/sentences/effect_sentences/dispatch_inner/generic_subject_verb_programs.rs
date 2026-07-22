@@ -1030,6 +1030,19 @@ const REQUIRED_EXTRA_VOTE_PATTERN: effect_grammar::EffectSequence<'static> =
             effect_grammar::EffectCaptureKind::OneOf(&["time", "times"]),
         ),
     ]);
+const SUBJECTLESS_EXTRA_VOTE_PATTERN: effect_grammar::EffectSequence<'static> =
+    effect_grammar::EffectSequence::new(&[
+        effect_grammar::EffectSequence::action(
+            "vote",
+            effect_grammar::EffectCaptureKind::OneOf(&["vote", "votes"]),
+        ),
+        effect_grammar::EffectSequence::optional(OPTIONAL_AN_PATTERN_ATOMS),
+        effect_grammar::EffectSequence::word("additional"),
+        effect_grammar::EffectSequence::amount(
+            "time",
+            effect_grammar::EffectCaptureKind::OneOf(&["time", "times"]),
+        ),
+    ]);
 const DAMAGE_REPLACEMENT_COUNTER_TARGET_PHRASE: &[&str] = &["damage", "would", "be", "dealt", "to"];
 const DAMAGE_REPLACEMENT_COUNTER_DURATION_PHRASE: &[&str] = &["this", "turn"];
 const DAMAGE_REPLACEMENT_COUNTER_PREVENT_PUT_PHRASE: &[&str] = &[
@@ -1050,7 +1063,7 @@ fn has_where_x_value_binding(tokens: &[OwnedLexToken]) -> bool {
             .is_some()
 }
 
-fn parse_any_player_may_have_source_deal_damage(
+pub(crate) fn parse_any_player_may_have_source_deal_damage(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let Some(shape) = effect_grammar::parse_any_player_source_damage(tokens) else {
@@ -1075,13 +1088,28 @@ fn parse_any_player_may_have_source_deal_damage(
         return Ok(None);
     }
 
-    Ok(Some(vec![EffectAst::MayByPlayer {
-        player: shape.player,
-        effects: vec![EffectAst::subject_verb_damage(
-            amount,
-            TargetAst::Player(shape.player_filter, None),
-        )],
-    }]))
+    let damage = EffectAst::subject_verb_damage(
+        amount,
+        TargetAst::Player(
+            if matches!(shape.player, PlayerAst::Any | PlayerAst::Opponent) {
+                PlayerFilter::IteratedPlayer
+            } else {
+                shape.player_filter.clone()
+            },
+            None,
+        ),
+    );
+    if matches!(shape.player, PlayerAst::Any | PlayerAst::Opponent) {
+        Ok(Some(vec![EffectAst::AnyPlayerMay {
+            players: shape.player_filter,
+            effects: vec![damage],
+        }]))
+    } else {
+        Ok(Some(vec![EffectAst::MayByPlayer {
+            player: shape.player,
+            effects: vec![damage],
+        }]))
+    }
 }
 
 pub(crate) fn parse_top_level_subject_verb_recognition(
@@ -1896,7 +1924,7 @@ fn parse_generic_consult_reveal_until_subject_verb(
     Ok(Some(parts.effects))
 }
 
-fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
+pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let sentence_tokens =
@@ -2962,6 +2990,12 @@ fn parse_generic_extra_vote(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
             optional: false,
         });
     }
+    if SUBJECTLESS_EXTRA_VOTE_PATTERN.parse_full(clause).is_some() {
+        return Some(EffectAst::VoteExtra {
+            count: 1,
+            optional: false,
+        });
+    }
     None
 }
 
@@ -3439,6 +3473,19 @@ mod generic_subject_verb_program_tests {
             .expect("required extra vote text should lex");
         let effect =
             parse_generic_extra_vote(&tokens).expect("required extra vote parser should match");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("VoteExtra"), "{debug}");
+        assert!(debug.contains("count: 1"), "{debug}");
+        assert!(debug.contains("optional: false"), "{debug}");
+    }
+
+    #[test]
+    fn extra_vote_accepts_subjectless_clause_inside_optional_wrapper() {
+        let tokens = crate::runtime_backend::lex_line("Vote an additional time.", 0)
+            .expect("subjectless extra vote text should lex");
+        let effect =
+            parse_generic_extra_vote(&tokens).expect("subjectless extra vote parser should match");
         let debug = format!("{effect:#?}");
 
         assert!(debug.contains("VoteExtra"), "{debug}");

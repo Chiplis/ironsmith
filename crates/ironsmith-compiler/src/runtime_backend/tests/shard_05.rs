@@ -2489,14 +2489,14 @@ pub(super) fn rewrite_lowering_conditional_antecedent_prelude_carries_target_spe
             "Target creature you control gets +2/+2 until end of turn if its power is 2. Then it fights target creature you don't control.",
         )?;
 
-    let effects = &def
+    let program = def
         .spell_effect
         .as_ref()
-        .expect("spell should lower to a resolution program")
-        .segments[0]
-        .default_effects;
-    let conditional = effects
+        .expect("spell should lower to a resolution program");
+    let conditional = program
+        .segments
         .iter()
+        .flat_map(|segment| &segment.default_effects)
         .find_map(|effect| effect.downcast_ref::<crate::effects::ConditionalEffect>())
         .expect("conditional pump should lower to a conditional effect");
     let condition_tag = match &conditional.condition {
@@ -2504,8 +2504,10 @@ pub(super) fn rewrite_lowering_conditional_antecedent_prelude_carries_target_spe
         other => panic!("expected tagged-object condition, got {other:?}"),
     };
 
-    let tagged_prelude = effects
+    let tagged_prelude = program
+        .segments
         .iter()
+        .flat_map(|segment| &segment.default_effects)
         .find_map(|effect| {
             let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
             (tagged.tag.as_str() == condition_tag.as_str()).then_some(tagged)

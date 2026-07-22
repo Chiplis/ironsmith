@@ -181,6 +181,10 @@ fn parse_statement_to_chunks_impl(
         let effects = parse_effect_sentences_preserving_source_boundaries(parse_tokens)?;
         return Ok(vec![LineAst::Statement { effects }]);
     }
+    if !parse_groups.is_empty() && linked_statement_should_stay_grouped(parse_tokens) {
+        let effects = parse_effect_sentences_preserving_source_boundaries(parse_tokens)?;
+        return Ok(vec![LineAst::Statement { effects }]);
+    }
     if !parse_groups.is_empty() {
         if sentences_form_anaphoric_damage_self_replacement(parse_groups) {
             let group_tokens = join_sentences_with_period(parse_groups);
@@ -642,6 +646,16 @@ fn returned_object_static_followup_effects<S: AsRef<[OwnedLexToken]>>(
 }
 
 fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
+    let sentences = split_lexed_sentences(tokens);
+    if let [replacement, delayed_return] = sentences.as_slice()
+        && crate::runtime_backend::front_end::grammar::effects::is_filtered_future_exile_return_next_end_step_shape(
+            replacement,
+            delayed_return,
+        )
+    {
+        return true;
+    }
+
     let line_family = classify_statement_line_family_lexed(tokens);
     if matches!(
         line_family,
@@ -1694,6 +1708,60 @@ fn lower_special_rewrite_triggered_oath(
     line: &RewriteTriggeredLine,
     trigger_parse_tokens: &[OwnedLexToken],
 ) -> Result<Option<LineAst>, CardTextError> {
+    if matches!(
+        semantic_grammar::parse_special_triggered_program_tokens(&line.full_parse_tokens),
+        Some(semantic_grammar::SpecialTriggeredProgram::OpponentLandMajoritySearch)
+    ) {
+        let trigger = if trigger_parse_tokens.is_empty() {
+            TriggerSpec::BeginningOfUpkeep(PlayerFilter::Any)
+        } else {
+            parse_trigger_clause_lexed(trigger_parse_tokens)?
+        };
+        let mut basic_land = ObjectFilter::land().with_supertype(crate::types::Supertype::Basic);
+        basic_land.set_explicit_card_noun(true);
+        let effects = vec![
+            EffectAst::subject_verb_explicit_target_only_for_chooser(
+                TargetAst::Player(
+                    PlayerFilter::OpponentWithMoreControlledObjectsThan {
+                        player: Box::new(PlayerFilter::Active),
+                        filter: Box::new(ObjectFilter::land()),
+                    },
+                    Some(crate::TextSpan::synthetic()),
+                ),
+                PlayerAst::Active,
+            ),
+            EffectAst::MayByPlayer {
+                player: PlayerAst::Active,
+                effects: vec![EffectAst::subject_verb_search_library(
+                    basic_land,
+                    Zone::Battlefield,
+                    PlayerAst::Active,
+                    PlayerAst::Active,
+                    crate::effect::SearchSelectionMode::Exact,
+                    false,
+                    true,
+                    ChoiceCount::exactly(1),
+                    None,
+                    None,
+                    crate::effect::SearchResultReferenceSurface::ThatCard,
+                    false,
+                )],
+            },
+        ];
+        return Ok(Some(LineAst::Ability(rewrite_parsed_triggered_ability(
+            trigger.clone(),
+            effects,
+            infer_triggered_ability_functional_zones_from_facts(
+                &trigger,
+                &line.info.semantic_facts.triggered_ability.functional_zones,
+            ),
+            Some(line.info.raw_line.clone()),
+            None,
+            None,
+            ReferenceImports::default(),
+        ))));
+    }
+
     if matches!(
         semantic_grammar::parse_special_triggered_program_tokens(&line.full_parse_tokens),
         Some(semantic_grammar::SpecialTriggeredProgram::OpponentCreatureMajorityConsult)

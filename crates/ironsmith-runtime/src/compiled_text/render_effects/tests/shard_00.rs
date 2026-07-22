@@ -39,7 +39,10 @@ pub(super) fn mana_rendering_uses_current_oracle_surface_for_your_pool() {
         Value::Count(ObjectFilter::creature()),
         PlayerFilter::You,
     ));
-    assert_eq!(describe_effect(&scaled), "Add {R} for each creature");
+    assert_eq!(
+        describe_effect(&scaled),
+        "Add {R} for each creature on the battlefield"
+    );
 }
 
 #[test]
@@ -221,6 +224,52 @@ pub(super) fn consult_result_battlefield_attachment_compacts_with_remainder() {
 }
 
 #[test]
+pub(super) fn cross_segment_variable_consult_keeps_typed_matched_collection() {
+    let revealed = TagKey::from("__sentence_helper_exiled_test");
+    let matched = TagKey::from("__sentence_helper_consult_match_test");
+    let consult = Effect::new(crate::effects::ConsultTopOfLibraryEffect::new(
+        PlayerFilter::You,
+        crate::effects::consult_helpers::LibraryConsultMode::Exile,
+        ObjectFilter::permanent_card(),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(
+            Value::SourceMutationCount.with_surface_hint(ValueSurfaceHint::WhereXIs),
+        ),
+        revealed,
+        matched.clone(),
+    ));
+    let move_matches = Effect::new(
+        crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(matched.clone()),
+            Zone::Battlefield,
+            false,
+        )
+        .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Put)
+        .with_target_plural_surface(),
+    );
+
+    let effects = [consult, move_matches];
+    let move_to_zone = effects[1]
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .expect("second effect should be a move");
+    assert!(choose_spec_references_tagged_object(
+        &move_to_zone.target,
+        &matched
+    ));
+    assert_eq!(
+        describe_structural_multisentence_effect_list(&effects).as_deref(),
+        Some(
+            "Exile cards from the top of your library until you exile X permanent cards, where X is the number of times this creature has mutated. Put those permanent cards onto the battlefield"
+        )
+    );
+    assert_eq!(
+        describe_cross_segment_consult_bundle(&effects).as_deref(),
+        Some(
+            "Exile cards from the top of your library until you exile X permanent cards, where X is the number of times this creature has mutated. Put those permanent cards onto the battlefield"
+        )
+    );
+}
+
+#[test]
 pub(super) fn reweave_consult_match_move_shuffle_hides_internal_match_tag() {
     let sacrificed = TagKey::from("sacrificed_0");
     let all_revealed = TagKey::from("__sentence_helper_revealed_l0_s0_e1");
@@ -260,7 +309,7 @@ pub(super) fn reweave_consult_match_move_shuffle_hides_internal_match_tag() {
         "{rendered}"
     );
     assert!(
-        rendered.ends_with(", put that card onto the battlefield, then shuffle"),
+        rendered.ends_with(", puts that card onto the battlefield, then shuffles"),
         "{rendered}"
     );
     assert!(!rendered.contains("tagged"), "{rendered}");
@@ -355,7 +404,7 @@ pub(super) fn return_to_hand_preserves_plural_tag_reference_surface() {
 
     assert_eq!(
         describe_effect(&effect),
-        "Return those creatures to their owner's hand"
+        "Return those creatures to their owners' hands"
     );
 }
 
@@ -1156,7 +1205,7 @@ pub(super) fn nested_mill_collection_prefix_compacts_before_independent_rider() 
         .tag(TagKey::from("milled_0"))
         .tag(milled_tag.clone());
 
-    let mut choice_filter = ObjectFilter::permanent().in_zone(Zone::Graveyard);
+    let mut choice_filter = ObjectFilter::permanent_card().in_zone(Zone::Graveyard);
     choice_filter
         .tagged_constraints
         .push(TaggedObjectConstraint {
@@ -1241,7 +1290,7 @@ pub(super) fn describe_with_id_unless_damage_paid_branch_uses_imperative_damage(
 
     assert_eq!(
         describe_effect_list(&[setup, followup]),
-        "Deal 4 damage to any target unless that object's controller pays {2}. If that doesn't happen, deal 2 damage to any target"
+        "Deal 4 damage to any target unless its controller pays {2}. If they do, deal 2 damage to any target"
     );
 }
 
@@ -1313,7 +1362,7 @@ pub(super) fn damaged_player_result_condition_keeps_player_actor() {
 
     assert_eq!(
         describe_effect_list(&[discard, draw]),
-        "That player discards a card at random. If the player does, that player draws a card"
+        "that player discards a card at random. If they do, that player draws a card"
     );
 }
 
@@ -1456,7 +1505,7 @@ pub(super) fn describe_with_id_exile_choose_one_followup_as_reflexive_modal_choi
 
     assert_eq!(
         describe_effect_list(&[setup, followup]),
-        "Exile target card in a graveyard. When you do, choose one —\n• Draw a card.\n• Gain 2 life."
+        "Exile target card from a graveyard. When you do, choose one —\n• Draw a card.\n• Gain 2 life."
     );
 }
 
@@ -2851,6 +2900,27 @@ pub(super) fn generic_becomes_blocked_attached_subject_omits_indefinite_article(
 }
 
 #[test]
+pub(super) fn generic_attack_attached_subject_omits_indefinite_article() {
+    for tag in ["enchanted", "equipped"] {
+        let triggered = crate::ability::TriggeredAbility {
+            trigger: crate::triggers::Trigger::attacks(
+                crate::target::ObjectFilter::creature()
+                    .match_tagged(tag, crate::target::TaggedOpbjectRelation::IsTaggedObject),
+            ),
+            effects: crate::resolution::ResolutionProgram::from_effects(Vec::new()),
+            choices: Vec::new(),
+            intervening_if: None,
+            presentation_label: None,
+        };
+
+        assert_eq!(
+            describe_trigger_surface_with_frequency(&triggered, None, "this creature"),
+            format!("Whenever {tag} creature attacks")
+        );
+    }
+}
+
+#[test]
 pub(super) fn source_bound_trigger_heads_use_typed_self_subjects() {
     let render = |trigger, self_subject| {
         let triggered = crate::ability::TriggeredAbility {
@@ -2989,13 +3059,39 @@ pub(super) fn destroyed_metric_for_each_surfaces_render_counters_and_life_multip
     );
 
     let gain_two = Effect::gain_life(
-        Value::Add(Box::new(destroyed.clone()), Box::new(destroyed))
+        Value::Add(Box::new(destroyed.clone()), Box::new(destroyed.clone()))
             .with_surface_hint(ValueSurfaceHint::ForEach),
     );
     assert_eq!(
         describe_effect(&gain_two),
         "you gain 2 life for each creature destroyed this way"
     );
+
+    let lose_two = Effect::lose_life(
+        Value::Scaled(Box::new(destroyed), 2).with_surface_hint(ValueSurfaceHint::ForEach),
+    );
+    assert_eq!(
+        describe_effect(&lose_two),
+        "you lose 2 life for each creature destroyed this way"
+    );
+}
+
+#[test]
+pub(super) fn scaled_count_life_loss_uses_per_object_surface() {
+    let mut destroyed = ObjectFilter::creature();
+    destroyed.zone = None;
+    destroyed.set_prior_effect_action_surface(Some(crate::effect::PriorEffectAction::Destroyed));
+    let count = Value::Count(destroyed);
+    for amount in [
+        Value::Scaled(Box::new(count.clone()), 2),
+        Value::Add(Box::new(count.clone()), Box::new(count)),
+    ] {
+        let lose = Effect::lose_life(amount);
+        assert_eq!(
+            describe_effect(&lose),
+            "you lose 2 life for each creature destroyed this way"
+        );
+    }
 }
 
 #[test]
@@ -3866,6 +3962,30 @@ pub(super) fn tap_it_then_cant_untap_keeps_it_reference() {
 }
 
 #[test]
+pub(super) fn tagged_blocked_set_tap_then_cant_untap_keeps_distributive_reference() {
+    let selected = TagKey::from("selected_creatures");
+    let tapped = TagKey::from("tapped_creatures");
+    let mut blocked = ObjectFilter::creature();
+    blocked.blocked = true;
+    blocked.blocked_by = Some(crate::filter::ObjectRef::Tagged(selected));
+
+    let tag = Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+        blocked.clone(),
+        tapped.clone(),
+    ));
+    let tap = Effect::tap(ChooseSpec::All(blocked));
+    let cant = Effect::cant_until(
+        crate::effect::Restriction::Untap(ObjectFilter::tagged(tapped)),
+        Until::ControllersNextUntapStep,
+    );
+
+    assert_eq!(
+        describe_effect_list(&[tag, tap, cant]),
+        "Tap each creature that was blocked by one of those creatures this turn and it doesn't untap during its controller's next untap step"
+    );
+}
+
+#[test]
 pub(super) fn target_player_life_loss_you_gain_shared_greatest_power_uses_x_surface() {
     let greatest_power =
         Value::GreatestPower(ObjectFilter::creature().controlled_by(PlayerFilter::You));
@@ -4191,6 +4311,29 @@ pub(super) fn up_to_one_choose_then_destroy_all_others_renders_rest_surface() {
 }
 
 #[test]
+pub(super) fn destroy_all_plain_type_union_uses_inclusive_and_surface() {
+    let mut filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+    filter.card_types = vec![CardType::Artifact, CardType::Enchantment];
+    let destroy = Effect::new(crate::effects::DestroyEffect::all(filter));
+
+    assert_eq!(
+        describe_effect(&destroy),
+        "Destroy all artifacts and enchantments"
+    );
+
+    let mut union = ObjectFilter::default();
+    union.any_of = vec![
+        ObjectFilter::artifact().in_zone(Zone::Battlefield),
+        ObjectFilter::enchantment().in_zone(Zone::Battlefield),
+    ];
+    let destroy = Effect::new(crate::effects::DestroyEffect::all(union));
+    assert_eq!(
+        describe_effect(&destroy),
+        "Destroy all artifacts and enchantments"
+    );
+}
+
+#[test]
 pub(super) fn cant_block_power_toughness_relation_uses_each_subject() {
     let filter = ObjectFilter::creature().with_power_toughness_relation(
         crate::filter::PowerToughnessRelation::ToughnessGreaterThanPower,
@@ -4222,6 +4365,14 @@ pub(super) fn pluralize_creation_provenance_qualifies_the_noun() {
     assert_eq!(
         pluralize_noun_phrase("token created with this enchantment"),
         "tokens created with this enchantment"
+    );
+}
+
+#[test]
+pub(super) fn pluralize_battlefield_location_qualifies_the_noun() {
+    assert_eq!(
+        pluralize_noun_phrase("green creature on the battlefield"),
+        "green creatures on the battlefield"
     );
 }
 
@@ -4399,7 +4550,7 @@ pub(super) fn resolution_program_compacts_tracked_any_number_sacrifice() {
 
     let rendered = super::super::ast_render::describe_resolution_program(&program);
     assert!(
-        rendered.starts_with("You sacrifice any number of Mountains"),
+        rendered.starts_with("Sacrifice any number of Mountains"),
         "{rendered}"
     );
     assert!(!rendered.contains("choose any number"), "{rendered}");
@@ -4658,6 +4809,34 @@ pub(super) fn describe_choose_then_sacrifice_compacts_exact_sentence_helper_set(
 }
 
 #[test]
+pub(super) fn describe_choose_then_sacrifice_preserves_aliased_target_actor() {
+    let tag = TagKey::from("__sentence_helper_sacrificed_l1_s4_e36");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::permanent().in_zone(Zone::Battlefield),
+        ChoiceCount::exactly(7),
+        PlayerFilter::You,
+        tag.clone(),
+    )
+    .in_zone(Zone::Battlefield);
+    let sacrifice = Effect::new(crate::effects::zones::SacrificePlayerEffect::new(
+        ObjectFilter::tagged(tag.clone()),
+        Value::Count(ObjectFilter::tagged(tag)),
+        PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)),
+    ));
+
+    let compact = describe_choose_then_sacrifice(
+        &choose,
+        sacrifice_view(&sacrifice).expect("sacrifice-player view"),
+    )
+    .expect("aliased target sentence-helper chosen set should compact");
+
+    assert_eq!(
+        compact,
+        "that player sacrifices seven permanents of their choice"
+    );
+}
+
+#[test]
 pub(super) fn describe_choose_then_sacrifice_keeps_implicit_you_for_generated_cost_set() {
     let tag = TagKey::from("__sentence_helper_sacrificed_l2_s0_e42");
     let choose = crate::effects::ChooseObjectsEffect::new(
@@ -4757,6 +4936,44 @@ pub(super) fn describe_for_players_choose_then_sacrifice_compacts_multi_count_ta
     assert_eq!(
         compact,
         "Each player sacrifices two creatures of their choice"
+    );
+}
+
+#[test]
+pub(super) fn iterated_shared_card_type_choice_keeps_controller_before_relation() {
+    let chosen_tag = TagKey::from("__it__");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::permanent()
+            .controlled_by(PlayerFilter::IteratedPlayer)
+            .in_zone(Zone::Battlefield)
+            .match_tagged(
+                TagKey::from("sacrificed_0"),
+                TaggedOpbjectRelation::SharesCardType,
+            ),
+        ChoiceCount::exactly(1),
+        PlayerFilter::IteratedPlayer,
+        chosen_tag.clone(),
+    )
+    .in_zone(Zone::Battlefield);
+    let sacrifice = Effect::new(crate::effects::SacrificeTargetEffect::new(
+        ChooseSpec::Tagged(chosen_tag),
+    ));
+    let sequence = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+        Effect::new(choose),
+        sacrifice,
+    ]));
+    let for_players = crate::effects::ForPlayersEffect::new(PlayerFilter::Opponent, vec![sequence]);
+    let expected = "Each opponent chooses a permanent they control that shares a card type with the sacrificed permanent and sacrifices it";
+
+    assert_eq!(
+        describe_for_players_choose_then_sacrifice(&for_players).as_deref(),
+        Some(expected)
+    );
+    let rendered_effect = Effect::new(for_players);
+    assert_eq!(describe_effect(&rendered_effect), expected);
+    assert_eq!(
+        describe_structural_multisentence_effect_list(&[rendered_effect]).as_deref(),
+        Some(expected)
     );
 }
 

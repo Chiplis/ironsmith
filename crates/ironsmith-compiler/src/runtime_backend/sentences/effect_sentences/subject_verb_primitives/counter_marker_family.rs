@@ -468,11 +468,13 @@ pub(crate) fn parse_put_onto_battlefield_with_counters_on_it_sentence(
     .with_exiled_with_source_surface(
         super::super::verb_handlers::parse_exiled_with_source_move_surface(clause.tokens()),
     );
+    let move_effect = if shape.destination.transformed {
+        move_effect.with_move_to_zone_transformed()
+    } else {
+        move_effect
+    };
     let mut effects = vec![move_effect];
     let tagged_target = TargetAst::Tagged(TagKey::from(IT_TAG), clause.span());
-    if shape.destination.transformed {
-        effects.push(EffectAst::subject_verb_transform(tagged_target.clone()));
-    }
     for descriptor in shape.descriptors {
         let count = Value::Fixed(descriptor.count as i32)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter);
@@ -664,7 +666,10 @@ pub(crate) fn parse_tagged_enters_with_additional_counter_sentence(
 
     Ok(Some(vec![EffectAst::subject_verb_put_counters(
         shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32),
+        Value::Fixed(shape.descriptor.count as i32)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence),
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,

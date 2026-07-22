@@ -350,11 +350,37 @@ fn split_station_threshold_condition(line: &str) -> Option<(i32, String)> {
         return Some((threshold, body.trim().to_string()));
     }
 
+    if let Some((body, condition)) = trimmed.rsplit_once(" as long as ")
+        && let Some(threshold) = parse_station_charge_counter_condition(condition)
+    {
+        return Some((threshold, body.trim().to_string()));
+    }
+
     const PREFIX: &str = "As long as CountersOnSource is greater than or equal to ";
-    let rest = trimmed.strip_prefix(PREFIX)?;
-    let (threshold_text, body) = rest.split_once(", ")?;
-    let threshold = parse_station_threshold_value(threshold_text.trim())?;
+    if let Some(rest) = trimmed.strip_prefix(PREFIX) {
+        let (threshold_text, body) = rest.split_once(", ")?;
+        let threshold = parse_station_threshold_value(threshold_text.trim())?;
+        return Some((threshold, body.trim().to_string()));
+    }
+
+    let rest = trimmed.strip_prefix("As long as ")?;
+    let (condition, body) = rest.split_once(", ")?;
+    let threshold = parse_station_charge_counter_condition(condition)?;
     Some((threshold, body.trim().to_string()))
+}
+
+fn parse_station_charge_counter_condition(condition: &str) -> Option<i32> {
+    let lower = condition.trim().to_ascii_lowercase();
+    let threshold = [
+        "the number of charge counters on this source is ",
+        "the number of charge counters on this permanent is ",
+        "the number of charge counters on this artifact is ",
+        "the number of charge counters on this creature is ",
+    ]
+    .into_iter()
+    .find_map(|prefix| lower.strip_prefix(prefix))?
+    .strip_suffix(" or greater")?;
+    parse_station_threshold_value(threshold.trim())
 }
 
 fn parse_station_threshold_value(text: &str) -> Option<i32> {
@@ -1765,6 +1791,7 @@ fn normalize_for_each_number_surface(line: &str) -> String {
             .into_iter()
             .chain(tail.find(" in "))
             .chain(tail.find(" you "))
+            .chain(tail.find(" you've "))
             .chain(tail.find(" among "))
             .min();
         let Some(end_rel) = end_rel else {
@@ -2421,7 +2448,7 @@ mod tests {
         let rendered = compiled_text_lines(&definition).join("\n");
         assert_eq!(
             rendered,
-            "Counter target instant spell or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast that card without paying its mana cost. Then the player shuffles."
+            "Counter target instant spell or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast it without paying its mana cost. Shuffle their library."
         );
         assert!(!rendered.contains("that object's controller"));
         assert!(!rendered.contains("target player shuffles"));
@@ -2521,6 +2548,23 @@ mod tests {
         assert_eq!(
             lines,
             vec!["During your turn, equipped creature gets +2/+0 and has first strike".to_string()]
+        );
+    }
+
+    #[test]
+    fn attached_object_conditions_merge_across_equivalent_surfaces() {
+        let lines = merge_ast_surface_lines(vec![
+            "Enchanted creature gets +1/+1 as long as enchanted creature is blue.".to_string(),
+            "As long as the permanent this source is attached to is blue, enchanted creature can't be blocked."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "As long as enchanted creature is blue, enchanted creature gets +1/+1 and can't be blocked"
+                    .to_string()
+            ]
         );
     }
 
@@ -2983,6 +3027,19 @@ mod tests {
             ]
         );
 
+        let split_layer_lines = merge_ast_surface_lines(vec![
+            "During your turn, Each non-Equipment artifact with mana value 4 or greater you control or a non-Aura enchantment with mana value 4 or greater you control is a creature in addition to its other types.".to_string(),
+            "During your turn, non-Equipment artifacts with mana value 4 or greater you control or non-Aura enchantments with mana value 4 or greater you control have base power and toughness 4/4 and are Elementals in addition to their other types and have indestructible and haste and have \"whenever this creature deals combat damage to a player, draw a card.\"".to_string(),
+        ]);
+
+        assert_eq!(
+            split_layer_lines,
+            vec![
+                "During your turn, each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater is a 4/4 Elemental creature in addition to its other types and has indestructible, haste, and \"Whenever this creature deals combat damage to a player, draw a card.\""
+                    .to_string()
+            ]
+        );
+
         let folded_lines = merge_ast_surface_lines(vec![
             "During your turn, non-Equipment artifacts with mana value 4 or greater you control or non-Aura enchantments with mana value 4 or greater you control are creatures in addition to their other types and have base power and base toughness 4/4 and are Elementals in addition to their other types and have indestructible and haste and have \"whenever this creature deals combat damage to a player, draw a card.\".".to_string(),
         ]);
@@ -3045,6 +3102,26 @@ mod tests {
             lines,
             vec![
                 "Creatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn all_permanent_type_additions_compact_stack_and_owned_zone_subjects() {
+        let lines = merge_ast_surface_lines(vec![
+            "Nonland permanents you control are artifacts in addition to their other types."
+                .to_string(),
+            "Artifact, creature, enchantment, land, planeswalker, and battle spells you control are artifacts in addition to their other types."
+                .to_string(),
+            "Nonland permanent cards in your hand or nonland permanent cards in your library or nonland permanent cards in your graveyard or nonland permanent cards in your exile or nonland permanent cards in your command zone are artifacts in addition to their other types."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "Nonland permanents you control are artifacts in addition to their other types. The same is true for permanent spells you control and nonland permanent cards you own that aren't on the battlefield."
                     .to_string()
             ]
         );

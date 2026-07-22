@@ -3580,7 +3580,7 @@ pub(super) fn apply_alternative_activation_cost_response(
             ))
         })?;
     let view = crate::derived_view::DerivedGameView::new(game);
-    if !crate::decision::activation_total_cost_is_payable_with_view(
+    if !crate::decision::activation_total_cost_branch_is_payable_with_view(
         game,
         pending.activator,
         pending.source,
@@ -4854,6 +4854,12 @@ pub(super) fn finalize_spell_cast(
         if let Some(spell_obj) = game.object_mut(new_id) {
             spell_obj.optional_costs_paid.mark_label_paid("Evoke");
         }
+    }
+    let warped = game.object(new_id).is_some_and(|spell_obj| {
+        casting_method_matches_alternative_name(game, caster, spell_obj, &casting_method, "Warp")
+    });
+    if warped {
+        game.turn_store.turn_history.spell_warped_this_turn = true;
     }
     let selected_alternative_label = alternative_cast_label(game, caster, new_id, &casting_method);
     if let Some(label) = selected_alternative_label.as_deref()

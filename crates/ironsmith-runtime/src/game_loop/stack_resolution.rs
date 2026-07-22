@@ -1503,16 +1503,15 @@ pub(super) fn resolve_stack_entry_full(
                     );
                 }
                 if cast_with_warp {
-                    game.turn_store.turn_history.spell_warped_this_turn = true;
-
                     let exile_then_grant = crate::effects::ScheduleDelayedTriggerEffect::new(
                         Trigger::beginning_of_end_step(crate::target::PlayerFilter::Any),
                         vec![crate::effect::Effect::new(
                             crate::effects::ExileThenGrantPlayEffect::new(
                                 crate::target::ChooseSpec::SpecificObject(result.new_id),
-                                crate::target::PlayerFilter::Specific(entry.controller),
+                                crate::target::PlayerFilter::Specific(obj.owner),
                                 crate::grant::GrantDuration::Forever,
-                            ),
+                            )
+                            .starting_next_turn(),
                         )],
                         true,
                         vec![result.new_id],

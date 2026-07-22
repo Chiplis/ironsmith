@@ -1893,6 +1893,35 @@ pub(super) fn semantic_document_supports_next_turn_silence() {
     );
 
     parsed.expect("expected semantic document parse to succeed");
+
+    let tokens = lex_line(
+        "Each opponent can't cast instant or sorcery spells during that player's next turn.",
+        0,
+    )
+    .expect("rewrite lexer");
+    let effects = super::super::clause_support::parse_effect_sentences_lexed(&tokens)
+        .expect("next-turn restriction AST");
+    let [crate::cards::builders::EffectAst::ForEachOpponent { effects }] = effects.as_slice()
+    else {
+        panic!("expected per-opponent restriction, got {effects:#?}");
+    };
+    let [crate::cards::builders::EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
+        panic!("expected direct scheduled restriction, got {effects:#?}");
+    };
+    let crate::cards::builders::SubjectVerbActionAst::Cant {
+        restriction:
+            crate::effect::Restriction::CastSpellsMatching(
+                crate::target::PlayerFilter::IteratedPlayer,
+                _,
+            ),
+        start:
+            crate::effect::RestrictionStart::NextTurn(crate::target::PlayerFilter::IteratedPlayer),
+        duration: crate::effect::Until::EndOfTurn,
+        ..
+    } = &subject_verb.action
+    else {
+        panic!("expected next-turn Cant AST, got {subject_verb:#?}");
+    };
 }
 
 #[test]
@@ -3550,6 +3579,15 @@ pub(super) fn rewrite_simultaneous_phase_pair_keeps_both_all_subjects() {
 #[test]
 pub(super) fn rewrite_endure_source_surface_keeps_typed_source_target() {
     let text = "Whenever this creature attacks, you lose 1 life and this creature endures 1.";
+    let effect_tokens = lex_line("you lose 1 life and this creature endures 1.", 0)
+        .expect("endure trigger payload should lex");
+    let parsed_effects = super::super::clause_support::parse_effect_sentences_lexed(&effect_tokens)
+        .expect("endure trigger payload should parse");
+    let parsed_debug = format!("{parsed_effects:#?}");
+    assert!(
+        parsed_debug.contains("Endure") && parsed_debug.contains("target: Source"),
+        "{parsed_debug}"
+    );
     let (compiled, loss) = crate::parse_loss::capture(|| {
         super::super::compile_card_text(
             CardDefinitionBuilder::new(CardId::from_raw(1), "Typed Endure Source Surface")
@@ -3715,9 +3753,9 @@ pub(super) fn rewrite_lower_routes_next_spell_cost_reduction_filters_through_gra
         .expect("next-spell cost reduction should parse semantic items before preparation");
     let debug = format!("{parsed:?}");
 
-    // The semantic document now carries this as a typed static ability on
-    // the source rather than the legacy direct effect marker.
-    assert!(debug.contains("CostReduction"), "{debug}");
+    // The semantic document carries the typed next-spell reduction action;
+    // the retired runtime-only CostReduction marker is no longer produced.
+    assert!(debug.contains("ReduceNextSpellCostThisTurn"), "{debug}");
     assert!(debug.contains("excluded_card_types: [Creature]"), "{debug}");
 }
 

@@ -223,6 +223,7 @@ mod tests {
             EffectOutcome::resolved().with_affected_object_memory(vec![OutcomeObjectMemory {
                 object_id: sacrificed,
                 stable_id: StableId::from(sacrificed),
+                name: "Sacrificed Creature".to_string(),
                 controller: bob,
                 owner: bob,
                 zone: Zone::Battlefield,

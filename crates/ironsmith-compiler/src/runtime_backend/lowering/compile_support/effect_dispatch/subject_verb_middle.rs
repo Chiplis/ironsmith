@@ -563,17 +563,31 @@ pub(super) fn compile_subject_verb_middle(
             as_aura,
             top_only,
         } => {
-            let (spec, choices) =
+            let explicit_actor = if matches!(player, PlayerAst::Implicit) {
+                None
+            } else {
+                Some(LoweredSubject::resolve_actor(
+                    player, ctx, true, true, true,
+                )?)
+            };
+            let mut choices = explicit_actor
+                .as_ref()
+                .map(LoweredSubject::into_choices)
+                .unwrap_or_default();
+            let (spec, target_choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            choices.extend(target_choices);
             let from_exile_tag = choose_spec_references_exiled_tag(&spec);
-            let use_move_to_zone =
-                from_exile_tag || !matches!(controller, ReturnControllerAst::Preserve);
-            let implicit_chooser =
-                if ctx.iterated_player && choose_spec_owned_by_iterated_player(&spec) {
-                    PlayerFilter::IteratedPlayer
-                } else {
-                    PlayerFilter::You
-                };
+            let use_move_to_zone = from_exile_tag
+                || *transformed
+                || !matches!(controller, ReturnControllerAst::Preserve);
+            let implicit_chooser = if let Some(actor) = explicit_actor.as_ref() {
+                actor.clone_player_filter()
+            } else if ctx.iterated_player && choose_spec_owned_by_iterated_player(&spec) {
+                PlayerFilter::IteratedPlayer
+            } else {
+                PlayerFilter::You
+            };
             let mut effects = Vec::new();
             let resolved_spec = if !spec.is_target() {
                 match &spec {
@@ -647,6 +661,11 @@ pub(super) fn compile_subject_verb_middle(
                 } else {
                     move_back
                 };
+                let move_back = if *transformed {
+                    move_back.transformed()
+                } else {
+                    move_back
+                };
                 let move_back = match controller {
                     ReturnControllerAst::Preserve => move_back,
                     ReturnControllerAst::Owner => move_back.under_owner_control(),
@@ -713,7 +732,7 @@ pub(super) fn compile_subject_verb_middle(
             }
             effects.push(effect);
             effects.extend(aura_grant_effects);
-            if *transformed {
+            if *transformed && !use_move_to_zone {
                 let transform_spec = if let Some(tag) = ctx.last_object_tag.clone() {
                     ChooseSpec::tagged(tag)
                 } else {
@@ -742,10 +761,10 @@ pub(super) fn compile_subject_verb_middle(
             let refers_to_milled_cards =
                 resolved_filter.tagged_constraints.iter().any(|constraint| {
                     constraint.relation == TaggedOpbjectRelation::IsTaggedObject
-                        && crate::runtime_backend::util::is_sentence_helper_tag(
+                        && (crate::runtime_backend::util::is_sentence_helper_tag(
                             constraint.tag.as_str(),
                             "milled",
-                        )
+                        ) || constraint.tag.as_str().starts_with("milled_"))
                 });
             if resolved_filter.zone == Some(Zone::Battlefield) && refers_to_milled_cards {
                 // A tagged mill result is a graveyard snapshot. Some "cards
@@ -799,6 +818,7 @@ pub(super) fn compile_subject_verb_middle(
             battlefield_attacking,
             battlefield_attack_target_player_or_planeswalker_controlled_by,
             battlefield_face_down,
+            battlefield_transformed,
             attached_to,
             all,
         } => {
@@ -904,22 +924,23 @@ pub(super) fn compile_subject_verb_middle(
                 && let ChooseSpec::WithCount(inner, count) = &spec
                 && !inner.is_target()
                 && let ChooseSpec::Object(filter) = inner.base()
-                && filter.zone == Some(Zone::Hand)
+                && let Some((choice_filter, choice_zones)) =
+                    normalized_hand_or_graveyard_choice_filter(filter)
             {
-                let chooser = filter
+                let chooser = choice_filter
                     .owner
                     .clone()
-                    .or_else(|| filter.controller.clone())
+                    .or_else(|| choice_filter.controller.clone())
                     .unwrap_or(PlayerFilter::You);
                 let chosen_tag = ctx.next_tag("chosen");
                 let choose = Effect::new(
                     crate::effects::ChooseObjectsEffect::new(
-                        filter.clone(),
+                        choice_filter,
                         count.clone(),
                         chooser,
                         chosen_tag.clone(),
                     )
-                    .in_zone(Zone::Hand)
+                    .in_zones(choice_zones)
                     .replace_tagged_objects(),
                 );
                 let spec = ChooseSpec::tagged(chosen_tag);
@@ -952,6 +973,11 @@ pub(super) fn compile_subject_verb_middle(
                 };
                 let move_effect = if *zone == Zone::Battlefield && *battlefield_face_down {
                     move_effect.face_down()
+                } else {
+                    move_effect
+                };
+                let move_effect = if *zone == Zone::Battlefield && *battlefield_transformed {
+                    move_effect.transformed()
                 } else {
                     move_effect
                 };
@@ -1089,6 +1115,11 @@ pub(super) fn compile_subject_verb_middle(
             } else {
                 move_effect
             };
+            let move_effect = if *zone == Zone::Battlefield && *battlefield_transformed {
+                move_effect.transformed()
+            } else {
+                move_effect
+            };
             let move_effect = match battlefield_controller {
                 ReturnControllerAst::Preserve => move_effect,
                 ReturnControllerAst::Owner => move_effect.under_owner_control(),
@@ -1135,20 +1166,23 @@ pub(super) fn compile_subject_verb_middle(
         SubjectVerbActionAst::MoveToLibraryTopOrBottomChoice { target } => {
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let chooser = match player {
-                PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,
-                PlayerAst::Target => PlayerFilter::Target(Box::new(PlayerFilter::Any)),
-                PlayerAst::TargetOpponent => PlayerFilter::Target(Box::new(PlayerFilter::Opponent)),
-                PlayerAst::ItsOwner => PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
-                PlayerAst::ItsController => {
-                    PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
-                }
-                other => resolve_non_target_player_filter(other, &current_reference_env(ctx))?,
-            };
-            let mut effect = Effect::new(
-                crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(spec.clone())
-                    .with_chooser(chooser),
-            );
+            let mut move_effect =
+                crate::effects::MoveToLibraryTopOrBottomChoiceEffect::new(spec.clone());
+            if !matches!(player, PlayerAst::ItsOwner) {
+                let chooser = match player {
+                    PlayerAst::Implicit | PlayerAst::You => PlayerFilter::You,
+                    PlayerAst::Target => PlayerFilter::Target(Box::new(PlayerFilter::Any)),
+                    PlayerAst::TargetOpponent => {
+                        PlayerFilter::Target(Box::new(PlayerFilter::Opponent))
+                    }
+                    PlayerAst::ItsController => {
+                        PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)
+                    }
+                    other => resolve_non_target_player_filter(other, &current_reference_env(ctx))?,
+                };
+                move_effect = move_effect.with_chooser(chooser);
+            }
+            let mut effect = Effect::new(move_effect);
             if choose_spec_targets_object(&spec) && ctx.auto_tag_object_targets {
                 let tag = ctx.next_tag("moved");
                 ctx.last_object_tag = Some(tag.clone());
@@ -1182,12 +1216,20 @@ pub(super) fn compile_subject_verb_middle(
                 Ok((vec![effect], choices))
             }
         }
-        SubjectVerbActionAst::TagMatchingObjects { filter, zones, tag } => {
+        SubjectVerbActionAst::TagMatchingObjects {
+            filter,
+            zones,
+            tag,
+            source_tags,
+        } => {
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let mut effect =
                 crate::effects::TagMatchingObjectsEffect::new(resolved_filter, tag.clone());
             if !zones.is_empty() {
                 effect = effect.in_zones(zones.clone());
+            }
+            if !source_tags.is_empty() {
+                effect = effect.from_tagged_sources(source_tags.clone());
             }
             ctx.last_object_tag = Some(tag.as_str().to_string());
             Ok((vec![Effect::new(effect)], Vec::new()))
@@ -1862,8 +1904,7 @@ pub(super) fn compile_subject_verb_middle(
                 target,
                 TargetAst::Tagged(tag, _)
                     if tag.as_str() == "__chosen_name__" || tag.as_str() == "__it__"
-            )
-                && modifications.len() == 1
+            ) && modifications.len() == 1
                 && matches!(duration, Until::Forever)
                 && let crate::continuous::Modification::AddAbility(ability) = first_modification
                 && let crate::static_abilities::StaticAbilityPayload::CostReduction(reduction) =
@@ -2228,6 +2269,7 @@ pub(super) fn compile_subject_verb_middle(
         SubjectVerbActionAst::Cant {
             restriction,
             duration,
+            start,
             condition,
         } => {
             let restriction = resolve_restriction_it_tag(restriction, &current_reference_env(ctx))?;
@@ -2249,7 +2291,11 @@ pub(super) fn compile_subject_verb_middle(
                 }
             } else {
                 Ok((
-                    vec![Effect::cant_until(restriction, duration.clone())],
+                    vec![Effect::cant_starting(
+                        restriction,
+                        duration.clone(),
+                        start.clone(),
+                    )],
                     Vec::new(),
                 ))
             }

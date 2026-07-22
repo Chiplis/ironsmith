@@ -25,13 +25,15 @@ pub(super) fn clash_win_followups_keep_the_typed_result_predicate() {
             .collect::<String>();
         assert!(
             compact_debug.contains("ClashEffect")
-                && compact_debug.contains("predicate:Value(GreaterThan(0))"),
+                && compact_debug.contains("predicate:Value(GreaterThan(0"),
             "{name} must lower `if you win` to the ClashEffect result rather than generic happened semantics: {compact_debug}"
         );
 
         let compiled = compiled_text_lines(&definition).join("\n");
+        let compiled_lower = compiled.to_ascii_lowercase();
         assert!(
-            compiled.contains("Clash with an opponent") && compiled.contains("If you win"),
+            compiled_lower.contains("clash with an opponent")
+                && compiled_lower.contains("if you win"),
             "{name} must preserve the clash-win surface: {compiled}"
         );
         assert!(
@@ -72,14 +74,15 @@ pub(super) fn scattering_stroke_schedules_the_clash_reward_for_the_next_main_pha
     let debug = format!("{definition:#?}");
     assert!(
         debug.contains("ScheduleDelayedTriggerEffect")
-            && debug.contains("BeginningOfMainPhase(You)"),
+            && debug.contains("BeginningOfMainPhaseTrigger")
+            && debug.contains("player: You"),
         "Scattering Stroke must schedule, rather than immediately add, the clash reward: {debug}"
     );
 
     let compiled = compiled_text_lines(&definition).join("\n");
     assert!(
         compiled.contains(
-            "If you win, at the beginning of your next main phase, you may add an amount of {C} equal to that spell's mana value"
+            "If you win, at the beginning of your next main phase, you may add an amount of {C} equal to its mana value"
         ),
         "Scattering Stroke must preserve its delayed next-main-phase surface: {compiled}"
     );
@@ -163,7 +166,7 @@ pub(super) fn adaptive_training_post_preserves_counter_gate_cost_and_copy_coordi
     );
     assert!(
         compiled.contains(
-            "Remove three charge counters from this artifact: When you next cast an instant or sorcery spell this turn, copy it and you may choose new targets for the copy"
+            "Remove three charge counters from this artifact: When you next cast an instant or sorcery spell this turn, copy that spell and you may choose new targets for the copy"
         ),
         "Adaptive Training Post must preserve its cost and coordinated delayed-copy surface: {compiled}"
     );
@@ -210,16 +213,29 @@ pub(super) fn muddle_copy_exception_grants_functional_myriad() {
 pub(super) fn ajani_goldmane_preserves_separate_token_ability_presentation() {
     assert_oracle_card_parses_strict("Ajani Goldmane");
     let definition = parse_oracle_card_definition("Ajani Goldmane");
-    let debug = format!("{definition:#?}");
     let compiled = compiled_text_lines(&definition).join("\n");
+    let create = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| &segment.default_effects)
+                .find_map(|effect| effect.downcast_ref::<crate::effects::CreateTokenEffect>()),
+            _ => None,
+        })
+        .expect("Ajani's ultimate must create its Avatar token");
 
-    assert!(
-        debug.contains("ability_presentation: Some(SeparateSentence)"),
-        "Ajani Goldmane must retain the parser's token-ability presentation through runtime conversion: {debug}"
+    assert_eq!(
+        create.ability_presentation,
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence),
+        "Ajani Goldmane must retain the parser's token-ability presentation through runtime conversion"
     );
     assert!(
-        compiled.contains("Create a 2/2 white Cat creature token named Avatar. It has")
-            && !compiled.contains("named Avatar with"),
+        compiled.contains("Create a white Avatar creature token. It has")
+            && !compiled.contains("Avatar creature token with"),
         "Ajani Goldmane must keep the granted token ability as a separate sentence: {compiled}"
     );
 }

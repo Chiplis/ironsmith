@@ -116,9 +116,7 @@ pub(crate) fn parse_lose_life(
         ));
     }
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
-        if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
-            && life_shape.remap_its_source_stat
-        {
+        if life_shape.remap_its_source_stat {
             amount = remap_source_stat_value_to_it(amount);
         }
         return Ok(subject_verb_player_resource_effect(
@@ -199,9 +197,7 @@ pub(crate) fn parse_gain_life(
     let life_shape = cca_shapes::parse_life_surface_shape(tokens);
 
     if let Some(mut amount) = parse_life_equal_to_value(tokens)? {
-        if matches!(player, PlayerAst::ItsController | PlayerAst::ItsOwner)
-            && life_shape.remap_its_source_stat
-        {
+        if life_shape.remap_its_source_stat {
             amount = remap_source_stat_value_to_it(amount);
         }
         return Ok(subject_verb_player_resource_effect(
@@ -613,6 +609,41 @@ pub(crate) fn parse_put_into_hand(
             }
             TargetAst::WithCount(inner, _) => apply_source_zone_constraint(inner, zone),
             _ => {}
+        }
+    }
+
+    fn apply_explicit_source_location(
+        target: &mut TargetAst,
+        tokens: &[OwnedLexToken],
+    ) {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        let location = if words
+            .windows(3)
+            .any(|window| window == ["from", "your", "hand"])
+        {
+            Some((Zone::Hand, Some(PlayerFilter::You)))
+        } else if words
+            .windows(3)
+            .any(|window| window == ["from", "your", "graveyard"])
+        {
+            Some((Zone::Graveyard, Some(PlayerFilter::You)))
+        } else if words
+            .windows(3)
+            .any(|window| window == ["from", "your", "library"])
+        {
+            Some((Zone::Library, Some(PlayerFilter::You)))
+        } else {
+            None
+        };
+        let Some((zone, owner)) = location else {
+            return;
+        };
+
+        apply_source_zone_constraint(target, zone);
+        if let Some(owner) = owner
+            && let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(target)
+        {
+            filter.owner = Some(owner);
         }
     }
 
@@ -1400,6 +1431,7 @@ pub(crate) fn parse_put_into_hand(
             parse_target_phrase(&target_tokens)?
         };
         target = expand_graveyard_or_hand_disjunction(target, target_tokens);
+        apply_explicit_source_location(&mut target, target_tokens);
         if !cca_shapes::target_names_unowned_shared_zone(target_tokens)
             && let Some(filter) = crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(&mut target)
         {

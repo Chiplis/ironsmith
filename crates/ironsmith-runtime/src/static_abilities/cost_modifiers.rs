@@ -206,7 +206,22 @@ fn describe_object_filter_for_spell_target(filter: &ObjectFilter) -> String {
     {
         return format!("a {}", filter.subtypes[0]);
     }
-    filter.description()
+    let description = filter.description();
+    if description.split_whitespace().count() == 1 {
+        let first = description
+            .chars()
+            .next()
+            .unwrap_or('a')
+            .to_ascii_lowercase();
+        let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u') {
+            "an"
+        } else {
+            "a"
+        };
+        format!("{article} {description}")
+    } else {
+        description
+    }
 }
 
 fn describe_alternative_cast_kind(kind: AlternativeCastKind) -> &'static str {
@@ -1092,13 +1107,20 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         description.push_str(" with mana value ");
         description.push_str(&describe_comparison(mana_value));
     }
+    let mut target_descriptions = Vec::new();
     if let Some(player_filter) = &filter.targets_player {
-        description.push_str(" that target ");
-        description.push_str(&describe_player_filter_for_spell_target(player_filter));
+        target_descriptions.push(describe_player_filter_for_spell_target(player_filter));
     }
     if let Some(object_filter) = &filter.targets_object {
+        target_descriptions.push(object_filter.description());
+    }
+    if !target_descriptions.is_empty() {
         description.push_str(" that target ");
-        description.push_str(&object_filter.description());
+        if filter.targets_any_of {
+            description.push_str(&join_with_or(&target_descriptions));
+        } else {
+            description.push_str(&join_with_and(&target_descriptions));
+        }
     }
     if let Some(kind) = filter.alternative_cast {
         description.push_str(" with ");

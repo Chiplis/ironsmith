@@ -12,6 +12,22 @@ fn contains_choice_debug(debug: &str) -> bool {
 }
 
 #[test]
+pub(super) fn convert_then_adapt_routes_through_effect_lowering() {
+    let compiled = super::super::compile_card_text(
+        CardDefinitionBuilder::new(CardId::new(), "Convert Then Adapt Variant")
+            .card_types(vec![CardType::Creature]),
+        "Convert this creature, then adapt 3.",
+        true,
+    )
+    .expect("convert/adapt chain should compile");
+    let debug = format!("{:#?}", compiled.definition);
+
+    assert!(debug.contains("Convert"), "{debug}");
+    assert!(debug.contains("Adapt"), "{debug}");
+    assert!(!debug.contains("KeywordFallbackText"), "{debug}");
+}
+
+#[test]
 fn ajani_goldmane_keeps_separate_token_ability_presentation_before_runtime_conversion() {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Ajani Goldmane")
         .card_types(vec![CardType::Planeswalker])
@@ -593,9 +609,8 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_gravey
 
 #[test]
 pub(super) fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_graveyard_bundle() {
-    let sentences = registry_sentence_inputs(
-        "Reveal the top five cards of your library. You may put a creature or enchantment card from among them into your hand. Put the rest into your graveyard.",
-    );
+    let text = "Reveal the top five cards of your library. You may put a creature or enchantment card from among them into your hand. Put the rest into your graveyard.";
+    let sentences = registry_sentence_inputs(text);
 
     let matched =
         super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
@@ -611,6 +626,20 @@ pub(super) fn rewrite_sequence_registry_matches_reveal_top_may_put_match_rest_gr
     assert!(debug.contains("min: 0"), "{debug}");
     assert!(debug.contains("zone: Library"), "{debug}");
     assert!(debug.contains("zone: Graveyard"), "{debug}");
+
+    let lexed = lex_line(text, 0).expect("rewrite lexer");
+    let full = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
+        .expect("full sequence parse");
+    let full_debug = format!("{full:#?}");
+    assert!(full_debug.contains("min: 0"), "{full_debug}");
+    assert!(
+        full_debug.contains("PutTaggedRemainderInZone")
+            || (full_debug.contains("ForEachTagged")
+                && full_debug.contains("Conditional")
+                && full_debug.contains("SameStableId")
+                && full_debug.contains("zone: Graveyard")),
+        "{full_debug}"
+    );
 }
 
 #[test]
@@ -824,6 +853,38 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_counted_battlefield_rest_b
         "{debug}"
     );
     assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_prefers_battlefield_and_hand_looked_card_split() {
+    let sentences = registry_sentence_inputs(
+        "Reveal the top six cards of your library. You may put up to one land card from among them onto the battlefield tapped and up to one Elf card from among them into your hand. Put the rest on the bottom of your library in a random order.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match the two-destination looked-card split");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "top-cards-put-match-onto-battlefield-and-into-hand-rest-bottom"
+    );
+    assert_eq!(matched.consumed_sentences, 3);
+    assert_eq!(
+        debug.matches("ChooseObjectsAcrossZones").count()
+            + debug.matches("ChooseTaggedObjectsInZone").count(),
+        2,
+        "expected independent land and Elf choices: {debug}"
+    );
+    assert!(debug.contains("PutOntoBattlefield"), "{debug}");
+    assert!(debug.contains("zone: Hand"), "{debug}");
+    assert!(debug.contains("Elf"), "{debug}");
     assert!(
         debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
         "{debug}"
@@ -2528,6 +2589,20 @@ pub(super) fn choose_one_of_exiled_top_cards_lowers_choice_from_exiled_collectio
         grant.duration,
         crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
     );
+}
+
+#[test]
+pub(super) fn exile_all_records_plural_collection_for_followup_cast_permission() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Mass Graveyard Exile Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Exile all cards from target opponent's graveyard. You may cast spells from among those cards this turn.",
+        )
+        .expect("mass exile followed by cast permission should lower");
+    let debug = format!("{:#?}", def.spell_effect);
+
+    assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
+    assert!(debug.contains("cast_pool_is_plural: true"), "{debug}");
 }
 
 #[test]

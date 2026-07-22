@@ -3227,12 +3227,14 @@ CardDefinition {
         CardPayload {
             name: "Mismatch Fixture".to_string(),
             parse_name: None,
-            oracle_text: "Activated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.".to_string(),
-            raw_oracle_text: "Activated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana.".to_string(),
-            metadata_lines: vec!["Mana cost: {1}{W}".to_string(), "Type: Enchantment".to_string()],
-            parse_input:
-                "Mana cost: {1}{W}\nType: Enchantment\nActivated abilities of creatures you control cost {2} less to activate. This effect can't reduce the mana in that cost to less than one mana."
-                    .to_string(),
+            // Deliberately make the authoritative oracle differ from the
+            // independently supplied parser input. This tests mismatch
+            // bookkeeping without depending on a known compiler deficiency.
+            oracle_text: "Destroy target creature.".to_string(),
+            raw_oracle_text: "Destroy target creature.".to_string(),
+            metadata_lines: vec!["Mana cost: {2}{U}".to_string(), "Type: Sorcery".to_string()],
+            parse_input: "Mana cost: {2}{U}\nType: Sorcery\nTarget player draws three cards."
+                .to_string(),
             other_face_name: None,
             linked_face_layout: None,
         }
@@ -3362,7 +3364,7 @@ CardDefinition {
         assert_eq!(
             fallback_snapshot.compiled_text.as_deref(),
             Some(
-                "Reach\nThe allagan eye — Whenever one or more other creature or artifact you control is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn."
+                "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn."
             )
         );
     }
@@ -4084,7 +4086,7 @@ CardDefinition {
             .expect("stored compiled text");
         assert_eq!(
             compiled,
-            "Reach\nThe allagan eye — Whenever one or more other creature or artifact you control is put into a graveyard from the battlefield, draw a card. This ability triggers only once each turn."
+            "Reach\nThe Allagan Eye — Whenever one or more other creatures and/or artifacts you control die, draw a card. This ability triggers only once each turn."
         );
         let _ = fs::remove_file(path);
     }

@@ -1257,7 +1257,10 @@ pub(crate) fn describe_tempting_offer_creature_return_bundle(
     let choose_bonus = choose_bonus_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let return_bonus = downcast_return_from_graveyard_to_battlefield(return_bonus_effect)?;
     if if_effect.condition != may_with_id.id
-        || if_effect.predicate != crate::effect::EffectPredicate::Happened
+        || !matches!(
+            if_effect.predicate,
+            crate::effect::EffectPredicate::Happened | crate::effect::EffectPredicate::Chosen
+        )
         || !if_effect.else_.is_empty()
     {
         return None;
@@ -2505,7 +2508,10 @@ pub(crate) fn describe_target_pump_unblockable_bundle(filtered: &[&Effect]) -> O
     let [apply_effect, cant_effect] = filtered else {
         return None;
     };
-    let apply = apply_continuous_for_compaction(apply_effect)?;
+    // The result tag is semantically meaningful here: the unblockable filter
+    // consumes the exact set modified by the pump. It need not be one of the
+    // parser's implicit-reference tag names for this structural compaction.
+    let apply = tagged_apply_continuous(apply_effect)?;
     if apply.until != Until::EndOfTurn
         || apply.condition.is_some()
         || apply.modification.is_some()
@@ -2800,36 +2806,73 @@ pub(crate) fn render_search_reveal_opponent_choose_rest_bundle(
 
     fn search_and_reveal_for_divvy<'a>(
         search_effect: &'a Effect,
-        reveal_effect: &'a Effect,
-    ) -> Option<(
-        &'a crate::effects::ChooseObjectsEffect,
-        &'a crate::effects::RevealTaggedEffect,
-        bool,
-    )> {
+        reveal_effect: Option<&'a Effect>,
+    ) -> Option<(&'a crate::effects::ChooseObjectsEffect, bool)> {
         if let Some(search) = search_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>() {
-            let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
-            return Some((search, reveal, false));
+            match reveal_effect {
+                Some(reveal_effect) => {
+                    let reveal =
+                        reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+                    if search.reveal || reveal.tag != search.tag {
+                        return None;
+                    }
+                }
+                None if !search.reveal => return None,
+                None => {}
+            }
+            return Some((search, false));
+        }
+
+        if reveal_effect.is_none()
+            && let Some(sequence) = search_effect.downcast_ref::<crate::effects::SequenceEffect>()
+            && let [search_effect, reveal_effect] = sequence.effects.as_slice()
+        {
+            return search_and_reveal_for_divvy(search_effect, Some(reveal_effect));
         }
 
         let with_id = search_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
         let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
-        if may.decider.is_some() || may.effects.len() != 1 {
+        if may.effects.len() != 1 {
             return None;
         }
         let search = may.effects[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-        let if_effect = reveal_effect.downcast_ref::<crate::effects::IfEffect>()?;
-        if if_effect.condition != with_id.id
-            || if_effect.predicate != crate::effect::EffectPredicate::Happened
-            || !if_effect.else_.is_empty()
-            || if_effect.then.len() != 1
+        if may
+            .decider
+            .as_ref()
+            .is_some_and(|decider| decider != &search.chooser)
         {
             return None;
         }
-        let reveal = if_effect.then[0].downcast_ref::<crate::effects::RevealTaggedEffect>()?;
-        Some((search, reveal, true))
+        if let Some(reveal_effect) = reveal_effect {
+            let if_effect = reveal_effect.downcast_ref::<crate::effects::IfEffect>()?;
+            if search.reveal
+                || if_effect.condition != with_id.id
+                || if_effect.predicate != crate::effect::EffectPredicate::Happened
+                || !if_effect.else_.is_empty()
+                || if_effect.then.len() != 1
+            {
+                return None;
+            }
+            let reveal = if_effect.then[0].downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+            if reveal.tag != search.tag {
+                return None;
+            }
+        } else if !search.reveal {
+            return None;
+        }
+        Some((search, true))
     }
 
-    let (core, source_exile) = match filtered {
+    let (
+        search_effect,
+        reveal_effect,
+        tag_source_effect,
+        choose_effect,
+        first_move_effect,
+        second_move_effect,
+        shuffle_effect,
+        source_exile,
+    ) = match filtered {
         [
             search_effect,
             reveal_effect,
@@ -2840,51 +2883,72 @@ pub(crate) fn render_search_reveal_opponent_choose_rest_bundle(
             shuffle_effect,
             source_exile_effect,
         ] => (
-            [
-                *search_effect,
-                *reveal_effect,
-                *tag_source_effect,
-                *choose_effect,
-                *first_move_effect,
-                *second_move_effect,
-                *shuffle_effect,
-            ],
+            *search_effect,
+            Some(*reveal_effect),
+            *tag_source_effect,
+            *choose_effect,
+            *first_move_effect,
+            *second_move_effect,
+            *shuffle_effect,
             Some(*source_exile_effect),
         ),
         [
             search_effect,
-            reveal_effect,
+            second_effect,
+            third_effect,
+            fourth_effect,
+            fifth_effect,
+            sixth_effect,
+            seventh_effect,
+        ] => {
+            if second_effect
+                .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()
+                .is_some()
+            {
+                (
+                    *search_effect,
+                    None,
+                    *second_effect,
+                    *third_effect,
+                    *fourth_effect,
+                    *fifth_effect,
+                    *sixth_effect,
+                    Some(*seventh_effect),
+                )
+            } else {
+                (
+                    *search_effect,
+                    Some(*second_effect),
+                    *third_effect,
+                    *fourth_effect,
+                    *fifth_effect,
+                    *sixth_effect,
+                    *seventh_effect,
+                    None,
+                )
+            }
+        }
+        [
+            search_effect,
             tag_source_effect,
             choose_effect,
             first_move_effect,
             second_move_effect,
             shuffle_effect,
         ] => (
-            [
-                *search_effect,
-                *reveal_effect,
-                *tag_source_effect,
-                *choose_effect,
-                *first_move_effect,
-                *second_move_effect,
-                *shuffle_effect,
-            ],
+            *search_effect,
+            None,
+            *tag_source_effect,
+            *choose_effect,
+            *first_move_effect,
+            *second_move_effect,
+            *shuffle_effect,
             None,
         ),
         _ => return None,
     };
-    let [
-        search_effect,
-        reveal_effect,
-        tag_source_effect,
-        choose_effect,
-        first_move_effect,
-        second_move_effect,
-        shuffle_effect,
-    ] = core;
 
-    let (search, reveal, optional_search) =
-        search_and_reveal_for_divvy(search_effect, reveal_effect)?;
+    let (search, optional_search) = search_and_reveal_for_divvy(search_effect, reveal_effect)?;
     let tag_source =
         tag_source_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
@@ -2893,7 +2957,6 @@ pub(crate) fn render_search_reveal_opponent_choose_rest_bundle(
 
     if !search.is_search
         || !search_zones.contains(&Zone::Library)
-        || reveal.tag != search.tag
         || tag_source.tag.as_str() != "divvy_source"
         || !filter_is_tagged_as(&tag_source.filter, search.tag.as_str())
         || tag_matching_zones(tag_source)? != search_zones

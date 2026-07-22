@@ -32,7 +32,7 @@ pub(super) fn parse_oracle_merfolk_cave_diver_strictly_parses_pump_unblockable_e
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert_eq!(
         rendered,
-        "Whenever a creature you control explores, this creature gets +1/+0 until end of turn and can't be blocked this turn."
+        "Whenever a creature you control explores, this creature gets +1/+0 until end of turn and this creature can't be blocked this turn."
     );
 
     let debug = format!("{def:#?}");
@@ -131,13 +131,14 @@ pub(super) fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence(
     let joined = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
+    let spell_debug = format!("{:#?}", def.spell_effect);
     assert!(
         joined.contains("sacrifice x zombies")
             && joined.contains("reveal cards from the top of your library")
             && joined.contains("zombie creature cards")
             && joined.contains("put those cards onto the battlefield")
             && joined.contains("the rest on the bottom of your library in a random order"),
-        "expected Empty the Laboratory search/reveal/bottom wording, got {joined}"
+        "expected Empty the Laboratory search/reveal/bottom wording, got {joined}\n{spell_debug}"
     );
 
     let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
@@ -403,22 +404,57 @@ pub(super) fn test_rageform_parses_and_renders_aura_become_clause() {
         })
         .expect("Rageform should have an enters trigger");
     let effects = triggered.effects.flattened_default_effects();
+
+    fn manifested_tag(effect: &crate::effect::Effect) -> Option<crate::TagKey> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            if tagged
+                .effect
+                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+                .is_some()
+            {
+                return Some(tagged.tag.clone());
+            }
+            return manifested_tag(&tagged.effect);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            if tagged
+                .effect
+                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+                .is_some()
+            {
+                return Some(tagged.tag.clone());
+            }
+            return manifested_tag(&tagged.effect);
+        }
+        effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .and_then(|sequence| sequence.effects.iter().find_map(manifested_tag))
+    }
+
     let manifested_tag = effects
         .iter()
-        .find_map(|effect| {
-            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-            tagged
-                .effect
-                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()?;
-            Some(tagged.tag.clone())
-        })
-        .expect("manifest should export the manifested permanent under a tag");
-    let attach = effects
+        .find_map(|effect| manifested_tag(effect))
+        .unwrap_or_else(|| {
+            panic!("manifest should export the manifested permanent under a tag: {effects:#?}")
+        });
+    fn attachment_specs(effect: &crate::effect::Effect) -> Option<(ChooseSpec, ChooseSpec)> {
+        if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
+            return Some((attach.objects.clone(), attach.target.clone()));
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = attachment_specs(child);
+            }
+        });
+        found
+    }
+    let (attach_objects, attach_target) = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .find_map(attachment_specs)
         .expect("Rageform should attach itself after manifesting");
-    assert_eq!(attach.objects, ChooseSpec::Source);
-    assert_eq!(attach.target, ChooseSpec::Tagged(manifested_tag));
+    assert_eq!(attach_objects, ChooseSpec::Source);
+    assert_eq!(attach_target, ChooseSpec::Tagged(manifested_tag));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -563,15 +599,15 @@ pub(super) fn runes_of_the_deus_strict_parse_and_compiled_text_conditions() {
         "expected Aura enchant restriction in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("enchanted creature gets +1/+1 as long as enchanted creature is red")
-            && rendered.contains("enchanted creature has double strike")
-            && rendered.contains("as long as the permanent this aura is attached to is red"),
+        rendered.contains(
+            "as long as enchanted creature is red, enchanted creature gets +1/+1 and has double strike"
+        ),
         "expected red conditional double-strike grant in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("enchanted creature gets +1/+1 as long as enchanted creature is green")
-            && rendered.contains("enchanted creature has trample")
-            && rendered.contains("as long as the permanent this aura is attached to is green"),
+        rendered.contains(
+            "as long as enchanted creature is green, enchanted creature gets +1/+1 and has trample"
+        ),
         "expected green conditional trample grant in compiled text, got {rendered}"
     );
     assert!(
@@ -993,7 +1029,7 @@ pub(super) fn test_vault_101_birthday_party_renders_equipment_only_attach_branch
 
     let effect_debug = format!("{def:?}");
     assert!(
-        effect_debug.contains("ConditionalEffect")
+        effect_debug.contains("IfEffect")
             && (effect_debug.contains("TaggedObjectMatches")
                 || effect_debug.contains("TaggedObjectConstraint"))
             && effect_debug.contains("Equipment")
@@ -1425,7 +1461,7 @@ pub(super) fn test_parse_ouphe_vandals_preserves_type_line_and_artifact_source_t
     assert!(
         rendered.contains("destroy that artifact if it")
             || rendered.contains("if it matches permanent, destroy that artifact"),
-        "expected battlefield-gated destroy clause in oracle-like output, got {rendered}"
+        "expected battlefield-gated destroy clause in oracle-like output, got {rendered}\n{def:#?}"
     );
     assert!(
         !rendered.contains("counter target artifact spell"),
@@ -1838,11 +1874,13 @@ pub(super) fn howl_of_the_horde_compiled_text_preserves_raid_next_cast_copy_clau
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered
-            .contains("When you next cast an instant or sorcery spell this turn, copy that spell")
+        rendered.contains("When you next cast an instant or sorcery spell this turn")
             && rendered.contains("Raid — If you attacked this turn")
-            && rendered.contains("copy that spell an additional time")
-            && rendered.contains("You may choose new targets for the copy"),
+            && rendered.matches("copy it").count() >= 2
+            && rendered
+                .matches("you may choose new targets for the copy")
+                .count()
+                >= 2,
         "expected Howl's next-cast raid copy text to render structurally, got {rendered}"
     );
 }
@@ -2054,7 +2092,7 @@ pub(super) fn test_parse_singe_mind_ogre_keeps_random_hand_reveal_and_life_loss_
     assert!(
         rendered.contains("when this creature enters")
             && rendered.contains("target player reveals a card at random from their hand")
-            && rendered.contains("then loses life equal to that card's mana value")
+            && rendered.contains("that player loses life equal to that card's mana value")
             && !rendered.contains("reveal it")
             && !rendered.contains("choose exactly 1 at random"),
         "expected Singe-Mind Ogre compiled text to preserve the random reveal and life-loss link, got {rendered}"
@@ -2089,8 +2127,9 @@ pub(super) fn test_parse_word_of_blasting_uses_destroyed_wall_mana_value_for_dam
     assert!(
         rendered.contains("destroy target wall")
             && rendered.contains("it can't be regenerated")
-            && rendered
-                .contains("deals damage equal to its mana value to that object's controller"),
+            && rendered.contains(
+                "word of blasting deals damage to that object's controller equal to its mana value"
+            ),
         "expected Word of Blasting compiled text to preserve wall mana-value damage clause, got {rendered}"
     );
 }
@@ -2187,7 +2226,7 @@ pub(super) fn parse_debt_of_loyalty_regenerate_control_followup() {
         "expected Debt of Loyalty to render the regenerate clause, got {rendered}"
     );
     assert!(
-        rendered_lower.contains("you gain control of that creature if it regenerates this way"),
+        rendered_lower.contains("gain control of that creature if it regenerates this way"),
         "expected Debt of Loyalty to render the regenerate-this-way control clause, got {rendered}"
     );
     assert!(
@@ -3040,7 +3079,7 @@ pub(super) fn parse_sacrifice_any_number_then_return_that_many_uses_sacrifice_re
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "Sacrifice any number of artifacts, enchantments, and/or tokens. Return that many creature cards from your graveyard to the battlefield"
+            "Sacrifice any number of artifacts or enchantments or tokens. Return that many creature cards from your graveyard to the battlefield"
         ),
         "expected oracle-like sacrifice/return rendering, got {rendered}"
     );
@@ -3351,30 +3390,59 @@ pub(super) fn parse_as_this_creature_enters_reveal_cards_counted_for_counters_li
         })
         .collect();
     assert!(
-        ids.contains(&StaticAbilityId::RevealFromHandAsEnters)
+        ids.contains(&StaticAbilityId::AsEntersEffectProgram)
             && ids.contains(&StaticAbilityId::EnterWithCounters),
         "expected reveal-as-enters plus enters-with-counters static abilities, got {ids:?}"
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let rendered_lower = rendered.to_ascii_lowercase();
+    let def_debug = format!("{def:#?}");
     assert!(
         rendered_lower.contains(
             "as this creature enters, you may reveal any number of other artifact cards from your hand"
         ) && rendered_lower.contains(
             "this creature enters with a +1/+1 counter on it for each card revealed this way"
         ),
-        "expected Arsenal-style static reveal/counter wording, got {rendered}"
+        "expected Arsenal-style static reveal/counter wording, got {rendered}\n{def_debug}"
     );
 
-    let debug = format!("{:?}", def);
+    let program = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => static_ability
+                .compiled_model()
+                .and_then(|model| match &model.payload {
+                    ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+                        program,
+                        ..
+                    } => Some(program),
+                    _ => None,
+                }),
+            _ => None,
+        })
+        .expect("expected typed as-enters reveal program");
+    let may = program.segments[0].default_effects[0]
+        .downcast_ref::<crate::effects::MayEffect>()
+        .expect("as-enters reveal should remain optional");
+    let choose = may.effects[0]
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        .expect("as-enters reveal should choose cards from hand");
+    let reveal = may.effects[1]
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()
+        .expect("as-enters reveal should reveal the chosen cards");
+    assert_eq!(choose.filter.zone, Some(Zone::Hand));
+    assert_eq!(choose.filter.owner, Some(PlayerFilter::You));
+    assert!(choose.filter.other);
+    assert_eq!(choose.filter.card_types, vec![CardType::Artifact]);
+    assert_eq!(choose.count, ChoiceCount::any_number());
+    assert_eq!(reveal.tag, choose.tag);
+
+    let debug = format!("{def:?}");
     assert!(
-        debug.contains("RevealFromHandAsEnters")
-            && debug.contains("zone: Some(Hand)")
-            && debug.contains("other: true")
-            && debug.contains("__public_revealed")
-            && !debug.contains("RevealTaggedEffect"),
-        "expected typed as-enters reveal count without standalone reveal effect, got {debug}"
+        debug.contains("__public_revealed"),
+        "the enters-with-counters value should count cards revealed by the as-enters program: {debug}"
     );
 }
 

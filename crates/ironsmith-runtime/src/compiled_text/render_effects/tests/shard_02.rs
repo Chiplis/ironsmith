@@ -666,10 +666,7 @@ fn return_to_hand_preserves_an_explicit_contextual_destination_surface() {
     );
 
     assert_eq!(describe_effect(&contextual), "Return it to your hand");
-    assert_eq!(
-        describe_effect(&canonical),
-        "Return it to their owner's hand"
-    );
+    assert_eq!(describe_effect(&canonical), "Return it to its owner's hand");
     assert_eq!(
         describe_effect(&contextual_from_graveyard),
         "Return it from a graveyard to their hand"
@@ -1018,8 +1015,9 @@ fn source_exiled_battlefield_move_preserves_typed_subject_and_controller() {
     let effect = crate::effects::MoveToZoneEffect::new(
         ChooseSpec::All(source_exiled_filter()),
         Zone::Battlefield,
-        true,
+        false,
     )
+    .tapped()
     .under_you_control()
     .with_exiled_with_source_surface(surface);
 

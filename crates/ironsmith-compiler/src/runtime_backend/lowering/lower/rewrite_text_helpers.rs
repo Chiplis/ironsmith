@@ -188,6 +188,17 @@ pub(crate) fn effect_target_uses_it_reference(spec: &ChooseSpec) -> bool {
         ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
             effect_target_uses_it_reference(inner)
         }
+        ChooseSpec::SurfaceHinted { spec, .. } | ChooseSpec::WithCountValue(spec, _, _) => {
+            effect_target_uses_it_reference(spec)
+        }
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+            filter.tagged_constraints.iter().any(|constraint| {
+                matches!(
+                    constraint.relation,
+                    crate::target::TaggedOpbjectRelation::IsTaggedObject
+                )
+            })
+        }
         _ => false,
     }
 }
@@ -208,6 +219,15 @@ pub(crate) fn extract_previous_replacement_target(
 ) -> Option<ChooseSpec> {
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return extract_previous_replacement_target(&tagged.effect);
+    }
+    if let Some(unless_pays) =
+        effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+        && let [inner] = unless_pays.effects.as_slice()
+    {
+        return extract_previous_replacement_target(inner);
+    }
+    if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>() {
+        return Some(counter.target.clone());
     }
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         return Some(damage.target.clone());
@@ -264,6 +284,13 @@ pub(crate) fn rewrite_replacement_effect_target(
         return Some(crate::effect::Effect::deal_damage(
             damage.amount.clone(),
             previous_target.clone(),
+        ));
+    }
+    if let Some(counter) = effect.downcast_ref::<crate::effects::CounterEffect>()
+        && effect_target_uses_it_reference(&counter.target)
+    {
+        return Some(crate::effect::Effect::new(
+            crate::effects::CounterEffect::new(previous_target.clone()),
         ));
     }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()

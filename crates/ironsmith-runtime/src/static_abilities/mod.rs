@@ -51,6 +51,7 @@ mod keywords;
 mod misc;
 mod model_interpreter;
 mod protection;
+pub(crate) use protection::describe_protection_mana_value_scope;
 mod restrictions;
 mod text_utils;
 
@@ -855,6 +856,13 @@ pub trait StaticAbilityKind: std::fmt::Debug + Send + Sync + StaticAbilityKindCl
 
     /// Returns structured anthem data when this ability is backed by the core anthem model.
     fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
+        None
+    }
+
+    /// Return the object filter directly affected by a structural continuous
+    /// ability. This keeps hand-authored runtime abilities available to the
+    /// same compiled-text bundle recognizers as compiler-backed models.
+    fn structural_effect_filter(&self) -> Option<&crate::target::ObjectFilter> {
         None
     }
 
@@ -1881,6 +1889,10 @@ impl StaticAbility {
 
     pub fn anthem_payload(&self) -> Option<&ironsmith_core::Anthem> {
         self.0.anthem_payload()
+    }
+
+    pub(crate) fn structural_effect_filter(&self) -> Option<&crate::target::ObjectFilter> {
+        self.0.structural_effect_filter()
     }
 
     pub fn grants_abilities(&self) -> bool {

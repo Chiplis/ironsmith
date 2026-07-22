@@ -3744,6 +3744,10 @@ pub(super) fn parse_counted_object_counter_constraint_clause(
     if let Some((counter_constraint, consumed_words)) =
         parse_filter_counter_constraint_words(&constraint_words)
     {
+        let trailing_words = &constraint_words[consumed_words..];
+        if matches!(trailing_words, ["on", "it"] | ["on", "them"]) {
+            return Some((counter_constraint, clause.tokens().len()));
+        }
         let consumed_tokens = words.token_index_after_words(consumed_words)?;
         return Some((counter_constraint, consumed_tokens));
     }
