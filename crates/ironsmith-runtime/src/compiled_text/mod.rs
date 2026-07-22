@@ -440,6 +440,10 @@ fn normalize_scored_compiled_line(line: String) -> String {
     // them into a larger sentence. At the card-line boundary, restore normal
     // sentence capitalization before applying the surface normalizers.
     let line = normalize_duplicate_optional_subject(&capitalize_sentence_boundaries(&line));
+    // The Wish family's search-outside-the-game program only reaches its
+    // final three-sentence surface after the earlier merge passes; fold it
+    // to the authored reveal-and-put sentence here.
+    let line = normalize_common::normalize_search_outside_game_reveal_surface(&line);
     let lower_for_common = line.to_ascii_lowercase();
     let line = if lower_for_common.contains("you search your library")
         || lower_for_common.contains("choose an other card")
@@ -458,6 +462,7 @@ fn normalize_scored_compiled_line(line: String) -> String {
         || lower_for_common.contains("that object's controller")
         || lower_for_common.contains("a ally you control")
         || lower_for_common.contains("defending player's creature")
+        || lower_for_common.contains("creature defending player controls")
         || lower_for_common.contains("you controls for the first time each turn")
         || lower_for_common.contains("then if not, put it into its owner's hand")
         || lower_for_common.contains("under target opponent's control")

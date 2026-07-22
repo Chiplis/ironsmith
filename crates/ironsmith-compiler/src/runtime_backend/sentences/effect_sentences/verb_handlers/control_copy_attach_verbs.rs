@@ -1307,6 +1307,7 @@ pub(crate) fn parse_put_into_hand(
                 PossessiveObjectChoiceActor::SubjectPlayer => {
                     extract_subject_player(subject.clone())
                 }
+                PossessiveObjectChoiceActor::Opponent => Some(PlayerAst::Opponent),
                 // An object-controller phrase needs a previously established
                 // object antecedent; leave it to the ordinary target path when
                 // the selected object itself would be circular.

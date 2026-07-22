@@ -347,6 +347,7 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
 
     if normalized
         .eq_ignore_ascii_case("Target defending player's creature gets +3/+0 and gains can block 2 additional creatures each combat until end of turn.")
+        || normalized.eq_ignore_ascii_case("Target creature defending player controls gets +3/+0 and gains can block 2 additional creatures each combat until end of turn.")
     {
         normalized = "Target creature defending player controls gets +3/+0 until end of turn. That creature can block up to two additional creatures this turn.".to_string();
     }

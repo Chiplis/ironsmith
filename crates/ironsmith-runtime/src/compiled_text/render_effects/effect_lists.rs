@@ -137,6 +137,40 @@ fn describe_attributed_target_choice_pair(effects: &[Effect]) -> Option<(String,
     ))
 }
 
+/// The authored "destroy target creature of an opponent's choice" lowers to
+/// an opponent-chosen target declaration followed by destroying the declared
+/// object; restore the authored surface.
+fn describe_opponent_chosen_target_destroy_join(
+    first_effect: &Effect,
+    second_effect: &Effect,
+) -> Option<String> {
+    let tag = wrapped_effect_tag(first_effect)?;
+    let target_only = structural_unwrap_render_wrappers(first_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !matches!(target_only.chooser.as_ref(), Some(PlayerFilter::Opponent)) {
+        return None;
+    }
+    let destroy = structural_unwrap_render_wrappers(second_effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()?;
+    if !matches!(destroy.spec.base(), ChooseSpec::Tagged(destroy_tag) if destroy_tag == tag) {
+        return None;
+    }
+    Some(format!(
+        "Destroy {} of an opponent's choice",
+        describe_choose_spec(&target_only.target)
+    ))
+}
+
+fn describe_opponent_chosen_target_destroy_pair(effects: &[Effect]) -> Option<(String, usize)> {
+    let [first_effect, second_effect, ..] = effects else {
+        return None;
+    };
+    Some((
+        describe_opponent_chosen_target_destroy_join(first_effect, second_effect)?,
+        2,
+    ))
+}
+
 const CHOSEN_OBJECTS_SURFACE_TAG: &str = "__chosen_objects__";
 
 fn is_not_you_filter(player: &PlayerFilter) -> bool {
@@ -7457,6 +7491,26 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
             capitalize_first(suffix.trim_end_matches('.'))
         );
     }
+    if let [sequence_effect] = effects
+        && let Some(sequence) = structural_unwrap_render_wrappers(sequence_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && let Some((compact, consumed)) =
+            describe_opponent_chosen_target_destroy_pair(&sequence.effects)
+        && consumed == sequence.effects.len()
+    {
+        return compact;
+    }
+    if let Some((prefix, consumed)) = describe_opponent_chosen_target_destroy_pair(effects) {
+        if consumed == effects.len() {
+            return prefix;
+        }
+        let suffix = describe_effect_list(&effects[consumed..]);
+        return format!(
+            "{}. {}",
+            prefix.trim_end_matches('.'),
+            capitalize_first(suffix.trim_end_matches('.'))
+        );
+    }
     if let Some(compact) = describe_consult_exile_may_cast_else_your_hand(effects) {
         return compact;
     }
@@ -7709,6 +7763,14 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
                 filtered[idx],
                 filtered[idx + 1],
             )
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_opponent_chosen_target_destroy_join(filtered[idx], filtered[idx + 1])
         {
             parts.push(compact);
             idx += 2;
@@ -10795,6 +10857,14 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
                 effect,
                 &effects[effect_idx + 1],
             )
+        {
+            parts.push(lowercase_first(joint.trim_end_matches('.')));
+            effect_idx += 2;
+            continue;
+        }
+        if effect_idx + 1 < effects.len()
+            && let Some(joint) =
+                describe_opponent_chosen_target_destroy_join(effect, &effects[effect_idx + 1])
         {
             parts.push(lowercase_first(joint.trim_end_matches('.')));
             effect_idx += 2;

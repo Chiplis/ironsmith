@@ -401,7 +401,29 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
             if_false: Vec::new(),
         },
         shapes::DestroyClauseKind::Plain { target_tokens } => {
-            EffectAst::subject_verb_destroy(parse_target_phrase(target_tokens)?)
+            // "Destroy target creature of an opponent's choice" delegates the
+            // target choice to an opponent: declare the target with that
+            // chooser, then destroy the declared object.
+            if let Some(choice_shape) =
+                crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+                    target_tokens,
+                )
+                && choice_shape.actor
+                    == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+            {
+                let target = parse_target_phrase(&choice_shape.object_tokens)?;
+                EffectAst::Sequence {
+                    effects: vec![
+                        EffectAst::subject_verb_explicit_target_only_for_chooser(
+                            target,
+                            PlayerAst::Opponent,
+                        ),
+                        EffectAst::subject_verb_destroy(TargetAst::Tagged(IT_TAG.into(), None)),
+                    ],
+                }
+            } else {
+                EffectAst::subject_verb_destroy(parse_target_phrase(target_tokens)?)
+            }
         }
     };
     Ok(wrap_destroy_with_delayed_timing(effect, timing))

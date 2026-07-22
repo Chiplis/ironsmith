@@ -3713,6 +3713,10 @@ fn compact_equipment_blocker_damage_surface(line: &str) -> Option<String> {
         "Whenever equipped creature deals damage to blocking creature, this Equipment deals that much damage to each other defending player's creature.",
         "Whenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
     );
+    normalized = normalized.replace(
+        "Whenever equipped creature deals damage to blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
+        "Whenever equipped creature deals damage to a blocking creature, this Equipment deals that much damage to each other creature defending player controls.",
+    );
     (normalized != line).then_some(normalized)
 }
 

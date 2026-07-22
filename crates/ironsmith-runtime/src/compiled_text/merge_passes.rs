@@ -698,10 +698,52 @@ fn conditioned_conditions_equivalent(left: &str, right: &str, subject: &str) -> 
                 key = key.replace(source_phrase, attached_subject);
             }
         }
+        // "as long as it's equipped" and "as long as this creature is
+        // equipped" name the same condition when the merged lines share
+        // their subject; different producers pick different anaphora.
+        key = key.replace("as long as it's ", &format!("as long as {subject} is "));
+        // Different producers also disagree on the source reference noun
+        // ("this" vs "this creature"); the key is only compared, never shown.
+        for source_form in ["as long as this is ", "as long as this source is "] {
+            key = key.replace(source_form, "as long as this creature is ");
+        }
         key
     };
 
-    condition_key(left) == condition_key(right)
+    if condition_key(left) == condition_key(right) {
+        return true;
+    }
+
+    // The AST render spells the source's legendary name into "as long as
+    // <name> is equipped" while other producers say "this creature". A
+    // middle with no scope marker can only be the source itself.
+    let equipped_middle = |key: &str| -> Option<String> {
+        key.strip_prefix("as long as ")
+            .and_then(|k| k.strip_suffix(" is equipped"))
+            .map(str::to_string)
+    };
+    if let (Some(left_mid), Some(right_mid)) = (
+        equipped_middle(&condition_key(left)),
+        equipped_middle(&condition_key(right)),
+    ) {
+        let source_form = |mid: &str| mid == "this creature" || mid == "this permanent";
+        let unscoped_name = |mid: &str| {
+            !mid.contains("you")
+                && !mid.contains("opponent")
+                && !mid.contains("enchanted")
+                && !mid.contains("equipped")
+                && !mid.contains("control")
+                && !mid.starts_with("a ")
+                && !mid.starts_with("an ")
+        };
+        if (source_form(&left_mid) && unscoped_name(&right_mid))
+            || (source_form(&right_mid) && unscoped_name(&left_mid))
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
@@ -976,6 +1018,22 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 idx += 2;
                 continue;
             }
+            let subject_prefix = format!("{left_subject} ");
+            if let Some(restriction_tail) = right.strip_prefix(&subject_prefix)
+                && matches!(
+                    restriction_tail,
+                    "attacks each combat if able"
+                        | "attacks each turn if able"
+                        | "blocks each combat if able"
+                        | "attacks or blocks each combat if able"
+                )
+                && plain(left_rest)
+            {
+                let left_line = lines[idx].trim().trim_end_matches('.');
+                merged.push(format!("{left_line} and {restriction_tail}"));
+                idx += 2;
+                continue;
+            }
         }
         if idx + 1 < lines.len()
             && let Some(left_subject) = split_lose_all_abilities_clause(lines[idx].trim())
@@ -1006,6 +1064,45 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 idx += 2;
                 continue;
             }
+        }
+        // A leading-condition line ("As long as this is equipped, Cat
+        // creatures you control have double strike") defeats the flat
+        // subject split below (its first verb hit is the condition's "is"),
+        // so try the conditional pairing on its own first.
+        if idx + 1 < lines.len()
+            && !lines[idx].contains(':')
+            && !lines[idx + 1].contains(':')
+            && let (Some(left_conditional), Some(right_conditional)) = (
+                parse_conditional_subject_predicate(&lines[idx]),
+                parse_conditional_subject_predicate(&lines[idx + 1]),
+            )
+            && conditioned_subjects_equivalent(
+                &left_conditional.subject,
+                &right_conditional.subject,
+            )
+            && conditioned_conditions_equivalent(
+                &left_conditional.condition,
+                &right_conditional.condition,
+                &left_conditional.subject,
+            )
+            && can_merge_subject_predicates(&left_conditional.verb, &right_conditional.verb)
+        {
+            let left_predicate = normalize_keyword_predicate_case(&left_conditional.predicate);
+            let right_predicate = normalize_keyword_predicate_case(&right_conditional.predicate);
+            let right_verb =
+                if matches!(right_conditional.verb.as_str(), "has" | "have" | "gains" | "gain") {
+                    have_verb_for_subject(&left_conditional.subject).to_string()
+                } else {
+                    right_conditional.verb.clone()
+                };
+            merged.push(format_conditioned_subject_predicate_merge(
+                &left_conditional,
+                &left_predicate,
+                &right_verb,
+                &right_predicate,
+            ));
+            idx += 2;
+            continue;
         }
         if idx + 1 < lines.len()
             && let Some((left_subject, left_verb, left_rest)) =

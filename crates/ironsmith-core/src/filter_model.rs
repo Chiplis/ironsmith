@@ -1988,7 +1988,12 @@ impl ObjectFilter {
                     controller_suffix = Some("that player controls".to_string());
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
-                PlayerFilter::Defending => parts.push("the defending player's".to_string()),
+                PlayerFilter::Defending => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("defending player controls".to_string());
+                }
                 PlayerFilter::Attacking => parts.push("an attacking player's".to_string()),
                 PlayerFilter::DamagedPlayer => {
                     if !has_leading_determiner {
@@ -2037,7 +2042,12 @@ impl ObjectFilter {
                     }
                     controller_suffix = Some("that player controls".to_string());
                 }
-                PlayerFilter::ControllerOf(_) => parts.push("a controller's".to_string()),
+                PlayerFilter::ControllerOf(_) => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("its controller controls".to_string());
+                }
                 PlayerFilter::OwnerOf(_) => parts.push("an owner's".to_string()),
                 PlayerFilter::AliasedOwnerOf(_) | PlayerFilter::AliasedControllerOf(_) => {
                     parts.push("that player's".to_string())

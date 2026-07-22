@@ -662,6 +662,61 @@ fn parse_distributive_compound_subject_filter(
     Ok(Some(compound))
 }
 
+fn token_is_type_adjective(token: &OwnedLexToken) -> bool {
+    token.as_word().is_some_and(|word| {
+        let singular = word.strip_suffix('s').unwrap_or(word);
+        crate::runtime_backend::front_end::shared::util::parse_card_type(word).is_some()
+            || crate::runtime_backend::front_end::shared::util::parse_card_type(singular).is_some()
+    })
+}
+
+/// "Creature and enchantment spells you control" conjoins type adjectives
+/// before a shared head noun and tail; parse it as one union filter with the
+/// tail distributed over each adjective ("creature spells you control" or
+/// "enchantment spells you control"). "Creatures and lands target opponent
+/// controls" distributes a bare qualifier tail the same way.
+pub(crate) fn parse_type_adjective_conjunction_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let segments = grammar::split_lexed_slices_on_and(tokens);
+    if segments.len() < 2 {
+        return Ok(None);
+    }
+    let (last, adjective_segments) = segments.split_last().expect("checked len >= 2");
+    let mut adjectives = Vec::new();
+    for segment in adjective_segments {
+        let trimmed = trim_commas(segment);
+        if trimmed.is_empty() || !trimmed.iter().all(token_is_type_adjective) {
+            return Ok(None);
+        }
+        adjectives.push(trimmed);
+    }
+
+    let last = trim_commas(last);
+    let mut head_types = 0usize;
+    while head_types < last.len() && token_is_type_adjective(&last[head_types]) {
+        head_types += 1;
+    }
+    // The last segment must pair its own type word(s) with a shared tail
+    // (head noun and qualifiers); a bare type list is not this shape.
+    if head_types == 0 || head_types == last.len() {
+        return Ok(None);
+    }
+    let tail = &last[head_types..];
+
+    let mut branches = Vec::with_capacity(adjectives.len() + 1);
+    for adjective in &adjectives {
+        let mut branch_tokens = adjective.clone();
+        branch_tokens.extend_from_slice(tail);
+        branches.push(parse_object_filter_lexed(&branch_tokens, false)?);
+    }
+    branches.push(parse_object_filter_lexed(&last, false)?);
+
+    let mut filter = ObjectFilter::default();
+    filter.any_of = branches;
+    Ok(Some(filter))
+}
+
 fn invert_except_by_blocker_filter(allowed: &ObjectFilter) -> Option<ObjectFilter> {
     let clauses: Vec<&ObjectFilter> = if allowed.any_of.is_empty() {
         vec![allowed]
@@ -1124,6 +1179,10 @@ pub(crate) fn parse_subject_object_filter(
     }
 
     if let Some(filter) = parse_distributive_compound_subject_filter(tokens)? {
+        return Ok(Some(filter));
+    }
+
+    if let Some(filter) = parse_type_adjective_conjunction_filter(tokens)? {
         return Ok(Some(filter));
     }
 

@@ -144,6 +144,8 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     normalized = normalize_post_search_shuffle_tails(&normalized);
     normalized = normalize_else_branch_otherwise_surface(&normalized);
     normalized = normalize_redundant_choose_target_opponent_scaffold(&normalized);
+    normalized = normalize_choose_target_player_search_scaffold(&normalized);
+    normalized = normalize_search_outside_game_reveal_surface(&normalized);
     normalized = normalize_token_quoted_ability_surfaces(&normalized);
     normalized = normalize_token_death_trigger_quote_surface(&normalized);
     normalized = normalize_searched_tagged_hand_followup(&normalized);
@@ -4672,6 +4674,97 @@ fn normalize_else_branch_otherwise_surface(line: &str) -> String {
         &line[..idx],
         &line[idx + NEEDLE.len()..]
     )
+}
+
+/// The Wish family's search-outside-the-game program renders as three
+/// sentences; oracle authors it as one reveal-and-put sentence. Fold the
+/// renderer's program back to the authored surface.
+pub(crate) fn normalize_search_outside_game_reveal_surface(line: &str) -> String {
+    const PREFIX: &str = "You may search outside the game for up to one ";
+    const TAIL: &str = ". Reveal it. Put it into its owner's hand.";
+    let Some(start) = line.find(PREFIX) else {
+        return line.to_string();
+    };
+    let sentence_start = start == 0 || line[..start].ends_with(". ");
+    if !sentence_start {
+        return line.to_string();
+    }
+    let after_prefix = &line[start + PREFIX.len()..];
+    let Some(filter_end) = after_prefix.find(TAIL) else {
+        return line.to_string();
+    };
+    let filter_text = &after_prefix[..filter_end];
+    if filter_text.contains('.') || filter_text.is_empty() {
+        return line.to_string();
+    }
+    let article = if filter_text
+        .chars()
+        .next()
+        .is_some_and(|c| matches!(c.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        "an"
+    } else {
+        "a"
+    };
+    format!(
+        "{}You may reveal {article} {filter_text} from outside the game and put it into your hand.{}",
+        &line[..start],
+        &after_prefix[filter_end + TAIL.len()..]
+    )
+}
+
+/// "Choose target player and search their library ..." is renderer
+/// scaffolding for oracle's single possessive mention: "Search target
+/// player's library ...". Fold the choose clause into the possessive.
+fn normalize_choose_target_player_search_scaffold(line: &str) -> String {
+    const FORMS: &[(&str, &str, &str)] = &[
+        (
+            "Choose target player and search their ",
+            "choose target player and search their ",
+            "target player's ",
+        ),
+        (
+            "Choose target opponent and search their ",
+            "choose target opponent and search their ",
+            "target opponent's ",
+        ),
+        (
+            "Choose target player and search target player's ",
+            "choose target player and search target player's ",
+            "target player's ",
+        ),
+        (
+            "Choose target opponent and search target opponent's ",
+            "choose target opponent and search target opponent's ",
+            "target opponent's ",
+        ),
+    ];
+    let mut normalized = line.to_string();
+    for (upper, lower, possessive) in FORMS {
+        loop {
+            let Some(idx) = normalized
+                .find(upper)
+                .or_else(|| normalized.find(lower))
+            else {
+                break;
+            };
+            let sentence_start =
+                idx == 0 || normalized[..idx].ends_with(". ") || normalized[..idx].ends_with(": ");
+            if !sentence_start {
+                break;
+            }
+            let rest = &normalized[idx + upper.len()..];
+            let search_word = if idx == 0 { "Search " } else { "search " };
+            normalized = format!(
+                "{}{}{}{}",
+                &normalized[..idx],
+                search_word,
+                possessive,
+                rest
+            );
+        }
+    }
+    normalized
 }
 
 /// "Choose target opponent and <verb> ... target opponent ..." repeats the

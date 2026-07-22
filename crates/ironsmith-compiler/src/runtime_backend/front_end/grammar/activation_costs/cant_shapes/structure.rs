@@ -205,6 +205,28 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
         }
     }
     let negated_anchor = negated_anchor?;
+    // "Creature and enchantment spells you control can't ..." conjoins type
+    // adjectives inside one noun phrase; distributing the negated tail over
+    // the bare adjective would invent a battlefield-wide restriction. Leave
+    // such clauses whole for the subject-filter parse.
+    for segment in &segments[..negated_anchor] {
+        let trimmed = trim_lexed_commas(segment);
+        let pure_type_adjectives = !trimmed.is_empty()
+            && trimmed.iter().all(|token| {
+                token.as_word().is_some_and(|word| {
+                    let singular = word.strip_suffix('s').unwrap_or(word);
+                    crate::runtime_backend::front_end::shared::util::parse_card_type(word)
+                        .is_some()
+                        || crate::runtime_backend::front_end::shared::util::parse_card_type(
+                            singular,
+                        )
+                        .is_some()
+                })
+            });
+        if pure_type_adjectives {
+            return None;
+        }
+    }
     let anchor_negation =
         activation_restrictions::parse_activation_negation_span_tokens(segments[negated_anchor])?;
     let shared_negated_tail = segments[negated_anchor]

@@ -76,7 +76,8 @@ pub(crate) use activation_costs::parse_cant_clauses;
 use activation_restriction_clauses::*;
 pub(crate) use activation_restriction_clauses::{
     find_negation_span, parse_cant_restriction_clause, parse_cant_restrictions,
-    parse_subject_object_filter, starts_with_target_indicator,
+    parse_subject_object_filter, parse_type_adjective_conjunction_filter,
+    starts_with_target_indicator,
 };
 #[cfg(test)]
 pub(crate) use choice_object_clauses::parse_you_choose_objects_clause;

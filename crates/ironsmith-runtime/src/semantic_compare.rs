@@ -615,11 +615,17 @@ fn normalize_that_player_references_for_clause_surface(text: &str) -> String {
         .replace("that player ", "they ")
         .replace(", that player ", ", they ")
         .replace("that player, ", "they, ")
-        // "The player" is the same anaphor in older templating; only the
-        // reveal-until "puts" form is canonicalized — the generic form
+        // "The player" is the same anaphor in older templating; only
+        // verb-specific forms are canonicalized — the generic form
         // over-rewrites first mentions.
         .replace("The player puts", "They put")
         .replace("the player puts", "they put")
+        .replace("The player sacrifices", "They sacrifice")
+        .replace("the player sacrifices", "they sacrifice")
+        .replace("The player shuffles", "They shuffle")
+        .replace("the player shuffles", "they shuffle")
+        .replace("If the player can't", "If they can't")
+        .replace("if the player can't", "if they can't")
 }
 
 /// Canonicalize player anaphors only after an explicit target-player actor has
@@ -645,10 +651,21 @@ fn normalize_carried_target_player_references(text: &str) -> String {
             "target player reveals their hand. You choose ",
         );
     let lower = normalized.to_ascii_lowercase();
-    let antecedent = ["target opponent ", "target player "]
-        .into_iter()
-        .filter_map(|marker| lower.find(marker).map(|idx| (idx, marker.len())))
-        .min_by_key(|(idx, _)| *idx);
+    let antecedent = [
+        "target opponent ",
+        "target player ",
+        // Possessive first mentions ("search target player's library",
+        // "from an opponent's graveyard") introduce the same carried actor.
+        "target opponent's ",
+        "target player's ",
+        "an opponent's ",
+        // "deals (combat) damage to a player, ..." triggers carry the damaged
+        // player as the line's actor for later "that player"/"the player".
+        "damage to a player",
+    ]
+    .into_iter()
+    .filter_map(|marker| lower.find(marker).map(|idx| (idx, marker.len())))
+    .min_by_key(|(idx, _)| *idx);
     let Some((idx, len)) = antecedent else {
         return normalized;
     };
@@ -1407,6 +1424,27 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
     );
     const REWRITES: &[(&str, &str)] = &[
         ("becomes blocked by a creature", "becomes blocked"),
+        // The renderer's "put it into exile" is oracle's "exile it".
+        ("put it into exile", "exile it"),
+        // "X as long as Y" and "If Y, X" state the same guard; token sets
+        // ignore order, so only the connective word needs canonicalizing.
+        (" as long as", " if"),
+        ("As long as", "If"),
+        // Renderer's typed trigger-object counter check vs oracle's anaphor.
+        ("the triggering object had 1 or more ", "it had a "),
+        // Self-damage where-X vs oracle's equal-to phrasing.
+        ("X damage to you, where X is", "damage to you equal to"),
+        // One-shot delayed end-of-combat surfaces.
+        ("at this turn's next end of combat", "at end of combat"),
+        // The activation-restriction join drops the second "only".
+        (
+            " once each turn and during your",
+            " once each turn and only during your",
+        ),
+        // Bare keyword line vs oracle's subject form.
+        ("This has protection from", "Protection from"),
+        // "You may have they shuffle" (post-anaphora) is "You may shuffle".
+        (" have they shuffle", " shuffle"),
         ("that creature's", "its"),
         ("That creature's", "Its"),
         ("that card's", "its"),
@@ -2435,6 +2473,8 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     }
     if normalized_lower.starts_with(
         "whenever this creature attacks, untap target defending player's creature. target defending player's creature gains blocks each combat if able until end of combat",
+    ) || normalized_lower.starts_with(
+        "whenever this creature attacks, untap target creature defending player controls. target creature defending player controls gains blocks each combat if able until end of combat",
     ) {
         normalized = "Provoke".to_string();
     }

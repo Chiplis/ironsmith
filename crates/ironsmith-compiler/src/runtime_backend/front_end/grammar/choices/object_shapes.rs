@@ -22,6 +22,7 @@ pub(crate) enum PossessiveObjectChoiceActor {
     You,
     SubjectPlayer,
     ObjectController,
+    Opponent,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -116,6 +117,14 @@ pub(crate) fn parse_possessive_object_choice_tokens(
         (
             &["of", "your", "choice"][..],
             PossessiveObjectChoiceActor::You,
+        ),
+        (
+            &["of", "an", "opponent's", "choice"][..],
+            PossessiveObjectChoiceActor::Opponent,
+        ),
+        (
+            &["of", "an", "opponents", "choice"][..],
+            PossessiveObjectChoiceActor::Opponent,
         ),
     ] {
         let Some((first, _, rest)) =

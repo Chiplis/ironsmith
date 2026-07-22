@@ -1373,6 +1373,13 @@ pub(crate) fn parse_conjoined_subject_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<ObjectFilter, CardTextError> {
     let subject_tokens = trim_lexed_commas(tokens);
+    if let Some(filter) =
+        crate::runtime_backend::families::activation_and_restrictions::parse_type_adjective_conjunction_filter(
+            subject_tokens,
+        )?
+    {
+        return Ok(filter);
+    }
     let subject_segments = split_lexed_slices_on_and(subject_tokens);
     if subject_segments.len() <= 1 {
         return parse_object_filter_lexed(subject_tokens, false);

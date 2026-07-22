@@ -4169,6 +4169,17 @@ fn parse_trigger_clause_lexed_unstacked(
                     source_surface,
                 });
             }
+            // A self-name subject ("Lu Xun deals damage to an opponent")
+            // yields no source filter; keep the recipient instead of
+            // falling through to the recipient-less ThisDealsDamage.
+            if let Some(player) = parse_trigger_subject_player_filter(&target_words)
+                && parse_damage_source_trigger_filter_lexed(subject_tokens)?.is_none()
+            {
+                return Ok(TriggerSpec::ThisDealsDamageToPlayer {
+                    player,
+                    amount: None,
+                });
+            }
             if let Ok(mut target) =
                 parse_object_filter_lexed(strip_leading_one_or_more_lexed(&target_tokens), false)
                 && let Some((source, source_surface)) =
@@ -4180,6 +4191,13 @@ fn parse_trigger_clause_lexed_unstacked(
                     target,
                     source_surface,
                 });
+            }
+            if let Ok(mut target) =
+                parse_object_filter_lexed(strip_leading_one_or_more_lexed(&target_tokens), false)
+                && parse_damage_source_trigger_filter_lexed(subject_tokens)?.is_none()
+            {
+                target.set_union_one_or_more(target_one_or_more);
+                return Ok(TriggerSpec::ThisDealsDamageTo(target));
             }
         }
         return Ok(
