@@ -1321,7 +1321,7 @@ dependencies = [
 
 [[package]]
 name = "ironsmith-wasm"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "ark-serialize",
  "ark-std",
@@ -1517,8 +1517,8 @@ checksum = "112b39cec0b298b6c1999fee3e31427f74f676e4cb9879ed1a121b43661a4154"
 
 [[package]]
 name = "manabrew-protocol"
-version = "1.0.0"
-source = "git+https://github.com/witchesofthehill/manabrew.git?rev=aef71d5ccea90cb170c5633d027ff70f5415d42f#aef71d5ccea90cb170c5633d027ff70f5415d42f"
+version = "2.0.0"
+source = "git+https://github.com/witchesofthehill/manabrew.git#1bb698e06d090322a1d26e2e314c199f98c90f2c"
 dependencies = [
  "serde",
  "serde_json",
@@ -2105,7 +2105,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]

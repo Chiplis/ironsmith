@@ -224,6 +224,7 @@ struct ManabrewOpenPrompt {
     deciding_player: PlayerId,
     decision_hash: u64,
     source_card_id: Option<String>,
+    source_card: Option<manabrew_protocol::game::CardDto>,
     input: manabrew_protocol::prompts::PromptInput,
     binding: ManabrewPromptBinding,
 }

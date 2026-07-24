@@ -19,7 +19,7 @@ use manabrew_protocol::prompts::{
     ChooseColorOutput, ChooseFromSelectionInput, ChooseFromSelectionOutput, ChooseNumberInput,
     ChooseNumberOutput, MulliganInput, MulliganOutput, PayManaCostInput, PayManaCostOutput,
     PromptInput, PromptOutput, ReorderInput, ReorderItem, ReorderOutput, ResponseViolation,
-    ScryInput, ScryOutput,
+    ScryInput, ScryOutput, SelectionOption,
 };
 use manabrew_protocol::transport::{
     AgentPrompt, DirectiveInput, ProtocolError, ProtocolErrorCode, StateUpdate,
@@ -407,15 +407,25 @@ fn protocol_error(
 fn presentation(
     title: impl Into<String>,
     description: Option<String>,
-    source_card_id: Option<String>,
+    _source_card_id: Option<String>,
 ) -> PromptPresentation {
     PromptPresentation {
         title: title.into(),
         description,
         text: None,
-        source_card_id,
         targets: Vec::new(),
     }
+}
+
+fn selection_options(labels: impl IntoIterator<Item = String>) -> Vec<SelectionOption> {
+    labels
+        .into_iter()
+        .map(|label| SelectionOption {
+            label,
+            weight: 1,
+            can_repeat: false,
+        })
+        .collect()
 }
 
 fn color_code(color: Color) -> &'static str {
@@ -1064,9 +1074,9 @@ impl WasmGame {
                         Some(description),
                         source_card_id,
                     ),
-                    options: names.clone(),
-                    min_choices: 1,
-                    max_choices: 1,
+                    options: selection_options(names.clone()),
+                    min_total: 1,
+                    max_total: 1,
                 }),
                 ManabrewPromptBinding::TextNames { names },
             );
@@ -1077,7 +1087,7 @@ impl WasmGame {
             .chunks(chunk_size)
             .map(|group| group.to_vec())
             .collect::<Vec<_>>();
-        let options = groups
+        let options: Vec<String> = groups
             .iter()
             .map(|group| match (group.first(), group.last()) {
                 (Some(first), Some(last)) if first != last => format!("{first} — {last}"),
@@ -1092,9 +1102,9 @@ impl WasmGame {
                     Some(description.clone()),
                     source_card_id,
                 ),
-                options,
-                min_choices: 1,
-                max_choices: 1,
+                options: selection_options(options),
+                min_total: 1,
+                max_total: 1,
             }),
             ManabrewPromptBinding::TextNameGroups {
                 description,
@@ -1157,9 +1167,9 @@ impl WasmGame {
                         description,
                         source_card_id,
                     ),
-                    options: legal_amounts.iter().map(u32::to_string).collect(),
-                    min_choices: 1,
-                    max_choices: 1,
+                    options: selection_options(legal_amounts.iter().map(u32::to_string)),
+                    min_total: 1,
+                    max_total: 1,
                 }),
                 ManabrewPromptBinding::DistributionOptions {
                     state,
@@ -1398,6 +1408,11 @@ impl WasmGame {
                         let view = self.current_mana_payment_view();
                         return Ok((
                             PromptInput::PayManaCost(PayManaCostInput {
+                                presentation: presentation(
+                                    "Pay mana",
+                                    Some(ctx.description.clone()),
+                                    source.clone(),
+                                ),
                                 card_id: object_id(&self.game, source_id),
                                 card_name: view
                                     .as_ref()
@@ -1414,7 +1429,6 @@ impl WasmGame {
                                     .unwrap_or_default(),
                                 can_confirm_from_pool: pay_index.is_some(),
                                 actions: payment_actions,
-                                description: Some(ctx.description.clone()),
                             }),
                             ManabrewPromptBinding::Payment { actions, pay_index },
                         ));
@@ -1426,12 +1440,11 @@ impl WasmGame {
                 Ok((
                     PromptInput::ChooseFromSelection(ChooseFromSelectionInput {
                         presentation: presentation("Choose", Some(ctx.description.clone()), source),
-                        options: legal
-                            .iter()
-                            .map(|option| option.description.clone())
-                            .collect(),
-                        min_choices: ctx.min,
-                        max_choices: ctx.max,
+                        options: selection_options(
+                            legal.iter().map(|option| option.description.clone()),
+                        ),
+                        min_total: ctx.min,
+                        max_total: ctx.max,
                     }),
                     ManabrewPromptBinding::Options {
                         indices: legal.iter().map(|option| option.index).collect(),
@@ -1447,9 +1460,11 @@ impl WasmGame {
                             Some(ctx.spell_name.clone()),
                             source,
                         ),
-                        options: legal.iter().map(|mode| mode.description.clone()).collect(),
-                        min_choices: ctx.spec.min_modes,
-                        max_choices: ctx.spec.max_modes,
+                        options: selection_options(
+                            legal.iter().map(|mode| mode.description.clone()),
+                        ),
+                        min_total: ctx.spec.min_modes,
+                        max_total: ctx.spec.max_modes,
                     }),
                     ManabrewPromptBinding::Options {
                         indices: legal.iter().map(|mode| mode.index).collect(),
@@ -1463,13 +1478,11 @@ impl WasmGame {
                         Some(ctx.spell_name.clone()),
                         source,
                     ),
-                    options: ctx
-                        .options
-                        .iter()
-                        .map(|option| option.label.clone())
-                        .collect(),
-                    min_choices: 1,
-                    max_choices: 1,
+                    options: selection_options(
+                        ctx.options.iter().map(|option| option.label.clone()),
+                    ),
+                    min_total: 1,
+                    max_total: 1,
                 }),
                 ManabrewPromptBinding::Options {
                     indices: ctx.options.iter().map(|option| option.index).collect(),
@@ -1542,6 +1555,11 @@ impl WasmGame {
                     .unwrap_or_else(|| Color::ALL.to_vec());
                 Ok((
                     PromptInput::ChooseColor(ChooseColorInput {
+                        presentation: presentation(
+                            "Choose colors",
+                            Some(ctx.description.clone()),
+                            source,
+                        ),
                         valid_colors: colors
                             .iter()
                             .map(|color| color_code(*color).to_string())
@@ -1713,13 +1731,17 @@ impl WasmGame {
                 }
                 Ok((
                     PromptInput::ChooseBoardTargets(ChooseBoardTargetsInput {
+                        presentation: presentation(
+                            "Choose targets",
+                            Some(ctx.context.clone()),
+                            source,
+                        ),
                         candidates,
                         hostile: false,
                         intent: manabrew_protocol::game::TargetingIntent::Friendly,
                         min_targets: min_targets.min(i32::MAX as usize) as i32,
                         max_targets: max_targets.min(i32::MAX as usize) as i32,
                         chosen_targets: 0,
-                        label: ctx.context.clone(),
                     }),
                     ManabrewPromptBinding::Targets { targets },
                 ))
@@ -1746,8 +1768,8 @@ impl WasmGame {
                         source,
                     ),
                     options: Vec::new(),
-                    min_choices: 0,
-                    max_choices: 0,
+                    min_total: 0,
+                    max_total: 0,
                 }),
                 ManabrewPromptBinding::Options {
                     indices: Vec::new(),
@@ -1779,8 +1801,8 @@ impl WasmGame {
                         source,
                     ),
                     options: Vec::new(),
-                    min_choices: 0,
-                    max_choices: 0,
+                    min_total: 0,
+                    max_total: 0,
                 }),
                 ManabrewPromptBinding::Options {
                     indices: Vec::new(),
@@ -1827,9 +1849,9 @@ impl WasmGame {
                             ),
                             source,
                         ),
-                        min_choices: 0,
-                        max_choices: options.len(),
-                        options,
+                        min_total: 0,
+                        max_total: options.len(),
+                        options: selection_options(options),
                     }),
                     ManabrewPromptBinding::Options { indices },
                 ))
@@ -1859,7 +1881,7 @@ impl WasmGame {
             return Ok(Some(AgentPrompt {
                 prompt_id: open.prompt_id,
                 deciding_player_id: player_id(open.deciding_player),
-                source_card_id: open.source_card_id.clone(),
+                source_card: open.source_card.clone(),
                 input: open.input.clone(),
             }));
         }
@@ -1877,13 +1899,16 @@ impl WasmGame {
             deciding_player: context.player(),
             decision_hash,
             source_card_id: self.manabrew_source_card_id(&context),
+            source_card: context
+                .source()
+                .and_then(|source| protocol_card(&self.game, source)),
             input,
             binding,
         };
         let prompt = AgentPrompt {
             prompt_id: open.prompt_id,
             deciding_player_id: player_id(open.deciding_player),
-            source_card_id: open.source_card_id.clone(),
+            source_card: open.source_card.clone(),
             input: open.input.clone(),
         };
         self.manabrew_open_prompt = Some(open);
@@ -2591,6 +2616,7 @@ impl WasmGame {
                     deciding_player: open.deciding_player,
                     decision_hash: open.decision_hash,
                     source_card_id: open.source_card_id,
+                    source_card: open.source_card,
                     input,
                     binding,
                 });
@@ -2787,6 +2813,7 @@ mod manabrew_tests {
             deciding_player: PlayerId::from_index(0),
             decision_hash: 1,
             source_card_id: None,
+            source_card: None,
             input,
             binding,
         }
@@ -3116,6 +3143,13 @@ mod manabrew_tests {
                 selection.options.len() <= MANABREW_TEXT_OPTIONS_PER_PROMPT,
                 "card-name prompt exceeded its option bound"
             );
+            assert!(
+                selection
+                    .options
+                    .iter()
+                    .all(|option| option.weight == 1 && !option.can_repeat),
+                "card-name choices should use unit-weight, non-repeatable protocol options"
+            );
             let chosen_index = match &open.binding {
                 ManabrewPromptBinding::TextNameGroups { groups, .. } => groups
                     .iter()
@@ -3265,8 +3299,16 @@ mod manabrew_tests {
         let PromptInput::ChooseFromSelection(selection) = &input else {
             panic!("proliferate should use a selection prompt");
         };
-        assert_eq!(selection.min_choices, 0);
-        assert_eq!(selection.max_choices, 2);
+        assert_eq!(selection.min_total, 0);
+        assert_eq!(selection.max_total, 2);
+        assert_eq!(
+            selection
+                .options
+                .iter()
+                .map(|option| option.label.as_str())
+                .collect::<Vec<_>>(),
+            vec!["Permanent: Permanent", "Player: Bob"]
+        );
         let open = open_prompt(input, binding);
         match game
             .manabrew_response_action(
