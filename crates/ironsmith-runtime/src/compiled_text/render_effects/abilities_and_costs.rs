@@ -169,6 +169,7 @@ pub(super) fn describe_myriad_keyword(
         || create.controller != PlayerFilter::You
         || !create.enters_tapped
         || create.has_haste
+        || create.loses_soulbond
         || !create.enters_attacking
         || !matches!(
             &create.attack_target_mode,
@@ -980,11 +981,18 @@ pub(super) fn normalize_granted_triggered_ability_surface(surface: String) -> St
         return surface;
     }
 
-    let tail = tail
-        .strip_prefix("You ")
-        .or_else(|| tail.strip_prefix("you "))
-        .unwrap_or(tail)
-        .trim_start();
+    // Oracle keeps the explicit subject in optional instructions ("When this
+    // creature dies, you may return it ..."); only a mandatory "You <verb>"
+    // drops to the bare imperative.
+    let keeps_you_subject = tail.to_ascii_lowercase().starts_with("you may ");
+    let tail = if keeps_you_subject {
+        tail
+    } else {
+        tail.strip_prefix("You ")
+            .or_else(|| tail.strip_prefix("you "))
+            .unwrap_or(tail)
+            .trim_start()
+    };
     if tail.is_empty() {
         return surface;
     }

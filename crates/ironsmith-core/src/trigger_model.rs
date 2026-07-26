@@ -58,6 +58,8 @@ pub enum TriggerKind {
     StateBased {
         display: String,
     },
+    /// "Whenever A or B" — fires when any branch's event occurs.
+    AnyOf(Vec<Trigger>),
     ThisAttacks,
     ThisAttacksPlayerWhoControlsAtLeast {
         count: usize,
@@ -127,6 +129,7 @@ pub enum TriggerKind {
     ThisDies,
     ThisDiesOrIsExiled,
     ThisLeavesBattlefield,
+    ThisPhasesOut,
     ThisMutates,
     LeavesBattlefield {
         filter: ObjectFilter,
@@ -479,6 +482,26 @@ impl Trigger {
         Self::typed(display.clone(), TriggerKind::StateBased { display })
     }
 
+    /// A union of alternative trigger events ("Whenever A or B").
+    pub fn any_of(branches: Vec<Trigger>) -> Self {
+        let label = branches
+            .iter()
+            .enumerate()
+            .map(|(idx, branch)| {
+                if idx == 0 {
+                    branch.label.clone()
+                } else {
+                    ["Whenever ", "When ", "At "]
+                        .into_iter()
+                        .find_map(|prefix| branch.label.strip_prefix(prefix).map(str::to_string))
+                        .unwrap_or_else(|| branch.label.clone())
+                }
+            })
+            .collect::<Vec<_>>()
+            .join(" or ");
+        Self::typed(label, TriggerKind::AnyOf(branches))
+    }
+
     fn typed(label: impl Into<String>, kind: TriggerKind) -> Self {
         Self {
             label: label.into(),
@@ -668,6 +691,9 @@ impl Trigger {
             "this_leaves_battlefield",
             TriggerKind::ThisLeavesBattlefield,
         )
+    }
+    pub fn this_phases_out() -> Self {
+        Self::typed("When this phases out", TriggerKind::ThisPhasesOut)
     }
     pub fn this_mutates() -> Self {
         Self::typed("this_mutates", TriggerKind::ThisMutates)
@@ -1544,12 +1570,93 @@ pub trait CompilerTriggerMatcher {
     fn into_trigger(self) -> Trigger;
 }
 
+/// Authored surface for the entered-object subject of a zone-change origin
+/// condition ("if it entered from ..." versus "if that creature entered
+/// from ..."). Presentation-only; never read while matching.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum OriginConditionSubjectSurface {
+    /// "it" (or "one or more of them" for batch triggers).
+    #[default]
+    It,
+    /// A demonstrative subject such as "that creature".
+    That(String),
+}
+
 /// Additional provenance required for a zone-change trigger to match.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ZoneChangeOriginCondition {
     /// The object either moved directly from this zone or was cast from this
     /// zone before entering the destination zone from the stack.
-    MovedFromOrCastFrom(Zone),
+    MovedFromOrCastFrom {
+        /// The origin zone.
+        zone: Zone,
+        /// Required owner of the origin zone (for player-owned zones such as
+        /// graveyards and hands). `None` accepts any owner.
+        zone_owner: Option<PlayerFilter>,
+        /// Required caster for the "was cast from" branch. `None` accepts any
+        /// caster.
+        caster: Option<PlayerFilter>,
+        /// Authored subject wording. Presentation-only.
+        subject_surface: OriginConditionSubjectSurface,
+    },
+}
+
+impl ZoneChangeOriginCondition {
+    /// The unscoped form: moved from `zone` or cast from `zone`, by anyone.
+    pub fn moved_from_or_cast_from(zone: Zone) -> Self {
+        Self::MovedFromOrCastFrom {
+            zone,
+            zone_owner: None,
+            caster: None,
+            subject_surface: OriginConditionSubjectSurface::It,
+        }
+    }
+
+    /// The ", if it entered from X or was cast from X" display suffix.
+    pub fn display_suffix(&self, plural: bool) -> String {
+        fn origin_zone_phrase(zone: Zone, owner: Option<&PlayerFilter>) -> String {
+            let owned = |noun: &str| match owner {
+                Some(PlayerFilter::You) => format!("your {noun}"),
+                Some(PlayerFilter::Opponent) => format!("an opponent's {noun}"),
+                _ => format!("a {noun}"),
+            };
+            match zone {
+                Zone::Graveyard => owned("graveyard"),
+                Zone::Hand => owned("hand"),
+                Zone::Library => owned("library"),
+                Zone::Battlefield => "the battlefield".to_string(),
+                Zone::Stack => "the stack".to_string(),
+                Zone::Exile => "exile".to_string(),
+                Zone::Command => "the command zone".to_string(),
+                Zone::Ante => "ante".to_string(),
+                Zone::OutsideGame => "outside the game".to_string(),
+            }
+        }
+
+        let Self::MovedFromOrCastFrom {
+            zone,
+            zone_owner,
+            caster,
+            subject_surface,
+        } = self;
+        let zone_phrase = origin_zone_phrase(*zone, zone_owner.as_ref());
+        let entered_subject = if plural {
+            "one or more of them".to_string()
+        } else {
+            match subject_surface {
+                OriginConditionSubjectSurface::It => "it".to_string(),
+                OriginConditionSubjectSurface::That(subject) => subject.clone(),
+            }
+        };
+        let cast_clause = match caster {
+            Some(PlayerFilter::You) => {
+                let object = if plural { "them" } else { "it" };
+                format!("you cast {object} from {zone_phrase}")
+            }
+            _ => format!("was cast from {zone_phrase}"),
+        };
+        format!(", if {entered_subject} entered from {zone_phrase} or {cast_clause}")
+    }
 }
 
 /// Grammatical number of an explicitly authored source-object trigger subject.

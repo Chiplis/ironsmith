@@ -236,6 +236,20 @@ fn parse_can_block_additional_lexed<'a>(
         .map(|((), _)| ())
         .take()
         .parse_next(input)?;
+    // The tolerant subject capture must not swallow earlier sentences or a
+    // conjoined predicate ("Untap target creature. It gets +2/+2 until end
+    // of turn and can block ..."): those clauses belong to the sentence and
+    // compound splitters, which hand this parser only the bare "can block"
+    // clause (with an implicit "it" subject).
+    if subject_tokens
+        .iter()
+        .any(|token| token.is_period() || token.is_any_word(&["gets", "get", "gains", "gain"]))
+    {
+        return Err(primitives::backtrack_err(
+            "can block additional creature",
+            "clean subject before 'can block'",
+        ));
+    }
     primitives::phrase(&["can", "block"]).parse_next(input)?;
     let count_tokens = repeat_till(0.., any.void(), peek(primitives::kw("additional")))
         .map(|((), _)| ())

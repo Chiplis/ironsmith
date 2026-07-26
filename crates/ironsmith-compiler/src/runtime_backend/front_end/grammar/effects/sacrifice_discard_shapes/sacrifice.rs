@@ -96,6 +96,7 @@ pub(crate) struct SacrificeCountShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct SacrificeHalfRoundedUpShape<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
+    pub(crate) rounded_up: bool,
 }
 
 pub(crate) fn parse_sacrifice_mana_spent_symbol(tokens: &[OwnedLexToken]) -> Option<ManaSymbol> {
@@ -210,11 +211,20 @@ pub(crate) fn parse_sacrifice_half_rounded_up_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeHalfRoundedUpShape<'_>> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["half", "the"]).void())?;
-    let before_rounding = primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "up"]])
-        .map(|(_, stripped)| stripped)?;
+    let (rounded_up, before_rounding) =
+        if let Some((_, stripped)) = primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "up"]]) {
+            (true, stripped)
+        } else if let Some((_, stripped)) =
+            primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "down"]])
+        {
+            (false, stripped)
+        } else {
+            return None;
+        };
     let object = parse_sacrifice_object_shape(before_rounding);
     (!object.filter_tokens.is_empty()).then_some(SacrificeHalfRoundedUpShape {
         filter_tokens: object.filter_tokens,
+        rounded_up,
     })
 }
 

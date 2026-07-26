@@ -20,3 +20,4 @@ pub use enters_untapped::EntersBattlefieldUntappedTrigger;
 pub use zone_change_trigger::{
     CountMode, PlayerRelation, TriggerSubjectNumber, ZoneChangeTrigger, ZonePattern,
 };
+pub(crate) use zone_change_trigger::moved_or_cast_origin_display_suffix;

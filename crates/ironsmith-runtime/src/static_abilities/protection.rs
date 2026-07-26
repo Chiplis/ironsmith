@@ -252,12 +252,18 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
     }
 
     let description = filter.description();
-    description
+    let fragment = description
         .strip_suffix(" permanent")
         .or_else(|| description.strip_suffix(" spell"))
         .or_else(|| description.strip_suffix(" source"))
-        .unwrap_or(description.as_str())
-        .to_string()
+        .unwrap_or(description.as_str());
+    // A bare type noun reads as a class: "hexproof from planeswalkers".
+    if filter.card_types.len() == 1
+        && filter.card_types[0].to_string().eq_ignore_ascii_case(fragment)
+    {
+        return format!("{fragment}s");
+    }
+    fragment.to_string()
 }
 
 fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {

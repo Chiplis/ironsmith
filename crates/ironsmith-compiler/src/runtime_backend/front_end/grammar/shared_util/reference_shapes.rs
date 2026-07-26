@@ -219,6 +219,57 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     ) {
         return SubjectAst::Player(PlayerAst::ItsOwner);
     }
+    // "That artifact's controller gains …" — possessive singular subject.
+    if slice.len() >= 3
+        && permission_shapes::exact_words(&slice[..1], &["that"])
+        && matches!(
+            slice[1],
+            "artifact's"
+                | "creature's"
+                | "permanent's"
+                | "enchantment's"
+                | "land's"
+                | "planeswalker's"
+                | "spell's"
+                | "token's"
+                | "card's"
+        )
+        && is_controller_or_owner(slice[2])
+    {
+        return SubjectAst::Player(
+            if permission_shapes::exact_words(&slice[2..3], &["owner"]) {
+                PlayerAst::ItsOwner
+            } else {
+                PlayerAst::ItsController
+            },
+        );
+    }
+    // The same possessive with the apostrophe split into ["artifact", "s"].
+    if slice.len() >= 4
+        && permission_shapes::exact_words(&slice[..1], &["that"])
+        && matches!(
+            slice[1],
+            "artifact"
+                | "creature"
+                | "permanent"
+                | "enchantment"
+                | "land"
+                | "planeswalker"
+                | "spell"
+                | "token"
+                | "card"
+        )
+        && slice[2] == "s"
+        && is_controller_or_owner(slice[3])
+    {
+        return SubjectAst::Player(
+            if permission_shapes::exact_words(&slice[3..4], &["owner"]) {
+                PlayerAst::ItsOwner
+            } else {
+                PlayerAst::ItsController
+            },
+        );
+    }
     if slice.len() >= 3
         && permission_shapes::exact_words(&slice[..1], &["that"])
         && is_controlled_object_plural(slice[1])
@@ -437,6 +488,8 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
     }
     if permission_shapes::exact_words(words, &["decayed"]) {
         Some(Marker("decayed"))
+    } else if permission_shapes::exact_words(words, &["level", "up"]) {
+        Some(Marker("level up"))
     } else if permission_shapes::exact_words(words, &["disturb"]) {
         Some(Marker("disturb"))
     } else if permission_shapes::exact_words(words, &["mutate"]) {

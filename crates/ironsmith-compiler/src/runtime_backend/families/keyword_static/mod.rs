@@ -391,7 +391,12 @@ fn try_static_ability_ast_line_rule_indices(
     for &idx in candidate_indices {
         tried[idx] = true;
         match run_static_ability_ast_line_rule(rules[idx].rule, tokens) {
-            Ok(Some(abilities)) => return Some(abilities),
+            Ok(Some(abilities)) => {
+                if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
+                    eprintln!("static-rule claim: {}", rules[idx].id);
+                }
+                return Some(abilities);
+            }
             Ok(None) => {}
             Err(err) => {
                 deferred_error.get_or_insert(err);
@@ -1032,7 +1037,12 @@ fn parse_static_ability_ast_line_lowered(
             continue;
         }
         match run_static_ability_ast_line_rule(rule.rule, tokens) {
-            Ok(Some(abilities)) => return Ok(Some(abilities)),
+            Ok(Some(abilities)) => {
+                if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
+                    eprintln!("static-rule claim: {}", rule.id);
+                }
+                return Ok(Some(abilities));
+            }
             Ok(None) => {}
             Err(err) => {
                 deferred_error.get_or_insert(err);
@@ -4271,6 +4281,15 @@ pub(crate) fn parse_trailing_this_spell_cost_condition(
     clause_words: &[&str],
 ) -> Result<Option<crate::static_abilities::ThisSpellCostCondition>, CardTextError> {
     let remaining_words = crate::runtime_backend::token_word_refs(remaining_tokens);
+    // "during your end step" — a timing condition rather than an if-clause.
+    if remaining_words.ends_with(&["during", "your", "end", "step"]) {
+        return Ok(Some(
+            crate::static_abilities::ThisSpellCostCondition::ConditionExpr {
+                condition: crate::ConditionExpr::SourceControllersEndStep,
+                display: "during your end step".to_string(),
+            },
+        ));
+    }
     let Some(if_idx) =
         static_keyword_cost_shapes::parse_trailing_cost_condition_if(&remaining_words)
             .map(|boundary| boundary.word)

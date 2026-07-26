@@ -1636,7 +1636,7 @@ fn lower_special_rewrite_triggered_divvy(
         Some(semantic_grammar::SpecialTriggeredProgram::DifferentNamesLibraryDivvy)
     ) {
         let trigger = if trigger_parse_tokens.is_empty() {
-            TriggerSpec::ThisEntersBattlefield
+            TriggerSpec::ThisEntersBattlefield { origin_condition: None }
         } else {
             parse_trigger_clause_lexed(trigger_parse_tokens)?
         };
@@ -2742,7 +2742,7 @@ fn hideaway_line_ast(count: i32) -> LineAst {
     choose_filter.zone = Some(Zone::Library);
 
     LineAst::Triggered {
-        trigger: TriggerSpec::ThisEntersBattlefield,
+        trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
         effects: vec![
             EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::You,
@@ -2801,7 +2801,7 @@ fn try_lower_partner_with_tokens(
     Ok(Some(LineAst::Multiple(vec![
         LineAst::StaticAbility(StaticAbility::partner_with(partner_name.clone()).into()),
         LineAst::Triggered {
-            trigger: TriggerSpec::ThisEntersBattlefield,
+            trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
             effects: vec![EffectAst::MayByPlayer {
                 player: PlayerAst::Target,
                 effects: vec![EffectAst::subject_verb_search_library(

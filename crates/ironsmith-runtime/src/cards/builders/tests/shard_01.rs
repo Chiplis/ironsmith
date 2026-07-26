@@ -1802,7 +1802,7 @@ pub(super) fn vampire_socialite_strict_parser_and_compiled_text_regression() {
         "expected Vampire Socialite ETB intervening-if text, got {rendered}"
     );
     assert!(
-        rendered.contains("As long as an opponent lost life this turn, other Vampires you control enter with an additional +1/+1 counter on them."),
+        rendered.contains("As long as an opponent lost life this turn, each other Vampire you control enters with an additional +1/+1 counter on it."),
         "expected Vampire Socialite static conditional ETB-counter text, got {rendered}"
     );
 }

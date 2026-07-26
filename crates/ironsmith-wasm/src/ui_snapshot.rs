@@ -734,6 +734,20 @@ pub(super) fn protected_object_ids_for_decision(
                 }
             }
         }
+        DecisionContext::SelectOptions(options)
+            if options
+                .description
+                .starts_with("Activate mana abilities before paying costs")
+                && options.options.iter().any(|option| {
+                    option
+                        .description
+                        .eq_ignore_ascii_case("Finish activating mana abilities")
+                }) =>
+        {
+            // Mana-window actions use the battlefield groups to collapse
+            // equivalent sources into one UI option. Keep those source IDs
+            // groupable; the selected member is carried by the option itself.
+        }
         DecisionContext::SelectOptions(options) => {
             for option in &options.options {
                 if let Some(object_id) = option.object_id {

@@ -259,6 +259,15 @@ export class WasmGame {
         return takeFromExternrefTable0(ret[0]);
     }
     /**
+     * Finish a puzzle import after all requested zones have been populated.
+     */
+    finishPuzzleSetup() {
+        const ret = wasm.wasmgame_finishPuzzleSetup(this.__wbg_ptr);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
      * Queue a forced die result for deterministic test harness scenarios.
      * @param {number} result
      */
@@ -624,6 +633,17 @@ export class WasmGame {
      */
     reset(player_names, starting_life) {
         const ret = wasm.wasmgame_reset(this.__wbg_ptr, player_names, starting_life);
+        if (ret[1]) {
+            throw takeFromExternrefTable0(ret[0]);
+        }
+    }
+    /**
+     * Prepare an empty match for puzzle/board-position zone imports.
+     * @param {any} player_names
+     * @param {number} starting_life
+     */
+    resetEmpty(player_names, starting_life) {
+        const ret = wasm.wasmgame_resetEmpty(this.__wbg_ptr, player_names, starting_life);
         if (ret[1]) {
             throw takeFromExternrefTable0(ret[0]);
         }

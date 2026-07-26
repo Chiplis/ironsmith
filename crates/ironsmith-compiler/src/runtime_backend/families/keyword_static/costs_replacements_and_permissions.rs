@@ -284,9 +284,29 @@ pub(crate) fn parse_spells_cost_modifier_line(
                 merge_spell_filters(&mut filter, extra_filter);
             }
         }
-        let between_filter = parse_spell_filter_with_grammar_entrypoint(
-            strip_relative_target_clause(between_tokens),
-        );
+        // The actor phrase is a separate fact — "with flying you cast" must
+        // parse the quality without it, or the filter silently drops it.
+        let mut between_for_filter: Vec<OwnedLexToken> =
+            strip_relative_target_clause(between_tokens).to_vec();
+        for actor_phrase in [
+            &["you", "cast"][..],
+            &["your", "opponents", "cast"],
+            &["an", "opponent", "casts"],
+        ] {
+            if let Some(pos) = between_for_filter
+                .windows(actor_phrase.len())
+                .position(|window| {
+                    window
+                        .iter()
+                        .zip(actor_phrase.iter())
+                        .all(|(token, word)| token.is_word(word))
+                })
+            {
+                between_for_filter.drain(pos..pos + actor_phrase.len());
+                break;
+            }
+        }
+        let between_filter = parse_spell_filter_with_grammar_entrypoint(&between_for_filter);
         if spell_filter_has_identity(&between_filter) {
             merge_spell_filters(&mut filter, between_filter);
         }
@@ -3409,6 +3429,9 @@ pub(crate) fn build_replacement_creature_token(
             TokenKeywordShape::Haste => builder.haste(),
             TokenKeywordShape::Menace => builder.menace(),
             TokenKeywordShape::Reach => builder.reach(),
+            other => crate::runtime_backend::compile_support::apply_standard_token_keyword(
+                builder, other,
+            ),
         };
     }
     builder.build()

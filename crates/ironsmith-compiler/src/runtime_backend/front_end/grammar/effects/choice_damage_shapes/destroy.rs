@@ -46,6 +46,11 @@ pub(crate) fn parse_destroy_multi_target_shape(
     {
         return None;
     }
+    // "target X and all other Ys with the same name ..." is the same-name
+    // fanout family (one target + a mass action), not a multi-target list.
+    if words.windows(3).any(|window| window == ["and", "all", "other"]) {
+        return None;
+    }
     let target_words = &words[1..];
     let repeated_up_to_one = up_to_one_target_word_starts(target_words).len() >= 2;
     if !has_target_separator(tokens) && !repeated_up_to_one {

@@ -272,9 +272,12 @@ fn extraordinary_journey_keeps_exile_entry_or_cast_provenance() {
         &parsed,
         crate::runtime_backend::ast::TriggerSpec::EntersBattlefieldOneOrMore {
             origin_condition: Some(
-                ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom(
-                    Zone::Exile
-                )
+                ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
+                    zone: Zone::Exile,
+                    zone_owner: None,
+                    caster: None,
+                    ..
+                }
             ),
             ..
         }
@@ -549,4 +552,57 @@ fn combat_damage_recipients_prefer_registered_source_names_over_subtypes() {
             );
         }
     });
+}
+
+#[test]
+fn grist_style_singular_origin_clause_scopes_zone_owner_and_caster_on_the_trigger() {
+    let tokens = tokenize_line(
+        "this creature or another creature you control enters, if it entered from your graveyard or you cast it from your graveyard",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .unwrap();
+
+    fn assert_origin(
+        origin: &Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
+        context: &str,
+    ) {
+        let Some(ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
+            zone,
+            zone_owner,
+            caster,
+            ..
+        }) = origin
+        else {
+            panic!("{context} must carry a moved-or-cast origin condition, got {origin:?}");
+        };
+        assert_eq!(*zone, Zone::Graveyard, "{context}");
+        assert_eq!(
+            *zone_owner,
+            Some(crate::target::PlayerFilter::You),
+            "{context}"
+        );
+        assert_eq!(*caster, Some(crate::target::PlayerFilter::You), "{context}");
+    }
+
+    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = &parsed else {
+        panic!("expected an either-union of this-enters and another-enters, got {parsed:?}");
+    };
+    match left.as_ref() {
+        crate::runtime_backend::ast::TriggerSpec::ThisEntersBattlefield { origin_condition }
+        | crate::runtime_backend::ast::TriggerSpec::ThisEntersBattlefieldWithSurface {
+            origin_condition,
+            ..
+        } => assert_origin(origin_condition, "this-enters branch"),
+        other => panic!("expected a this-enters branch, got {other:?}"),
+    }
+    match right.as_ref() {
+        crate::runtime_backend::ast::TriggerSpec::EntersBattlefield {
+            origin_condition, ..
+        } => assert_origin(origin_condition, "another-enters branch"),
+        other => panic!("expected an enters-battlefield branch, got {other:?}"),
+    }
 }

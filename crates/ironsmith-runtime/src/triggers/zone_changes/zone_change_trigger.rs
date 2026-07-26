@@ -38,6 +38,15 @@ use crate::zone::Zone;
 pub use ironsmith_core::trigger_model::{
     GraveyardTriggerSurface, TriggerSubjectNumber, ZoneChangeOriginCondition,
 };
+
+/// The ", if it entered from X or was cast from X" display suffix for a
+/// zone-change origin condition.
+pub(crate) fn moved_or_cast_origin_display_suffix(
+    origin: &ZoneChangeOriginCondition,
+    plural: bool,
+) -> String {
+    origin.display_suffix(plural)
+}
 use std::fmt;
 
 /// Pattern for matching zones in zone change events.
@@ -754,10 +763,22 @@ impl ZoneChangeTrigger {
                 TriggerSubjectNumber::Singular => "enters",
                 TriggerSubjectNumber::Plural => "enter",
             };
+            let origin_suffix = self
+                .origin_condition
+                .as_ref()
+                .map(|origin| {
+                    moved_or_cast_origin_display_suffix(
+                        origin,
+                        self.count_mode == CountMode::OneOrMore,
+                    )
+                })
+                .unwrap_or_default();
             if self.to == ZonePattern::Specific(Zone::Battlefield)
                 && let Some(origin_phrase) = enters_origin_phrase(self)
             {
-                return format!("When {battlefield_subject} {enter_verb} {origin_phrase}");
+                return format!(
+                    "When {battlefield_subject} {enter_verb} {origin_phrase}{origin_suffix}"
+                );
             }
             return match (&self.from, &self.to) {
                 (
@@ -777,7 +798,7 @@ impl ZoneChangeTrigger {
                     format!("When {battlefield_subject} is put into exile from the battlefield")
                 }
                 (_, ZonePattern::Specific(Zone::Battlefield)) => {
-                    format!("When {battlefield_subject} {enter_verb} the battlefield")
+                    format!("When {battlefield_subject} {enter_verb} the battlefield{origin_suffix}")
                 }
                 (ZonePattern::Specific(Zone::Battlefield), _) => {
                     format!("When {battlefield_subject} leaves the battlefield")
@@ -988,27 +1009,11 @@ impl ZoneChangeTrigger {
         }
 
         let mut display = parts.join(" ");
-        if let Some(ZoneChangeOriginCondition::MovedFromOrCastFrom(zone)) = self.origin_condition {
-            let zone = match zone {
-                Zone::Library => "a library",
-                Zone::Hand => "a hand",
-                Zone::Battlefield => "the battlefield",
-                Zone::Graveyard => "a graveyard",
-                Zone::Stack => "the stack",
-                Zone::Exile => "exile",
-                Zone::Command => "the command zone",
-                Zone::Ante => "ante",
-                Zone::OutsideGame => "outside the game",
-            };
-            if self.count_mode == CountMode::OneOrMore {
-                display.push_str(&format!(
-                    ", if one or more of them entered from {zone} or was cast from {zone}"
-                ));
-            } else {
-                display.push_str(&format!(
-                    ", if it entered from {zone} or was cast from {zone}"
-                ));
-            }
+        if let Some(origin) = &self.origin_condition {
+            display.push_str(&moved_or_cast_origin_display_suffix(
+                origin,
+                self.count_mode == CountMode::OneOrMore,
+            ));
         }
         display
     }
@@ -1187,23 +1192,54 @@ impl TriggerMatcher for ZoneChangeTrigger {
             }
         }
 
-        if let Some(ZoneChangeOriginCondition::MovedFromOrCastFrom(zone)) = self.origin_condition
-            && zc.from != zone
+        if let Some(ZoneChangeOriginCondition::MovedFromOrCastFrom {
+            zone,
+            zone_owner,
+            caster,
+            ..
+        }) = &self.origin_condition
         {
-            let cast_from_zone = zc.destination_objects().iter().any(|id| {
-                ctx.game.object(*id).is_some_and(|object| {
+            // Cards can only occupy their owner's graveyard/hand/library, so
+            // an owned origin zone constrains the entering object's owner.
+            let owner_matches = |owner: crate::ids::PlayerId| match zone_owner {
+                None | Some(PlayerFilter::Any) => true,
+                Some(PlayerFilter::You) => owner == ctx.controller,
+                Some(PlayerFilter::Opponent) => owner != ctx.controller,
+                // Unmodeled owner scopes never match rather than silently widening.
+                Some(_) => false,
+            };
+            // The caster the "cast from" branch requires; `Err` marks an
+            // unmodeled caster filter, which disables that branch entirely.
+            let required_caster: Result<Option<crate::ids::PlayerId>, ()> = match caster {
+                None | Some(PlayerFilter::Any) => Ok(None),
+                Some(PlayerFilter::You) => Ok(Some(ctx.controller)),
+                Some(_) => Err(()),
+            };
+            let object_satisfies_origin =
+                |owner: crate::ids::PlayerId, stable_id: crate::ids::StableId| {
+                    if !owner_matches(owner) {
+                        return false;
+                    }
+                    if zc.from == *zone {
+                        return true;
+                    }
+                    let Ok(required_caster) = required_caster else {
+                        return false;
+                    };
                     ctx.game
                         .turn_store
                         .turn_history
-                        .object_was_cast_from_zone(object.stable_id, zone)
-                })
-            }) || zc.snapshots().iter().any(|snapshot| {
+                        .object_was_cast_from_zone_by(stable_id, *zone, required_caster)
+                };
+            let origin_satisfied = zc.destination_objects().iter().any(|id| {
                 ctx.game
-                    .turn_store
-                    .turn_history
-                    .object_was_cast_from_zone(snapshot.stable_id, zone)
-            });
-            if !cast_from_zone {
+                    .object(*id)
+                    .is_some_and(|object| object_satisfies_origin(object.owner, object.stable_id))
+            }) || zc
+                .snapshots()
+                .iter()
+                .any(|snapshot| object_satisfies_origin(snapshot.owner, snapshot.stable_id));
+            if !origin_satisfied {
                 return false;
             }
         }
@@ -1423,7 +1459,9 @@ mod tests {
         let entering_id = create_creature_in_zone(&mut game, alice, Zone::Battlefield);
         let trigger = ZoneChangeTrigger::enters_battlefield(ObjectFilter::creature().nontoken())
             .count(CountMode::OneOrMore)
-            .origin_condition(ZoneChangeOriginCondition::MovedFromOrCastFrom(Zone::Exile));
+            .origin_condition(ZoneChangeOriginCondition::moved_from_or_cast_from(
+                Zone::Exile,
+            ));
 
         assert_eq!(
             trigger.display(),

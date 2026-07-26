@@ -1522,6 +1522,16 @@ pub(crate) fn apply_modification_to_chars_for_dependency(
                 *t += toughness;
             }
         }
+        Modification::ModifyPowerToughnessValue { power, toughness } => {
+            let power_delta = evaluate_value_simple(power, chars);
+            let toughness_delta = evaluate_value_simple(toughness, chars);
+            if let (Some(p), ValueEval::Scalar(delta)) = (&mut chars.power, power_delta) {
+                *p += delta;
+            }
+            if let (Some(t), ValueEval::Scalar(delta)) = (&mut chars.toughness, toughness_delta) {
+                *t += delta;
+            }
+        }
         Modification::ModifyPowerToughnessByColorCount {
             power_multiplier,
             toughness_multiplier,
@@ -1623,6 +1633,7 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CardTypesAmong(_)
         | Value::StaticAbilitiesAmong { .. }
         | Value::ColorsAmong(_)
+        | Value::ColorPairsAmong(_)
         | Value::DistinctNames(_)
         | Value::DistinctPowers(_)
         | Value::TurnHistoryCount(_)
@@ -2303,13 +2314,27 @@ fn sublayer_group_has_trivial_ordering(effects: &[&ContinuousEffect], game: &Gam
 }
 
 fn is_commutative_pt_modifier(modification: &Modification) -> bool {
-    matches!(
-        modification,
+    match modification {
         Modification::ModifyPower(_)
-            | Modification::ModifyToughness(_)
-            | Modification::ModifyPowerToughness { .. }
-            | Modification::ModifyPowerToughnessByColorCount { .. }
-    )
+        | Modification::ModifyToughness(_)
+        | Modification::ModifyPowerToughness { .. }
+        | Modification::ModifyPowerToughnessByColorCount { .. } => true,
+        Modification::ModifyPowerToughnessValue { power, toughness } => {
+            pt_modifier_value_is_commutative(power) && pt_modifier_value_is_commutative(toughness)
+        }
+        _ => false,
+    }
+}
+
+fn pt_modifier_value_is_commutative(value: &Value) -> bool {
+    match value {
+        Value::SurfaceHinted { value, .. } => pt_modifier_value_is_commutative(value),
+        Value::Fixed(_) => true,
+        Value::Count(filter) | Value::CountScaled(filter, _) => {
+            !filter.uses_power_or_toughness_characteristics()
+        }
+        _ => false,
+    }
 }
 
 fn sublayer_group_has_same_fixed_pt_setting(effects: &[&ContinuousEffect]) -> bool {

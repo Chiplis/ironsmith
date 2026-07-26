@@ -502,12 +502,38 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
     if let Some(player) = trigger_subject_player_selector_lexed(subject_tokens) {
         return Ok(Some(attacking_filter_for_player(player)));
     }
+    // "this [creature] or equipped creature" — an Equipment triggering for
+    // itself (while reconfigured) or its bearer.
+    {
+        let word_refs = crate::runtime_backend::token_word_refs(subject_tokens);
+        if matches!(
+            word_refs.as_slice(),
+            ["this", "or", "equipped", "creature"]
+                | ["this", "creature", "or", "equipped", "creature"]
+                | ["this", "permanent", "or", "equipped", "creature"]
+        ) {
+            if let Some(or_token_idx) = subject_tokens.iter().position(|t| t.is_word("or"))
+                && let Some(equipped) =
+                    parse_trigger_subject_filter_lexed(&subject_tokens[or_token_idx + 1..])?
+            {
+                let mut union = ObjectFilter::default();
+                union.any_of = vec![ObjectFilter::source(), equipped];
+                return Ok(Some(union));
+            }
+        }
+    }
     let Some(mut filter) = parse_trigger_subject_filter_lexed(subject_tokens)? else {
         return Ok(None);
     };
 
     if filter.card_types.is_empty() {
-        filter.card_types.push(crate::types::CardType::Creature);
+        // Only creatures attack, so a bare-subtype subject ("a Samurai or
+        // Warrior you control") or a commander subject ("a commander you
+        // control") needs no Creature type for matching — and injecting one
+        // made the description render an unauthored "creature" noun.
+        if filter.subtypes.is_empty() && filter.any_of.is_empty() && !filter.is_commander {
+            filter.card_types.push(crate::types::CardType::Creature);
+        }
     } else if filter.card_types.len() > 1 && filter.all_card_types.is_empty() {
         filter.all_card_types = std::mem::take(&mut filter.card_types);
     }

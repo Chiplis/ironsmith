@@ -113,6 +113,15 @@ pub(crate) fn interpret_trigger_model(
     let intro_surface = trigger.intro_surface;
     let interpreted = match trigger.kind {
         TriggerKind::StateBased { display } => crate::triggers::Trigger::state_based(display),
+        TriggerKind::AnyOf(branches) => {
+            let interpreted_branches = branches
+                .into_iter()
+                .map(interpret_trigger_model)
+                .collect::<Result<Vec<_>, _>>()?;
+            crate::triggers::Trigger::new(crate::triggers::AnyOfTrigger {
+                branches: interpreted_branches,
+            })
+        }
         TriggerKind::ThisAttacks => crate::triggers::Trigger::this_attacks(),
         TriggerKind::ThisAttacksPlayerWhoControlsAtLeast { count, filter } => {
             crate::triggers::Trigger::this_attacks_player_who_controls_at_least(count, filter)
@@ -188,6 +197,7 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::ThisDies => crate::triggers::Trigger::this_dies(),
         TriggerKind::ThisDiesOrIsExiled => crate::triggers::Trigger::this_dies_or_is_exiled(),
         TriggerKind::ThisLeavesBattlefield => crate::triggers::Trigger::this_leaves_battlefield(),
+        TriggerKind::ThisPhasesOut => crate::triggers::Trigger::this_phases_out(),
         TriggerKind::ThisMutates => crate::triggers::Trigger::this_mutates(),
         TriggerKind::LeavesBattlefield { filter } => {
             crate::triggers::Trigger::leaves_battlefield(filter)

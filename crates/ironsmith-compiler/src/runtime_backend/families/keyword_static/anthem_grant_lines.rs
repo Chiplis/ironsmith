@@ -402,12 +402,32 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_defending_player_controls
     Ok(Some(ability))
 }
 
+/// Split a leading "During your turn," timing prefix off a static line
+/// ("During your turn, this creature is a Bear with base power and toughness
+/// 4/2."). Returns the remainder after the comma.
+fn split_during_your_turn_static_prefix_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<&[OwnedLexToken]> {
+    let (_, rest) = crate::runtime_backend::grammar::primitives::parse_prefix(
+        tokens,
+        crate::runtime_backend::grammar::primitives::phrase(&["during", "your", "turn"]),
+    )?;
+    let remainder = trim_lexed_commas(rest);
+    (remainder.len() < rest.len() && !remainder.is_empty()).then_some(remainder)
+}
+
 fn parse_filtered_object_animation_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let mut timing_condition = None;
     let (condition_tokens, animation_tokens) =
         if let Some(prefix) = split_as_long_as_condition_prefix_lexed(tokens) {
             (Some(prefix.condition_tokens), prefix.remainder_tokens)
+        } else if let Some(remainder) = split_during_your_turn_static_prefix_lexed(tokens) {
+            timing_condition = Some(crate::ConditionExpr::ActivationTiming(
+                crate::ability::ActivationTiming::DuringYourTurn,
+            ));
+            (None, remainder)
         } else {
             (None, tokens)
         };
@@ -435,6 +455,7 @@ fn parse_filtered_object_animation_static_line(
     let condition = condition_tokens
         .map(parse_static_condition_clause)
         .transpose()?
+        .or(timing_condition)
         .map(|condition| bind_attachment_condition_to_subject(condition, &subject));
 
     if let AnthemSubjectAst::Filter(filter) = &mut subject {
@@ -482,6 +503,139 @@ fn filtered_object_animation_abilities(
     ));
 
     abilities
+}
+
+/// One half of a union subject in a granted-keyword line ("you and this
+/// creature have hexproof", "Dion and other Knights you control have flying").
+#[derive(Debug, Clone)]
+enum UnionGrantSubject {
+    /// The player half of "you and <object-subject>".
+    PlayerYou,
+    /// The source half of "<source-reference> and <object filter>".
+    Source,
+    /// An ordinary object-filter half.
+    Filter(ObjectFilter),
+}
+
+/// Split a granted-keyword subject union at a top-level "and".
+///
+/// Only unions whose LEFT half is the player ("you") or a source reference
+/// ("this creature", the card's own name, "it") are recognized: those shapes
+/// can never be a single object filter, so without this split the lossy
+/// suffix-filter recovery silently drops the left half. Filter-and-filter
+/// unions ("artifacts and creatures you control") stay with the ordinary
+/// domain-union filter grammar.
+fn split_union_grant_subjects(
+    subject_tokens: &[OwnedLexToken],
+) -> Option<(UnionGrantSubject, UnionGrantSubject)> {
+    for (idx, token) in subject_tokens.iter().enumerate() {
+        if token.as_word() != Some("and") {
+            continue;
+        }
+        let left = trim_commas(&subject_tokens[..idx]);
+        let right = trim_commas(&subject_tokens[idx + 1..]);
+        if left.is_empty() || right.is_empty() {
+            continue;
+        }
+        let left_words = crate::runtime_backend::token_word_refs(&left);
+        let left_subject = if left_words == ["you"] {
+            UnionGrantSubject::PlayerYou
+        } else if anthem_grant_grammar::is_source_it_subject(&left)
+            || is_source_reference_words(&left_words)
+        {
+            UnionGrantSubject::Source
+        } else {
+            continue;
+        };
+        // The right half must parse as a clean anthem subject on its own; a
+        // lossy suffix recovery here would silently drop part of the union.
+        let (right_subject, losses) = crate::parse_loss::capture(|| parse_anthem_subject(&right));
+        let Ok(right_subject) = right_subject else {
+            continue;
+        };
+        if losses.is_lossy() {
+            continue;
+        }
+        let right_subject = match right_subject {
+            AnthemSubjectAst::Source => UnionGrantSubject::Source,
+            AnthemSubjectAst::Filter(filter) => UnionGrantSubject::Filter(filter),
+        };
+        return Some((left_subject, right_subject));
+    }
+    None
+}
+
+fn player_you_hexproof_static() -> StaticAbility {
+    StaticAbility::restriction(
+        crate::effect::Restriction::be_targeted_player_from(
+            PlayerFilter::You,
+            ObjectFilter::default().controlled_by(PlayerFilter::Opponent),
+        ),
+        "You have hexproof".to_string(),
+    )
+}
+
+/// Compile "you and <object-subject> have <keywords>" / "<source-reference>
+/// and <object filter> have <keywords>" as one ability per subject half, each
+/// carrying the line's condition.
+fn parse_union_subject_keyword_grants(
+    subject_tokens: &[OwnedLexToken],
+    keyword_tokens: &[OwnedLexToken],
+    condition: Option<crate::ConditionExpr>,
+    clause_text: &str,
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some((left_subject, right_subject)) = split_union_grant_subjects(subject_tokens) else {
+        return Ok(None);
+    };
+    let Some(actions) = parse_ability_line(keyword_tokens) else {
+        return Ok(None);
+    };
+    reject_unimplemented_keyword_actions(&actions, clause_text)?;
+    if actions.is_empty() {
+        return Ok(None);
+    }
+
+    let supports = |subject: &UnionGrantSubject, action: &KeywordAction| match subject {
+        // The player half only models keywords with a player-level
+        // restriction form ("You have hexproof").
+        UnionGrantSubject::PlayerYou => matches!(action, KeywordAction::Hexproof),
+        UnionGrantSubject::Source | UnionGrantSubject::Filter(_) => {
+            action.lowers_to_static_ability()
+        }
+    };
+    if !actions
+        .iter()
+        .all(|action| supports(&left_subject, action) && supports(&right_subject, action))
+    {
+        return Ok(None);
+    }
+
+    let mut compiled = Vec::new();
+    for subject in [&left_subject, &right_subject] {
+        for action in &actions {
+            match subject {
+                UnionGrantSubject::PlayerYou => compiled.push(conditional_static_ability(
+                    player_you_hexproof_static(),
+                    condition.clone(),
+                )),
+                UnionGrantSubject::Source => compiled.push(match &condition {
+                    Some(condition) => StaticAbilityAst::ConditionalKeywordAction {
+                        action: action.clone(),
+                        condition: condition.clone(),
+                    },
+                    None => StaticAbilityAst::KeywordAction(action.clone()),
+                }),
+                UnionGrantSubject::Filter(filter) => {
+                    compiled.push(StaticAbilityAst::GrantKeywordAction {
+                        filter: filter.clone(),
+                        action: action.clone(),
+                        condition: condition.clone(),
+                    })
+                }
+            }
+        }
+    }
+    Ok(Some(compiled))
 }
 
 pub(crate) fn parse_granted_keyword_static_line(
@@ -744,6 +898,15 @@ pub(crate) fn parse_granted_keyword_static_line(
             }
             return Ok(None);
         }
+    }
+
+    if let Some(compiled) = parse_union_subject_keyword_grants(
+        &subject_tokens,
+        &keyword_tokens,
+        condition.clone(),
+        &clause_words.join(" "),
+    )? {
+        return Ok(Some(compiled));
     }
 
     if let Some(compiled) = parse_color_filtered_keyword_grants(

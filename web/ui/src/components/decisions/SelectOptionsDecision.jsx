@@ -691,6 +691,7 @@ function SingleSelectDecision({
       finishManaAbilitiesOption.description,
     );
   }, [dispatch, finishManaAbilitiesOption]);
+  const groupEquivalentOptions = paymentDecision || manaAbilityWindowDecision;
   const displayOptions = useMemo(() => {
     let visible = manaAbilityWindowDecision
       ? options.filter((opt) => !isFinishManaAbilitiesOption(opt))
@@ -703,7 +704,7 @@ function SingleSelectDecision({
         : options;
 
     if (!searchableLargeOptionDecision) {
-      return paymentDecision
+      return groupEquivalentOptions
         ? buildPaymentOptionGroups(visible, state?.players)
         : visible;
     }
@@ -718,13 +719,14 @@ function SingleSelectDecision({
         String(opt.description || "").toLowerCase().includes(normalizedQuery),
       )
       .slice(0, 200);
-    return paymentDecision
+    return groupEquivalentOptions
       ? buildPaymentOptionGroups(matches, state?.players)
       : matches;
   }, [
     options,
     manaAbilityWindowDecision,
     paymentDecision,
+    groupEquivalentOptions,
     autoSubmitPayOption,
     searchableLargeOptionDecision,
     searchQuery,

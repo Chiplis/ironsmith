@@ -349,6 +349,10 @@ pub enum Value {
         abilities: Vec<StaticAbilityId>,
     },
     ColorsAmong(ObjectFilter),
+    /// The number of distinct two-color combinations among matching objects
+    /// that are exactly two colors ("the number of different color pairs
+    /// among permanents you control that are exactly two colors").
+    ColorPairsAmong(ObjectFilter),
     DistinctNames(ObjectFilter),
     DistinctPowers(ObjectFilter),
     TurnHistoryCount(TurnHistoryCount),
@@ -1345,6 +1349,7 @@ pub enum Condition {
     /// This condition's controller is the active player and the game is in
     /// either a precombat or postcombat main phase.
     SourceControllersMainPhase,
+    SourceControllersEndStep,
     SourceIsTapped,
     SourceIsSaddled,
     SourceCrewedByExactly {

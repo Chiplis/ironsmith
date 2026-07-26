@@ -85,6 +85,10 @@ export class WasmGame {
      */
     exportSyncCheckpoint(): any;
     /**
+     * Finish a puzzle import after all requested zones have been populated.
+     */
+    finishPuzzleSetup(): void;
+    /**
      * Queue a forced die result for deterministic test harness scenarios.
      */
     forceNextDieRoll(result: number): void;
@@ -181,6 +185,10 @@ export class WasmGame {
      * Reset game with custom player names and starting life.
      */
     reset(player_names: any, starting_life: number): void;
+    /**
+     * Prepare an empty match for puzzle/board-position zone imports.
+     */
+    resetEmpty(player_names: any, starting_life: number): void;
     revealHiddenObject(input: any): any;
     revealHiddenPosition(input: any): any;
     revealHiddenPositions(input: any): any;
@@ -293,6 +301,8 @@ export interface InitOutput {
     readonly wasmgame_setSharedTeamTurns: (a: number, b: number) => [number, number];
     readonly wasmgame_setSharedTeamMemberOrder: (a: number, b: number, c: any) => [number, number];
     readonly wasmgame_reset: (a: number, b: any, c: number) => [number, number];
+    readonly wasmgame_resetEmpty: (a: number, b: any, c: number) => [number, number];
+    readonly wasmgame_finishPuzzleSetup: (a: number) => [number, number];
     readonly wasmgame_startMatch: (a: number, b: any) => [number, number, number];
     readonly wasmgame_revealHiddenObject: (a: number, b: any) => [number, number, number];
     readonly wasmgame_revealHiddenSlot: (a: number, b: any) => [number, number, number];

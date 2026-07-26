@@ -3209,3 +3209,26 @@ fn explicit_additional_cost_object_predicates_use_stable_alias() -> Result<(), C
     }
     Ok(())
 }
+
+#[test]
+fn parse_predicate_rejects_entered_from_zone_as_bare_it_matches() {
+    // "entered from <zone>" is zone-motion provenance the object-filter
+    // grammar cannot model. Absorbing such a demonstrative descriptor into a
+    // bare it-matches filter silently drops the "entered from" constraint
+    // (Grist / Prized Amalgam-style origin clauses belong to the trigger).
+    for text in [
+        "If it entered from your graveyard",
+        "If that creature entered from a graveyard",
+        "If it entered the battlefield from your graveyard",
+    ] {
+        let tokens = lex_line(text, 0).expect("entered-from predicate should lex");
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens));
+        assert!(
+            !matches!(
+                &parsed,
+                Ok(PredicateAst::ItMatches(_) | PredicateAst::ItMatchedLastKnown(_))
+            ),
+            "'{text}' must not be absorbed into a bare it-matches filter, got {parsed:?}"
+        );
+    }
+}

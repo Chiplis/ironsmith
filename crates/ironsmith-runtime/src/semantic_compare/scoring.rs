@@ -63,7 +63,7 @@ pub fn conjunction_flips_between(oracle: &str, compiled: &str) -> Vec<Conjunctio
 
     let mut flips = Vec::new();
     for compiled_clause in &compiled_clauses {
-        if compiled_clause.contains("and/or") {
+        if compiled_clause.contains("and/or") || compiled_clause.contains("and or ") {
             continue;
         }
         let compiled_set: std::collections::HashSet<String> =
@@ -83,7 +83,7 @@ pub fn conjunction_flips_between(oracle: &str, compiled: &str) -> Vec<Conjunctio
         let Some((overlap, oracle_clause)) = best else {
             continue;
         };
-        if overlap < 0.4 || oracle_clause.contains("and/or") {
+        if overlap < 0.4 || oracle_clause.contains("and/or") || oracle_clause.contains("and or ") {
             continue;
         }
         if clause_has_mass_quantifier(oracle_clause) || clause_has_mass_quantifier(compiled_clause)
@@ -994,6 +994,63 @@ fn has_you_control_object_scope(clause: &str) -> bool {
     })
 }
 
+/// A bare adjacent "creatures get +X/+X" pumps every creature; oracle's
+/// back-referenced "the/that creature gets" pumps one. Token sets cannot see
+/// the difference (plural stems to singular, articles are stopwords), so an
+/// asymmetric bare mass pump is a semantic scope regression.
+fn has_bare_mass_creature_pump(clause: &str) -> bool {
+    let lower = clause.to_ascii_lowercase();
+    ["creatures get +", "creatures get -"].iter().any(|needle| {
+        let mut rest = lower.as_str();
+        while let Some(idx) = rest.find(needle) {
+            let before = &rest[..idx];
+            // A qualified plural ("attacking creatures get", "those
+            // creatures get") scopes the pump; only the bare form is mass.
+            let qualified = before.trim_end().rsplit(' ').next().is_some_and(|word| {
+                word.chars().all(|c| c.is_ascii_alphabetic()) && !word.is_empty()
+            });
+            if !qualified {
+                return true;
+            }
+            rest = &rest[idx + needle.len()..];
+        }
+        false
+    })
+}
+
+fn count_bare_mass_pump_scope_mismatches(
+    oracle_clauses: &[String],
+    oracle_tokens: &[Vec<String>],
+    compiled_clauses: &[String],
+    compiled_tokens: &[Vec<String>],
+) -> usize {
+    let mut mismatches = 0usize;
+
+    for (idx, oracle_clause) in oracle_clauses.iter().enumerate() {
+        let Some(oracle_token_set) = oracle_tokens.get(idx) else {
+            continue;
+        };
+        let Some((compiled_idx, overlap)) = best_clause_match(oracle_token_set, compiled_tokens)
+        else {
+            continue;
+        };
+        if overlap < 0.55 {
+            continue;
+        }
+
+        let Some(compiled_clause) = compiled_clauses.get(compiled_idx) else {
+            continue;
+        };
+        if has_bare_mass_creature_pump(oracle_clause)
+            != has_bare_mass_creature_pump(compiled_clause)
+        {
+            mismatches += 1;
+        }
+    }
+
+    mismatches
+}
+
 fn count_you_control_scope_mismatches(
     oracle_clauses: &[String],
     oracle_tokens: &[Vec<String>],
@@ -1576,6 +1633,12 @@ pub fn compare_semantics_scored(
         &compiled_clauses,
         &compiled_tokens,
     );
+    let bare_mass_pump_mismatch_count = count_bare_mass_pump_scope_mismatches(
+        &oracle_clauses,
+        &oracle_tokens,
+        &compiled_clauses,
+        &compiled_tokens,
+    );
     let you_control_scope_mismatch_count = count_you_control_scope_mismatches(
         &oracle_clauses,
         &oracle_tokens,
@@ -1641,6 +1704,13 @@ pub fn compare_semantics_scored(
     }
     if you_control_scope_mismatch_count > 0 {
         let penalty = 0.20 * you_control_scope_mismatch_count as f32;
+        similarity_score = (similarity_score - penalty).max(0.0);
+        mismatch = true;
+    }
+    if bare_mass_pump_mismatch_count > 0 {
+        // Keep the penalty light: the mismatch flag is the gate, and the
+        // clause pair is otherwise near-identical by construction.
+        let penalty = 0.02 * bare_mass_pump_mismatch_count as f32;
         similarity_score = (similarity_score - penalty).max(0.0);
         mismatch = true;
     }

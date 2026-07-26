@@ -576,7 +576,16 @@ fn counter_unless_payment_total_cost(
 }
 
 pub(crate) fn parse_counter(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+        eprintln!(
+            "parse_counter entry: {:?}",
+            crate::runtime_backend::token_word_refs(tokens)
+        );
+    }
     if let Some(effect) = parse_counter_unless_source_damage(tokens)? {
+        if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+            eprintln!("parse_counter: unless-source-damage claimed");
+        }
         return Ok(effect);
     }
 

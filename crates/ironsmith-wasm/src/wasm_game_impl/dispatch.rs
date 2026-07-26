@@ -752,6 +752,40 @@ impl WasmGame {
             .map_err(|error| JsValue::from_str(&error))
     }
 
+    /// Prepare an empty match for puzzle/board-position zone imports.
+    #[wasm_bindgen(js_name = resetEmpty)]
+    pub fn reset_empty_from_js(
+        &mut self,
+        player_names: JsValue,
+        starting_life: i32,
+    ) -> Result<(), JsValue> {
+        let names: Vec<String> = serde_wasm_bindgen::from_value(player_names)
+            .map_err(|e| JsValue::from_str(&format!("invalid player_names: {e}")))?;
+
+        if names.is_empty() {
+            return Err(JsValue::from_str("player_names cannot be empty"));
+        }
+
+        let seed = deterministic_match_seed(
+            &names,
+            starting_life,
+            MatchFormatInput::Normal,
+            None,
+            None,
+            0,
+        );
+        self.initialize_empty_match(names, starting_life, seed);
+        self.reset_runtime_state();
+        Ok(())
+    }
+
+    /// Finish a puzzle import after all requested zones have been populated.
+    #[wasm_bindgen(js_name = finishPuzzleSetup)]
+    pub fn finish_puzzle_setup(&mut self) -> Result<(), JsValue> {
+        self.finish_match_setup(0)
+            .map_err(|error| JsValue::from_str(&error))
+    }
+
     /// Start a fully specified match from a synchronized lobby payload.
     #[wasm_bindgen(js_name = startMatch)]
     pub fn start_match(&mut self, config: JsValue) -> Result<JsValue, JsValue> {

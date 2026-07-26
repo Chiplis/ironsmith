@@ -116,6 +116,47 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Remove => parse_remove(tokens),
         Verb::Return => {
             let player = extract_subject_player(subject);
+            // "return target creature card of an opponent's choice from your
+            // graveyard to your hand" delegates the target choice to an
+            // opponent: declare the target with that chooser, then return
+            // the declared object.
+            if let Some(choice_shape) =
+                crate::runtime_backend::front_end::grammar::choices::parse_possessive_object_choice_tokens(
+                    tokens,
+                )
+                && choice_shape.actor
+                    == crate::runtime_backend::front_end::grammar::choices::PossessiveObjectChoiceActor::Opponent
+            {
+                let mut effect = parse_return(&choice_shape.object_tokens)?;
+                if let Some(player) = player {
+                    super::bind_implicit_player_context(&mut effect, player);
+                }
+                if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::MoveToZone { target, .. }
+                        | SubjectVerbActionAst::ReturnToHand { target, .. },
+                    ..
+                }) = &mut effect
+                    && matches!(
+                        target,
+                        TargetAst::Object(..) | TargetAst::WithCount(..)
+                    )
+                {
+                    let declared = std::mem::replace(
+                        target,
+                        TargetAst::Tagged(crate::host::IT_TAG.into(), None),
+                    );
+                    return Ok(EffectAst::Sequence {
+                        effects: vec![
+                            EffectAst::subject_verb_explicit_target_only_for_chooser(
+                                declared,
+                                PlayerAst::Opponent,
+                            ),
+                            effect,
+                        ],
+                    });
+                }
+            }
             let mut effect = parse_return(tokens)?;
             if let Some(player) = player {
                 super::bind_implicit_player_context(&mut effect, player);

@@ -1,5 +1,6 @@
 //! Miscellaneous triggers.
 
+mod any_of;
 mod becomes_tapped;
 mod becomes_untapped;
 mod chapter_ability_resolved;
@@ -22,6 +23,7 @@ mod player_shuffles_library;
 mod transforms;
 mod wins_clash;
 
+pub use any_of::AnyOfTrigger;
 pub use becomes_tapped::BecomesTappedTrigger;
 pub use becomes_untapped::BecomesUntappedTrigger;
 pub use chapter_ability_resolved::FinalChapterAbilityResolvedTrigger;

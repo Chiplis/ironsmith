@@ -2064,10 +2064,72 @@ pub(crate) fn pluralize_word(word: &str) -> String {
     if word.chars().last().is_some_and(|ch| ch.is_ascii_digit()) {
         return word.to_string();
     }
+    // A trailing progressive clause modifies the noun ahead of it; pluralize
+    // the noun phrase, not the clause's last word.
+    for clause in [
+        " attacking you",
+        " attacking them",
+        " attacking that player",
+    ] {
+        if let Some(head) = word.strip_suffix(clause)
+            && !head.is_empty()
+        {
+            return format!("{}{clause}", pluralize_word(head));
+        }
+    }
+    // A trailing "-ed this way" participle modifies the noun ahead of it;
+    // pluralize the noun phrase, not "way".
+    if let Some(head) = word.strip_suffix(" this way") {
+        for tail in [" put onto the battlefield", " put there"] {
+            if let Some(noun) = head.strip_suffix(tail)
+                && !noun.is_empty()
+            {
+                return format!("{}{tail} this way", pluralize_word(noun));
+            }
+        }
+        if let Some((noun, participle)) = head.rsplit_once(' ')
+            && !noun.is_empty()
+            && participle.ends_with("ed")
+        {
+            return format!("{} {participle} this way", pluralize_word(noun));
+        }
+    }
     if let Some((prefix, last)) = word.rsplit_once(' ')
         && !prefix.is_empty()
         && !last.is_empty()
     {
+        // A trailing controller/owner clause is not the noun; pluralize the
+        // noun phrase ahead of the clause instead of the verb.
+        if matches!(last, "controls" | "control" | "owns" | "own") {
+            for clause in [
+                " defending player controls",
+                " its controller controls",
+                " that player controls",
+                " that player owns",
+                " you don't control",
+                " you don't own",
+                " you control",
+                " you own",
+                " they don't control",
+                " they control",
+                " they own",
+                " an opponent controls",
+                " an opponent owns",
+                " target player controls",
+                " target opponent controls",
+                " attacking player controls",
+                " active player controls",
+                " a teammate controls",
+            ] {
+                if let Some(head) = word.strip_suffix(clause) {
+                    if head.is_empty() {
+                        return word.to_string();
+                    }
+                    return format!("{}{}", pluralize_word(head), clause);
+                }
+            }
+            return word.to_string();
+        }
         return format!("{prefix} {}", pluralize_word(last));
     }
     let lower = word.to_ascii_lowercase();
@@ -2369,11 +2431,14 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
         " on the battlefield",
         " revealed this way",
         " of the chosen type",
+        " of the chosen color",
         " that aren't of the chosen type",
     ] {
         if let Some(head) = base.strip_suffix(suffix) {
             let head = head.trim_end();
-            let head_plural = pluralize_word(head);
+            // The head may itself carry qualifiers ("creature you control")
+            // — recurse so the noun pluralizes, not the last qualifier word.
+            let head_plural = pluralize_noun_phrase(head);
             return format!("{head_plural}{suffix}{trailing}");
         }
     }
@@ -2875,6 +2940,27 @@ pub(super) fn sacrifice_count_tracks_chosen_set(
     )
 }
 
+fn choice_count_is_half_rounded_down_of_filter(
+    choose: &crate::effects::ChooseObjectsEffect,
+) -> bool {
+    let Some(Value::HalfRoundedDown(inner)) = choose.count_value.as_ref() else {
+        return false;
+    };
+    let Value::Count(filter) = inner.as_ref() else {
+        return false;
+    };
+    if filter == &choose.filter {
+        return true;
+    }
+    // Lowering may rewrite the chooser-facing filter's controller reference
+    // (target back-references) without touching the count basis copy.
+    let mut left = filter.clone();
+    let mut right = choose.filter.clone();
+    left.controller = None;
+    right.controller = None;
+    left == right
+}
+
 fn choice_count_is_half_rounded_up_of_filter(choose: &crate::effects::ChooseObjectsEffect) -> bool {
     let Some(Value::HalfRoundedDown(inner)) = choose.count_value.as_ref() else {
         return false;
@@ -3078,6 +3164,12 @@ pub(crate) fn describe_for_players_choose_then_sacrifice(
         let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
         return Some(format!(
             "{subject} {verb} half the {kind} {actor} control of {possessive} choice, rounded up"
+        ));
+    }
+    if choose.count.is_dynamic_x() && choice_count_is_half_rounded_down_of_filter(choose) {
+        let kind = pluralize_noun_phrase(&describe_sacrifice_choice_kind(choose));
+        return Some(format!(
+            "{subject} {verb} half the {kind} {actor} control of {possessive} choice, rounded down"
         ));
     }
     let chosen = describe_counted_sacrifice_choice_selection(choose)?;
@@ -4174,6 +4266,7 @@ fn describe_choose_then_for_each_copy_effects(
     let has_unsupported_modifier = create_copy.controller != PlayerFilter::You
         || create_copy.enters_tapped
         || create_copy.has_haste
+        || create_copy.loses_soulbond
         || create_copy.enters_attacking
         || create_copy.attack_target_mode.is_some()
         || create_copy.exile_at_end_of_combat

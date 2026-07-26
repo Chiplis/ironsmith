@@ -4886,6 +4886,10 @@
         if body.contains("If you do,") || body.contains("if you do,") {
             return format!("{body} and repeat this process");
         }
+        // An optional body only loops when taken; oracle spells the gate.
+        if body.starts_with("You may ") || body.starts_with("you may ") {
+            return format!("{body}. If you do, repeat this process");
+        }
         return format!("{body}. Repeat this process");
     }
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
@@ -5312,6 +5316,9 @@
             )));
             return format!("You may {untap} and {remove}");
         }
+        if let Some(compact) = describe_may_one_shot_delayed_trailing_timing(may) {
+            return compact;
+        }
         if let Some(compact) = describe_may_compound_payment(may) {
             return compact;
         }
@@ -5369,8 +5376,20 @@
             // A bare Opponent decider iterates every opponent: oracle says
             // "each opponent may ..." with their-possessives.
             let each_opponent = matches!(decider, PlayerFilter::Opponent);
+            // An Active decider offered the end-the-turn action stands alone
+            // (Obeka): there is no trigger-introduced player to back-reference,
+            // so oracle names the player outright.
+            let active_end_turn = matches!(decider, PlayerFilter::Active)
+                && may.effects.len() == 1
+                && unwrap_basic_tag_wrappers(&may.effects[0])
+                    .downcast_ref::<crate::effects::EndTurnEffect>()
+                    .is_some();
             let who = if each_opponent {
                 "each opponent".to_string()
+            } else if active_end_turn {
+                // The body is fixed text; the generic inner render would
+                // re-introduce its own subject ("that player ends the turn").
+                return format!("The player whose turn it is may end the turn");
             } else {
                 describe_player_filter(decider)
             };
@@ -5430,6 +5449,20 @@
                 may.effects[0].downcast_ref::<crate::effects::CastTaggedEffect>()
             && cast_tagged.as_copy
         {
+            // A sentence-helper tag means the previous sentence already
+            // surfaced the copy ("... and copy it"); repeating "Copy it."
+            // here duplicates it.
+            let tag = cast_tagged.tag.as_str();
+            let copy_already_surfaced = crate::cards::is_sentence_helper_tag(tag, "exiled")
+                || crate::cards::is_sentence_helper_tag(tag, "revealed")
+                || crate::cards::is_sentence_helper_tag(tag, "chosen");
+            if copy_already_surfaced && cast_tagged.cost_reduction.is_none() {
+                let mut text = "You may cast the copy".to_string();
+                if cast_tagged.without_paying_mana_cost {
+                    text.push_str(" without paying its mana cost");
+                }
+                return text;
+            }
             if let Some(reduction) = cast_tagged.cost_reduction.as_ref() {
                 return format!(
                     "Copy it. You may cast the copy. That copy costs {} less to cast",

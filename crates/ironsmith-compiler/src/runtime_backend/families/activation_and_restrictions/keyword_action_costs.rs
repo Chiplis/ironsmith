@@ -1058,6 +1058,28 @@ mod tests {
 }
 
 pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAction> {
+    // "can't be blocked by more than N creature(s)" — a grantable blocking
+    // restriction that rides in keyword lists ("trample and can't be blocked
+    // by more than one creature").
+    {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        let tail = match words.as_slice() {
+            ["cant", "be", "blocked", "by", "more", "than", tail @ ..] => Some(tail),
+            ["can", "t", "be", "blocked", "by", "more", "than", tail @ ..] => Some(tail),
+            _ => None,
+        };
+        if let Some([count_word, noun]) = tail
+            && matches!(*noun, "creature" | "creatures")
+            && let Some(count) = match *count_word {
+                "one" | "1" => Some(1u32),
+                "two" | "2" => Some(2),
+                "three" | "3" => Some(3),
+                _ => None,
+            }
+        {
+            return Some(KeywordAction::CantBeBlockedByMoreThan(count));
+        }
+    }
     let surface = parse_keyword_ability_surface_tokens(tokens)?;
     let phrase_tokens = &tokens[surface.phrase_first..];
 

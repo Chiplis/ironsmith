@@ -58,7 +58,8 @@ fn parse_known_counter_type_word_slice(
     };
     let counter_type = match *word {
         "+1/+1" => CounterType::PlusOnePlusOne,
-        "-1/-1" | "-0/-1" => CounterType::MinusOneMinusOne,
+        "-1/-1" => CounterType::MinusOneMinusOne,
+        "-0/-1" => CounterType::MinusZeroMinusOne,
         "+1/+0" => CounterType::PlusOnePlusZero,
         "+0/+1" => CounterType::PlusZeroPlusOne,
         "+1/+2" => CounterType::PlusOnePlusTwo,

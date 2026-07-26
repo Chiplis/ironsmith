@@ -3321,6 +3321,12 @@ fn demonstrative_descriptor_filter_tokens(
     if nontoken_prefix {
         descriptor_tokens.insert(0, OwnedLexToken::synthetic_word("nontoken"));
     }
+    // "entered from <zone>" is a zone-motion clause, not an identity
+    // descriptor. The object-filter grammar cannot model the provenance, so
+    // absorbing it would silently drop the "entered from" constraint.
+    if descriptor_contains_entered_from_motion(&descriptor_tokens) {
+        return None;
+    }
     (!descriptor_tokens.is_empty()).then_some((
         descriptor_tokens,
         negative,
@@ -3328,6 +3334,18 @@ fn demonstrative_descriptor_filter_tokens(
         tagged_that_enchantment,
         match_time,
     ))
+}
+
+fn descriptor_contains_entered_from_motion(tokens: &[OwnedLexToken]) -> bool {
+    let mut saw_entered = false;
+    for token in tokens {
+        if token_word_is(token, "entered") {
+            saw_entered = true;
+        } else if saw_entered && token_word_is(token, "from") {
+            return true;
+        }
+    }
+    false
 }
 
 fn demonstrative_match_predicate(

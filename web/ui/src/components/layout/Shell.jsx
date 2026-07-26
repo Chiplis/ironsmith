@@ -189,7 +189,10 @@ export default function Shell() {
           setPuzzleSetupMode(false);
           setLobbyOpen(false);
           autoLoadAttemptedPuzzleRef.current = true;
-          await refresh("Puzzle loaded from link");
+          const skippedSuffix = loaded.skippedCardNames.length > 0
+            ? `; skipped unsupported cards: ${loaded.skippedCardNames.join(", ")}`
+            : "";
+          await refresh(`Puzzle loaded from link${skippedSuffix}`);
         } else {
           const names = parseNames(playerNames);
           await game.reset(names, startingLife);
@@ -226,7 +229,10 @@ export default function Shell() {
         setDeckLoadingMode(false);
         setPuzzleSetupMode(false);
         setLobbyOpen(false);
-        await refresh(successMessage);
+        const skippedSuffix = loaded.skippedCardNames.length > 0
+          ? `; skipped unsupported cards: ${loaded.skippedCardNames.join(", ")}`
+          : "";
+        await refresh(`${successMessage}${skippedSuffix}`);
         return true;
       } catch (err) {
         setStatus(`Load puzzle failed: ${err}`, true);
@@ -630,7 +636,11 @@ async function applyPuzzleToGame(game, payload) {
 
   const playerNamesList = puzzlePlayerNames(normalized);
   const defaultStartingLife = Number(normalized.players[0]?.life) || 20;
-  await game.reset(playerNamesList, defaultStartingLife);
+  if (typeof game.resetEmpty === "function") {
+    await game.resetEmpty(playerNamesList, defaultStartingLife);
+  } else {
+    await game.reset(playerNamesList, defaultStartingLife);
+  }
   const cardsToAdd = [];
   for (const [playerIndex, player] of normalized.players.entries()) {
     if (typeof game.setLife === "function") {
@@ -647,11 +657,27 @@ async function applyPuzzleToGame(game, payload) {
       }
     }
   }
-  if (cardsToAdd.length > 0) {
+  let supportedCards = cardsToAdd;
+  let skippedCardNames = [];
+  if (cardsToAdd.length > 0 && typeof game.filterKnownCardNames === "function") {
+    const uniqueCardNames = [...new Set(cardsToAdd.map((entry) => entry.cardName))];
+    const knownCardNames = await game.filterKnownCardNames(uniqueCardNames);
+    const knownKeys = new Set(
+      (Array.isArray(knownCardNames) ? knownCardNames : [])
+        .map((name) => String(name || "").trim().toLocaleLowerCase("en-US"))
+    );
+    supportedCards = cardsToAdd.filter((entry) => (
+      knownKeys.has(entry.cardName.toLocaleLowerCase("en-US"))
+    ));
+    skippedCardNames = uniqueCardNames.filter((name) => (
+      !knownKeys.has(name.toLocaleLowerCase("en-US"))
+    ));
+  }
+  if (supportedCards.length > 0) {
     if (typeof game.addCardsToZones === "function") {
-      await game.addCardsToZones(cardsToAdd);
+      await game.addCardsToZones(supportedCards);
     } else {
-      for (const entry of cardsToAdd) {
+      for (const entry of supportedCards) {
         await game.addCardToZone(
           entry.playerIndex,
           entry.cardName,
@@ -661,8 +687,11 @@ async function applyPuzzleToGame(game, payload) {
       }
     }
   }
+  if (typeof game.finishPuzzleSetup === "function") {
+    await game.finishPuzzleSetup();
+  }
 
-  return { playerNamesList, defaultStartingLife };
+  return { playerNamesList, defaultStartingLife, skippedCardNames };
 }
 
 function readLobbyQueryParams() {

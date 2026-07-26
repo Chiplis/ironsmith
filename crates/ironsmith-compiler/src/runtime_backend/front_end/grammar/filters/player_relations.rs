@@ -107,6 +107,9 @@ fn parse_relation_subject_word_slice(
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
         )),
         alt((
+            relation_phrase(&["enchanted", "player"]).map(|()| {
+                PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"))
+            }),
             relation_phrase(&["their", "controller"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
             relation_phrase(&["their", "controllers"])

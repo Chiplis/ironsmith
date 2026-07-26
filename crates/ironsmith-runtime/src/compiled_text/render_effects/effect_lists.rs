@@ -150,15 +150,54 @@ fn describe_opponent_chosen_target_destroy_join(
     if !matches!(target_only.chooser.as_ref(), Some(PlayerFilter::Opponent)) {
         return None;
     }
-    let destroy = structural_unwrap_render_wrappers(second_effect)
-        .downcast_ref::<crate::effects::DestroyEffect>()?;
-    if !matches!(destroy.spec.base(), ChooseSpec::Tagged(destroy_tag) if destroy_tag == tag) {
+    let second = structural_unwrap_render_wrappers(second_effect);
+    if let Some(destroy) = second.downcast_ref::<crate::effects::DestroyEffect>() {
+        if !matches!(destroy.spec.base(), ChooseSpec::Tagged(destroy_tag) if destroy_tag == tag) {
+            return None;
+        }
+        return Some(format!(
+            "Destroy {} of an opponent's choice",
+            describe_choose_spec(&target_only.target)
+        ));
+    }
+    if let Some(return_to_hand) = second.downcast_ref::<crate::effects::ReturnToHandEffect>() {
+        if !matches!(return_to_hand.spec.base(), ChooseSpec::Tagged(return_tag) if return_tag == tag)
+        {
+            return None;
+        }
+        let rendered = describe_effect(second_effect);
+        let chosen = format!(
+            "return {} of an opponent's choice",
+            describe_choose_spec(&target_only.target)
+        );
+        if rendered.starts_with("Return it") {
+            return Some(rendered.replacen("Return it", &capitalize_first(&chosen), 1));
+        }
+        if rendered.starts_with("return it") {
+            return Some(rendered.replacen("return it", &chosen, 1));
+        }
         return None;
     }
-    Some(format!(
-        "Destroy {} of an opponent's choice",
-        describe_choose_spec(&target_only.target)
-    ))
+    None
+}
+
+/// The play-permission + cost-waiver pair for one tagged card is oracle's
+/// single "Until end of turn, you may cast that card without paying its
+/// mana cost"; describing both halves doubles the surface.
+fn describe_play_permission_then_free_cast_join(
+    first_effect: &Effect,
+    second_effect: &Effect,
+) -> Option<String> {
+    let permission = structural_unwrap_render_wrappers(first_effect)
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let free_cast = structural_unwrap_render_wrappers(second_effect)
+        .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>(
+    )?;
+    if permission.tag != free_cast.tag || permission.player != free_cast.player {
+        return None;
+    }
+    let rendered = describe_effect(second_effect);
+    Some(rendered.replace(" from exile ", " "))
 }
 
 fn describe_opponent_chosen_target_destroy_pair(effects: &[Effect]) -> Option<(String, usize)> {
@@ -7776,6 +7815,14 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
             idx += 2;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(compact) =
+                describe_play_permission_then_free_cast_join(filtered[idx], filtered[idx + 1])
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if let Some((compact, consumed)) =
             describe_leading_coordinated_graveyard_returns(&filtered[idx..])
         {
@@ -10865,6 +10912,14 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         if effect_idx + 1 < effects.len()
             && let Some(joint) =
                 describe_opponent_chosen_target_destroy_join(effect, &effects[effect_idx + 1])
+        {
+            parts.push(lowercase_first(joint.trim_end_matches('.')));
+            effect_idx += 2;
+            continue;
+        }
+        if effect_idx + 1 < effects.len()
+            && let Some(joint) =
+                describe_play_permission_then_free_cast_join(effect, &effects[effect_idx + 1])
         {
             parts.push(lowercase_first(joint.trim_end_matches('.')));
             effect_idx += 2;

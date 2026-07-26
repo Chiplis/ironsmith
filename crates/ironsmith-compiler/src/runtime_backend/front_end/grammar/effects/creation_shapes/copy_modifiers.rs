@@ -19,6 +19,9 @@ pub(crate) struct CopyModifierSpec {
     pub(crate) removed_supertypes: Vec<Supertype>,
     pub(crate) set_base_power_toughness: Option<(i32, i32)>,
     pub(crate) granted_abilities: Vec<StaticAbility>,
+    /// "except it has haste and loses soulbond": the copy is created without
+    /// the soulbond pairing ability.
+    pub(crate) loses_soulbond: bool,
 }
 
 impl Default for CopyModifierSpec {
@@ -32,6 +35,7 @@ impl Default for CopyModifierSpec {
             removed_supertypes: Vec::new(),
             set_base_power_toughness: None,
             granted_abilities: Vec::new(),
+            loses_soulbond: false,
         }
     }
 }
@@ -69,9 +73,19 @@ pub(crate) fn parse_copy_modifier_words(
     }
 
     if surface.has(CreationWordClass::LoseVerb) && surface.has(CreationWordClass::Soulbond) {
-        return Err(CardTextError::ParseError(
-            "removing soulbond requires non-marker semantics".to_string(),
-        ));
+        // "loses soulbond" (Mirage Phalanx): the copy is created without the
+        // soulbond pairing ability. Only the adjacent "lose(s) soulbond" pair
+        // has that meaning; anything else stays unsupported.
+        if modifier_words
+            .windows(2)
+            .any(|pair| matches!(pair[0], "lose" | "loses") && pair[1] == "soulbond")
+        {
+            spec.loses_soulbond = true;
+        } else {
+            return Err(CardTextError::ParseError(
+                "removing soulbond requires non-marker semantics".to_string(),
+            ));
+        }
     }
     if surface.has_phrase(CreationPhrase::NotLegendary) {
         spec.removed_supertypes.push(Supertype::Legendary);

@@ -46,6 +46,17 @@ pub(crate) enum TokenKeywordShape {
     Haste,
     Menace,
     Reach,
+    FirstStrike,
+    DoubleStrike,
+    Hexproof,
+    Indestructible,
+    Infect,
+    Flash,
+    Islandwalk,
+    Mountainwalk,
+    Forestwalk,
+    Swampwalk,
+    Plainswalk,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

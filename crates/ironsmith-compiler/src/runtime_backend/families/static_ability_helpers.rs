@@ -227,6 +227,9 @@ pub(crate) fn static_ability_for_keyword_action(action: KeywordAction) -> Option
             ),
         )),
         KeywordAction::Unblockable => Some(StaticAbility::unblockable()),
+        KeywordAction::CantBeBlockedByMoreThan(count) => {
+            Some(StaticAbility::cant_be_blocked_by_more_than(count as usize))
+        }
         KeywordAction::Devoid => Some(StaticAbility::make_colorless(ObjectFilter::source())),
         KeywordAction::Annihilator(_) => None,
         KeywordAction::Dredge(amount) => Some(StaticAbility::dredge(amount)),

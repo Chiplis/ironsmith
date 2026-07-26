@@ -109,7 +109,9 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
             self.filter.clone()
         };
         if self.one_or_more {
-            let mut subject = surface_filter.description();
+            // The plural form keeps the authored noun: "one or more Ninja or
+            // Rogue creatures you control".
+            let mut subject = self.filter.description();
             if let Some(stripped) = subject.strip_prefix("a ") {
                 subject = stripped.to_string();
             } else if let Some(stripped) = subject.strip_prefix("an ") {

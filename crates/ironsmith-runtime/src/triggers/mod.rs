@@ -1278,6 +1278,14 @@ impl Trigger {
         ))
     }
 
+    /// Create a "when this phases out" trigger.
+    pub fn this_phases_out() -> Self {
+        Self::new(ThisEventObjectTrigger::new(
+            EventKind::PermanentPhasedOut,
+            "When this phases out",
+        ))
+    }
+
     /// Create a "when this creature mutates" trigger.
     pub fn this_mutates() -> Self {
         Self::new(ThisEventObjectTrigger::new(

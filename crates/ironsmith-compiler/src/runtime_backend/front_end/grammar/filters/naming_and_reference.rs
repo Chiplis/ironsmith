@@ -8,9 +8,22 @@ const ENTERED_SINCE_LAST_TURN_PREFIX: &[&str] =
 const COLOR_OR_COLORS_WORDS: &[&str] = &["color", "colors"];
 const NOT_ALL_COLORS_WITH_THAT_PREFIX: &[&str] = &["that", "isnt", "all", "colors"];
 const NOT_ALL_COLORS_PREFIX: &[&str] = &["isnt", "all", "colors"];
-const NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX: &[&str] =
-    &["that", "isnt", "exactly", "two", "colors"];
-const NOT_EXACTLY_TWO_COLORS_PREFIX: &[&str] = &["isnt", "exactly", "two", "colors"];
+const NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIXES: &[&[&str]] = &[
+    &["that", "isnt", "exactly", "two", "colors"],
+    &["that", "arent", "exactly", "two", "colors"],
+];
+const NOT_EXACTLY_TWO_COLORS_PREFIXES: &[&[&str]] = &[
+    &["isnt", "exactly", "two", "colors"],
+    &["arent", "exactly", "two", "colors"],
+];
+const EXACTLY_TWO_COLORS_WITH_THAT_PREFIXES: &[&[&str]] = &[
+    &["that", "is", "exactly", "two", "colors"],
+    &["that", "are", "exactly", "two", "colors"],
+];
+const EXACTLY_TWO_COLORS_PREFIXES: &[&[&str]] = &[
+    &["is", "exactly", "two", "colors"],
+    &["are", "exactly", "two", "colors"],
+];
 const MANA_VALUE_COUNTERS_ON_SOURCE_PREFIX: &[&str] = &["with", "mana", "value"];
 const MANA_VALUE_EQUAL_WORDS: &[&str] = &["equal", "to"];
 const MANA_VALUE_LT_WORDS: &[&str] = &["less", "than"];
@@ -591,14 +604,21 @@ pub(super) fn try_apply_not_all_colors_clause(
     true
 }
 
+fn parse_phrase_choice_len(words: &[&str], phrases: &[&[&str]]) -> Option<usize> {
+    phrases
+        .iter()
+        .find(|phrase| words_start_with_phrase(words, phrase))
+        .map(|phrase| phrase.len())
+}
+
 pub(super) fn parse_not_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
-    if words_start_with_phrase(words, NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX) {
-        Some(NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIX.len())
-    } else if words_start_with_phrase(words, NOT_EXACTLY_TWO_COLORS_PREFIX) {
-        Some(NOT_EXACTLY_TWO_COLORS_PREFIX.len())
-    } else {
-        None
-    }
+    parse_phrase_choice_len(words, NOT_EXACTLY_TWO_COLORS_WITH_THAT_PREFIXES)
+        .or_else(|| parse_phrase_choice_len(words, NOT_EXACTLY_TWO_COLORS_PREFIXES))
+}
+
+pub(super) fn parse_exactly_two_colors_words(words: &[&str]) -> Option<usize> {
+    parse_phrase_choice_len(words, EXACTLY_TWO_COLORS_WITH_THAT_PREFIXES)
+        .or_else(|| parse_phrase_choice_len(words, EXACTLY_TWO_COLORS_PREFIXES))
 }
 
 pub(super) fn try_apply_not_exactly_two_colors_clause(
@@ -611,6 +631,20 @@ pub(super) fn try_apply_not_exactly_two_colors_clause(
         return false;
     };
     filter.exactly_two_colors = Some(false);
+    all_words.drain(idx..idx + consumed);
+    true
+}
+
+pub(super) fn try_apply_exactly_two_colors_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+) -> bool {
+    let Some((idx, consumed)) =
+        find_filter_prefix_consumed(all_words.as_slice(), parse_exactly_two_colors_words)
+    else {
+        return false;
+    };
+    filter.exactly_two_colors = Some(true);
     all_words.drain(idx..idx + consumed);
     true
 }
@@ -1311,6 +1345,52 @@ pub(super) fn apply_reference_and_tag_stage(
 
     if let Some(relation_idx) = find_blocking_or_blocked_by_source_phrase(all_words) {
         filter.in_combat_with_source = true;
+        all_words.truncate(relation_idx);
+    }
+
+    // "that weren't put there this way" — exclude the objects the previous
+    // effect just moved to this zone (the sacrificed set).
+    for phrase in [
+        ["that", "weren't", "put", "there", "this", "way"],
+        ["that", "werent", "put", "there", "this", "way"],
+    ] {
+        if let Some(idx) = all_words.windows(6).position(|w| w == phrase) {
+            filter.tagged_constraints.push(TaggedObjectConstraint {
+                tag: TagKey::from(crate::host::THIS_WAY_SACRIFICED_TAG),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+            all_words.drain(idx..idx + 6);
+            break;
+        }
+    }
+
+    // "…you controlled that/attached…" — past-tense controller in
+    // last-known-information relative clauses. The active relation verbs
+    // stay present-tense (a broad "controlled" verb breaks as-you-cast
+    // predicates).
+    if let Some(idx) = all_words
+        .windows(2)
+        .position(|w| w == ["you", "controlled"])
+    {
+        let next = all_words.get(idx + 2).copied();
+        if matches!(next, None | Some("that") | Some("attached")) {
+            filter.controller = Some(PlayerFilter::You);
+            all_words.drain(idx..idx + 2);
+        }
+    }
+
+    // "creature this (creature) is blocking" — the filtered object is an
+    // attacker currently blocked by the source.
+    if let Some(relation_idx) = find_any_filter_phrase_start(
+        all_words,
+        &[
+            &["this", "creature", "is", "blocking"],
+            &["this", "permanent", "is", "blocking"],
+            &["this", "source", "is", "blocking"],
+            &["this", "is", "blocking"],
+        ],
+    ) {
+        filter.blocked_by_source = true;
         all_words.truncate(relation_idx);
     }
 

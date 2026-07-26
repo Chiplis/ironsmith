@@ -2591,6 +2591,97 @@ pub(crate) fn describe_reveal_hand_choose_move(effects: &[&Effect]) -> Option<St
     ))
 }
 
+/// "exile ... and copy it. You may cast the copy without paying its mana
+/// cost." — the copy lives at the tail of the exile sentence's sequence, and
+/// the standalone may-cast render would re-emit a spurious "Copy it."
+pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Option<String> {
+    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
+        eprintln!("seq-copy-may window: len={}", effects.len());
+    }
+    let [sequence_effect, may_effect] = effects else {
+        return None;
+    };
+    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
+        eprintln!(
+            "seq-copy-may pair: seq={} may={}",
+            sequence_effect
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .is_some(),
+            may_effect.downcast_ref::<crate::effects::MayEffect>().is_some()
+        );
+    }
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let copy_spell = copy_spell_from_effect(sequence.effects.last()?);
+    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
+        eprintln!("seq-copy-may copy: {copy_spell:?}");
+    }
+    let copy_spell = copy_spell?;
+    if copy_spell.count.unhinted() != &Value::Fixed(1)
+        || !copy_spell.removed_supertypes.is_empty()
+    {
+        return None;
+    }
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [cast_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let cast = unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
+        eprintln!(
+            "seq-copy-may cast: as_copy={} tag={:?} reduction={:?}",
+            cast.as_copy, cast.tag, cast.cost_reduction
+        );
+    }
+    if !cast.as_copy
+        || cast.cost_reduction.is_some()
+        || !matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if *tag == cast.tag)
+    {
+        return None;
+    }
+    let mut cast_text = "You may cast the copy".to_string();
+    if cast.without_paying_mana_cost {
+        cast_text.push_str(" without paying its mana cost");
+    }
+    let sequence_text = describe_effect(sequence_effect);
+    Some(format!(
+        "{}. {cast_text}",
+        sequence_text.trim_end_matches('.')
+    ))
+}
+
+/// "you may reveal a Soldier card from your hand" lowers as a hand-zone
+/// choice followed by a reveal of the chosen card; recombine the pair into
+/// the authored reveal-from-hand surface.
+pub(crate) fn describe_choose_hand_then_reveal(effects: &[&Effect]) -> Option<String> {
+    let [choose_effect, reveal_effect] = effects else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    if reveal.tag != choose.tag {
+        return None;
+    }
+    if choose.chooser != PlayerFilter::You
+        || choose.is_search
+        || !choose.count.is_single()
+        || choose_primary_zone(choose) != Some(Zone::Hand)
+        || choose
+            .filter
+            .owner
+            .as_ref()
+            .is_some_and(|owner| *owner != PlayerFilter::You)
+        || choose
+            .filter
+            .controller
+            .as_ref()
+            .is_some_and(|controller| *controller != PlayerFilter::You)
+    {
+        return None;
+    }
+    let selection = hand_choice_from_it_text(choose)?;
+    Some(format!("reveal {selection} from your hand"))
+}
+
 pub(crate) fn describe_reveal_hand_choose_discard(effects: &[&Effect]) -> Option<String> {
     let [look_effect, choose_effect, discard_effect] = effects else {
         return None;

@@ -707,6 +707,28 @@ fn conditioned_conditions_equivalent(left: &str, right: &str, subject: &str) -> 
         for source_form in ["as long as this is ", "as long as this source is "] {
             key = key.replace(source_form, "as long as this creature is ");
         }
+        // Threshold-style producers word the same graveyard census two ways.
+        key = key.replace(
+            "you have seven or more cards in your graveyard",
+            "there are seven or more cards in your graveyard",
+        );
+        // Producers disagree on whether "and/or" keeps its slash.
+        key = key.replace("and/or", "and or");
+        // Life-threshold producers word the same comparison two ways:
+        // "you have 30 or more life" vs "your life total is 30 or greater".
+        if let Some(start) = key.find("your life total is ") {
+            let rest = &key[start + "your life total is ".len()..];
+            if let Some(tail_at) = rest.find(" or greater")
+                && rest[..tail_at].chars().all(|ch| ch.is_ascii_digit())
+            {
+                key = format!(
+                    "{}you have {} or more life{}",
+                    &key[..start],
+                    &rest[..tail_at],
+                    &rest[tail_at + " or greater".len()..]
+                );
+            }
+        }
         key
     };
 
@@ -744,6 +766,82 @@ fn conditioned_conditions_equivalent(left: &str, right: &str, subject: &str) -> 
     }
 
     false
+}
+
+/// Two adjacent keyword statics that share the "During your turn" condition
+/// and the same keyword predicate re-join into oracle's subject-union
+/// sentence: "During your turn, you have hexproof." + "During your turn,
+/// this creature has hexproof." => "During your turn, you and this creature
+/// have hexproof."
+///
+/// Only unions whose left half is the player ("you") or a source reference
+/// ("this creature", ...) are re-joined — the shapes the parser splits out of
+/// a single oracle sentence.
+pub(super) fn merge_during_your_turn_subject_union_lines(lines: Vec<String>) -> Vec<String> {
+    fn union_half(line: &str) -> Option<ConditionalSubjectPredicate> {
+        if line.trim().trim_end_matches('.').contains(". ") {
+            return None;
+        }
+        let parsed = parse_conditional_subject_predicate(line)?;
+        if !parsed
+            .condition
+            .eq_ignore_ascii_case("As long as it's your turn")
+        {
+            return None;
+        }
+        if !matches!(parsed.verb.as_str(), "has" | "have") {
+            return None;
+        }
+        if !is_keyword_phrase(&parsed.predicate) {
+            return None;
+        }
+        Some(parsed)
+    }
+
+    fn is_union_left_subject(subject: &str) -> bool {
+        let lower = subject.trim().to_ascii_lowercase();
+        lower == "you" || lower.starts_with("this ")
+    }
+
+    fn normalize_union_subject_case(subject: &str) -> String {
+        let first = subject.split_whitespace().next().unwrap_or(subject);
+        // Only sentence-position capitals on generic filter heads are
+        // lowered; subtype heads ("Knights you control") keep their case.
+        if matches!(
+            first.to_ascii_lowercase().as_str(),
+            "you" | "this" | "that" | "other" | "each" | "all" | "creatures" | "permanents"
+                | "artifacts" | "enchantments" | "lands" | "planeswalkers" | "battles" | "tokens"
+        ) {
+            lowercase_first(subject)
+        } else {
+            subject.to_string()
+        }
+    }
+
+    let mut merged: Vec<String> = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let (Some(left), Some(right)) =
+                (union_half(&lines[idx]), union_half(&lines[idx + 1]))
+            && left.predicate.eq_ignore_ascii_case(&right.predicate)
+            && is_union_left_subject(&left.subject)
+            && !right.subject.trim().eq_ignore_ascii_case("you")
+            && !left.subject.trim().eq_ignore_ascii_case(right.subject.trim())
+        {
+            merged.push(format!(
+                "During your turn, {} and {} have {}.",
+                normalize_union_subject_case(&left.subject),
+                normalize_union_subject_case(&right.subject),
+                left.predicate
+            ));
+            idx += 2;
+            continue;
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
 }
 
 pub(super) fn can_merge_subject_predicates(left_verb: &str, right_verb: &str) -> bool {
@@ -1089,12 +1187,14 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
         {
             let left_predicate = normalize_keyword_predicate_case(&left_conditional.predicate);
             let right_predicate = normalize_keyword_predicate_case(&right_conditional.predicate);
-            let right_verb =
-                if matches!(right_conditional.verb.as_str(), "has" | "have" | "gains" | "gain") {
-                    have_verb_for_subject(&left_conditional.subject).to_string()
-                } else {
-                    right_conditional.verb.clone()
-                };
+            let right_verb = if matches!(
+                right_conditional.verb.as_str(),
+                "has" | "have" | "gains" | "gain"
+            ) {
+                have_verb_for_subject(&left_conditional.subject).to_string()
+            } else {
+                right_conditional.verb.clone()
+            };
             merged.push(format_conditioned_subject_predicate_merge(
                 &left_conditional,
                 &left_predicate,

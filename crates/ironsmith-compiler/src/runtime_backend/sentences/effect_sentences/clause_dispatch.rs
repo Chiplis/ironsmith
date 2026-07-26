@@ -678,11 +678,64 @@ fn parse_passive_sacrifice_by_controller_clause(
     }))
 }
 
+/// Split a conjoined block-permission tail off a pump modifier ("+2/+2 until
+/// end of turn and can block an additional creature this turn"), returning
+/// the pump head and the number of additional blockable attackers.
+fn split_trailing_can_block_additional_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], u32)> {
+    for (idx, token) in tokens.iter().enumerate().rev() {
+        if token.as_word() != Some("and") {
+            continue;
+        }
+        let Some(shape) = effect_grammar::clause_pattern_shapes::parse_can_block_additional_tokens(
+            &tokens[idx + 1..],
+        ) else {
+            continue;
+        };
+        if !shape.subject_tokens.is_empty() {
+            return None;
+        }
+        let head = trim_lexed_commas(&tokens[..idx]);
+        if head.is_empty() {
+            return None;
+        }
+        return Some((head, shape.additional));
+    }
+    None
+}
+
 fn parse_get_pump_clause(
     subject_tokens: &[OwnedLexToken],
     action_tokens: &[OwnedLexToken],
     full_tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
+    // "It gets +2/+2 until end of turn and can block an additional creature
+    // this turn" (Act of Heroism) — the block permission is its own granted
+    // effect on the pump subject, not part of the P/T modifier tail.
+    if let Some((pump_tokens, additional)) =
+        split_trailing_can_block_additional_tail(action_tokens)
+    {
+        let Some(pump) = parse_get_pump_clause(subject_tokens, pump_tokens, full_tokens)? else {
+            return Ok(None);
+        };
+        let EffectAst::SubjectVerb(subject_verb) = &pump else {
+            return Ok(None);
+        };
+        let SubjectVerbActionAst::Pump { target, .. } = &subject_verb.action else {
+            return Ok(None);
+        };
+        let grant = EffectAst::subject_verb_grant_abilities_to_target(
+            target.clone(),
+            vec![GrantedAbilityAst::CanBlockAdditionalCreatureEachCombat {
+                additional: additional as usize,
+            }],
+            Until::EndOfTurn,
+        );
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![pump, grant],
+        }));
+    }
     let Some(subject_shape) = clause_grammar::parse_pump_subject_shape(subject_tokens) else {
         parser_trace("parse_get_pump_clause:subject-shape-miss", subject_tokens);
         return Ok(None);

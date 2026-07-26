@@ -2308,7 +2308,7 @@ fn lower_gift_keyword_chunk(
         }
         GiftTimingAst::PermanentEtb => {
             let parsed = super::rewrite_parsed_triggered_ability(
-                TriggerSpec::ThisEntersBattlefield,
+                TriggerSpec::ThisEntersBattlefield { origin_condition: None },
                 prepared.effects.clone(),
                 vec![Zone::Battlefield],
                 Some(format!(
@@ -2321,7 +2321,7 @@ fn lower_gift_keyword_chunk(
             let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
                 parsed,
                 prepared: Some(NormalizedPreparedAbility::Triggered {
-                    trigger: TriggerSpec::ThisEntersBattlefield,
+                    trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
                     prepared: super::super::effect_pipeline::PreparedTriggeredEffectsForLowering {
                         prepared,
                         intervening_if: None,

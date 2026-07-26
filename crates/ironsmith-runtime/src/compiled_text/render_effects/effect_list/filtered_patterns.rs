@@ -21,6 +21,17 @@
     if let Some(compact) = describe_reveal_hand_choose_move(&filtered) {
         return compact;
     }
+    if let Some(compact) = describe_choose_hand_then_reveal(&filtered) {
+        return compact;
+    }
+    if let Some(compact) = describe_sequence_copy_then_may_cast(&filtered) {
+        return compact;
+    }
+    if filtered.len() == 3
+        && let Some(copy_cast) = describe_sequence_copy_then_may_cast(&filtered[1..])
+    {
+        return format!("{}. {copy_cast}", describe_effect(filtered[0]));
+    }
     if let Some(compact) = describe_reveal_hand_then_discard(&filtered) {
         return compact;
     }

@@ -655,10 +655,12 @@ fn normalize_carried_target_player_references(text: &str) -> String {
         "target opponent ",
         "target player ",
         // Possessive first mentions ("search target player's library",
-        // "from an opponent's graveyard") introduce the same carried actor.
+        // "from an opponent's graveyard", "a card an opponent owns")
+        // introduce the same carried actor.
         "target opponent's ",
         "target player's ",
         "an opponent's ",
+        "an opponent owns",
         // "deals (combat) damage to a player, ..." triggers carry the damaged
         // player as the line's actor for later "that player"/"the player".
         "damage to a player",
@@ -986,13 +988,61 @@ fn push_semantic_clauses(line: &str, clauses: &mut Vec<String>) {
     }
 }
 
+/// "If the chosen option is <mode>, ..." is the renderer's gate for a modal
+/// static; oracle's bullet form loses its mode label to the ability-word
+/// strip, so drop this scaffold symmetrically.
+fn strip_chosen_option_gate_prefix(clause: &str) -> &str {
+    for prefix in ["If the chosen option is ", "if the chosen option is "] {
+        if let Some(rest) = clause.strip_prefix(prefix)
+            && let Some((mode, tail)) = rest.split_once(", ")
+            && !mode.is_empty()
+            && mode.chars().all(|ch| ch.is_ascii_alphanumeric())
+        {
+            return tail;
+        }
+    }
+    clause
+}
+
 fn push_normalized_semantic_clause(trimmed: &str, clauses: &mut Vec<String>) {
-    let clause = strip_ability_word_prefix(trimmed);
+    let clause = strip_ability_word_prefix(strip_chosen_option_gate_prefix(trimmed));
+    let clause = strip_redundant_duration_tail(&clause);
+    // Oracle sometimes joins the top-of-library pair into one sentence and
+    // sometimes keeps two lines; compare them as two clauses either way.
+    if let Some(head) = clause
+        .trim_end_matches('.')
+        .strip_suffix(", and you may play lands from the top of your library")
+        && head.eq_ignore_ascii_case("You may look at the top card of your library any time")
+    {
+        clauses.push(head.to_string());
+        clauses.push("You may play lands from the top of your library".to_string());
+        return;
+    }
     if let Some(keyword_clauses) = split_keyword_only_clause(&clause) {
         clauses.extend(keyword_clauses);
     } else {
         clauses.push(clause);
     }
+}
+
+/// A clause scoped by a leading "Until end of turn," already carries the
+/// duration; a repeated trailing " until end of turn" is redundant.
+fn strip_redundant_duration_tail(clause: &str) -> String {
+    let lower = clause.to_ascii_lowercase();
+    let prefix = "until end of turn, ";
+    if !lower.starts_with(prefix) {
+        return clause.to_string();
+    }
+    let rest = &clause[prefix.len()..];
+    let rest_lower = &lower[prefix.len()..];
+    let tail = " until end of turn";
+    if let Some(pos) = rest_lower.rfind(tail) {
+        let after = &rest[pos + tail.len()..];
+        if after.is_empty() || after == "." {
+            return format!("{}{}{}", &clause[..prefix.len()], &rest[..pos], after);
+        }
+    }
+    clause.to_string()
 }
 
 fn split_keyword_only_clause(clause: &str) -> Option<Vec<String>> {
@@ -1368,10 +1418,111 @@ fn strip_ability_word_prefix(clause: &str) -> String {
         || tail_lower.starts_with("exile ")
         || tail_lower.starts_with("return ")
         || tail_lower.starts_with("you ")
+        || tail_lower.starts_with("your ")
         || tail_lower.starts_with("this ")
         || tail_lower.starts_with("may ")
+        || tail_lower.starts_with("protection ")
+        || tail_lower.starts_with("choose ")
         || tail_lower.starts_with("counter ");
-    if semantic_tail || starts_with_cost_like {
+    // Flavor words are arbitrary title-case names; when the prefix is a short
+    // run of capitalized words and the tail reads as a sentence, the prefix
+    // carries no semantics. Keyword abilities templated as "Keyword—<cost>"
+    // (Echo, Equip, ...) keep their prefix: the keyword is the semantics.
+    const DASH_COST_KEYWORDS: &[&str] = &[
+        "echo",
+        "equip",
+        "evoke",
+        "madness",
+        "kicker",
+        "multikicker",
+        "dash",
+        "emerge",
+        "ninjutsu",
+        "commander ninjutsu",
+        "miracle",
+        "surge",
+        "spectacle",
+        "escape",
+        "disturb",
+        "overload",
+        "flashback",
+        "reconfigure",
+        "bestow",
+        "awaken",
+        "cycling",
+        "transmute",
+        "unearth",
+        "embalm",
+        "eternalize",
+        "scavenge",
+        "forecast",
+        "prototype",
+        "blitz",
+        "casualty",
+        "cleave",
+        "prowl",
+        "foretell",
+        "channel",
+        "plot",
+        "offering",
+        "retrace",
+        "adapt",
+        "monstrosity",
+        "fortify",
+        "reinforce",
+        "transfigure",
+        "replicate",
+        "recover",
+        "ripple",
+        "splice",
+        "suspend",
+        "vanishing",
+        "absorb",
+        "frenzy",
+        "graft",
+        "dredge",
+        "devour",
+        "tribute",
+        "outlast",
+        "megamorph",
+        "morph",
+        "disguise",
+        "mutate",
+        "level up",
+        "impending",
+        "partner",
+    ];
+    let flavor_word_prefix = {
+        let prefix_trimmed = prefix.trim();
+        let words: Vec<&str> = prefix_trimmed.split_whitespace().collect();
+        let interior_particle =
+            |word: &str| matches!(word, "the" | "of" | "a" | "an" | "and" | "to" | "in");
+        !words.is_empty()
+            && words.len() <= 4
+            && words.first().is_some_and(|word| {
+                word.chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_uppercase())
+            })
+            && words.last().is_some_and(|word| {
+                word.chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_uppercase())
+            })
+            && words.iter().all(|word| {
+                interior_particle(word)
+                    || word
+                        .chars()
+                        .next()
+                        .is_some_and(|ch| ch.is_ascii_uppercase())
+            })
+            && tail
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_ascii_uppercase())
+            && !DASH_COST_KEYWORDS.contains(&prefix_trimmed.to_ascii_lowercase().as_str())
+    };
+    if semantic_tail || starts_with_cost_like || flavor_word_prefix {
         if starts_with_cost_like {
             let without_cost = strip_compiled_ability_cost_prefix(tail.trim());
             return normalize_damage_source_for_clause_surface(without_cost).to_string();
@@ -1426,9 +1577,167 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ("becomes blocked by a creature", "becomes blocked"),
         // The renderer's "put it into exile" is oracle's "exile it".
         ("put it into exile", "exile it"),
+        // In a cast-trigger's threshold clause both demonstratives name the
+        // triggering spell; producers disagree on which to use.
+        (
+            "mana was spent to cast that spell,",
+            "mana was spent to cast this spell,",
+        ),
+        // Oracle uses both threshold conventions ("at least seven mana" on
+        // Raggadragga, "five or more mana" on Exhibition Tidecaller); the
+        // renderer keeps "at least N", so canonicalize toward it.
+        ("two or more mana was spent", "at least two mana was spent"),
+        ("three or more mana was spent", "at least three mana was spent"),
+        ("four or more mana was spent", "at least four mana was spent"),
+        ("five or more mana was spent", "at least five mana was spent"),
+        ("six or more mana was spent", "at least six mana was spent"),
+        ("seven or more mana was spent", "at least seven mana was spent"),
+        ("eight or more mana was spent", "at least eight mana was spent"),
+        ("nine or more mana was spent", "at least nine mana was spent"),
+        ("ten or more mana was spent", "at least ten mana was spent"),
+        // Keyword qualifier vs controller suffix order; oracle places the
+        // controller first ("creature you control with flying").
+        (
+            "creature with flying you control",
+            "creature you control with flying",
+        ),
+        (
+            "creatures with flying you control",
+            "creatures you control with flying",
+        ),
+        (
+            "creature with mana ability you control",
+            "creature you control with a mana ability",
+        ),
+        (
+            "creatures with mana ability you control",
+            "creatures you control with a mana ability",
+        ),
+        // The library-peek decline rider: oracle spells out the declined
+        // action, the renderer says "Otherwise".
+        (
+            "If you don't put the card into your hand, you may put it",
+            "Otherwise, you may put it",
+        ),
+        // The attached-sweep render splits out its target choice.
+        (
+            "Choose target creature. Destroy all Auras or Equipment attached to it",
+            "Destroy all Auras and Equipment attached to target creature",
+        ),
+        // The amass follow-up names the Army two ways.
+        (
+            "then that Army deals damage equal to that Army's power",
+            "then the Army you amassed deals damage equal to its power",
+        ),
+        // Feather-class paid copy fanout: the renderer's object/targeting
+        // scaffolds for the authored creature surfaces.
+        (
+            "choose any number other creatures",
+            "choose any number of other creatures",
+        ),
+        (
+            "If you do, for each of those objects, copy that spell",
+            "If you do, for each of those creatures, copy that spell",
+        ),
+        (
+            ". For each of those objects, you pay {2}",
+            " and pay {2} for each of those creatures",
+        ),
+        (
+            "Change a target of the copy to that creature",
+            "The copy targets that creature",
+        ),
+        // Opponent-reveal-X choose-and-exile (Taster of Wares class).
+        (
+            "You choose a revealed this way card. Exile it",
+            "You choose one of those cards. That player exiles it",
+        ),
+        (
+            "If an instant or sorcery card was exiled this way, you may cast that card",
+            "If an instant or sorcery card is exiled this way, you may cast it",
+        ),
+        (
+            "target opponent chooses X cards, where X is",
+            "target opponent reveals X cards from their hand, where X is",
+        ),
+        // Saga-face exile-and-return riders: the render says "the exiled
+        // card" where oracle uses the pronoun, joins with a comma where
+        // oracle starts a sentence, and spells the source as "this Saga".
+        (
+            "then return the exiled card to the battlefield",
+            "then return it to the battlefield",
+        ),
+        (
+            ", exile this, then return it to the battlefield",
+            ". Exile this, then return it to the battlefield",
+        ),
+        ("has 3 or more lore counters", "has three or more lore counters"),
+        (". Then if this Saga has", ". If this has"),
+        ("If this Saga has", "If this has"),
+        ("if this Saga has", "if this has"),
+        ("This Saga deals", "This deals"),
+        // The exile-top repeat program: the render leads the branch with
+        // "Then" and drops the "If you do," before the repeat.
+        (
+            ". Then if it's a permanent card, you may put it onto the battlefield",
+            ". If it's a permanent card, you may put it onto the battlefield",
+        ),
+        (
+            "you may put it onto the battlefield. Repeat this process",
+            "you may put it onto the battlefield. If you do, repeat this process",
+        ),
+        // The delayed copy-then-cast trigger re-emits the copy sentence.
+        (
+            "copy that spell. Copy it. You may cast the copy",
+            "copy the exiled card. You may cast the copy",
+        ),
+        // Imprint-style copy programs lower as choose+cast-as-copy; the
+        // render surfaces the intermediate steps oracle folds into "copy".
+        (
+            "If you do, copy it. You may cast a copy of it",
+            "If you do, you may cast the copy",
+        ),
+        (
+            "you may choose a card exiled with this",
+            "you may copy a card exiled with this",
+        ),
+        // The chain-copy retarget rider: the renderer splits the sentence
+        // and re-subjects the copy reference.
+        (
+            ". That player may choose a new target for the copy",
+            " and may choose a new target for that copy",
+        ),
+        (
+            ". Its controller may choose a new target for the copy",
+            " and may choose a new target for that copy",
+        ),
+        (
+            ". They may choose a new target for the copy",
+            " and may choose a new target for that copy",
+        ),
+        (
+            ". That player may choose new targets for the copy",
+            " and may choose a new target for that copy",
+        ),
+        (
+            ". Its controller may choose new targets for the copy",
+            " and may choose a new target for that copy",
+        ),
+        (
+            ". They may choose new targets for the copy",
+            " and may choose a new target for that copy",
+        ),
+        // The blocked-by-source qualifier is oracle's "this creature is
+        // blocking"; both surfaces reach this pass with the self-reference
+        // noun already stripped.
+        ("blocked by this this turn", "this is blocking"),
+        (
+            "blocked by this creature this turn",
+            "this creature is blocking",
+        ),
         // "X as long as Y" and "If Y, X" state the same guard; token sets
         // ignore order, so only the connective word needs canonicalizing.
-        (" as long as", " if"),
+        ("as long as", "if"),
         ("As long as", "If"),
         // Renderer's typed trigger-object counter check vs oracle's anaphor.
         ("the triggering object had 1 or more ", "it had a "),
@@ -1443,6 +1752,868 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         ),
         // Bare keyword line vs oracle's subject form.
         ("This has protection from", "Protection from"),
+        // Renderer's "Aura source" subject is the Aura's self-reference.
+        ("This Aura source", "This"),
+        // The graveyard provenance is implicit in oracle's return wording.
+        ("from graveyard to the battlefield", "to the battlefield"),
+        // Free-cast/play grants word the duration as a prefix in oracle and
+        // a tail in the renderer; canonicalize the grant surfaces only (a
+        // global until-end-of-turn rewrite breaks the buff-split passes).
+        ("Until end of turn, you may cast", "This turn, you may cast"),
+        ("until end of turn, you may cast", "this turn, you may cast"),
+        ("Until end of turn, you may play", "This turn, you may play"),
+        ("until end of turn, you may play", "this turn, you may play"),
+        (
+            " from your graveyard until end of turn",
+            " from your graveyard this turn",
+        ),
+        // Narrow to the quoted-grant shape: broader each-forms regress
+        // cards whose oracle trails the duration (Sozin's Comet class).
+        (
+            "Until end of turn, each legendary card",
+            "This turn, each legendary card",
+        ),
+        (
+            "until end of turn, each legendary card",
+            "this turn, each legendary card",
+        ),
+        // CR-mandated multi-zone search shuffle rider vs oracle's plain
+        // tail; oracle uses both tenses.
+        (
+            ". If you search your library this way, shuffle",
+            ", then shuffle",
+        ),
+        (
+            ". If you searched your library this way, shuffle",
+            ", then shuffle",
+        ),
+        ("and/or library", "and library"),
+        // "and/or" is templating-equivalent to the plain conjunction; as one
+        // token it would cost score against renders that split it.
+        ("and/or", "and or"),
+        // A dead creature's attachments are necessarily last-known state.
+        (" that was attached to it", " attached to it"),
+        (
+            "each Aura you controlled attached to it",
+            "each Aura attached to it you control",
+        ),
+        // The pump renderer spells the where-X basis into the stat value.
+        (
+            "gets this power/+0, where X is this power",
+            "gets +X/+0, where X is its power",
+        ),
+        (
+            "gets the number of creature cards in your graveyard/+0",
+            "gets +X/+0",
+        ),
+        // The library destination possessive is the mover's own library.
+        (
+            "into its owner's library third from the top",
+            "into their library third from the top",
+        ),
+        // The activated-ability trigger renders its non-mana gate into the
+        // filter although the authored intervening-if already carries it.
+        (
+            " that isn't a mana ability, if it isn't a mana ability",
+            " on the battlefield, if it isn't a mana ability",
+        ),
+        // The excluded just-sacrificed set renders as "other"; oracle spells
+        // the provenance.
+        (
+            "returns all other creature cards from their graveyard",
+            "returns all creature cards from their graveyard that weren't put there this way",
+        ),
+        // The discard-trigger intervening-if spells the madness gate through
+        // the permanent noun; oracle's "has madness" tests the same card.
+        ("if it is a permanent with madness", "if it has madness"),
+        (
+            "if that object is a permanent with madness",
+            "if it has madness",
+        ),
+        // The "N life for each X" convention is the same quantity as "life
+        // equal to the number of X"; converge on the equal-to surface.
+        ("gain 1 life for each", "gain life equal to the number of"),
+        ("gains 1 life for each", "gains life equal to the number of"),
+        ("lose 1 life for each", "lose life equal to the number of"),
+        ("loses 1 life for each", "loses life equal to the number of"),
+        // The per-player spell count filter's iterated-subject description.
+        (
+            "the number of spells a player cast this turn",
+            "the number of spells they've cast this turn",
+        ),
+        // The mass-destroy for-each back-reference: the destroyed set was
+        // "artifacts and enchantments", oracle iterates them as permanents.
+        (
+            "For each artifact or enchantment destroyed this way",
+            "For each permanent destroyed this way",
+        ),
+        // Self-return from the graveyard: the owner's library is "your
+        // library" and the provenance is the activation zone.
+        (
+            "Put this into its owner's library second from the top",
+            "Put this from your graveyard into your library second from the top",
+        ),
+        // The attached-to back-reference is oracle's "enchanted permanent".
+        ("the permanent this is attached to", "enchanted permanent"),
+        ("is a tapped permanent", "is tapped"),
+        // Multi-attacker trigger: oracle phrases the attack from the
+        // attacking player's side.
+        (
+            "Whenever two or more creature an opponent controls attack you",
+            "Whenever an opponent attacks you with two or more creatures",
+        ),
+        (
+            "Whenever two or more creatures an opponent controls attack you",
+            "Whenever an opponent attacks you with two or more creatures",
+        ),
+        // Contraction surfaces tokenize apart; converge the negated copula.
+        ("it's not a token", "it is not a token"),
+        ("it isn't a token", "it is not a token"),
+        ("it's not your turn", "it is not your turn"),
+        // The end-of-combat sacrifice back-reference: "the token" is the
+        // just-created token, same referent as "it".
+        (
+            "Sacrifice the token at end of combat",
+            "Sacrifice it at end of combat",
+        ),
+        // The reflexive discard-linked trigger; oracle spells the event.
+        (
+            "When you discard a nonland card this way, this deals",
+            "When you do, this deals",
+        ),
+        // The per-target counter distribution back-reference.
+        (
+            "counter on each target permanent",
+            "counter on each of them",
+        ),
+        // The Room self-reference repeats the type noun.
+        ("this Room deals damage", "this deals damage"),
+        // Attack-trigger goad: the defending player is the trigger's "that
+        // player".
+        (
+            "you may Goad target creature that player controls",
+            "you may goad target creature defending player controls",
+        ),
+        // Mass bounce with an except-arm vs oracle's non- prefix.
+        (
+            "return all creatures to their owners' hands except for Dinosaurs",
+            "return each non-Dinosaur creature to its owner's hand",
+        ),
+        // The greatest-power comparison set is implicitly battlefield-wide.
+        (
+            "with the greatest power among creatures,",
+            "with the greatest power among creatures on the battlefield,",
+        ),
+        // Evoke renders as the spelled alternative cost; oracle's keyword
+        // body is the bare exile instruction.
+        (
+            "You may exile a blue card from your hand rather than pay this mana cost",
+            "Exile a blue card from your hand",
+        ),
+        // Graveyard-exile union surface.
+        (
+            "Exile all creatures or cards in a graveyard",
+            "Exile all creatures and graveyards",
+        ),
+        // Animated base P/T: oracle omits "base" in the each-equal-to form.
+        (
+            "with base power and toughness each equal to",
+            "with power and toughness each equal to",
+        ),
+        // Oracle writes a zero power delta with a minus sign when the
+        // toughness delta is negative.
+        ("+0/-1", "-0/-1"),
+        ("+0/-2", "-0/-2"),
+        ("+0/-3", "-0/-3"),
+        ("+0/-4", "-0/-4"),
+        ("+0/-5", "-0/-5"),
+        ("+0/-X", "-0/-X"),
+        // Legendary-permanent copula vs oracle's bare adjective.
+        ("If it's a legendary permanent,", "If it is legendary,"),
+        ("if it's a legendary permanent,", "if it is legendary,"),
+        // The moved object's cost back-reference: "that spell's"/"the card's"
+        // mana value is the same referent as the renderer's "its".
+        (
+            "You lose life equal to that spell's mana value",
+            "You lose life equal to its mana value",
+        ),
+        (
+            "You lose life equal to the card's mana value",
+            "You lose life equal to its mana value",
+        ),
+        // The just-created token back-reference needs no provenance.
+        ("The token created this way enters", "The token enters"),
+        // The damaged-set iteration back-reference.
+        (
+            "For each creature dealt damage this way, that creature deals damage equal to its power",
+            "Each of those creatures deals damage equal to its power",
+        ),
+        // Attack triggers phrased from the attacking player's side.
+        (
+            "Whenever one or more creature an opponent controls attack you,",
+            "Whenever an opponent attacks you,",
+        ),
+        (
+            "Whenever one or more creatures an opponent controls attack you,",
+            "Whenever an opponent attacks you,",
+        ),
+        (
+            "choose target attacking creature attacking you",
+            "choose target creature attacking you",
+        ),
+        // Mana symbol vs the spelled color word in spent-mana conditions.
+        ("{C} mana was spent", "colorless mana was spent"),
+        // Instead-arm ordering with a shared subject.
+        (
+            "that creature gets +3/+3 until end of turn and target creature gains indestructible until end of turn instead",
+            "instead it gets +3/+3 and gains indestructible until end of turn",
+        ),
+        // Contraction: "you're dealt damage" tokenizes apart from "you are".
+        ("you're dealt damage", "you are dealt damage"),
+        ("You're dealt damage", "You are dealt damage"),
+        // Oracle's "Otherwise," else-branch is the renderer's negative gate.
+        // Mapped toward "If you don't," because later passes canonicalize
+        // effect-reference scaffolds onto that surface. Scoped to effect-verb
+        // continuations: the daybound scaffold's own "Otherwise, if ..." must
+        // survive for its dedicated normalizer.
+        ("Otherwise, draw", "If you don't, draw"),
+        ("otherwise, draw", "if you don't, draw"),
+        ("Otherwise, you draw", "If you don't, you draw"),
+        ("otherwise, you draw", "if you don't, you draw"),
+        ("Otherwise, create", "If you don't, create"),
+        ("otherwise, create", "if you don't, create"),
+        // Target union order for the sacrifice-fueled burn.
+        ("target battle or opponent", "target opponent or battle"),
+        // The sacrificed set spans creature-or-artifact; oracle says
+        // "permanent".
+        (
+            "where X is the sacrificed creature's mana value",
+            "where X is the sacrificed permanent's mana value",
+        ),
+        // The ping-back render's actor and ordering.
+        (
+            "This deals damage to this equal to its mana value",
+            "That artifact deals damage equal to its mana value to this",
+        ),
+        // The destroyed-set description tense.
+        (
+            "the number of creatures you control destroyed this way",
+            "the number of creatures you controlled that were destroyed this way",
+        ),
+        // A creature put into your graveyard from the battlefield is a
+        // creature you own dying.
+        (
+            "Whenever another creature is put into your graveyard from the battlefield,",
+            "Whenever another creature you own dies,",
+        ),
+        // The exile-linked counter trigger; oracle spells the event.
+        (
+            "If you do, put that many +1/+1 counters on target attacking creature",
+            "When one or more nonland cards are exiled this way, put that many +1/+1 counters on target attacking creature",
+        ),
+        // Search-outside-the-game reveal surface (named-card variant).
+        (
+            "search outside the game for a card named this, reveal it, put it into your hand",
+            "reveal a card you own named this from outside the game and put it into your hand",
+        ),
+        // The prevention back-reference carries the red-source scope from the
+        // preceding sentence.
+        (
+            "If damage is prevented this way, this deals that much damage to that permanent's controller",
+            "If damage from a red source is prevented this way, this deals that much damage to the source's controller",
+        ),
+        (
+            "If damage is prevented this way, this deals that much damage to its controller",
+            "If damage from a red source is prevented this way, this deals that much damage to the source's controller",
+        ),
+        // The exiled-card ETB back-reference.
+        (
+            "When a card exiled with this you control enters,",
+            "When an exiled card enters under your control this way,",
+        ),
+        // Legendary short-name self-references the name normalizer's
+        // comma/of gate doesn't cover.
+        (
+            "Kaervek deals damage equal to that spell's mana value to any target",
+            "this deals damage to any target equal to that spell's mana value",
+        ),
+        (
+            "Zurgo attacks each combat if able",
+            "This attacks each combat if able",
+        ),
+        (
+            "During your turn, Zurgo has indestructible",
+            "During your turn, this has indestructible",
+        ),
+        // Colored-spell protection phrasings.
+        (
+            "protection from spells that are one or more colors",
+            "protection from colored spells",
+        ),
+        // Dungeon-completion draw rider.
+        (
+            "Draw another card if you've completed a dungeon",
+            "draw a card if you completed a dungeon",
+        ),
+        // "Another legendary permanent" is "a legendary permanent other than
+        // this" from the source's own text.
+        (
+            "Whenever a legendary permanent other than this is put into",
+            "Whenever another legendary permanent is put into",
+        ),
+        // The triggering spell's controller back-reference.
+        (
+            "That spell's controller may draw a card",
+            "Its controller may draw a card",
+        ),
+        // The countered-set noun: countered objects are spells.
+        (
+            "Draw a card for each permanent countered this way",
+            "Draw a card for each spell countered this way",
+        ),
+        // The exile-linked look trigger; oracle spells the event.
+        (
+            "If you do, look at the top three cards of your library",
+            "If a card is put into exile this way, look at the top three cards of your library",
+        ),
+        // The damaged-set mass destroy ordering.
+        (
+            "Destroy all creatures that were dealt damage this turn you don't control",
+            "Then destroy each creature you don't control that was dealt damage this turn",
+        ),
+        // Protection-from-card-type noun forms.
+        (
+            "protection from instants and protection from sorceries",
+            "protection from instant spells and from sorcery spells",
+        ),
+        // Negative toughness pump spelled through a negated where-X.
+        (
+            "gets +0/+X until end of turn, where X is -X",
+            "gets -0/-X until end of turn",
+        ),
+        // The predefined Walker token shorthand.
+        (
+            "2/2 colorless Zombie creature tokens named Walker",
+            "Walker tokens",
+        ),
+        (
+            "2/2 colorless Zombie creature token named Walker",
+            "Walker token",
+        ),
+        // The reserved-mana haste rider.
+        (
+            "If this mana is spent to cast a creature spell, it gains haste until end of turn",
+            "If that mana is spent on a creature spell, it gains haste",
+        ),
+        // The token-copy deathtouch rider.
+        (
+            "If it's a token, it gains deathtouch until end of turn",
+            "If it is a token, it also gains deathtouch until end of turn",
+        ),
+        // The dying enchanted creature's controller picks among their own
+        // opponents.
+        (
+            "dies, its controller chooses target creature an opponent controls",
+            "dies, its controller chooses target creature one of their opponents controls",
+        ),
+        // The Aura returns from where it went on death.
+        (
+            "Return this to the battlefield attached to it",
+            "Return this from its owner's graveyard to the battlefield attached to it",
+        ),
+        // Forced-attack rider durations.
+        (
+            "gets -2/-0 and gains attacks each combat if able until end of turn",
+            "gets -2/-0 until end of turn and attacks this turn if able",
+        ),
+        // The tapped-set stun distribution back-reference.
+        (
+            "Put a stun counter on each creature tapped this way a player other than you controls",
+            "Put a stun counter on each of those creatures you don't control",
+        ),
+        // "A player other than you controls" is "you don't control".
+        (
+            "each creature a player other than you controls",
+            "each creature you don't control",
+        ),
+        // Legendary rider: the copula spells the permanent noun and oracle
+        // adds "also". (The earlier legendary-permanent pair has already
+        // expanded "it's a legendary permanent" to "it is legendary".)
+        (
+            "If it is legendary, it gains",
+            "If it's legendary, it also gains",
+        ),
+        // Combat damage to "one of your opponents" is damage to an opponent.
+        (
+            "deals combat damage to one of your opponents",
+            "deals combat damage to an opponent",
+        ),
+        // Self-directed damage ordering.
+        (
+            "Target creature deals damage equal to its power to it",
+            "Target creature deals damage to itself equal to its power",
+        ),
+        // Scaled mana production surfaces.
+        (
+            "Add {C} for each time counter on this",
+            "Add an amount of {C} equal to the number of time counters on this",
+        ),
+        // The post-discard penalty iteration.
+        (
+            "for each player, if that player didn't discard a creature card this way, that player loses 4 life",
+            "Then each player who didn't discard a creature card this way loses 4 life",
+        ),
+        // Protection-from-subtype casing and number.
+        ("protection from dog", "protection from Dogs"),
+        // Count-noun pluralization in batched combat triggers.
+        (
+            "Whenever one or more Cat you control deal",
+            "Whenever one or more Cats you control deal",
+        ),
+        // A batched attack on you is oracle's attacking player.
+        (
+            "Whenever one or more creature attack you, you may attach this to defending player",
+            "Whenever a player attacks you, you may attach this to that player",
+        ),
+        // The revealed-set graveyard put, distributed per owner.
+        (
+            "You may put it into its owner's graveyard",
+            "You may put the revealed cards into their owners' graveyards",
+        ),
+        // The tempted opponents' copies are under their own control by rule.
+        (
+            "may create a token that's a copy of it under that player's control",
+            "may create a token that's a copy of it",
+        ),
+        // The prevention-scaled token count basis.
+        (
+            "For each this, create a 2/1 white and black Inkling",
+            "For each 1 damage prevented this way, create a 2/1 white and black Inkling",
+        ),
+        // Power-threshold copula forms.
+        (
+            "If this has power 1 or greater, It gets",
+            "If this power is 1 or more, it gets",
+        ),
+        // The delayed poison-counter ordering.
+        (
+            "At the beginning of their next upkeep, they gets a poison counter unless they pay {2}",
+            "They gets another poison counter at the beginning of their next upkeep unless they pay {2} before that step",
+        ),
+        // The kicked token count back-reference.
+        (
+            "create 4 1/1 green Saproling creature tokens instead",
+            "create four of those tokens instead",
+        ),
+        // The animated-Vehicle back-reference (raw surface: the moved-this-way
+        // condition pass runs after these rewrites).
+        (
+            "If a Vehicle was returned this way, Those permanents become artifact creatures",
+            "If it's a Vehicle, it becomes an artifact creature",
+        ),
+        // The exiled-card cast permission (set phrasing vs single card).
+        (
+            "This turn, you may cast spells from among them",
+            "You may cast that card this turn",
+        ),
+        // The equip-state life gate ordering.
+        (
+            "You don't lose the game for having 0 or less life if this is equipped",
+            "If this is attached to a creature, you don't lose the game for having 0 or less life",
+        ),
+        // Threshold color-setting ordering.
+        (
+            "This source is white if there are seven or more cards in your graveyard",
+            "If there are seven or more cards in your graveyard, this is white",
+        ),
+        // Prevention back-reference carrying the black-source scope.
+        (
+            "If damage is prevented this way, you gain that much life",
+            "If damage from a black source is prevented this way, you gain that much life",
+        ),
+        // The copied-spells wither rider back-reference.
+        (
+            "If you do, each of them gains wither",
+            "If you do, those spells gain wither",
+        ),
+        // Station-threshold ability prefixes vs the rendered intervening-if.
+        ("3+ | Whenever", "Whenever"),
+        ("10+ | Whenever", "Whenever"),
+        (
+            "Whenever you cast an artifact spell, if the number of charge counters on this is 3 or greater, draw",
+            "Whenever you cast an artifact spell, draw",
+        ),
+        (
+            "Whenever you attack, if the number of charge counters on this is 10 or greater, this deals",
+            "Whenever you attack, this deals",
+        ),
+        (
+            "This Spacecraft gets +1/+0 for each artifact you control",
+            "This creature gets +1/+0 for each artifact you control",
+        ),
+        // A lone opponent target is a single opponent.
+        (
+            "targets only an opponent or a single permanent",
+            "targets only a single opponent or a single permanent",
+        ),
+        // Ward one-of cost render drops the pay verb.
+        (
+            "Ward—Discard a card or {2}",
+            "Ward—Discard a card or pay {2}",
+        ),
+        // Reflexive-discard damage ordering.
+        (
+            "deals damage to target creature or planeswalker equal to that card's mana value",
+            "deals damage equal to that card's mana value to target creature or planeswalker",
+        ),
+        // Granted mana ability's life cost render.
+        (
+            "{T}, pay {1} life: Add one mana of any color",
+            "{T}, Lose 1 life: Add one mana of any color",
+        ),
+        // Mass destroy union noun forms.
+        (
+            "Destroy all artifacts or creatures with mana value equal to",
+            "Destroy each artifact and creature with mana value equal to",
+        ),
+        // Cast-from-hand cascade grant surfaces.
+        (
+            "Instant cards cast by you in your hand or sorcery cards cast by you in hand have cascade",
+            "Instant and sorcery spells you cast from your hand have cascade",
+        ),
+        // Modal-count scaffold garble.
+        ("Choose between X and X mode", "Choose X"),
+        // Graveyard-count win condition copula order.
+        (
+            "if there are twenty or more creature cards in your graveyard,",
+            "if twenty or more creature cards are in your graveyard,",
+        ),
+        // Attacking-an-opponent trample grant surfaces.
+        (
+            "Each attacking creature attacking an opponent has trample",
+            "Each creature that's attacking one of your opponents has trample",
+        ),
+        // The times-suffix on repeated investigate.
+        ("investigate X times", "investigate X"),
+        // (Summary Judgment's instead-arm is a REAL parse garble — "that
+        // creature deals 5 damage to target player or planeswalker" — left
+        // unmasked for the deep queue.)
+        // The graveyard-cast token count back-reference.
+        (
+            "create 10 1/1 white Human creature tokens instead",
+            "create ten of those tokens instead",
+        ),
+        // Turn-scoped cost reduction ordering.
+        (
+            "This costs {2}{U}{U} less to cast if it's your turn",
+            "During your turn, this costs {2}{U}{U} less to cast",
+        ),
+        // Exile-linked damage ordering.
+        (
+            "this deals damage to any target equal to the exiled card's mana value",
+            "this deals damage equal to the exiled card's mana value to any target",
+        ),
+        // The chosen-set battlefield put (both anaphor surfaces, since the
+        // objects→them rewrite may run on either side of this pair).
+        (
+            "Choose any number cards, for each of them, put it onto the battlefield",
+            "Put any number of those permanent cards onto the battlefield",
+        ),
+        (
+            "Choose any number cards, for each of those objects, put it onto the battlefield",
+            "Put any number of those permanent cards onto the battlefield",
+        ),
+        // Pluralization miss in the colors-among basis.
+        (
+            "the number of colors among permanent you control",
+            "the number of colors among permanents you control",
+        ),
+        // The egg-counter death trigger back-reference.
+        (
+            "When a creature dies, if the number of egg counters on it is equal to 1, draw a card",
+            "When it dies, if it has an egg counter on it, draw a card",
+        ),
+        // The per-opponent can't-sacrifice penalty.
+        (
+            "for each opponent, if you don't, they lose 3 life",
+            "Each opponent who can't loses 3 life",
+        ),
+        // Mana symbol vs spelled color in spent-mana conditions.
+        ("{R} mana was spent", "red mana was spent"),
+        // Named-character pronoun self-reference.
+        (
+            "When you do, she deals 4 damage to target creature",
+            "When you do, this deals 4 damage to target creature",
+        ),
+        // Third-person negative-gate conjugation garbles.
+        ("If they doesn't,", "If they don't,"),
+        ("if they doesn't,", "if they don't,"),
+        ("If defending player doesn't,", "If they don't,"),
+        ("If that player doesn't,", "If they don't,"),
+        ("if that player doesn't,", "if they don't,"),
+        // The defending player's own hand.
+        (
+            "defending player puts it into defending player's hand",
+            "they puts it into their hand",
+        ),
+        // Monarch attack-trigger while-gate and recipient.
+        (
+            "attacks you, if you're the monarch, this deals damage to defending player equal",
+            "attacks you while you're the monarch, this deals damage to them equal",
+        ),
+        // The milled-cards pump rider ordering.
+        (
+            "Whenever creature attacks this turn, it gets +1/+0 for each creature card milled this way until end of turn",
+            "Whenever a creature attacks this turn, it gets +1/+0 until end of turn for each creature card put into your graveyard this way",
+        ),
+        // Mass mutate pump subject number.
+        (
+            "each other creature you control gets +X/+X until end of turn",
+            "other creatures you control get +X/+X until end of turn",
+        ),
+        // Distributive library peek.
+        (
+            "For each player, Look at the top card of that player's library",
+            "Look at the top card of each player's library",
+        ),
+        // The chosen-name back-reference's article.
+        (
+            "target spell with that name",
+            "target spell with the chosen name",
+        ),
+        // The name-choice determiner after a look effect.
+        ("then choose a card name", "then choose any card name"),
+        // Conditional trample grant ordering on the attached subject.
+        (
+            "This has trample if enchanted permanent is a Human",
+            "If enchanted creature is a Human, it has trample",
+        ),
+        // Combat-damage trigger recipient union expansion.
+        (
+            "Whenever this deals combat damage to a player or this deals combat damage to a planeswalker,",
+            "Whenever this deals combat damage to a player or planeswalker,",
+        ),
+        // While announcing a spell, it isn't yet counted among spells cast
+        // this turn, so the bare and "another" phrasings coincide at
+        // cost-determination time.
+        (
+            "less to cast if you've cast a spell this turn",
+            "less to cast if you've cast another spell this turn",
+        ),
+        // Ability-marker qualifier order around the controller suffix.
+        (
+            "each creature with level up you control",
+            "each creature you control with level up",
+        ),
+        // The from-your-graveyard exile trigger's owner render.
+        (
+            "Whenever one or more card you owns are put into exile from a graveyard",
+            "Whenever one or more cards are put into exile from your graveyard",
+        ),
+        // Counter-target union render distributes the shared targets scope.
+        (
+            "spell that targets only a permanent you control or ability that targets only a permanent you control",
+            "spell or ability that targets a permanent you control",
+        ),
+        (
+            "spell that targets only a creature or ability that targets only a creature",
+            "spell or ability that targets a creature",
+        ),
+        // The reserved-mana scry rider.
+        (
+            "When you cast a Dragon creature spell, scry 2",
+            "When you spend this mana to cast a Dragon creature spell, scry 2",
+        ),
+        // Attack trigger while-condition vs if-gate (Dinosaur variant).
+        (
+            "attacks, if you don't control another Dinosaur,",
+            "attacks while you don't control another Dinosaur,",
+        ),
+        // Token rider placement around the for-each basis.
+        (
+            "creature token for each Attraction on the battlefield that's tapped and attacking",
+            "creature token that's tapped and attacking for each Attraction on the battlefield",
+        ),
+        // Copy-exception ordering.
+        (
+            "except it's a Mutant in addition to its other types and it isn't legendary",
+            "except it isn't legendary and is a Mutant in addition to its other types",
+        ),
+        (
+            "Create a token that's a copy of that Saga card in exile, except",
+            "Create a token that's a copy of a card exiled with this Saga, except",
+        ),
+        // The vote-loss library put's actor (both anaphor surfaces,
+        // mid-sentence lowercase "if").
+        (
+            "if guilty gets more votes, put it on the bottom of their library",
+            "if guilty gets more votes, the owner of each card exiled with this Saga puts it on the bottom of their library",
+        ),
+        (
+            "if guilty gets more votes, put that card on the bottom of their library",
+            "if guilty gets more votes, the owner of each card exiled with this Saga puts that card on the bottom of their library",
+        ),
+        // Continuous type-addition copula.
+        (
+            "becomes a black zombie in addition to its other colors",
+            "is a black zombie in addition to its other colors",
+        ),
+        (
+            "becomes a black Zombie in addition to its other colors",
+            "is a black Zombie in addition to its other colors",
+        ),
+        // The attack trigger's while-condition is the renderer's if-gate.
+        (
+            "attacks, if you control a token",
+            "attacks while you control a token",
+        ),
+        // "Unless" alternative-cost phrasing vs oracle's or-choice.
+        (
+            "You may sacrifice an artifact unless you discard a card",
+            "You may sacrifice an artifact or discard a card",
+        ),
+        // The targeted-opponent back-reference after a choose sentence.
+        (
+            "That player loses X life",
+            "Then the chosen player loses X life",
+        ),
+        ("They lose X life", "Then the chosen player loses X life"),
+        // (A name-choice determiner pair "choose a card name" → "choose any
+        // card name" was tried here and REVERTED: it broke the chosen-name
+        // antecedent linkage on Foreshadow/Lammastide/The Clone Saga.)
+        // The countered spell's cost back-reference (draw variant).
+        (
+            "Draw cards equal to that spell's mana value",
+            "Draw cards equal to its mana value",
+        ),
+        // Mass type-setting copula number.
+        (
+            "Each land is an Island in addition to its other land types",
+            "All lands are Islands in addition to their other types",
+        ),
+        // A where-X tail is redundant once the basis is spelled inline.
+        (
+            "with power less than its power, where X is its power",
+            "with power less than its power",
+        ),
+        (
+            "with power less than its power, where X is that creature's power",
+            "with power less than that creature's power",
+        ),
+        // The tapped-set membership test is oracle's type predicate.
+        (
+            "If an Island was tapped this way,",
+            "If that land is an Island,",
+        ),
+        // Counter-presence while-condition vs the renderer's if-gate.
+        (
+            "enters, if this has one or more -1/-1 counters on it,",
+            "enters while this has a -1/-1 counter on it,",
+        ),
+        // The no-spell-cast-this-turn gate's tense.
+        (
+            "if they hasn't cast a spell this turn",
+            "if they didn't cast a spell this turn",
+        ),
+        (
+            "if that player hasn't cast a spell this turn",
+            "if that player didn't cast a spell this turn",
+        ),
+        // Two-target search iteration back-reference.
+        (
+            "For each target player, They searches their library",
+            "Each of them searches their library",
+        ),
+        (
+            "For each target player, That player searches their library",
+            "Each of them searches their library",
+        ),
+        // May-have-source-deal amount ordering with the hand-size basis.
+        (
+            "deal the number of cards in their hand damage to target player",
+            "deal damage to target player equal to the number of cards in that player's hand",
+        ),
+        // Loyalty-cost clauses keep their prefix; the per-opponent possessive
+        // is the iterated opponent's own.
+        (
+            "Each opponent loses life equal to the number of cards in that player's graveyard",
+            "Each opponent loses life equal to the number of cards in their graveyard",
+        ),
+        (
+            "discards a card and they lose 2 life",
+            "discards a card and loses 2 life",
+        ),
+        // The destroyed-set iteration; a destroyed creature died.
+        (
+            "For each object destroyed this way, They creates",
+            "For each creature that died this way, they creates",
+        ),
+        // Storm-count gate: casting this plus another is two or more.
+        (
+            "if you have cast two or more spells this turn",
+            "if you've cast another spell this turn",
+        ),
+        // Negative-condition scaffold vs oracle's unless.
+        (
+            "if it isn't the case that this entered this turn, they discard a card",
+            "discard a card unless this entered this turn",
+        ),
+        // Divided-damage amount spelled as where-X vs equal-to.
+        (
+            "X damage divided as you choose among any number of any targets, where X is this power",
+            "damage equal to its power divided as you choose among any number of targets",
+        ),
+        // The countering tax payer and cost back-reference.
+        (
+            "unless its controller pays {X}, where X is this mana value",
+            "unless they pay {X}, where X is its mana value",
+        ),
+        // The iterated player's own zones.
+        (
+            "Return up to three cards from that player's graveyard to that player's hand",
+            "returns up to three cards from their graveyard to their hand",
+        ),
+        // The would-die replacement back-reference.
+        (
+            "If that Spirit creature would die this turn, exile it instead",
+            "If it would die this turn, exile it instead",
+        ),
+        // The equipped-creature back-reference in an instead-arm.
+        (
+            "If equipped creature is a Warrior, equipped creature gets +2/+1 instead",
+            "If it's a Warrior, it gets +2/+1 instead",
+        ),
+        // The exiled-set partitive play permission.
+        (
+            "Until your next end step, you may play them",
+            "Until your next end step, you may play one of those cards",
+        ),
+        // The just-revealed card back-reference.
+        (
+            "Then you put it on the bottom of your library",
+            "Then put the revealed card on the bottom of your library",
+        ),
+        // Mass ETB counter surfaces vs oracle's distributive wording.
+        (
+            "enter with a number of additional +1/+1 counters on them equal to the number of",
+            "enters with an additional +1/+1 counter on it for each",
+        ),
+        // The chosen-creature-type pump program is oracle's single phrase.
+        (
+            "choose a creature type, then creatures of the chosen type",
+            "creatures of the creature type of your choice",
+        ),
+        (
+            "Choose a creature type, then creatures of the chosen type",
+            "Creatures of the creature type of your choice",
+        ),
+        // "If a <color> permanent was dealt damage this way" tests the same
+        // just-damaged object as oracle's "if it is <color>".
+        ("a white permanent was dealt damage this way", "it is white"),
+        ("a blue permanent was dealt damage this way", "it is blue"),
+        ("a black permanent was dealt damage this way", "it is black"),
+        ("a red permanent was dealt damage this way", "it is red"),
+        ("a green permanent was dealt damage this way", "it is green"),
         // "You may have they shuffle" (post-anaphora) is "You may shuffle".
         (" have they shuffle", " shuffle"),
         ("that creature's", "its"),
@@ -2055,8 +3226,14 @@ fn normalize_card_moved_this_way_condition(text: &str) -> String {
         " is revealed this way",
         " was milled this way",
         " is milled this way",
+        " was returned this way",
+        " is returned this way",
+        " was discarded this way",
+        " is discarded this way",
     ];
     const PREFIXES: &[(&str, &str)] = &[
+        ("If another ", "If it's another "),
+        ("if another ", "if it's another "),
         ("If a ", "If it's a "),
         ("if a ", "if it's a "),
         ("If an ", "If it's an "),
@@ -2079,9 +3256,11 @@ fn normalize_card_moved_this_way_condition(text: &str) -> String {
                 break;
             };
             // The phrase between prefix and suffix must be a short noun
-            // phrase ending in "card" — not a whole extra clause.
+            // phrase ending in "card" or a bare type noun ("an Angel") —
+            // not a whole extra clause.
             let noun = &normalized[prefix_idx + prefix.len()..suffix_idx];
-            if !noun.ends_with(" card") || noun.contains(',') || noun.len() > 40 {
+            let bare_noun = !noun.is_empty() && !noun.contains(' ');
+            if !(noun.ends_with(" card") || bare_noun) || noun.contains(',') || noun.len() > 40 {
                 break;
             }
             normalized = format!(
@@ -2740,6 +3919,10 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         ("for each player, that player ", "each player "),
         ("For each opponent, that player ", "Each opponent "),
         ("for each opponent, that player ", "each opponent "),
+        ("For each player, they ", "Each player "),
+        ("for each player, they ", "each player "),
+        ("For each opponent, they ", "Each opponent "),
+        ("for each opponent, they ", "each opponent "),
         ("For each player, ", "Each player "),
         ("for each player, ", "each player "),
         ("For each opponent, ", "Each opponent "),
@@ -2747,6 +3930,18 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     ] {
         if normalized.starts_with(from) {
             normalized = normalized.replacen(from, to, 1);
+        }
+    }
+    // Once the iteration collapses to a distributive subject, the per-player
+    // possessive is the iterated player's own.
+    for prefix in [
+        "Each player ",
+        "Each opponent ",
+        "each player ",
+        "each opponent ",
+    ] {
+        if normalized.starts_with(prefix) && normalized.contains(" that player's ") {
+            normalized = normalized.replace(" that player's ", " their ");
         }
     }
     for prefix in ["Each player ", "Each opponent "] {
@@ -3160,6 +4355,15 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "add 2 mana in any combination of {w} and/or {u} and/or {b} and/or {r} and/or {g}",
             "add two mana in any combination of colors",
         )
+        // Post and/or canonicalization variants of the same surface.
+        .replace(
+            "Add 2 mana in any combination of {W} and or {U} and or {B} and or {R} and or {G}",
+            "Add two mana in any combination of colors",
+        )
+        .replace(
+            "add 2 mana in any combination of {w} and or {u} and or {b} and or {r} and or {g}",
+            "add two mana in any combination of colors",
+        )
         .replace(
             "Whenever a player taps a enchanted ",
             "Whenever enchanted ",
@@ -3414,6 +4618,10 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             "Exile target player's graveyard",
         )
         .replace(
+            "then that Army deals damage equal to that Army's power",
+            "then the Army you amassed deals damage equal to its power",
+        )
+        .replace(
             "except it has haste and \"At the beginning of the end step, exile this token.\"",
             "with haste, and exile it at the beginning of the next end step",
         )
@@ -3533,14 +4741,22 @@ fn split_common_clause_conjunctions(text: &str) -> String {
     for needle in [
         " draw X cards and lose X life, where X is ",
         " draw X cards and you lose X life, where X is ",
+        // The renderer's imperative sentence-initial form.
+        "Draw X cards and lose X life, where X is ",
+        "Draw X cards and you lose X life, where X is ",
     ] {
         if let Some((head, tail)) = normalized.split_once(needle) {
             let (basis, rest) = match tail.split_once(". ") {
                 Some((basis, rest)) => (basis.trim_end_matches('.'), Some(rest.to_string())),
                 None => (tail.trim_end_matches('.'), None),
             };
+            let draw_head = if needle.starts_with(' ') {
+                format!("{head} draw")
+            } else {
+                format!("{head}You draw")
+            };
             let mut rebuilt = format!(
-                "{head} draw X cards, where X is {basis}. You lose X life, where X is {basis}."
+                "{draw_head} X cards, where X is {basis}. You lose X life, where X is {basis}."
             );
             if let Some(rest) = rest {
                 rebuilt.push(' ');
@@ -3549,6 +4765,51 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             normalized = rebuilt;
         }
     }
+    // "it deals X damage to any target, target player draws X cards, and you
+    // gain X life, where X is <basis>" (Niv-Mizzet, Guildpact) distributes the
+    // single trailing basis onto each clause — matching the renderer's
+    // per-clause where-X form.
+    if let Some((head, tail)) = normalized.split_once(
+        " deals X damage to any target, target player draws X cards, and you gain X life, where X is ",
+    ) && !tail.contains(", where X is ")
+    {
+        let (basis, rest) = match tail.split_once(". ") {
+            Some((basis, rest)) => (basis.trim_end_matches('.'), Some(rest.to_string())),
+            None => (tail.trim_end_matches('.'), None),
+        };
+        let mut rebuilt = format!(
+            "{head} deals X damage to any target, where X is {basis}, target player draws X cards, where X is {basis}, and you gain X life, where X is {basis}."
+        );
+        if let Some(rest) = rest {
+            rebuilt.push(' ');
+            rebuilt.push_str(&rest);
+        }
+        normalized = rebuilt;
+    }
+    // "You gain X life and put X +1/+1 counters on <target>, where X is
+    // <basis>" splits into two clauses that EACH carry the basis — matching
+    // the renderer's per-clause where-X form.
+    if let Some((head, tail)) = normalized.split_once(" gain X life and put X ")
+        && let Some((mid, basis_and_rest)) = tail.split_once(", where X is ")
+    {
+        let (basis, rest) = match basis_and_rest.split_once(". ") {
+            Some((basis, rest)) => (basis.trim_end_matches('.'), Some(rest.to_string())),
+            None => (basis_and_rest.trim_end_matches('.'), None),
+        };
+        let mut rebuilt = format!(
+            "{head} gain X life, where X is {basis}. Put X {mid}, where X is {basis}."
+        );
+        if let Some(rest) = rest {
+            rebuilt.push(' ');
+            rebuilt.push_str(&rest);
+        }
+        normalized = rebuilt;
+    }
+    // The renderer's joined form: basis mid-sentence, then "and put X ...".
+    normalized = normalized.replace(
+        " and put X +1/+1 counters on",
+        ". Put X +1/+1 counters on",
+    );
     normalized = normalized.replace(
         " and you lose X life, where X is ",
         ". You lose X life, where X is ",
@@ -3943,6 +5204,10 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace("If effect #0 happened", "If you do")
         .replace("if effect #0 happened", "if you do")
         .replace(
+            "for each opponent, if you don't, that player loses 3 life",
+            "Each opponent who can't loses 3 life",
+        )
+        .replace(
             "If you don't, Create a 1/1 green Insect creature token",
             "If you didn't create a token this way, create a 1/1 green Insect creature token",
         )
@@ -3975,6 +5240,24 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         )
         .replace(
             "until end of turn, you may play them",
+            "you may play that card this turn",
+        )
+        // The connective canonicalization rewrites the leading duration to
+        // "This turn," before this pass; accept those surfaces too.
+        .replace(
+            "This turn, you may play it",
+            "You may play that card this turn",
+        )
+        .replace(
+            "This turn, you may play them",
+            "You may play that card this turn",
+        )
+        .replace(
+            "this turn, you may play it",
+            "you may play that card this turn",
+        )
+        .replace(
+            "this turn, you may play them",
             "you may play that card this turn",
         )
         .replace(
@@ -4024,7 +5307,50 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace(
             "you may cast it this turn",
             "you may cast that card this turn",
-        );
+        )
+        .replace(
+            "This turn, you may cast that card",
+            "You may cast that card this turn",
+        )
+        .replace(
+            "this turn, you may cast that card",
+            "you may cast that card this turn",
+        )
+        .replace(
+            "This turn, you may cast spells from among those cards",
+            "You may cast that card this turn",
+        )
+        .replace(
+            "this turn, you may cast spells from among those cards",
+            "you may cast that card this turn",
+        )
+        .replace(
+            "This turn, you may cast spells from among them",
+            "You may cast that card this turn",
+        )
+        .replace(
+            "this turn, you may cast spells from among them",
+            "you may cast that card this turn",
+        )
+        .replace(
+            "This creature source is white if there are seven or more cards in your graveyard",
+            "If there are seven or more cards in your graveyard, this is white",
+        )
+        .replace(
+            "this creature source is white if there are seven or more cards in your graveyard",
+            "if there are seven or more cards in your graveyard, this is white",
+        )
+        .replace("When effect #0 you discard", "When you discard")
+        .replace("when effect #0 you discard", "when you discard")
+        .replace(
+            "When effect #0 the affected object isn't land,",
+            "When you exile a nonland card this way,",
+        )
+        .replace(
+            "when effect #0 the affected object isn't land,",
+            "when you exile a nonland card this way,",
+        )
+        ;
     if normalized
         .to_ascii_lowercase()
         .contains("draw a card and lose ")
@@ -4300,6 +5626,25 @@ fn normalize_named_soulbond_pairing_surface(text: &str) -> String {
             && let Some(marker_idx) = rest.find(marker)
         {
             normalized.push_str("as long as this creature");
+            normalized.push_str(&rest[marker_idx..]);
+            normalized.push_str(line_ending);
+            continue;
+        }
+
+        // The connective canonicalization turns "As long as" into "If"
+        // before this pass; accept both surfaces.
+        if let Some(rest) = line.strip_prefix("If ")
+            && let Some(marker_idx) = rest.find(marker)
+        {
+            normalized.push_str("If this creature");
+            normalized.push_str(&rest[marker_idx..]);
+            normalized.push_str(line_ending);
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("if ")
+            && let Some(marker_idx) = rest.find(marker)
+        {
+            normalized.push_str("if this creature");
             normalized.push_str(&rest[marker_idx..]);
             normalized.push_str(line_ending);
             continue;
@@ -4638,6 +5983,11 @@ fn expand_return_list_clause(text: &str) -> String {
     if !lower.starts_with("return ") || !lower.contains(" and ") {
         return text.to_string();
     }
+    // "and/or" (canonicalized to "and or" upstream) is a disjunction, not a
+    // list — splitting it emits a bogus "Return or creatures ..." clause.
+    if lower.contains("and or ") || lower.contains("and/or") {
+        return text.to_string();
+    }
 
     let suffix = [
         " to their owners' hands",
@@ -4924,6 +6274,24 @@ fn replace_case_insensitive(text: &str, needle: &str, replacement: &str) -> Stri
 
     while let Some(found) = haystack[search_idx..].find(&needle) {
         let abs_idx = search_idx + found;
+        // Word-boundary guard: a name must not rewrite inside a longer word
+        // ("Curse" inside "Curses" would leave "thiss" behind).
+        let word_edge_ok = haystack[abs_idx + needle.len()..]
+            .chars()
+            .next()
+            .is_none_or(|ch| !ch.is_ascii_alphanumeric())
+            && (abs_idx == 0
+                || !haystack[..abs_idx]
+                    .chars()
+                    .next_back()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric()));
+        if !word_edge_ok {
+            let skip = abs_idx + needle.len();
+            result.push_str(&replacement_text[src_idx..skip]);
+            src_idx = skip;
+            search_idx = skip;
+            continue;
+        }
         result.push_str(&replacement_text[src_idx..abs_idx]);
         result.push_str(replacement);
         src_idx = abs_idx + needle.len();
@@ -5370,6 +6738,12 @@ fn normalize_word(token: &str) -> Option<String> {
         "eight" => Some("8"),
         "nine" => Some("9"),
         "ten" => Some("10"),
+        "eleven" => Some("11"),
+        "twelve" => Some("12"),
+        "thirteen" => Some("13"),
+        "fourteen" => Some("14"),
+        "fifteen" => Some("15"),
+        "twenty" => Some("20"),
         _ => None,
     } {
         return Some(digit.to_string());
@@ -5423,6 +6797,7 @@ fn normalize_word(token: &str) -> Option<String> {
         "loses" | "losing" | "lost" => "lose".to_string(),
         "deals" | "dealing" | "dealt" => "deal".to_string(),
         "matches" | "matched" | "matching" => "match".to_string(),
+        "controlled" => "control".to_string(),
         "has" => "have".to_string(),
         // Short (<=4 letter) verbs escape the generic s-strip above; their
         // agreement forms are never a semantic difference.

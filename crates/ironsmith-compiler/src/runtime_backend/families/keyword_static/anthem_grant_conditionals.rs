@@ -1057,7 +1057,7 @@ fn parsed_exploit_ability() -> ParsedAbility {
         text: Some("Exploit".to_string()),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
-        trigger_spec: Some(TriggerSpec::ThisEntersBattlefield),
+        trigger_spec: Some(TriggerSpec::ThisEntersBattlefield { origin_condition: None }),
     }
 }
 
@@ -2814,6 +2814,51 @@ pub(crate) fn parse_filter_has_granted_ability_line(
                 continue;
             }
         };
+        // Union subjects ("you and this creature have hexproof", "Dion and
+        // other Knights you control have flying") compile one ability per
+        // half; the ordinary subject parse below would lossily recover only
+        // the best-scoring suffix filter and drop the left half.
+        if let Some((left_subject, right_subject)) = split_union_grant_subjects(&subject_tokens) {
+            let mut granted = Vec::new();
+            let mut supported = true;
+            for half in [&left_subject, &right_subject] {
+                match half {
+                    UnionGrantSubject::PlayerYou => {
+                        // The player half only models keywords with a
+                        // player-level restriction form ("You have hexproof").
+                        if matches!(
+                            parse_ability_line(&ability_tokens).as_deref(),
+                            Some([KeywordAction::Hexproof])
+                        ) {
+                            granted.push(conditional_static_ability(
+                                player_you_hexproof_static(),
+                                condition.clone(),
+                            ));
+                        } else {
+                            supported = false;
+                            break;
+                        }
+                    }
+                    UnionGrantSubject::Source => {
+                        granted.extend(lower_granted_tail_for_anthem_subject(
+                            &AnthemSubjectAst::Source,
+                            &condition,
+                            granted_tail.clone(),
+                        ));
+                    }
+                    UnionGrantSubject::Filter(filter) => {
+                        granted.extend(lower_granted_tail_for_anthem_subject(
+                            &AnthemSubjectAst::Filter(filter.clone()),
+                            &condition,
+                            granted_tail.clone(),
+                        ));
+                    }
+                }
+            }
+            if supported && !granted.is_empty() {
+                return Ok(Some(granted));
+            }
+        }
         let subject = match parse_anthem_subject_with_attached_fallback(
             &subject_tokens,
             attached_subject_filter.as_ref(),

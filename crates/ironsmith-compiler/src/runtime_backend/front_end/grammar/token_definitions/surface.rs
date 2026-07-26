@@ -133,10 +133,25 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
         ("haste", TokenKeywordShape::Haste),
         ("menace", TokenKeywordShape::Menace),
         ("reach", TokenKeywordShape::Reach),
+        ("hexproof", TokenKeywordShape::Hexproof),
+        ("indestructible", TokenKeywordShape::Indestructible),
+        ("infect", TokenKeywordShape::Infect),
+        ("flash", TokenKeywordShape::Flash),
+        ("islandwalk", TokenKeywordShape::Islandwalk),
+        ("mountainwalk", TokenKeywordShape::Mountainwalk),
+        ("forestwalk", TokenKeywordShape::Forestwalk),
+        ("swampwalk", TokenKeywordShape::Swampwalk),
+        ("plainswalk", TokenKeywordShape::Plainswalk),
     ] {
         if common::word_present(words, word) {
             keywords.push(keyword);
         }
+    }
+    if common::phrase_present(words, &["first", "strike"]) {
+        keywords.push(TokenKeywordShape::FirstStrike);
+    }
+    if common::phrase_present(words, &["double", "strike"]) {
+        keywords.push(TokenKeywordShape::DoubleStrike);
     }
     keywords
 }

@@ -1108,7 +1108,7 @@ pub(super) fn parse_oracle_master_biomancer_etb_mutant_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("other creatures you control enter with")
+        rendered.contains("each other creature you control enters with")
             && rendered.contains("additional +1/+1 counters")
             && rendered.contains("equal to this creature's power")
             && rendered.contains("mutant"),
@@ -1255,7 +1255,7 @@ pub(super) fn parse_oracle_arwen_weaver_of_hope_dynamic_etb_counters_regression(
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("other creatures you control enter with")
+        rendered.contains("each other creature you control enters with")
             && rendered.contains("additional +1/+1 counters")
             && (rendered.contains("equal to arwen's toughness")
                 || rendered.contains("equal to this creature's toughness")),
@@ -1284,8 +1284,8 @@ pub(super) fn parse_oracle_grumgully_the_generous_etb_counter_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("other non-human creatures you control enter")
-            && rendered.contains("with an additional +1/+1 counter on them"),
+        rendered.contains("each other non-human creature you control enters")
+            && rendered.contains("with an additional +1/+1 counter on it"),
         "expected Grumgully, the Generous to render its ETB counter text, got {rendered}"
     );
     assert!(

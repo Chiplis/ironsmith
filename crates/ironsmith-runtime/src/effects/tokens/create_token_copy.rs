@@ -132,6 +132,17 @@ fn choose_attack_target(
         .cloned()
 }
 
+fn ability_is_soulbond_pairing(ability: &Ability) -> bool {
+    let crate::ability::AbilityKind::Triggered(triggered) = &ability.kind else {
+        return false;
+    };
+    triggered.effects.all_effects().into_iter().any(|effect| {
+        effect
+            .downcast_ref::<crate::effects::SoulbondPairEffect>()
+            .is_some()
+    })
+}
+
 fn build_token_copy_object(
     effect: &CreateTokenCopyEffect,
     id: ObjectId,
@@ -184,6 +195,13 @@ fn build_token_copy_object(
         token
             .supertypes
             .retain(|supertype| !effect.removed_supertypes.contains(supertype));
+    }
+    if effect.loses_soulbond {
+        // "except it ... loses soulbond": the copy is created without the
+        // soulbond pairing ability.
+        token
+            .abilities_mut()
+            .retain(|ability| !ability_is_soulbond_pairing(ability));
     }
     for static_ability in static_abilities_to_grant {
         token

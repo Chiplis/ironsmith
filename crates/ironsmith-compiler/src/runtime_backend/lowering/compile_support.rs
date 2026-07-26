@@ -2520,6 +2520,27 @@ fn static_ability_for_token_keyword(keyword: token_grammar::TokenKeywordShape) -
         token_grammar::TokenKeywordShape::Haste => StaticAbility::haste(),
         token_grammar::TokenKeywordShape::Menace => StaticAbility::menace(),
         token_grammar::TokenKeywordShape::Reach => StaticAbility::reach(),
+        token_grammar::TokenKeywordShape::FirstStrike => StaticAbility::first_strike(),
+        token_grammar::TokenKeywordShape::DoubleStrike => StaticAbility::double_strike(),
+        token_grammar::TokenKeywordShape::Hexproof => StaticAbility::hexproof(),
+        token_grammar::TokenKeywordShape::Indestructible => StaticAbility::indestructible(),
+        token_grammar::TokenKeywordShape::Infect => StaticAbility::infect(),
+        token_grammar::TokenKeywordShape::Flash => StaticAbility::flash(),
+        token_grammar::TokenKeywordShape::Islandwalk => {
+            StaticAbility::landwalk(crate::types::Subtype::Island)
+        }
+        token_grammar::TokenKeywordShape::Mountainwalk => {
+            StaticAbility::landwalk(crate::types::Subtype::Mountain)
+        }
+        token_grammar::TokenKeywordShape::Forestwalk => {
+            StaticAbility::landwalk(crate::types::Subtype::Forest)
+        }
+        token_grammar::TokenKeywordShape::Swampwalk => {
+            StaticAbility::landwalk(crate::types::Subtype::Swamp)
+        }
+        token_grammar::TokenKeywordShape::Plainswalk => {
+            StaticAbility::landwalk(crate::types::Subtype::Plains)
+        }
     }
 }
 
@@ -3311,7 +3332,7 @@ fn build_artifact_token_definition(
     Some(builder.build())
 }
 
-fn apply_standard_token_keyword(
+pub(crate) fn apply_standard_token_keyword(
     builder: CardDefinitionBuilder,
     keyword: token_grammar::TokenKeywordShape,
 ) -> CardDefinitionBuilder {
@@ -3326,6 +3347,13 @@ fn apply_standard_token_keyword(
         token_grammar::TokenKeywordShape::Haste => builder.haste(),
         token_grammar::TokenKeywordShape::Menace => builder.menace(),
         token_grammar::TokenKeywordShape::Reach => builder.reach(),
+        token_grammar::TokenKeywordShape::FirstStrike => builder.first_strike(),
+        token_grammar::TokenKeywordShape::DoubleStrike => builder.double_strike(),
+        token_grammar::TokenKeywordShape::Hexproof => builder.hexproof(),
+        token_grammar::TokenKeywordShape::Indestructible => builder.indestructible(),
+        other => builder.with_ability(crate::ability::Ability::static_ability(
+            static_ability_for_token_keyword(other),
+        )),
     }
 }
 

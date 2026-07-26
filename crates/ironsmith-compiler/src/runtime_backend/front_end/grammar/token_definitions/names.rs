@@ -57,6 +57,13 @@ const NAMED_CARD_STOP_WORDS: &[&str] = &[
     "reach",
     "hexproof",
     "indestructible",
+    "infect",
+    "flash",
+    "islandwalk",
+    "mountainwalk",
+    "forestwalk",
+    "swampwalk",
+    "plainswalk",
     "first",
     "double",
     "strike",
@@ -118,6 +125,13 @@ const LEADING_NAME_STOP_WORDS: &[&str] = &[
     "reach",
     "hexproof",
     "indestructible",
+    "infect",
+    "flash",
+    "islandwalk",
+    "mountainwalk",
+    "forestwalk",
+    "swampwalk",
+    "plainswalk",
     "prowess",
     "first",
     "double",
@@ -262,6 +276,13 @@ fn explicit_name_descriptor(word: &str) -> bool {
             | "reach"
             | "hexproof"
             | "indestructible"
+            | "infect"
+            | "flash"
+            | "islandwalk"
+            | "mountainwalk"
+            | "forestwalk"
+            | "swampwalk"
+            | "plainswalk"
             | "prowess"
             | "first"
             | "double"

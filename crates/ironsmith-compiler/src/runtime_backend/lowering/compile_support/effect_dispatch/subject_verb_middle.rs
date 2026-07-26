@@ -2444,6 +2444,7 @@ pub(super) fn compile_subject_verb_middle(
             half_power_toughness_round_up,
             has_haste,
             exile_at_end_of_combat,
+            loses_soulbond,
             sacrifice_at_next_end_step,
             sacrifice_at_next_end_step_ability_text,
             exile_at_next_end_step,
@@ -2488,6 +2489,9 @@ pub(super) fn compile_subject_verb_middle(
             }
             if *exile_at_end_of_combat {
                 effect = effect.exile_at_eoc(true);
+            }
+            if *loses_soulbond {
+                effect = effect.loses_soulbond(true);
             }
             if *sacrifice_at_next_end_step {
                 effect = effect.sacrifice_at_next_end_step(true);
@@ -2541,6 +2545,7 @@ pub(super) fn compile_subject_verb_middle(
             half_power_toughness_round_up,
             has_haste,
             exile_at_end_of_combat,
+            loses_soulbond,
             sacrifice_at_next_end_step,
             sacrifice_at_next_end_step_ability_text,
             exile_at_next_end_step,
@@ -2597,6 +2602,9 @@ pub(super) fn compile_subject_verb_middle(
             }
             if *exile_at_end_of_combat {
                 effect = effect.exile_at_eoc(true);
+            }
+            if *loses_soulbond {
+                effect = effect.loses_soulbond(true);
             }
             if *sacrifice_at_next_end_step {
                 effect = effect.sacrifice_at_next_end_step(true);

@@ -158,6 +158,7 @@ pub enum KeywordAction {
     ProtectionFromCardType(CardType),
     ProtectionFromSubtype(Subtype),
     Unblockable,
+    CantBeBlockedByMoreThan(u32),
     Devoid,
     Annihilator(u32),
     ForMirrodin,
@@ -294,6 +295,7 @@ impl KeywordAction {
                 | Self::ProtectionFromCardType(_)
                 | Self::ProtectionFromSubtype(_)
                 | Self::Unblockable
+                | Self::CantBeBlockedByMoreThan(_)
                 | Self::Devoid
                 | Self::Annihilator(_)
                 | Self::StaticMarker(_)
@@ -459,6 +461,15 @@ impl KeywordAction {
                     .or_else(|| description.strip_suffix(" spell"))
                     .or_else(|| description.strip_suffix(" source"))
                     .unwrap_or(description.as_str());
+                // A bare type noun reads as a class: "hexproof from
+                // planeswalkers".
+                if filter.card_types.len() == 1
+                    && filter.card_types[0]
+                        .to_string()
+                        .eq_ignore_ascii_case(fragment)
+                {
+                    return format!("Hexproof from {fragment}s");
+                }
                 format!("Hexproof from {fragment}")
             }
             Self::ProtectionFrom(colors) => single_color_name(*colors)
@@ -491,6 +502,13 @@ impl KeywordAction {
                 )
             }
             Self::Unblockable => "This can't be blocked".to_string(),
+            Self::CantBeBlockedByMoreThan(count) => {
+                if *count == 1 {
+                    "can't be blocked by more than one creature".to_string()
+                } else {
+                    format!("can't be blocked by more than {count} creatures")
+                }
+            }
             Self::Devoid => "Devoid".to_string(),
             Self::Annihilator(amount) => format!("Annihilator {amount}"),
             Self::ForMirrodin => "For Mirrodin!".to_string(),

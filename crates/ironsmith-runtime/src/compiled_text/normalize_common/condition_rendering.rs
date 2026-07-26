@@ -1601,6 +1601,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
         Condition::ItIsNight => "it's night".to_string(),
         Condition::FirstCombatPhaseOfTurn => "it's the first combat phase of the turn".to_string(),
         Condition::SourceControllersMainPhase => "it's your main phase".to_string(),
+        Condition::SourceControllersEndStep => "during your end step".to_string(),
         Condition::SpellsWereCastLastTurnOrMore(count) => {
             let count_text = small_number_word(*count)
                 .unwrap_or_else(|| count.to_string());
@@ -1664,6 +1665,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 if *amount == 1 {
                     format!("{} was spent to cast it", describe_mana_symbol(*symbol))
                 } else {
+                    // Adamant-style oracle keeps "at least three white mana".
                     format!(
                         "at least {amount_text} {} mana was spent to cast it",
                         describe_mana_symbol(*symbol)
@@ -1825,6 +1827,7 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 if *amount == 1 {
                     format!("{} was spent to cast this spell", describe_mana_symbol(*symbol))
                 } else {
+                    // Adamant-style oracle keeps "at least three white mana".
                     format!(
                         "at least {amount_text} {} mana was spent to cast this spell",
                         describe_mana_symbol(*symbol)

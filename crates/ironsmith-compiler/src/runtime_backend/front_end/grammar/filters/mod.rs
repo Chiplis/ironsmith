@@ -47,6 +47,7 @@ mod color_and_sticker_facts;
 mod counter_constraints;
 mod decorations;
 mod domain_unions;
+pub(crate) use domain_unions::parse_domain_union_object_filter_lexed;
 mod extremum;
 mod meld_and_special_subjects;
 mod naming_and_reference;

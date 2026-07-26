@@ -454,6 +454,17 @@ pub(crate) fn parse_object_filter_lexed(
             original_printing_set,
         ));
     }
+    if let Some(mut filter) = super::grammar::filters::parse_domain_union_object_filter_lexed(
+        &envelope.core_tokens,
+        other,
+    ) {
+        preserve_union_surface(&mut filter, &envelope.core_tokens);
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
+        return Ok(apply_original_printing_set(
+            envelope.decorations.apply(filter),
+            original_printing_set,
+        ));
+    }
     if let Some(mut filter) = parse_extremum_object_filter_lexed(&envelope.core_tokens, other)? {
         preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(

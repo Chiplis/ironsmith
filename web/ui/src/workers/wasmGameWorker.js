@@ -270,6 +270,9 @@ function collectNamesForMethod(method, args) {
     case "loadDemoDecks":
       names.push(...DEMO_CARD_NAMES);
       break;
+    case "filterKnownCardNames":
+      names.push(...(Array.isArray(args?.[0]) ? args[0] : []));
+      break;
     case "startMatch": {
       const config = args?.[0] || {};
       collectDeckNames(config, names);
@@ -744,6 +747,13 @@ function handleCall(msg) {
     if (method === "cardsMeetingThreshold") {
       return {
         result: await cardsMeetingThresholdFromCardIndex(),
+        registryStatus: readRegistryStatus(),
+      };
+    }
+    if (method === "filterKnownCardNames") {
+      const names = compactCardNameList(args?.[0]);
+      return {
+        result: names.filter(cardNameAlreadyKnown),
         registryStatus: readRegistryStatus(),
       };
     }

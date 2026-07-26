@@ -2353,7 +2353,7 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
                 if matches!(
                     left.as_ref(),
-                    crate::cards::builders::TriggerSpec::ThisEntersBattlefield
+                    crate::cards::builders::TriggerSpec::ThisEntersBattlefield { .. }
                         | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface { .. }
                 )
                     && matches!(
@@ -2375,7 +2375,7 @@ pub(super) fn rewrite_lexed_trigger_clause_parses_common_native_shapes() {
             Ok(crate::cards::builders::TriggerSpec::Either(ref left, ref right))
                 if matches!(
                     left.as_ref(),
-                    crate::cards::builders::TriggerSpec::ThisEntersBattlefield
+                    crate::cards::builders::TriggerSpec::ThisEntersBattlefield { .. }
                         | crate::cards::builders::TriggerSpec::ThisEntersBattlefieldWithSurface { .. }
                 )
                     && matches!(

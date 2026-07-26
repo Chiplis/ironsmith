@@ -670,43 +670,99 @@ fn token_is_type_adjective(token: &OwnedLexToken) -> bool {
     })
 }
 
+fn token_is_type_or_subtype_noun(token: &OwnedLexToken) -> bool {
+    token_is_type_adjective(token)
+        || token.as_word().is_some_and(|word| {
+            crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(word).is_some()
+        })
+}
+
+fn token_is_comma(token: &OwnedLexToken) -> bool {
+    token.kind == crate::runtime_backend::front_end::lexer::TokenKind::Comma
+}
+
+/// Split a pre-conjunction segment into its comma-separated noun runs; each
+/// run must consist entirely of type or subtype words.
+fn type_noun_runs(segment: &[OwnedLexToken]) -> Option<Vec<Vec<OwnedLexToken>>> {
+    let trimmed = trim_commas(segment);
+    if trimmed.is_empty() {
+        return None;
+    }
+    let mut runs = Vec::new();
+    let mut run: Vec<OwnedLexToken> = Vec::new();
+    for token in &trimmed {
+        if token_is_comma(token) {
+            if run.is_empty() {
+                return None;
+            }
+            runs.push(std::mem::take(&mut run));
+        } else if token_is_type_or_subtype_noun(token) {
+            run.push(token.clone());
+        } else {
+            return None;
+        }
+    }
+    if run.is_empty() {
+        return None;
+    }
+    runs.push(run);
+    Some(runs)
+}
+
 /// "Creature and enchantment spells you control" conjoins type adjectives
 /// before a shared head noun and tail; parse it as one union filter with the
 /// tail distributed over each adjective ("creature spells you control" or
-/// "enchantment spells you control"). "Creatures and lands target opponent
-/// controls" distributes a bare qualifier tail the same way.
+/// "enchantment spells you control"). "Krakens, Leviathans, Octopuses, and
+/// Serpents you control" distributes a bare qualifier tail over subtype
+/// nouns the same way, and a bare list ("Goblins and Elves") unions with no
+/// tail at all.
 pub(crate) fn parse_type_adjective_conjunction_filter(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ObjectFilter>, CardTextError> {
+    // "instant and/or sorcery cards" is an inclusive type list, not a
+    // distributive conjunction; the and-splitter would orphan the or-half.
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.iter().any(|word| *word == "and/or")
+        || words.windows(2).any(|pair| pair == ["and", "or"])
+    {
+        return Ok(None);
+    }
     let segments = grammar::split_lexed_slices_on_and(tokens);
     if segments.len() < 2 {
         return Ok(None);
     }
-    let (last, adjective_segments) = segments.split_last().expect("checked len >= 2");
-    let mut adjectives = Vec::new();
-    for segment in adjective_segments {
-        let trimmed = trim_commas(segment);
-        if trimmed.is_empty() || !trimmed.iter().all(token_is_type_adjective) {
+    let (last, noun_segments) = segments.split_last().expect("checked len >= 2");
+    let mut branch_heads: Vec<Vec<OwnedLexToken>> = Vec::new();
+    for segment in noun_segments {
+        let Some(mut runs) = type_noun_runs(segment) else {
             return Ok(None);
-        }
-        adjectives.push(trimmed);
+        };
+        branch_heads.append(&mut runs);
     }
 
     let last = trim_commas(last);
     let mut head_types = 0usize;
-    while head_types < last.len() && token_is_type_adjective(&last[head_types]) {
+    while head_types < last.len() && token_is_type_or_subtype_noun(&last[head_types]) {
         head_types += 1;
     }
-    // The last segment must pair its own type word(s) with a shared tail
-    // (head noun and qualifiers); a bare type list is not this shape.
-    if head_types == 0 || head_types == last.len() {
+    if head_types == 0 {
         return Ok(None);
     }
     let tail = &last[head_types..];
+    // A card-type adjective before a shared head noun needs the tail to
+    // carry that noun ("creature and enchantment SPELLS ..."); a bare
+    // subtype union ("Goblins and Elves") stands alone.
+    if tail.is_empty()
+        && branch_heads
+            .iter()
+            .any(|head| head.iter().any(token_is_type_adjective))
+    {
+        return Ok(None);
+    }
 
-    let mut branches = Vec::with_capacity(adjectives.len() + 1);
-    for adjective in &adjectives {
-        let mut branch_tokens = adjective.clone();
+    let mut branches = Vec::with_capacity(branch_heads.len() + 1);
+    for head in &branch_heads {
+        let mut branch_tokens = head.clone();
         branch_tokens.extend_from_slice(tail);
         branches.push(parse_object_filter_lexed(&branch_tokens, false)?);
     }

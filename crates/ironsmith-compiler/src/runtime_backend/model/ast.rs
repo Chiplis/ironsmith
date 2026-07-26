@@ -136,6 +136,9 @@ pub(crate) enum TriggerSpec {
         intro: TriggerIntroSurfaceAst,
         trigger: Box<TriggerSpec>,
     },
+    /// "Whenever A or B" — fires when any branch's event occurs.
+    AnyOf(Vec<TriggerSpec>),
+    ThisPhasesOut,
     StateBased {
         condition: PredicateAst,
         display: String,
@@ -401,6 +404,7 @@ pub(crate) enum TriggerSpec {
     EntersBattlefield {
         filter: ObjectFilter,
         cause_filter: Option<crate::events::cause::CauseFilter>,
+        origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
     },
     EntersBattlefieldOneOrMore {
         filter: ObjectFilter,
@@ -430,10 +434,13 @@ pub(crate) enum TriggerSpec {
     BeginningOfPrecombatMain(PlayerFilter),
     BeginningOfPostcombatMain(PlayerFilter),
     DayNightChanged,
-    ThisEntersBattlefield,
+    ThisEntersBattlefield {
+        origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
+    },
     ThisEntersBattlefieldWithSurface {
         surface: crate::target::SourceReferenceSurface,
         subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber,
+        origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
     },
     ThisEntersBattlefieldFromZone {
         subject_filter: ObjectFilter,
@@ -1734,6 +1741,7 @@ pub(crate) enum SubjectVerbActionAst {
         half_power_toughness_round_up: bool,
         has_haste: bool,
         exile_at_end_of_combat: bool,
+        loses_soulbond: bool,
         sacrifice_at_next_end_step: bool,
         sacrifice_at_next_end_step_ability_text: Option<String>,
         exile_at_next_end_step: bool,
@@ -1757,6 +1765,7 @@ pub(crate) enum SubjectVerbActionAst {
         half_power_toughness_round_up: bool,
         has_haste: bool,
         exile_at_end_of_combat: bool,
+        loses_soulbond: bool,
         sacrifice_at_next_end_step: bool,
         sacrifice_at_next_end_step_ability_text: Option<String>,
         exile_at_next_end_step: bool,

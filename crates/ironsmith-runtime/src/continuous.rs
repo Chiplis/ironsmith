@@ -515,6 +515,9 @@ pub enum Modification {
     /// Modify both power and toughness (7c) - e.g., +2/+2
     ModifyPowerToughness { power: i32, toughness: i32 },
 
+    /// Modify both power and toughness by values evaluated in the layer system (7c).
+    ModifyPowerToughnessValue { power: Value, toughness: Value },
+
     /// Modify P/T by the affected object's current color count in layer 7c.
     ModifyPowerToughnessByColorCount {
         power_multiplier: i32,
@@ -646,6 +649,7 @@ impl Modification {
             | Modification::ModifyPower(_)
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessValue { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => Layer::PowerToughness,
         }
@@ -661,6 +665,7 @@ impl Modification {
             Modification::ModifyPower(_)
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessValue { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. } => Some(PtSublayer::Modifying),
 
             Modification::SwitchPowerToughness => Some(PtSublayer::Switching),
@@ -4558,6 +4563,37 @@ fn apply_modification_to_chars(
             power: p_delta,
             toughness: t_delta,
         } => {
+            if let Some(ref mut p) = chars.power {
+                *p += p_delta;
+            }
+            if let Some(ref mut t) = chars.toughness {
+                *t += t_delta;
+            }
+        }
+        Modification::ModifyPowerToughnessValue {
+            power: power_value,
+            toughness: toughness_value,
+        } => {
+            let p_delta = resolve_value_direct(
+                power_value,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                object.id,
+                effect_controller,
+                game,
+            );
+            let t_delta = resolve_value_direct(
+                toughness_value,
+                objects,
+                effects,
+                battlefield,
+                commanders,
+                object.id,
+                effect_controller,
+                game,
+            );
             if let Some(ref mut p) = chars.power {
                 *p += p_delta;
             }

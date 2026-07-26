@@ -536,8 +536,13 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
                 "has",
                 "mutated",
             ],
+            &[
+                "number", "of", "times", "this", "creature", "has", "mutated",
+            ],
+            &["number", "of", "times", "this", "has", "mutated"],
             &["times", "this", "creature", "has", "mutated"],
             &["times", "this", "permanent", "has", "mutated"],
+            &["times", "this", "has", "mutated"],
         ],
     ) {
         return Some((Value::SourceMutationCount, used));
@@ -944,11 +949,24 @@ fn exact_one_of(words: &[&str], alternatives: &[&[&str]]) -> bool {
 }
 
 fn value_boundary(words: &[&str]) -> usize {
-    ["plus", "minus"]
+    let arithmetic = ["plus", "minus"]
         .iter()
         .filter_map(|word| permission_shapes::find_words(words, &[*word]))
         .min()
-        .unwrap_or(words.len())
+        .unwrap_or(words.len());
+    // A "from <zone>" right after a controller/owner clause is the enclosing
+    // effect's movement source, never part of the count basis: "the number
+    // of lands you control from your hand onto the battlefield" must count
+    // battlefield lands, not land cards in hand.
+    let movement_source = words
+        .windows(2)
+        .enumerate()
+        .find(|(_, pair)| {
+            matches!(pair[0], "control" | "controls" | "own" | "owns") && pair[1] == "from"
+        })
+        .map(|(idx, _)| idx + 1)
+        .unwrap_or(words.len());
+    arithmetic.min(movement_source)
 }
 
 fn first_counter_word(words: &[&str]) -> Option<usize> {

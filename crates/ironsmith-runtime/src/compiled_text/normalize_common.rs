@@ -555,11 +555,18 @@ fn normalize_granted_triggered_ability_surface(surface: String) -> String {
         return surface;
     }
 
-    let tail = tail
-        .strip_prefix("You ")
-        .or_else(|| tail.strip_prefix("you "))
-        .unwrap_or(tail)
-        .trim_start();
+    // Oracle keeps the explicit subject in optional instructions ("When this
+    // creature dies, you may return it ..."); only a mandatory "You <verb>"
+    // drops to the bare imperative.
+    let keeps_you_subject = tail.to_ascii_lowercase().starts_with("you may ");
+    let tail = if keeps_you_subject {
+        tail
+    } else {
+        tail.strip_prefix("You ")
+            .or_else(|| tail.strip_prefix("you "))
+            .unwrap_or(tail)
+            .trim_start()
+    };
     if tail.is_empty() {
         return surface;
     }
@@ -4310,6 +4317,17 @@ fn compact_temporary_additional_block_surface(line: &str) -> Option<String> {
     let trimmed = line.trim().trim_end_matches('.');
     let marker = " and gains can block ";
     let (subject_and_pump, tail) = trimmed.split_once(marker)?;
+    // Singular grant conjoined with a pump ("It gets +2/+2 and gains can
+    // block an additional creature each combat until end of turn") — the
+    // oracle keeps one sentence: "... until end of turn and can block an
+    // additional creature this turn."
+    if tail == "an additional creature each combat until end of turn"
+        && subject_and_pump.contains(" gets ")
+    {
+        return Some(format!(
+            "{subject_and_pump} until end of turn and can block an additional creature this turn."
+        ));
+    }
     let count = tail.strip_suffix(" additional creatures each combat until end of turn")?;
     let (subject, pump) = subject_and_pump.split_once(" gets ")?;
     let count_text = match count {

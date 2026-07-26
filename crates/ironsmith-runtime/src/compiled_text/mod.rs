@@ -444,6 +444,20 @@ fn normalize_scored_compiled_line(line: String) -> String {
     // final three-sentence surface after the earlier merge passes; fold it
     // to the authored reveal-and-put sentence here.
     let line = normalize_common::normalize_search_outside_game_reveal_surface(&line);
+    // A bare repeat instruction after an optional step loops on taking the
+    // option; oracle spells the "If you do," gate.
+    let line = if let Some(head) = line
+        .strip_suffix(". Repeat this process.")
+        .or_else(|| line.strip_suffix(". Repeat this process"))
+        && head
+            .rsplit(". ")
+            .next()
+            .is_some_and(|prev| prev.starts_with("You may ") || prev.starts_with("you may "))
+    {
+        format!("{head}. If you do, repeat this process.")
+    } else {
+        line
+    };
     let lower_for_common = line.to_ascii_lowercase();
     let line = if lower_for_common.contains("you search your library")
         || lower_for_common.contains("choose an other card")
@@ -1405,28 +1419,126 @@ fn replace_ascii_case_insensitive_once(
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged = merge_cast_permission_any_mana_lines(
-            merge_conditioned_spell_and_activation_tax_lines(merge_adjacent_simple_mana_add_lines(
-                drop_redundant_spell_cost_lines(merge_specific_adjacent_surface_lines(
-                    merge_base_pt_loss_transform_lines(merge_lose_all_transform_lines(
-                        merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
-                            annotate_color_choice_exclusions(merge_same_true_color_lines(
-                                merge_same_true_type_addition_lines(
-                                    merge_same_true_keyword_grant_lines(
-                                        merge_subject_predicate_surface_lines(previous.clone()),
+        let merged =
+            merge_cast_permission_any_mana_lines(merge_conditioned_spell_and_activation_tax_lines(
+                merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
+                    merge_specific_adjacent_surface_lines(merge_base_pt_loss_transform_lines(
+                        merge_shared_as_long_as_tail_lines(merge_lose_all_transform_lines(
+                            merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
+                                annotate_color_choice_exclusions(merge_same_true_color_lines(
+                                    merge_same_true_type_addition_lines(
+                                        merge_same_true_keyword_grant_lines(
+                                            merge_subject_predicate_surface_lines(previous.clone()),
+                                        ),
                                     ),
-                                ),
+                                )),
                             )),
                         )),
                     )),
                 )),
-            )),
-        );
+            ));
         if merged == previous {
             return merged;
         }
         lines = merged;
     }
+}
+
+/// Adjacent standalone statics sharing an identical "as long as" condition
+/// tail merge into one conjoined sentence, matching oracle's single-clause
+/// phrasing ("A and b as long as COND.").
+fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
+    fn split_static_condition(line: &str) -> Option<(&str, &str, &'static str)> {
+        let trimmed = line.trim().trim_end_matches('.');
+        if trimmed.contains(':') {
+            return None;
+        }
+        let lower = trimmed.to_ascii_lowercase();
+        for prefix in ["when ", "whenever ", "at the beginning", "if "] {
+            if lower.starts_with(prefix) {
+                return None;
+            }
+        }
+        // The unleash pair ("can't block as long as it has a +1/+1 counter")
+        // must survive for its dedicated collapse in
+        // merge_specific_adjacent_surface_lines.
+        if lower.contains("can't block") && lower.contains("+1/+1 counter") {
+            return None;
+        }
+        let marker = " as long as ";
+        if let Some(first) = lower.find(marker) {
+            if lower.rfind(marker) != Some(first) {
+                return None;
+            }
+            let head = trimmed[..first].trim();
+            let condition = trimmed[first + marker.len()..].trim();
+            if head.is_empty() || condition.is_empty() {
+                return None;
+            }
+            // The pump + can't-block threshold pair has a dedicated
+            // ability-word compaction (compact_threshold_pump_and_cant_block)
+            // that must see the two lines unmerged.
+            if condition == "there are seven or more cards in your graveyard" {
+                return None;
+            }
+            return Some((head, condition, "as long as"));
+        }
+        // A trailing " if " condition merges only for "can't"-style statics,
+        // where the shared condition unambiguously scopes the whole sentence.
+        let if_marker = " if ";
+        let first = lower.find(if_marker)?;
+        if lower.rfind(if_marker) != Some(first) {
+            return None;
+        }
+        let head = trimmed[..first].trim();
+        let condition = trimmed[first + if_marker.len()..].trim();
+        if head.is_empty()
+            || condition.is_empty()
+            || !head.to_ascii_lowercase().contains("can't be")
+        {
+            return None;
+        }
+        Some((head, condition, "if"))
+    }
+
+    let mut merged: Vec<String> = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let (
+                Some((left_head, left_cond, left_marker)),
+                Some((right_head, right_cond, right_marker)),
+            ) = (
+                split_static_condition(&lines[idx]),
+                split_static_condition(&lines[idx + 1]),
+            )
+            && left_cond.eq_ignore_ascii_case(right_cond)
+            && left_marker == right_marker
+            && !left_head.contains(" and ")
+            && !right_head.contains(" and ")
+        {
+            let mut right = right_head.to_string();
+            let mut chars = right_head.chars();
+            if let (Some(first), Some(second)) = (chars.next(), chars.next())
+                && first.is_ascii_uppercase()
+                && second.is_ascii_lowercase()
+            {
+                right = format!(
+                    "{}{}",
+                    first.to_ascii_lowercase(),
+                    &right_head[first.len_utf8()..]
+                );
+            }
+            merged.push(format!(
+                "{left_head} and {right} {left_marker} {left_cond}."
+            ));
+            idx += 2;
+            continue;
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
 }
 
 fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
@@ -1598,7 +1710,9 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
     loop {
         let previous = lines;
         let merged = merge_subject_animation_lines(merge_subject_has_keyword_lines(
-            merge_adjacent_subject_predicate_lines(previous.clone()),
+            merge_adjacent_subject_predicate_lines(merge_during_your_turn_subject_union_lines(
+                previous.clone(),
+            )),
         ));
         if merged == previous {
             return merged;
@@ -1897,6 +2011,17 @@ fn normalize_simple_token_keyword_surface(line: &str) -> String {
 }
 
 fn normalize_chosen_creature_type_surface(line: &str) -> String {
+    // Segment-boundary form: the choose effect and its follow-up lower as
+    // separate segments joined with ". " — oracle leads with the imperative.
+    for (you_form, imperative) in [
+        ("You choose a creature type. ", "Choose a creature type. "),
+        ("You choose a color. ", "Choose a color. "),
+        ("You choose a land type. ", "Choose a land type. "),
+    ] {
+        if let Some(rest) = line.strip_prefix(you_form) {
+            return format!("{imperative}{rest}");
+        }
+    }
     let Some(rest) = line
         .strip_prefix("You choose a creature type, then ")
         .or_else(|| line.strip_prefix("Choose a creature type, then "))

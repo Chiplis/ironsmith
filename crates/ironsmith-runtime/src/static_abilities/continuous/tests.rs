@@ -497,13 +497,13 @@ fn test_source_dynamic_anthem_scales_from_filter_count() {
 
     let effects = anthem.generate_effects(source, alice, &game);
     assert_eq!(effects.len(), 1);
-    assert!(matches!(
+    assert_eq!(
         effects[0].modification,
-        Modification::ModifyPowerToughness {
-            power: 2,
-            toughness: 0
+        Modification::ModifyPowerToughnessValue {
+            power: Value::Count(ObjectFilter::artifact().you_control()),
+            toughness: Value::Fixed(0),
         }
-    ));
+    );
     assert!(matches!(effects[0].applies_to, EffectTarget::Source));
 }
 

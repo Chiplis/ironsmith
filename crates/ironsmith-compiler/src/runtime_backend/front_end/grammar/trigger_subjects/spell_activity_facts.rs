@@ -199,6 +199,9 @@ fn exact_spell_count_surface(words: &[&str]) -> Option<u32> {
             &["your", ordinal, "spell", "this", "turn"],
             &["their", ordinal, "spell", "this", "turn"],
             &[ordinal, "spell", "each", "turn"],
+            &["your", ordinal, "spell", "in", "a", "turn"],
+            &["their", ordinal, "spell", "in", "a", "turn"],
+            &[ordinal, "spell", "in", "a", "turn"],
         ];
         if any_sequence_present(words, patterns) {
             return Some(count);

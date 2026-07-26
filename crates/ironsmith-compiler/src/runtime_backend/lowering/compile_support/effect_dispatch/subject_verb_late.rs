@@ -165,6 +165,21 @@ pub(super) fn compile_subject_verb_late(
         } => {
             let (source_spec, mut choices) =
                 resolve_target_spec_with_choices(source, &current_reference_env(ctx))?;
+            // A bare "it" damage subject inside a becomes-blocked trigger
+            // refers to the trigger's source; last-object memory is seeded
+            // with the BLOCKER there (for "that creature" references), so
+            // the pronoun must not inherit it as the damage source.
+            let source_spec = if matches!(
+                source,
+                TargetAst::Tagged(tag, _) if tag.as_str() == crate::host::IT_TAG
+            ) && matches!(
+                &source_spec,
+                ChooseSpec::Tagged(tag) if tag.as_str() == "blocking"
+            ) {
+                ChooseSpec::Source
+            } else {
+                source_spec
+            };
             let amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let mut damage_target_spec = if source == target {
                 source_spec.clone()

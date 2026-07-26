@@ -195,6 +195,40 @@ fn word_is_in_ranges(word_idx: usize, ranges: &[std::ops::Range<usize>]) -> bool
 /// the filter its attachment target must satisfy. This is deliberately done
 /// before the ordinary type pass so `Aura attached to a creature` cannot be
 /// flattened into the impossible conjunction `Aura creature`.
+/// Split "<subject> with a <inner> attached to it" into the subject tokens
+/// and the attachment's inner filter tokens.
+fn split_with_attached_object_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let trimmed = trim_commas(tokens);
+    let n = trimmed.len();
+    if n < 5
+        || !(trimmed[n - 3].is_word("attached")
+            && trimmed[n - 2].is_word("to")
+            && trimmed[n - 1].is_word("it"))
+    {
+        return None;
+    }
+    let with_idx = trimmed[..n - 3]
+        .iter()
+        .rposition(|token| token.is_word("with"))?;
+    let mut inner = trim_commas(&trimmed[with_idx + 1..n - 3]);
+    if inner
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        inner.remove(0);
+    }
+    if inner.is_empty() {
+        return None;
+    }
+    let subject = trim_commas(&trimmed[..with_idx]);
+    if subject.is_empty() {
+        return None;
+    }
+    Some((subject.to_vec(), inner.to_vec()))
+}
+
 fn split_attached_to_object_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
@@ -768,6 +802,19 @@ pub(super) fn parse_object_filter_inner(
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
 
+    // "<subject> with a <inner> attached to it" — the subject carries a
+    // matching attachment; intercept before the attached-to-tail split
+    // claims "attached to it" as the subject's own attachment reference.
+    if let Some((subject_tokens, inner_tokens)) = split_with_attached_object_filter(&base_tokens) {
+        let inner_other = inner_tokens
+            .first()
+            .is_some_and(|token| token.is_word("another") || token.is_word("other"));
+        let mut inner = parse_object_filter_permissive(&inner_tokens, inner_other)?;
+        inner.other |= inner_other;
+        filter.with_attached_object = Some(Box::new(inner));
+        base_tokens = subject_tokens;
+    }
+
     if let Some((head_tokens, attached_to_tokens)) = split_attached_to_object_filter(&base_tokens) {
         let attached_to_words = non_article_parser_word_refs(&attached_to_tokens);
         if parse_phrase_whole(&attached_to_words, THAT_PLAYER_ATTACHMENT_TAIL).is_some() {
@@ -1165,6 +1212,8 @@ pub(super) fn parse_object_filter_inner(
 
     let _ = try_apply_not_exactly_two_colors_clause(&mut filter, &mut all_words);
 
+    let _ = try_apply_exactly_two_colors_clause(&mut filter, &mut all_words);
+
     strip_be_put_on_reference_prefix(&mut all_words, &segment_tokens);
 
     let _ = try_apply_leading_tagged_reference_prefix(&mut filter, &mut all_words);
@@ -1219,6 +1268,28 @@ pub(super) fn parse_object_filter_inner(
         &map_non_article_index,
         &map_non_article_end,
     )?;
+
+    // "with the chosen name" — a runtime back-reference to a previously
+    // chosen card name, not a literal name.
+    if filter.name.is_none() {
+        for phrase in [
+            ["with", "chosen", "name"].as_slice(),
+            ["of", "chosen", "name"].as_slice(),
+        ] {
+            if let Some(start) = all_words
+                .windows(phrase.len())
+                .position(|window| window == phrase)
+            {
+                filter.name = Some("{chosen name}".to_string());
+                naming_and_reference::remove_word_range(
+                    &mut all_words,
+                    start,
+                    start + phrase.len(),
+                );
+                break;
+            }
+        }
+    }
 
     let _ = try_apply_color_count_phrase(&mut filter, &mut all_words)?;
     let _ = try_apply_sticker_filter_clause(&mut filter, &mut all_words);
@@ -1835,6 +1906,21 @@ pub(super) fn parse_object_filter_inner(
         filter.attacked_this_turn = true;
     }
 
+    for negated_phrase in [
+        ["didn't", "attack", "this", "turn"],
+        ["didnt", "attack", "this", "turn"],
+    ] {
+        if parse_phrase_anywhere(
+            &non_article_parser_word_refs(&segment_tokens),
+            &negated_phrase,
+        )
+        .is_some()
+        {
+            filter.didnt_attack_this_turn = true;
+            filter.attacked_this_turn = false;
+        }
+    }
+
     let basic_land_type_basic_indices = all_words
         .windows(3)
         .enumerate()
@@ -1896,6 +1982,20 @@ pub(super) fn parse_object_filter_inner(
             "untapped" => filter.untapped = true,
             "attacking" if !is_negated_word => filter.attacking = true,
             "nonattacking" => filter.nonattacking = true,
+            // A bare "equipped" adjective not consumed by the attached-to
+            // reference paths is the generic has-Equipment state.
+            // NOTE(2026-07-25): a copula guard (skip when preceded by
+            // is/are/was) was tried for Enkira's "As long as Enkira is
+            // equipped, it must be blocked" and REVERTED — with the guard the
+            // line HARD-FAILS ("parser does not yet support line family"),
+            // meaning the predicate route that used to claim it is gone;
+            // find that regression before re-adding the guard.
+            "equipped" if !is_negated_word => {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from("equipped"),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            }
             "blocking" if !is_negated_word => filter.blocking = true,
             "nonblocking" => filter.nonblocking = true,
             "blocked" if !is_negated_word => filter.blocked = true,

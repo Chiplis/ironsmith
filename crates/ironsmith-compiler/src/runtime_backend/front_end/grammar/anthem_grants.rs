@@ -723,6 +723,12 @@ pub(crate) fn parse_subject_loses_keywords_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<SubjectLosesKeywordsClause<'_>> {
     let tokens = trim_anthem_clause_tokens(tokens);
+    // A "lose" word inside quoted ability text (e.g. a granted trigger body
+    // like "... create a token ... it has haste and loses soulbond ...")
+    // belongs to that quoted ability, not to a subject-loses-keywords line.
+    if tokens.iter().any(OwnedLexToken::is_quote) {
+        return None;
+    }
     let lose_token = first_token_word(tokens, AnthemWordClass::Lose)?;
     if lose_token == 0 {
         return None;

@@ -32,12 +32,13 @@ pub(crate) fn compile_delayed_trigger_spec(
         TriggerSpec::BeginningOfPostcombatMain(player) => {
             Ok(ironsmith_core::DelayedTriggerSpec::BeginningOfPostcombatMainPhase(player.clone()))
         }
-        TriggerSpec::ThisEntersBattlefield => {
+        TriggerSpec::ThisEntersBattlefield { .. } => {
             Ok(ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefield)
         }
         TriggerSpec::ThisEntersBattlefieldWithSurface {
             surface,
             subject_number,
+            ..
         } => Ok(
             ironsmith_core::DelayedTriggerSpec::ThisEntersBattlefieldWithSurface {
                 surface: surface.clone(),
@@ -47,6 +48,7 @@ pub(crate) fn compile_delayed_trigger_spec(
         TriggerSpec::EntersBattlefield {
             filter,
             cause_filter,
+            ..
         } => Ok(ironsmith_core::DelayedTriggerSpec::EntersBattlefield {
             filter: filter.clone(),
             cause_filter: cause_filter.clone(),

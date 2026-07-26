@@ -1479,13 +1479,15 @@ fn parse_source_or_another_trigger_subject_filters(
 fn this_enters_battlefield_trigger_spec(
     surface: Option<crate::target::SourceReferenceSurface>,
     subject_number: ironsmith_core::trigger_model::TriggerSubjectNumber,
+    origin_condition: Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition>,
 ) -> TriggerSpec {
     match surface {
         Some(surface) => TriggerSpec::ThisEntersBattlefieldWithSurface {
             surface,
             subject_number,
+            origin_condition,
         },
-        None => TriggerSpec::ThisEntersBattlefield,
+        None => TriggerSpec::ThisEntersBattlefield { origin_condition },
     }
 }
 
@@ -1599,28 +1601,103 @@ pub(crate) fn parse_leading_exactly_quantifier(
     Some((count, &tokens[1 + used..]))
 }
 
+/// Whether an intervening-"if" clause body (without the leading "if") is a
+/// moved-or-cast origin condition ("it entered from your graveyard or you
+/// cast it from your graveyard"). Such clauses scope the trigger event itself
+/// and must stay with the trigger instead of becoming a standalone predicate.
+pub(crate) fn clause_words_are_moved_or_cast_origin_condition(words: &[&str]) -> bool {
+    let mut prefixed = Vec::with_capacity(words.len() + 1);
+    prefixed.push("if");
+    prefixed.extend_from_slice(words);
+    parse_moved_or_cast_origin_condition(&prefixed).is_some()
+}
+
+/// Whether a parsed trigger spec carries a moved-or-cast origin condition
+/// (possibly nested under an intro surface or an either-union).
+pub(crate) fn trigger_spec_has_moved_or_cast_origin_condition(trigger: &TriggerSpec) -> bool {
+    use ironsmith_core::trigger_model::ZoneChangeOriginCondition;
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => {
+            trigger_spec_has_moved_or_cast_origin_condition(trigger)
+        }
+        TriggerSpec::Either(left, right) => {
+            trigger_spec_has_moved_or_cast_origin_condition(left)
+                || trigger_spec_has_moved_or_cast_origin_condition(right)
+        }
+        TriggerSpec::EntersBattlefieldOneOrMore {
+            origin_condition: Some(ZoneChangeOriginCondition::MovedFromOrCastFrom { .. }),
+            ..
+        }
+        | TriggerSpec::EntersBattlefield {
+            origin_condition: Some(ZoneChangeOriginCondition::MovedFromOrCastFrom { .. }),
+            ..
+        }
+        | TriggerSpec::ThisEntersBattlefield {
+            origin_condition: Some(ZoneChangeOriginCondition::MovedFromOrCastFrom { .. }),
+        }
+        | TriggerSpec::ThisEntersBattlefieldWithSurface {
+            origin_condition: Some(ZoneChangeOriginCondition::MovedFromOrCastFrom { .. }),
+            ..
+        } => true,
+        _ => false,
+    }
+}
+
 fn parse_moved_or_cast_origin_condition(
     words: &[&str],
 ) -> Option<ironsmith_core::trigger_model::ZoneChangeOriginCondition> {
-    const PREFIX: &[&str] = &["if", "one", "or", "more", "of", "them", "entered"];
-    if words.get(..PREFIX.len())? != PREFIX {
+    use ironsmith_core::trigger_model::OriginConditionSubjectSurface;
+
+    // Older wordings keep "the battlefield" between the enters verb and the
+    // origin clause ("enters the battlefield, if it entered from ...").
+    let words = words
+        .strip_prefix(&["the", "battlefield"][..])
+        .unwrap_or(words);
+
+    let (subject_surface, origin_words) = if let Some(rest) =
+        words.strip_prefix(&["if", "one", "or", "more", "of", "them", "entered"][..])
+    {
+        (OriginConditionSubjectSurface::It, rest)
+    } else if let Some(rest) = words.strip_prefix(&["if", "it", "entered"][..]) {
+        (OriginConditionSubjectSurface::It, rest)
+    } else if words.get(..2) == Some(&["if", "that"][..])
+        && matches!(
+            words.get(2),
+            Some(&"creature" | &"object" | &"permanent" | &"card" | &"token")
+        )
+        && words.get(3) == Some(&"entered")
+    {
+        (
+            OriginConditionSubjectSurface::That(format!("that {}", words[2])),
+            &words[4..],
+        )
+    } else {
         return None;
-    }
-    let origin_words = &words[PREFIX.len()..];
+    };
+
     let separator = origin_words.iter().position(|word| *word == "or")?;
     let moved_origin =
         trigger_grammar::parse_enters_origin_clause_words(origin_words.get(..separator)?)?;
     let cast_words = origin_words.get(separator + 1..)?;
-    if cast_words.get(..2) != Some(&["was", "cast"][..])
-        && cast_words.get(..2) != Some(&["were", "cast"][..])
+    let (caster, cast_origin_words) = if cast_words.get(..2) == Some(&["was", "cast"][..])
+        || cast_words.get(..2) == Some(&["were", "cast"][..])
     {
+        (None, cast_words.get(2..)?)
+    } else if cast_words.get(..3) == Some(&["you", "cast", "it"][..])
+        || cast_words.get(..3) == Some(&["you", "cast", "them"][..])
+    {
+        (Some(PlayerFilter::You), cast_words.get(3..)?)
+    } else {
         return None;
-    }
-    let cast_origin = trigger_grammar::parse_enters_origin_clause_words(cast_words.get(2..)?)?;
-    (moved_origin.zone == cast_origin.zone).then_some(
-        ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom(
-            moved_origin.zone,
-        ),
+    };
+    let cast_origin = trigger_grammar::parse_enters_origin_clause_words(cast_origin_words)?;
+    (moved_origin.zone == cast_origin.zone && moved_origin.owner == cast_origin.owner).then_some(
+        ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom {
+            zone: moved_origin.zone,
+            zone_owner: moved_origin.owner,
+            caster,
+            subject_surface,
+        },
     )
 }
 
@@ -1628,13 +1705,63 @@ pub(crate) fn parse_trigger_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
     stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        if let Some(union) = try_parse_trigger_union_lexed(tokens) {
+            return Ok(union);
+        }
         parse_trigger_clause_lexed_unstacked(tokens)
     })
+}
+
+/// "Whenever A or B" over two distinct trigger events, where the right half
+/// resumes with a bare verb sharing the left half's subject ("an opponent
+/// sacrifices a nontoken permanent or discards a permanent card").
+///
+/// Deliberately narrow: only verbs with no dedicated union spec are split
+/// here, so tuned single-spec unions (enters-or-attacks, damage recipients)
+/// keep their existing routes.
+fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
+    const UNION_RIGHT_VERBS: &[&str] = &["sacrifices", "discards", "leaves", "phases"];
+    for (idx, token) in tokens.iter().enumerate() {
+        if idx == 0 || idx + 1 >= tokens.len() || !token.is_word("or") {
+            continue;
+        }
+        let left = &tokens[..idx];
+        let right = &tokens[idx + 1..];
+        let right_words = crate::runtime_backend::token_word_refs(right);
+        if !right_words
+            .first()
+            .is_some_and(|word| UNION_RIGHT_VERBS.contains(word))
+        {
+            continue;
+        }
+        let Ok(left_spec) = parse_trigger_clause_lexed_unstacked(left) else {
+            continue;
+        };
+        for take in 0..=left.len().min(4) {
+            let mut candidate: Vec<OwnedLexToken> = left[..take].to_vec();
+            candidate.extend_from_slice(right);
+            if let Ok(right_spec) = parse_trigger_clause_lexed_unstacked(&candidate) {
+                return Some(TriggerSpec::AnyOf(vec![left_spec, right_spec]));
+            }
+        }
+    }
+    None
 }
 
 fn parse_trigger_clause_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<TriggerSpec, CardTextError> {
+    {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        if matches!(
+            words.as_slice(),
+            ["this", "phases", "out"]
+                | ["this", "creature", "phases", "out"]
+                | ["this", "permanent", "phases", "out"]
+        ) {
+            return Ok(TriggerSpec::ThisPhasesOut);
+        }
+    }
     fn parse_damage_by_dies_trigger_lexed(
         subject_tokens: &[OwnedLexToken],
         other: bool,
@@ -1747,7 +1874,17 @@ fn parse_trigger_clause_lexed_unstacked(
             .any(|words| words == ["during", "combat"])
             .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
 
-        let actor = parse_subject_clause_player_filter(clause_words);
+        // The caster is named before the cast/copy verb; scanning the whole
+        // clause lets a "targets you ..." tail shadow "an opponent casts".
+        let subject_end = match (cast_idx, copy_idx) {
+            (Some(cast), Some(copy)) => cast.min(copy),
+            (Some(cast), None) => cast,
+            (None, Some(copy)) => copy,
+            (None, None) => tokens.len(),
+        };
+        let subject_view = ActivationRestrictionCompatWords::new(&tokens[..subject_end]);
+        let subject_words = subject_view.to_word_refs();
+        let actor = parse_subject_clause_player_filter(&subject_words);
         let parse_filter =
             |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
                 let envelope =
@@ -1757,13 +1894,21 @@ fn parse_trigger_clause_lexed_unstacked(
                 let filter_tokens = &filter_tokens[..envelope.end];
                 let filter_words = ActivationRestrictionCompatWords::new(filter_tokens);
                 let filter_words = filter_words.to_word_refs();
+                // A leading "another" excludes the trigger's own source; the
+                // relative-clause filter paths don't self-detect it.
+                let other = filter_words
+                    .first()
+                    .is_some_and(|word| matches!(*word, "another" | "other"));
                 let is_unqualified_spell =
                     trigger_pattern_accepts(&filter_words, UNQUALIFIED_SPELL_FILTER_PATTERN);
                 if filter_tokens.is_empty() || is_unqualified_spell {
                     return Ok(None);
                 }
-                parse_object_filter_lexed(filter_tokens, false)
-                    .map(Some)
+                parse_object_filter_lexed(filter_tokens, other)
+                    .map(|mut filter| {
+                        filter.other |= other;
+                        Some(filter)
+                    })
                     .map_err(|err| {
                         CardTextError::ParseError(format!(
                             "unsupported spell trigger filter (clause: '{}') [{err:?}]",
@@ -2460,13 +2605,16 @@ fn parse_trigger_clause_lexed_unstacked(
                 Box::new(this_enters_battlefield_trigger_spec(
                     Some(surface.clone()),
                     subject_number,
+                    None,
                 )),
                 Box::new(this_leaves_battlefield_trigger_spec(Some(surface))),
             ));
         }
         if token_trigger_pattern_accepts(subject_tokens, &THIS_DESTINATION_TRIGGER_NAME_PATTERN) {
             return Ok(TriggerSpec::Either(
-                Box::new(TriggerSpec::ThisEntersBattlefield),
+                Box::new(TriggerSpec::ThisEntersBattlefield {
+                    origin_condition: None,
+                }),
                 Box::new(TriggerSpec::ThisLeavesBattlefield),
             ));
         }
@@ -2559,6 +2707,7 @@ fn parse_trigger_clause_lexed_unstacked(
                     Box::new(this_enters_battlefield_trigger_spec(
                         Some(surface.clone()),
                         subject_number,
+                        None,
                     )),
                     Box::new(this_leaves_battlefield_trigger_spec(Some(surface))),
                 ));
@@ -2566,7 +2715,9 @@ fn parse_trigger_clause_lexed_unstacked(
             if token_trigger_pattern_accepts(subject_tokens, &THIS_DESTINATION_TRIGGER_NAME_PATTERN)
             {
                 return Ok(TriggerSpec::Either(
-                    Box::new(TriggerSpec::ThisEntersBattlefield),
+                    Box::new(TriggerSpec::ThisEntersBattlefield {
+                        origin_condition: None,
+                    }),
                     Box::new(TriggerSpec::ThisLeavesBattlefield),
                 ));
             }
@@ -2583,7 +2734,7 @@ fn parse_trigger_clause_lexed_unstacked(
                     owner,
                 }
             } else {
-                TriggerSpec::ThisEntersBattlefield
+                TriggerSpec::ThisEntersBattlefield { origin_condition }
             });
         }
 
@@ -2599,6 +2750,7 @@ fn parse_trigger_clause_lexed_unstacked(
                     Box::new(this_enters_battlefield_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
                         subject_number,
+                        None,
                     )),
                     Box::new(TriggerSpec::PutIntoGraveyardFromZone {
                         filter: ObjectFilter::source(),
@@ -2621,6 +2773,7 @@ fn parse_trigger_clause_lexed_unstacked(
                     Box::new(this_enters_battlefield_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
                         subject_number,
+                        None,
                     )),
                     Box::new(this_transforms_trigger_spec(
                         source_reference_surface_for_trigger_subject(subject_tokens),
@@ -2686,12 +2839,14 @@ fn parse_trigger_clause_lexed_unstacked(
                                 TriggerSpec::EntersBattlefield {
                                     filter,
                                     cause_filter,
+                                    origin_condition: origin_condition.clone(),
                                 }
                             };
                         return Ok(TriggerSpec::Either(
                             Box::new(this_enters_battlefield_trigger_spec(
                                 source_reference_surface_for_trigger_subject(left_tokens),
                                 subject_number,
+                                origin_condition,
                             )),
                             Box::new(right_trigger),
                         ));
@@ -2712,7 +2867,9 @@ fn parse_trigger_clause_lexed_unstacked(
                     owner,
                 }
             } else {
-                TriggerSpec::ThisEntersBattlefield
+                TriggerSpec::ThisEntersBattlefield {
+                    origin_condition: origin_condition.clone(),
+                }
             });
         }
         if let Some(surface) = source_reference_surface_for_trigger_subject(subject_tokens) {
@@ -2726,6 +2883,7 @@ fn parse_trigger_clause_lexed_unstacked(
                 TriggerSpec::ThisEntersBattlefieldWithSurface {
                     surface,
                     subject_number,
+                    origin_condition: origin_condition.clone(),
                 }
             });
         }
@@ -2796,6 +2954,7 @@ fn parse_trigger_clause_lexed_unstacked(
                 TriggerSpec::EntersBattlefield {
                     filter,
                     cause_filter,
+                    origin_condition,
                 }
             });
         }
@@ -3067,9 +3226,18 @@ fn parse_trigger_clause_lexed_unstacked(
             ["are", "put", "into", "exile", "from", "your", "hand"].as_slice(),
             vec![Zone::Hand],
         ),
+        (
+            ["is", "put", "into", "exile", "from", "your", "graveyard"].as_slice(),
+            vec![Zone::Graveyard],
+        ),
+        (
+            ["are", "put", "into", "exile", "from", "your", "graveyard"].as_slice(),
+            vec![Zone::Graveyard],
+        ),
     ] {
         if trigger_pattern_accepts(zone_change_words, ClauseShape::new().suffix(tail)) {
-            let from_your_hand = trigger_pattern_accepts(tail, FROM_YOUR_HAND_SUFFIX_PATTERN);
+            let from_your_hand = trigger_pattern_accepts(tail, FROM_YOUR_HAND_SUFFIX_PATTERN)
+                || tail.ends_with(&["from", "your", "graveyard"]);
             let subject_word_len = zone_change_words.len().saturating_sub(tail.len());
             let subject_tokens = trigger_word_token_start(tokens, subject_word_len)
                 .map(|idx| &tokens[..idx])
@@ -4741,6 +4909,9 @@ fn parse_trigger_clause_lexed_unstacked(
     let (words, attacked_player_filter, attacked_target_must_be_player) =
         if let Some(attacks_word_idx) = trigger_atom_word(&words, TriggerClauseAtom::Attack) {
             let tail = &words[attacks_word_idx + 1..];
+            if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+                eprintln!("attacks-tail: {tail:?}");
+            }
             if trigger_pattern_accepts(tail, ATTACKS_A_PLAYER_TAIL_PATTERN) {
                 (&words[..=attacks_word_idx], Some(PlayerFilter::Any), true)
             } else if trigger_pattern_accepts(tail, ATTACKS_YOU_TAIL_PATTERN) {
@@ -4749,6 +4920,12 @@ fn parse_trigger_clause_lexed_unstacked(
                 (
                     &words[..=attacks_word_idx],
                     Some(PlayerFilter::Opponent),
+                    true,
+                )
+            } else if tail == ["enchanted", "player"] {
+                (
+                    &words[..=attacks_word_idx],
+                    Some(PlayerFilter::TaggedPlayer(TagKey::from("enchanted"))),
                     true,
                 )
             } else if trigger_pattern_accepts(tail, ATTACKS_DEFENDING_PLAYER_TAIL_PATTERN) {

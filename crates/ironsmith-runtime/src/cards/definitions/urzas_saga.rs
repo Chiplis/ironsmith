@@ -204,6 +204,45 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn test_construct_token_counts_permanents_made_artifacts_by_mycosynth_lattice() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let token_id = game.new_object_id();
+        let token_def = construct_token_def();
+        let token_obj = Object::from_token_definition(token_id, &token_def, alice);
+        game.add_object(token_obj);
+
+        let lattice = super::super::mycosynth_lattice::mycosynth_lattice();
+        game.create_object_from_definition(&lattice, alice, Zone::Battlefield);
+
+        let creature = CardBuilder::new(CardId::new(), "Grizzly Bears")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let creature_id = game.create_object_from_card(&creature, alice, Zone::Battlefield);
+
+        let creature_chars = game
+            .calculated_characteristics(creature_id)
+            .expect("Creature should exist");
+        assert!(
+            creature_chars.card_types.contains(&CardType::Artifact),
+            "Mycosynth Lattice should make the creature an artifact"
+        );
+
+        let construct_chars = game
+            .calculated_characteristics(token_id)
+            .expect("Construct should exist");
+        assert_eq!(
+            construct_chars.power,
+            Some(3),
+            "Construct should count itself, Mycosynth Lattice, and the creature made into an artifact"
+        );
+        assert_eq!(construct_chars.toughness, Some(3));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn test_construct_token_pt_with_no_other_artifacts() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);

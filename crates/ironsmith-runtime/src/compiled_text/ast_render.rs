@@ -518,6 +518,7 @@ fn is_mergeable_keyword_surface(keyword: &str) -> bool {
                 | "indestructible"
                 | "shroud"
                 | "fear"
+                | "soulbond"
                 | "ward pay 3 life"
         )
 }
@@ -9185,6 +9186,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
+                describe_structural_source_fixed_animation_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
                 describe_structural_modifier_type_addition_bundle(&def.abilities[ability_idx..])
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
@@ -9871,6 +9879,87 @@ mod dynamic_animation_bundle_tests {
             )),
         );
     }
+}
+
+/// Recombine the layer-correct pieces of a fixed-stat source animation
+/// ("During your turn, this creature is a Bear with base power and toughness
+/// 4/2."). The compiler lowers the creature type set, the subtype
+/// replacement, and the fixed base P/T separately; rejoin them only when
+/// their shared source filter and identical conditions prove they are one
+/// authored clause.
+fn describe_structural_source_fixed_animation_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let [set_types_ability, set_subtypes_ability, base_pt_ability, ..] = abilities else {
+        return None;
+    };
+    for ability in [set_types_ability, set_subtypes_ability, base_pt_ability] {
+        if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+            return None;
+        }
+    }
+    let AbilityKind::Static(set_types_static) = &set_types_ability.kind else {
+        return None;
+    };
+    let AbilityKind::Static(set_subtypes_static) = &set_subtypes_ability.kind else {
+        return None;
+    };
+    let AbilityKind::Static(base_pt_static) = &base_pt_ability.kind else {
+        return None;
+    };
+    let (set_types_model, set_condition) = unwrapped_static_model(set_types_static)?;
+    let (set_subtypes_model, subtypes_condition) = unwrapped_static_model(set_subtypes_static)?;
+    let (base_pt_model, base_pt_condition) = unwrapped_static_model(base_pt_static)?;
+    let ironsmith_core::StaticAbilityPayload::SetCardTypes { filter, card_types } =
+        &set_types_model.payload
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::SetCreatureSubtypes {
+        filter: subtypes_filter,
+        subtypes,
+    } = &set_subtypes_model.payload
+    else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::SetBasePowerToughnessValue {
+        filter: base_pt_filter,
+        power,
+        toughness,
+    } = &base_pt_model.payload
+    else {
+        return None;
+    };
+    if card_types.as_slice() != [CardType::Creature]
+        || subtypes.is_empty()
+        || !filter.source
+        || filter != subtypes_filter
+        || filter != base_pt_filter
+        || set_condition != subtypes_condition
+        || set_condition != base_pt_condition
+    {
+        return None;
+    }
+    let (Value::Fixed(power), Value::Fixed(toughness)) = (power.unhinted(), toughness.unhinted())
+    else {
+        return None;
+    };
+    let condition_prefix = match set_condition {
+        None => "",
+        Some(Condition::ActivationTiming(crate::ability::ActivationTiming::DuringYourTurn))
+        | Some(Condition::YourTurn) => "During your turn, ",
+        Some(_) => return None,
+    };
+    let subtype_phrase = subtypes
+        .iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let text = format!(
+        "{condition_prefix}this creature is {} with base power and toughness {power}/{toughness}",
+        with_indefinite_article(&subtype_phrase),
+    );
+    Some((capitalize_first(&text), 3))
 }
 
 /// Recombine layer-correct static pieces from one authored modifier clause.

@@ -386,7 +386,9 @@ fn describe_turn_history_for_each_basis(count: &Value) -> Option<(i32, String)> 
 fn describe_filtered_enters_with_counters_subject(filter: &ObjectFilter) -> String {
     let description = filter.description();
     if let Some(rest) = description.strip_prefix("another ") {
-        return format!("Other {}", pluralize_filter_description(rest));
+        // Oracle uses the distributive singular: "Each other creature you
+        // control of the chosen type enters with ...".
+        return format!("Each other {rest}");
     }
     if filter.nontoken || filter.token {
         return capitalize_first(&pluralize_filter_description(&description));

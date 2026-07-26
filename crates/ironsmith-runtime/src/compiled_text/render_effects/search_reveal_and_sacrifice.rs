@@ -522,6 +522,7 @@ pub(super) fn describe_choose_x_permanents_create_x_copies(effects: &[&Effect]) 
         || copy.controller != PlayerFilter::You
         || copy.enters_tapped
         || copy.has_haste
+        || copy.loses_soulbond
         || copy.enters_attacking
         || copy.attack_target_mode.is_some()
         || copy.exile_at_end_of_combat
@@ -4102,7 +4103,15 @@ pub(super) fn describe_life_amount_phrase(amount: &Value) -> String {
     ) {
         return format!("life equal to {}", describe_value(amount));
     }
-    format!("{} life", describe_value(amount))
+    let desc = describe_value(amount);
+    // A counting phrase reads as oracle's "life equal to ..." tail, not as an
+    // inline determiner.
+    for prefix in ["the number of ", "the amount of ", "the total "] {
+        if desc.starts_with(prefix) {
+            return format!("life equal to {desc}");
+        }
+    }
+    format!("{desc} life")
 }
 
 fn describe_scalar_life_backref(amount: &Value) -> Option<String> {

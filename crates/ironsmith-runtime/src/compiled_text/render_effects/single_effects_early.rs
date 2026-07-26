@@ -1031,6 +1031,20 @@ pub(super) fn describe_for_each_iterated_damage(
         where_x =
             where_x.map(|basis| conjoin_quantified_card_types(basis, &count_filter.card_types));
     }
+    // A blocker-tagged fanout names a single demonstrative object: "deals 2
+    // damage to that creature", not "to each creature".
+    let target_phrase = if for_each.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str() == "blocking"
+    }) {
+        let noun = filter
+            .strip_prefix("that ")
+            .map(str::to_string)
+            .unwrap_or(filter);
+        format!("that {noun}")
+    } else {
+        format!("each {filter}")
+    };
     let mut rendered = if let Some(source) = source {
         let subject = describe_damage_source_subject(source);
         let verb = if choose_spec_is_plural(source) {
@@ -1038,9 +1052,9 @@ pub(super) fn describe_for_each_iterated_damage(
         } else {
             "deals"
         };
-        format!("{subject} {verb} {amount} to each {filter}")
+        format!("{subject} {verb} {amount} to {target_phrase}")
     } else {
-        format!("Deal {amount} to each {filter}")
+        format!("Deal {amount} to {target_phrase}")
     };
     if let Some(where_x) = where_x {
         rendered.push_str(&format!(", where X is {where_x}"));
@@ -1915,6 +1929,37 @@ pub(crate) fn describe_with_id_then_choose_new_targets(
         .as_ref()
         .map(describe_player_filter)
         .unwrap_or_else(|| "you".to_string());
+    // "that player copies it and may choose new targets for the copy": when
+    // the same triggering player both copies the spell and may retarget the
+    // copy, oracle wording keeps a single subject across both actions.
+    if choose_new.may
+        && with_id
+            .effect
+            .downcast_ref::<crate::effects::CopySpellEffect>()
+            .is_some_and(|copy| {
+                copy.copier == PlayerFilter::IteratedPlayer
+                    && choose_new.chooser.as_ref() == Some(&PlayerFilter::IteratedPlayer)
+            })
+        && let Some(copied) = base.strip_prefix("Copy ")
+    {
+        // Inside the trigger that introduced the spell, oracle wording backs
+        // into the pronoun: "that player copies it".
+        let copied = if matches!(
+            &with_id
+                .effect
+                .downcast_ref::<crate::effects::CopySpellEffect>()
+                .expect("checked above")
+                .target,
+            ChooseSpec::Tagged(tag) if tag.as_str() == "triggering"
+        ) {
+            "it"
+        } else {
+            copied
+        };
+        return Some(format!(
+            "That player copies {copied} and may choose new targets for the copy"
+        ));
+    }
     let choose_phrase = if choose_new.may {
         if chooser == "you" {
             "You may choose new targets for the copy".to_string()

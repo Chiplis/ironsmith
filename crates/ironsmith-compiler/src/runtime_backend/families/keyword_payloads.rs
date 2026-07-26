@@ -586,7 +586,7 @@ pub(super) fn parse_evoke(
     Ok(ast(LineAst::Multiple(vec![
         LineAst::AlternativeCastingMethod(method.into()),
         LineAst::Triggered {
-            trigger: TriggerSpec::ThisEntersBattlefield,
+            trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
             effects: vec![EffectAst::Conditional {
                 predicate: PredicateAst::ThisSpellPaidLabel("Evoke".into()),
                 if_true: vec![EffectAst::subject_verb_sacrifice(
@@ -658,7 +658,7 @@ pub(super) fn parse_exploit(
         return Ok(None);
     }
     Ok(ast(LineAst::Triggered {
-        trigger: TriggerSpec::ThisEntersBattlefield,
+        trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
         effects: vec![EffectAst::subject_verb_exploit()],
         max_triggers_per_turn: None,
     }))

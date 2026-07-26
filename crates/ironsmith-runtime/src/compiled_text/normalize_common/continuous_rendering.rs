@@ -2391,6 +2391,39 @@ pub(crate) fn describe_apply_continuous_effect(
         };
         return Some(format!("{target} can block {blocker_count} this turn"));
     }
+    // A whole-line rules static that got modeled as a self-grant would read
+    // "It gains players can't search libraries" — the static carries its own
+    // subject, so print it verbatim with the duration tail.
+    if effect.additional_modifications.is_empty()
+        && effect.runtime_modifications.is_empty()
+        && effect.condition.is_none()
+        && let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification
+        && ability.granted_inline_ability().is_none()
+        && !ability.is_keyword()
+    {
+        let display = ability.display();
+        let lower = display.to_ascii_lowercase();
+        let global_subject = [
+            "players can't ",
+            "players cant ",
+            "each player ",
+            "each creature ",
+            "noncreature spells ",
+            "creature spells ",
+            "spells ",
+            "activated abilities ",
+        ]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix));
+        if global_subject {
+            let text = capitalize_first(&display);
+            return Some(apply_continuous_text_with_tail(
+                text,
+                describe_apply_continuous_tail(effect),
+                false,
+            ));
+        }
+    }
     if let Some(text) = describe_dies_return_counter_grant(effect, &target) {
         return Some(text);
     }
@@ -2533,9 +2566,17 @@ pub(crate) fn describe_apply_continuous_effect(
         return Some(text);
     }
 
-    let clauses = describe_apply_continuous_clauses(effect, plural_target);
+    let mut clauses = describe_apply_continuous_clauses(effect, plural_target);
     if clauses.is_empty() {
         return None;
+    }
+    // Granting suspend lowers as its two constituent triggered abilities;
+    // oracle just says "gains suspend".
+    if clauses
+        .iter()
+        .all(|clause| clause.starts_with("gains \"Suspend — "))
+    {
+        clauses = vec!["gains suspend".to_string()];
     }
 
     let quoted_granted_ability = clauses.iter().any(|clause| clause.contains('"'));
@@ -4127,12 +4168,18 @@ pub(crate) fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
     }
 
     let description = filter.description();
-    description
+    let fragment = description
         .strip_suffix(" permanent")
         .or_else(|| description.strip_suffix(" spell"))
         .or_else(|| description.strip_suffix(" source"))
-        .unwrap_or(description.as_str())
-        .to_string()
+        .unwrap_or(description.as_str());
+    // A bare type noun reads as a class: "hexproof from planeswalkers".
+    if filter.card_types.len() == 1
+        && filter.card_types[0].to_string().eq_ignore_ascii_case(fragment)
+    {
+        return format!("{fragment}s");
+    }
+    fragment.to_string()
 }
 
 pub(crate) fn is_exactly_all_magic_colors_filter(filter: &ObjectFilter) -> bool {

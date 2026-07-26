@@ -229,6 +229,7 @@ fn parse_counter_ability_target_lexed<'a>(
 
     let mut controller = None;
     let mut source_types = Vec::new();
+    let mut targets_only = None;
     loop {
         opt(connector).parse_next(input)?;
         let mut controller_probe = input.clone();
@@ -243,6 +244,28 @@ fn parse_counter_ability_target_lexed<'a>(
             source_types = parsed;
             continue;
         }
+        // "that targets <object filter>" — the countered object's own target.
+        let mut targets_probe = input.clone();
+        if primitives::phrase(&["that", "targets"])
+            .void()
+            .parse_next(&mut targets_probe)
+            .is_ok()
+        {
+            let rest: Vec<OwnedLexToken> = repeat(
+                1..,
+                winnow::token::any.map(|token: &OwnedLexToken| token.clone()),
+            )
+            .parse_next(&mut targets_probe)?;
+            if let Ok(filter) =
+                crate::runtime_backend::families::object_filters::parse_object_filter_lexed(
+                    &rest, false,
+                )
+            {
+                *input = targets_probe;
+                targets_only = Some(Box::new(filter));
+                continue;
+            }
+        }
         break;
     }
     primitives::sentence_end().parse_next(input)?;
@@ -251,6 +274,9 @@ fn parse_counter_ability_target_lexed<'a>(
     for (filter, is_ability) in &mut filters {
         if let Some(controller) = controller.clone() {
             filter.controller = Some(controller);
+        }
+        if let Some(targets_only) = targets_only.clone() {
+            filter.targets_only_object = Some(targets_only);
         }
         if *is_ability {
             for card_type in &source_types {

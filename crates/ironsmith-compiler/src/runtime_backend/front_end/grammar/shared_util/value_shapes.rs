@@ -12,6 +12,7 @@ pub(crate) enum AggregateValueMetric {
     BasicLandTypes,
     CreatureTypes,
     Colors,
+    ColorPairs,
     DistinctNames,
     DistinctPowers,
     Counters,
@@ -123,6 +124,16 @@ fn parse_aggregate_metric(
             primitives::word_slice_exact("among"),
         )
             .value(AggregateValueMetric::CreatureTypes),
+        (
+            primitives::word_slice_exact("different"),
+            primitives::word_slice_exact("color"),
+            alt((
+                primitives::word_slice_exact("pairs"),
+                primitives::word_slice_exact("pair"),
+            )),
+            primitives::word_slice_exact("among"),
+        )
+            .value(AggregateValueMetric::ColorPairs),
         (
             alt((
                 primitives::word_slice_exact("color"),

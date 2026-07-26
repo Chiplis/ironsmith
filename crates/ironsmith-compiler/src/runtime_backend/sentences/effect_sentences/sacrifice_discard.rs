@@ -148,10 +148,14 @@ pub(crate) fn parse_sacrifice(
     if let Some(half) = sacrifice_discard_grammar::parse_sacrifice_half_rounded_up_shape(tokens) {
         let mut filter = parse_object_filter_lexed(half.filter_tokens, false)?;
         filter.zone = Some(Zone::Battlefield);
-        let count_value = Value::HalfRoundedDown(Box::new(Value::Add(
-            Box::new(Value::Count(filter.clone())),
-            Box::new(Value::Fixed(1)),
-        )));
+        let count_value = if half.rounded_up {
+            Value::HalfRoundedDown(Box::new(Value::Add(
+                Box::new(Value::Count(filter.clone())),
+                Box::new(Value::Fixed(1)),
+            )))
+        } else {
+            Value::HalfRoundedDown(Box::new(Value::Count(filter.clone())))
+        };
         let tag = crate::runtime_backend::front_end::shared::util::helper_tag_for_tokens(
             tokens,
             "sacrificed",
@@ -368,6 +372,15 @@ pub(crate) fn parse_sacrifice(
         filter.controller = Some(controller);
     }
 
+    // A caller-supplied antecedent target ("its controller sacrifices IT")
+    // only applies when the object phrase is a co-referent pronoun. For a
+    // real filter ("its controller sacrifices a land of their choice") the
+    // target would silently replace the filter at lowering.
+    let target = if object_shape.tagged_reference.is_some() {
+        target
+    } else {
+        None
+    };
     let sacrifice = EffectAst::subject_verb_sacrifice(player, filter, count, target);
     let sacrifice = if one_of_referenced_set {
         sacrifice.with_sacrifice_one_of_referenced_set()

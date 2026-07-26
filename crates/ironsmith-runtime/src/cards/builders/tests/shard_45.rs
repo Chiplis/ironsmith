@@ -419,3 +419,344 @@ pub(super) fn water_tribe_rallier_preserves_waterbend_and_the_power_bound() {
         "Water Tribe Rallier should retain the choice qualifier: {rendered}"
     );
 }
+
+#[test]
+pub(super) fn grist_front_face_scopes_graveyard_origin_condition_on_the_trigger() {
+    assert_oracle_card_parses_strict("Grist, Voracious Larva");
+    let definition = parse_oracle_card_definition("Grist, Voracious Larva");
+    let debug = format!("{:?}", definition.abilities);
+
+    assert!(
+        debug.contains("MovedFromOrCastFrom")
+            && debug.contains("zone: Graveyard")
+            && debug.contains("zone_owner: Some(You)")
+            && debug.contains("caster: Some(You)"),
+        "Grist's enters trigger must carry the graveyard origin condition (zone + owner + caster) on the trigger itself: {debug}"
+    );
+    assert!(
+        !debug.contains("TaggedObjectMatches") && !debug.contains("ThisSpellWasCastFromZone"),
+        "the origin qualifier must not be modeled as an intervening-if condition: {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&definition).join(" ");
+    assert!(
+        rendered.contains("if it entered from your graveyard or you cast it from your graveyard"),
+        "Grist should round-trip its origin clause: {rendered}"
+    );
+    assert!(
+        rendered.to_ascii_lowercase().contains("exile grist, then return it to the battlefield transformed"),
+        "Grist should keep its authored exile-return surface: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn prized_amalgam_scopes_graveyard_origin_condition_on_the_trigger() {
+    assert_oracle_card_parses_strict("Prized Amalgam");
+    let definition = parse_oracle_card_definition("Prized Amalgam");
+    let debug = format!("{:?}", definition.abilities);
+
+    assert!(
+        debug.contains("MovedFromOrCastFrom")
+            && debug.contains("zone: Graveyard")
+            && debug.contains("zone_owner: Some(You)")
+            && debug.contains("caster: Some(You)"),
+        "Prized Amalgam's enters trigger must carry the graveyard origin condition on the trigger itself: {debug}"
+    );
+    assert!(
+        !debug.contains("TaggedObjectMatches") && !debug.contains("ThisSpellWasCastFromZone"),
+        "the origin qualifier must not be modeled as an intervening-if condition: {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&definition).join(" ");
+    assert!(
+        rendered.contains("if it entered from your graveyard or you cast it from your graveyard"),
+        "Prized Amalgam should round-trip its origin clause: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn gruul_spellbreaker_union_hexproof_covers_you_and_the_source_only() {
+    assert_oracle_card_parses_strict("Gruul Spellbreaker");
+    let definition = parse_oracle_card_definition("Gruul Spellbreaker");
+    let debug = format!("{:?}", definition.abilities);
+
+    assert!(
+        debug.contains("BeTargetedPlayerFrom(You"),
+        "the \"you\" half of the union must compile to a player targeting restriction: {debug}"
+    );
+    assert!(
+        !debug.contains("card_types: [Creature]"),
+        "no half of the union may grant hexproof to a battlefield-wide creature filter: {debug}"
+    );
+
+    let rendered = compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains("During your turn, you and this creature have hexproof."),
+        "Gruul Spellbreaker should round-trip its union subject line: {rendered}"
+    );
+    assert!(
+        !rendered.to_ascii_lowercase().contains("creatures have hexproof"),
+        "opponents' creatures must not gain hexproof: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn dion_union_flying_keeps_the_source_half_of_the_subject() {
+    let name = "Dion, Bahamut's Dominant // Bahamut, Warden of Light";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{:?}", definition.abilities);
+
+    assert!(
+        debug.contains("source: true"),
+        "the Dion half of the union must compile as a source-scoped flying grant: {debug}"
+    );
+    assert!(
+        debug.contains("subtypes: [Knight]"),
+        "the filter half must keep the other-Knights-you-control grant: {debug}"
+    );
+
+    // The test harness builds one joined definition for both faces, so the
+    // source-reference noun follows the joined type line ("this Saga"); the
+    // per-face compile renders "this creature". Assert the union shape
+    // without pinning the noun.
+    let rendered = compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains(" and other Knights you control have flying.")
+            && rendered.contains("During your turn, this"),
+        "Dion should round-trip its union subject line: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn niv_mizzet_guildpact_counts_distinct_color_pairs() {
+    let name = "Niv-Mizzet, Guildpact";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{:?}", definition.abilities);
+
+    assert_eq!(
+        debug.matches("ColorPairsAmong").count(),
+        3,
+        "each X basis (damage, draw, gain) must count distinct color pairs, \
+         not degrade to a bare permanent count: {debug}"
+    );
+    assert!(
+        debug.contains("exactly_two_colors: Some(true)"),
+        "the color-pair basis filter must keep the exactly-two-colors qualifier: {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains(
+            "it deals X damage to any target, where X is the number of different \
+             color pairs among permanents you control that are exactly two colors"
+        ),
+        "the trigger body should name the source \"it\" and reconstruct the authored \
+         color-pair basis: {rendered}"
+    );
+    assert!(
+        !rendered.contains("where X is the number of permanents you control,"),
+        "the basis must not silently degrade to a bare permanent count: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn breathkeeper_seraph_grants_verb_first_optional_delayed_return() {
+    let name = "Breathkeeper Seraph";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let rendered = compiled_text_lines(&definition).join("\n");
+
+    assert!(
+        rendered.contains(
+            "each of those creatures has \"When this creature dies, you may return it \
+             to the battlefield under its owner's control at the beginning of your next upkeep.\""
+        ),
+        "the quoted granted dies-trigger must keep \"you may\" and read verb-first with \
+         the delayed timing as a trailing modifier: {rendered}"
+    );
+    assert!(
+        !rendered.contains("may At the beginning"),
+        "the may-wrapper must not prepend the delayed-timing clause mid-sentence: {rendered}"
+    );
+
+    assert!(
+        rendered
+            .lines()
+            .any(|line| line.trim_end_matches('.') == "Flying, soulbond"),
+        "the keyword list must stay on one line as \"Flying, soulbond\": {rendered}"
+    );
+    assert!(
+        !rendered
+            .lines()
+            .any(|line| line.trim_end_matches('.') == "Soulbond"),
+        "soulbond must merge into the keyword list instead of claiming its own line: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn circle_of_the_moon_druid_scopes_bear_form_to_the_source() {
+    let name = "Circle of the Moon Druid";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("source: true"),
+        "the Bear Form animation must compile against the source, not every creature: {debug}"
+    );
+    assert!(
+        debug.contains("condition: ActivationTiming(DuringYourTurn)"),
+        "the leading \"During your turn,\" clause must survive as a typed condition: {debug}"
+    );
+    assert!(
+        debug.contains("subtypes: [Bear]") && debug.contains("power: Fixed(4)"),
+        "the Bear subtype replacement and 4/2 base stats must both compile: {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains(
+            "During your turn, this creature is a Bear with base power and toughness 4/2."
+        ),
+        "the animation bundle should render as the oracle's single clause: {rendered}"
+    );
+    assert!(
+        !rendered.contains("All creatures"),
+        "the animation must not scope to every creature on the battlefield: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn act_of_heroism_keeps_the_untap_and_pump_before_the_block_grant() {
+    let name = "Act of Heroism";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("UntapEffect"),
+        "the leading \"Untap target creature.\" sentence must compile: {debug}"
+    );
+    assert!(
+        debug.contains("CanBlockAdditionalCreatureEachCombat(1)"),
+        "the conjoined block permission must compile as a granted ability: {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains(
+            "Untap target creature. It gets +2/+2 until end of turn and can block an additional creature this turn."
+        ),
+        "the untap, pump, and block permission should round-trip as one authored line: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Each creature"),
+        "the block permission must stay on the untapped creature, not every creature: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn second_guess_keeps_the_ordinal_spell_cast_qualifier() {
+    let name = "Second Guess";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("TargetSpellCastOrderThisTurn"),
+        "the \"second spell cast this turn\" qualifier must compile as a cast-order condition, \
+         not be swallowed by short-name self-reference rewriting: {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains("Counter target spell that's the second spell cast this turn."),
+        "the ordinal qualifier should round-trip: {rendered}"
+    );
+    assert!(
+        !rendered.contains("permanent spell"),
+        "the ordinal word \"second\" must not be rewritten as a self reference: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn obeka_offers_the_end_of_turn_choice_to_the_active_player() {
+    let name = "Obeka, Brute Chronologist";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("MayEffect"),
+        "\"may end the turn\" must stay an optional choice, not a forced end-turn: {debug}"
+    );
+    assert!(
+        debug.contains("decider: Some(\n                                            Active,")
+            || debug.contains("Active"),
+        "the may decision must belong to the active player (the player whose turn it is): {debug}"
+    );
+    let end_turn_tail = debug
+        .split("EndTurnEffect")
+        .nth(1)
+        .expect("the granted action must compile to the end-the-turn effect");
+    let end_turn_player = end_turn_tail
+        .split("player:")
+        .nth(1)
+        .map(|rest| rest.trim_start())
+        .expect("EndTurnEffect should record its player");
+    assert!(
+        end_turn_player.starts_with("Active"),
+        "the end-turn action must belong to the active player (EndTurnEffect no-ops for \
+         anyone else), got: {end_turn_player:.40}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains("{T}: The player whose turn it is may end the turn."),
+        "the activated ability should round-trip the oracle wording: {rendered}"
+    );
+}
+
+#[test]
+pub(super) fn bonus_round_registers_a_temporary_copy_trigger_for_each_caster() {
+    let name = "Bonus Round";
+    assert_oracle_card_parses_strict(name);
+    let definition = parse_oracle_card_definition(name);
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("ScheduleDelayedTriggerEffect"),
+        "\"Until end of turn, whenever ...\" must register a temporary delayed trigger, \
+         not resolve as a one-shot copy: {debug}"
+    );
+    assert!(
+        debug.contains("until_end_of_turn: true"),
+        "the delayed trigger must expire at end of turn: {debug}"
+    );
+    assert!(
+        debug.contains("caster: Any"),
+        "the trigger must watch every player's instant and sorcery spells: {debug}"
+    );
+    assert!(
+        debug.contains("copier: IteratedPlayer"),
+        "the copy must be created by the spell's caster, not this spell's controller: {debug}"
+    );
+    assert!(
+        debug.contains("ChooseNewTargetsEffect"),
+        "the caster must be offered new targets for the copy: {debug}"
+    );
+
+    let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+    assert!(
+        rendered.contains(
+            "Whenever a player casts an instant or sorcery spell this turn, that player copies it and may choose new targets for the copy."
+        ),
+        "the temporary trigger should render with the caster as the copying subject: {rendered}"
+    );
+    assert!(
+        !rendered.contains("Copy this spell"),
+        "the line must not degrade into copying Bonus Round itself: {rendered}"
+    );
+}

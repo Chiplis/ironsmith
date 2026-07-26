@@ -185,7 +185,17 @@ pub(super) fn describe_conjoined_counter_or_draw_sequence(effects: &[&Effect]) -
     if is_counter_then_your_life_gain {
         last = format!("you {last}");
     }
-    let body = if clauses.len() == 1 {
+    // The parse records ", then" sequencing on the trailing counter
+    // placement; keep that authored surface instead of "and".
+    let then_followup = second_action
+        .downcast_ref::<crate::effects::PutCountersEffect>()
+        .is_some_and(|put| {
+            put.amount
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen)
+        });
+    let body = if then_followup {
+        format!("{}, then {last}", clauses.join(", "))
+    } else if clauses.len() == 1 {
         format!("{} and {last}", clauses[0])
     } else {
         format!("{}, and {last}", clauses.join(", "))
@@ -1726,6 +1736,13 @@ fn describe_coordinated_mill_then_collection_selection(effects: &[Effect]) -> Op
 pub(super) fn describe_coordinated_sequence(
     sequence: &crate::effects::SequenceEffect,
 ) -> Option<String> {
+    if std::env::var("IRONSMITH_SEQ_TRACE").is_ok() {
+        eprintln!(
+            "coordinated-sequence: surface={:?} len={}",
+            sequence.surface,
+            sequence.effects.len()
+        );
+    }
     let leading_duration = matches!(
         sequence.surface,
         ironsmith_core::SequenceSurface::CoordinatedLeadingDuration
@@ -1810,12 +1827,28 @@ pub(super) fn describe_coordinated_sequence(
     if let Some(compact) = describe_damage_and_you_scry(&sequence.effects) {
         return Some(compact);
     }
-    if let [first, second] = sequence.effects.as_slice()
-        && let Some(draw) = first.downcast_ref::<crate::effects::DrawCardsEffect>()
-        && let Some(lose) = second.downcast_ref::<crate::effects::LoseLifeEffect>()
-        && let Some(compact) = describe_draw_then_lose_life(draw, lose)
-    {
-        return Some(compact);
+    if let [first, second] = sequence.effects.as_slice() {
+        if std::env::var("IRONSMITH_SEQ_TRACE").is_ok() {
+            eprintln!(
+                "coordinated-sequence pair: draw={} lose={} compact={:?}",
+                first
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .is_some(),
+                second
+                    .downcast_ref::<crate::effects::LoseLifeEffect>()
+                    .is_some(),
+                first
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .zip(second.downcast_ref::<crate::effects::LoseLifeEffect>())
+                    .and_then(|(draw, lose)| describe_draw_then_lose_life(draw, lose))
+            );
+        }
+        if let Some(draw) = first.downcast_ref::<crate::effects::DrawCardsEffect>()
+            && let Some(lose) = second.downcast_ref::<crate::effects::LoseLifeEffect>()
+            && let Some(compact) = describe_draw_then_lose_life(draw, lose)
+        {
+            return Some(compact);
+        }
     }
     if let Some(compact) =
         describe_coordinated_put_counters_then_grant_same_filter(&sequence.effects)
@@ -3053,6 +3086,11 @@ pub(crate) fn describe_exile_then_return(
     } else {
         ""
     };
+    let transformed_suffix = if move_back.enters_transformed {
+        " transformed"
+    } else {
+        ""
+    };
     let controller_suffix = match move_back.battlefield_controller {
         crate::effects::BattlefieldController::Preserve => "",
         crate::effects::BattlefieldController::Owner => owner_control_suffix,
@@ -3062,7 +3100,7 @@ pub(crate) fn describe_exile_then_return(
     // return move; keep its authored surface.
     let counters_suffix = describe_entry_counters_suffix(&move_back.enters_with_counters);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}{counters_suffix}"
+        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{transformed_suffix}{controller_suffix}{counters_suffix}"
     ))
 }
 
@@ -3098,6 +3136,11 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
     } else {
         ""
     };
+    let transformed_suffix = if move_back.enters_transformed {
+        " transformed"
+    } else {
+        ""
+    };
     let controller_suffix = match move_back.battlefield_controller {
         crate::effects::BattlefieldController::Preserve => "",
         crate::effects::BattlefieldController::Owner => owner_control_suffix,
@@ -3107,7 +3150,7 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
     // return move; keep its authored surface.
     let counters_suffix = describe_entry_counters_suffix(&move_back.enters_with_counters);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{controller_suffix}{counters_suffix}"
+        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{transformed_suffix}{controller_suffix}{counters_suffix}"
     ))
 }
 
@@ -3133,8 +3176,10 @@ pub(super) fn describe_source_motion_reference(spec: &ChooseSpec, named_fallback
             named_fallback.to_string()
         }
         crate::target::SourceReferenceSurface::ThisPermanentType(text) => text.clone(),
-        crate::target::SourceReferenceSurface::FullName(_)
-        | crate::target::SourceReferenceSurface::ShortName(_) => named_fallback.to_string(),
+        // Authored name references ("exile Grist, then return it ...") keep
+        // their surface; oracle-faithful motion clauses name the source.
+        crate::target::SourceReferenceSurface::FullName(name)
+        | crate::target::SourceReferenceSurface::ShortName(name) => name.clone(),
     }
 }
 
@@ -3640,7 +3685,15 @@ pub(super) fn describe_damage_amount_clause(amount: &Value) -> (String, Option<S
     if is_effect_count_reference(amount, None) {
         return ("that much damage".to_string(), None);
     }
-    (format!("{} damage", describe_value(amount)), None)
+    let desc = describe_value(amount);
+    // A counting phrase reads as oracle's "damage equal to ..." tail, not as
+    // an inline determiner.
+    for prefix in ["the number of ", "the amount of ", "the total "] {
+        if desc.starts_with(prefix) {
+            return (format!("damage equal to {desc}"), None);
+        }
+    }
+    (format!("{desc} damage"), None)
 }
 
 pub(super) fn describe_where_x_offset_value(value: &Value) -> Option<(String, String)> {
@@ -5529,6 +5582,7 @@ pub(super) fn describe_triggered_resolution_text(
     effects = rewrite_triggering_artifact_reference_for_tap_or_ability_trigger(triggered, effects);
     effects = rewrite_source_no_counter_resolution_surface(effects, subject);
     effects = rewrite_damage_phrases_for_permanent_abilities(&effects, subject, rewrite_it_deals);
+    effects = rewrite_triggering_source_damage_subject(triggered, effects);
     effects = normalize_ability_self_reference_surface(&effects, subject);
     effects = split_sacrifice_then_lose_life_resolution(effects);
     Some(effects)
@@ -6108,6 +6162,32 @@ pub(super) fn triggered_deals_same_damage_to_each_other_opponent(
         deal_damage.target,
         ChooseSpec::Player(PlayerFilter::IteratedPlayer)
     ) && !deal_damage.source_is_combat
+}
+
+/// For a self trigger ("Whenever ~ deals combat damage to a player"), the
+/// tagged triggering object IS this ability's source, so oracle names the
+/// follow-up damage subject "it" ("it deals X damage to any target"). The
+/// generic damage renderer only sees the tagged source and defaults to the
+/// demonstrative "that creature"; restore the authored pronoun here where the
+/// trigger context proves they coincide.
+pub(super) fn rewrite_triggering_source_damage_subject(
+    triggered: &crate::ability::TriggeredAbility,
+    effects: String,
+) -> String {
+    if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::ThisDealsCombatDamageToPlayerTrigger>()
+        .is_none()
+    {
+        return effects;
+    }
+    if let Some(rest) = effects.strip_prefix("that creature deals ") {
+        return format!("it deals {rest}");
+    }
+    if let Some(rest) = effects.strip_prefix("That creature deals ") {
+        return format!("It deals {rest}");
+    }
+    effects
 }
 
 pub(super) fn rewrite_damaged_player_reference_for_damage_trigger(

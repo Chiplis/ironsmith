@@ -4299,6 +4299,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
         Value::ColorsAmong(filter) => {
             format!("the number of {}", describe_colors_among(filter))
         }
+        Value::ColorPairsAmong(filter) => format!(
+            "the number of different color pairs among {}",
+            describe_count_filter_value_subject(filter)
+        ),
         Value::DistinctNames(filter) => format!(
             "the number of differently named {}",
             describe_count_filter_value_subject(filter)

@@ -224,6 +224,44 @@ fn effect_is_single_draw_instruction(effect: &Effect) -> bool {
     effect_is_single_draw_instruction(inner)
 }
 
+/// An optional one-shot delayed instruction reads verb-first in oracle with
+/// the timing as a trailing modifier: "you may return it to the battlefield
+/// under its owner's control at the beginning of your next upkeep" (Breathkeeper
+/// Seraph), not "you may At the beginning of your next upkeep, return ...".
+fn describe_may_one_shot_delayed_trailing_timing(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| *decider != PlayerFilter::You)
+    {
+        return None;
+    }
+    let [effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let schedule = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
+    if !schedule.one_shot
+        || !schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+    {
+        return None;
+    }
+    let rendered = describe_effect_impl(effect);
+    let (timing, body) = rendered.split_once(", ")?;
+    if !timing.starts_with("At the beginning of ") {
+        return None;
+    }
+    let body = body.trim().trim_end_matches('.').trim_end();
+    // Multi-sentence payloads can't be reordered into a single clause.
+    if body.is_empty() || body.contains(". ") {
+        return None;
+    }
+    Some(format!("You may {body} {}", lowercase_first(timing)))
+}
+
 fn describe_next_turn_upkeep_delayed_instruction(
     schedule: &crate::effects::ScheduleDelayedTriggerEffect,
     delayed_text: &str,

@@ -1592,6 +1592,15 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         if predicate_candidate_contains_search_action(predicate_tokens) {
             continue;
         }
+        // A moved-or-cast origin clause ("it entered from your graveyard or
+        // you cast it from your graveyard") scopes the trigger event itself;
+        // leave it for the trigger parser instead of modeling it as an
+        // intervening-if predicate.
+        if crate::runtime_backend::families::activation_and_restrictions::trigger_clause_core::clause_words_are_moved_or_cast_origin_condition(
+            &crate::runtime_backend::token_word_refs(predicate_tokens),
+        ) {
+            continue;
+        }
         // A duration following a comma belongs to the effect clause. Reject
         // this later split candidate so the preceding comma can preserve the
         // duration at the head of `effects_tokens`. A predicate that itself

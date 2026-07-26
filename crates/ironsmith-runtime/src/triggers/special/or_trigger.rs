@@ -52,6 +52,7 @@ fn is_this_enters_battlefield_trigger(trigger: &ZoneChangeTrigger) -> bool {
         && trigger.to == ZonePattern::Specific(Zone::Battlefield)
         && trigger.player == PlayerRelation::Any
         && trigger.cause_filter.is_none()
+        && trigger.origin_condition.is_none()
         && trigger.during_turn.is_none()
         && trigger.count_mode == CountMode::Each
 }
@@ -190,6 +191,7 @@ impl OrTrigger {
             || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
             || zone_change.player != crate::triggers::PlayerRelation::Any
             || zone_change.cause_filter.is_some()
+            || zone_change.origin_condition.is_some()
         {
             return None;
         }
@@ -252,6 +254,7 @@ impl OrTrigger {
             || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
             || zone_change.player != PlayerRelation::Any
             || zone_change.cause_filter.is_some()
+            || zone_change.origin_condition.is_some()
             || zone_change.during_turn.is_some()
             || zone_change.count_mode != CountMode::Each
             || zone_change.this_object_surface.is_some()
@@ -295,6 +298,7 @@ impl OrTrigger {
             || zone_change.to != ZonePattern::Specific(Zone::Battlefield)
             || zone_change.player != crate::triggers::PlayerRelation::Any
             || zone_change.cause_filter.is_some()
+            || zone_change.origin_condition.is_some()
         {
             return None;
         }
@@ -334,6 +338,7 @@ impl OrTrigger {
         if !both_enter_battlefield(this_enters)
             || !both_enter_battlefield(another_enters)
             || !another_enters.object_filter.other
+            || this_enters.origin_condition != another_enters.origin_condition
         {
             return None;
         }
@@ -347,8 +352,15 @@ impl OrTrigger {
             .or_else(|| other_description.strip_prefix("an "))
             .map(str::to_string)
             .unwrap_or(other_description);
+        let origin_suffix = this_enters
+            .origin_condition
+            .as_ref()
+            .map(|origin| {
+                crate::triggers::zone_changes::moved_or_cast_origin_display_suffix(origin, false)
+            })
+            .unwrap_or_default();
         Some(format!(
-            "Whenever {this_subject} or another {other_subject} enters"
+            "Whenever {this_subject} or another {other_subject} enters{origin_suffix}"
         ))
     }
 
@@ -377,6 +389,7 @@ impl OrTrigger {
             || source_change.to != another_change.to
             || source_change.player != another_change.player
             || source_change.cause_filter != another_change.cause_filter
+            || source_change.origin_condition != another_change.origin_condition
             || source_change.during_turn != another_change.during_turn
             || source_change.count_mode != CountMode::Each
             || another_change.count_mode != CountMode::Each

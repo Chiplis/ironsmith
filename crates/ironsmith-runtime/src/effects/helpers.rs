@@ -1139,6 +1139,35 @@ pub fn resolve_value(
                 + (has_red as i32)
                 + (has_green as i32))
         }
+        Value::ColorPairsAmong(filter) => {
+            let filter_ctx = ctx.filter_context(game);
+            if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
+                let mut seen: HashSet<crate::color::ColorSet> = HashSet::new();
+                for snapshot in snapshots
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                {
+                    if snapshot.colors.count() == 2 {
+                        seen.insert(snapshot.colors);
+                    }
+                }
+                return Ok(seen.len() as i32);
+            }
+            let candidate_ids = value_candidate_ids_for_filter(game, filter, ctx);
+
+            let mut seen: HashSet<crate::color::ColorSet> = HashSet::new();
+            for obj in candidate_ids
+                .iter()
+                .filter_map(|&id| game.object(id))
+                .filter(|obj| filter.matches(obj, &filter_ctx, game))
+            {
+                let colors = obj.colors();
+                if colors.count() == 2 {
+                    seen.insert(colors);
+                }
+            }
+            Ok(seen.len() as i32)
+        }
         Value::DistinctNames(filter) => {
             let filter_ctx = ctx.filter_context(game);
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {

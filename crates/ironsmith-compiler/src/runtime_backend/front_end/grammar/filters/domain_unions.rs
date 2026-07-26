@@ -138,7 +138,7 @@ fn parse_elided_shared_domain_union(tokens: &[OwnedLexToken], other: bool) -> Op
 /// Parses a conjunction of independently scoped instances of the same object
 /// selector. This keeps battlefield/controller and card-zone/owner facts on
 /// separate `any_of` arms instead of collapsing them onto one filter.
-pub(super) fn parse_domain_union_object_filter_lexed(
+pub(crate) fn parse_domain_union_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
@@ -162,22 +162,36 @@ pub(super) fn parse_domain_union_object_filter_lexed(
         })
         .collect::<Option<Vec<_>>>()?;
 
-    let first_signature = domain_selector_signature(branches.first()?)?;
-    if branches.iter().skip(1).any(|branch| {
-        domain_selector_signature(branch)
-            .as_ref()
-            .is_none_or(|signature| signature != &first_signature)
-    }) {
-        return None;
-    }
+    // Heterogeneous multi-zone target lists ("target spell, nonland
+    // permanent, or card in a graveyard") union arms whose domains are all
+    // explicit and pairwise distinct; picking one arm silently drops the
+    // others.
+    // Every arm must carry its own explicit zone: a battlefield-default arm
+    // usually shares a trailing zone with its siblings ("Aura and/or
+    // Equipment cards from your graveyard") and must not union.
+    let distinct_zones: std::collections::HashSet<_> =
+        branches.iter().map(|branch| branch.zone).collect();
+    let heterogeneous_multi_zone = branches.iter().all(|branch| branch.zone.is_some())
+        && distinct_zones.len() == branches.len();
 
-    let first_scope = ObjectDomainScope::from_filter(branches.first()?);
-    if branches
-        .iter()
-        .skip(1)
-        .all(|branch| ObjectDomainScope::from_filter(branch) == first_scope)
-    {
-        return None;
+    if !heterogeneous_multi_zone {
+        let first_signature = domain_selector_signature(branches.first()?)?;
+        if branches.iter().skip(1).any(|branch| {
+            domain_selector_signature(branch)
+                .as_ref()
+                .is_none_or(|signature| signature != &first_signature)
+        }) {
+            return None;
+        }
+
+        let first_scope = ObjectDomainScope::from_filter(branches.first()?);
+        if branches
+            .iter()
+            .skip(1)
+            .all(|branch| ObjectDomainScope::from_filter(branch) == first_scope)
+        {
+            return None;
+        }
     }
 
     let mut union = ObjectFilter {

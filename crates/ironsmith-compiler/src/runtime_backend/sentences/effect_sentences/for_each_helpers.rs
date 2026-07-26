@@ -115,7 +115,41 @@ pub(crate) fn parse_has_base_power_toughness_clause(
     let Some(shape) = for_each_shapes::parse_base_power_toughness_clause_shape(tokens)? else {
         return Ok(None);
     };
-    let target = parse_target_phrase(shape.target_tokens)?;
+    // "<subject> lose all abilities and have base power and toughness N/N"
+    // — the target phrase must not eat the remove-abilities half.
+    let mut target_tokens = shape.target_tokens;
+    let mut lose_all_abilities = false;
+    {
+        let mut end = target_tokens.len();
+        if end > 0 && target_tokens[end - 1].is_word("and") {
+            end -= 1;
+        }
+        if end >= 3
+            && (target_tokens[end - 3].is_word("lose") || target_tokens[end - 3].is_word("loses"))
+            && target_tokens[end - 2].is_word("all")
+            && target_tokens[end - 1].is_word("abilities")
+        {
+            lose_all_abilities = true;
+            target_tokens = &target_tokens[..end - 3];
+        }
+    }
+    let target = parse_target_phrase(target_tokens)?;
+    if lose_all_abilities && shape.where_x_tokens.is_none() {
+        let set_pt = EffectAst::subject_verb_set_base_power_toughness(
+            shape.power.clone(),
+            shape.toughness.clone(),
+            target.clone(),
+            shape.duration.clone(),
+        );
+        let remove = EffectAst::subject_verb_remove_abilities_from_target(
+            target,
+            Vec::new(),
+            shape.duration,
+        );
+        return Ok(Some(EffectAst::Sequence {
+            effects: vec![remove, set_pt],
+        }));
+    }
     let (mut power, mut toughness) = (shape.power, shape.toughness);
     if let Some(where_x_tokens) = shape.where_x_tokens {
         let clause = LexedClause::new(tokens).text();

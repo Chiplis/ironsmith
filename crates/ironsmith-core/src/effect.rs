@@ -3628,6 +3628,9 @@ pub struct CreateTokenCopyEffect<A> {
     pub enters_attacking: bool,
     pub attack_target_mode: Option<CopyAttackTargetMode>,
     pub exile_at_end_of_combat: bool,
+    /// "except it has haste and loses soulbond" (Mirage Phalanx): the copy is
+    /// created without the soulbond pairing ability.
+    pub loses_soulbond: bool,
     pub sacrifice_at_next_end_step: bool,
     /// Original quoted copiable ability text when the cleanup instruction was
     /// granted to the token as part of the copy exception.
@@ -3657,6 +3660,7 @@ impl<A> CreateTokenCopyEffect<A> {
             enters_attacking: false,
             attack_target_mode: None,
             exile_at_end_of_combat: false,
+            loses_soulbond: false,
             sacrifice_at_next_end_step: false,
             sacrifice_at_next_end_step_ability_text: None,
             exile_at_next_end_step: false,
@@ -3731,6 +3735,11 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn exile_at_eoc(mut self, value: bool) -> Self {
         self.exile_at_end_of_combat = value;
+        self
+    }
+
+    pub fn loses_soulbond(mut self, value: bool) -> Self {
+        self.loses_soulbond = value;
         self
     }
 

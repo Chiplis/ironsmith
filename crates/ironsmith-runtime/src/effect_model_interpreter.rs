@@ -466,6 +466,7 @@ where
             enters_attacking: payload.enters_attacking,
             attack_target_mode: payload.attack_target_mode.clone(),
             exile_at_end_of_combat: payload.exile_at_end_of_combat,
+            loses_soulbond: payload.loses_soulbond,
             sacrifice_at_next_end_step: payload.sacrifice_at_next_end_step,
             sacrifice_at_next_end_step_ability_text: payload
                 .sacrifice_at_next_end_step_ability_text

@@ -369,6 +369,7 @@ pub(crate) enum BattlefieldEntryConditionAst {
     ObjectEntered {
         filter: ObjectFilter,
         window: BattlefieldEntryTurnWindowAst,
+        min_count: Option<u32>,
     },
     LandEnteredUnderYourControlThisTurn {
         player: PlayerAst,
@@ -1579,6 +1580,33 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
             window,
             other,
         } => {
+            let mut object_tokens = object_tokens;
+            let mut min_count = None;
+            let leading_words = crate::runtime_backend::token_word_refs(object_tokens);
+            let counted = match leading_words.as_slice() {
+                ["two", "or", "more", ..] => Some(2u32),
+                ["three", "or", "more", ..] => Some(3u32),
+                ["four", "or", "more", ..] => Some(4u32),
+                _ => None,
+            };
+            if let Some(count) = counted {
+                // Drop the three count words at the token level.
+                let mut seen = 0usize;
+                let mut cut = 0usize;
+                for (token_idx, token) in object_tokens.iter().enumerate() {
+                    if token.as_word().is_some() {
+                        seen += 1;
+                    }
+                    if seen == 3 {
+                        cut = token_idx + 1;
+                        break;
+                    }
+                }
+                if cut > 0 {
+                    object_tokens = &object_tokens[cut..];
+                    min_count = Some(count);
+                }
+            }
             let mut filter =
                 parse_object_filter_with_grammar_entrypoint(object_tokens, false).ok()?;
             filter.controller = Some(PlayerFilter::You);
@@ -1587,6 +1615,7 @@ fn parse_battlefield_entry_shape(tokens: &[OwnedLexToken]) -> Option<Battlefield
             }
             Some(BattlefieldEntryConditionAst::ObjectEntered {
                 filter,
+                min_count,
                 window: match window {
                     zone_change_shapes::EntryWindowShape::ThisTurn => {
                         BattlefieldEntryTurnWindowAst::ThisTurn
@@ -2098,7 +2127,7 @@ mod tests {
             0,
         )
         .expect("lex");
-        let BattlefieldEntryConditionAst::ObjectEntered { filter, window } =
+        let BattlefieldEntryConditionAst::ObjectEntered { filter, window, min_count: _ } =
             parse_battlefield_entry_condition(&entry).expect("entry condition")
         else {
             panic!("expected object entry condition");

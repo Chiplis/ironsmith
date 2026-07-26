@@ -643,6 +643,7 @@ impl GameState {
             | Modification::ModifyPower(_)
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessValue { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => false,
         }
@@ -2546,6 +2547,7 @@ impl GameState {
             | Modification::ModifyPower(_)
             | Modification::ModifyToughness(_)
             | Modification::ModifyPowerToughness { .. }
+            | Modification::ModifyPowerToughnessValue { .. }
             | Modification::ModifyPowerToughnessByColorCount { .. }
             | Modification::SwitchPowerToughness => false,
         }

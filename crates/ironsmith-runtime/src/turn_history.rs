@@ -261,11 +261,23 @@ impl TurnHistory {
 
     /// Whether the object with this stable identity was cast from `zone` this turn.
     pub fn object_was_cast_from_zone(&self, stable_id: StableId, zone: Zone) -> bool {
+        self.object_was_cast_from_zone_by(stable_id, zone, None)
+    }
+
+    /// Whether the object with this stable identity was cast from `zone` this
+    /// turn by `caster` (any caster when `None`).
+    pub fn object_was_cast_from_zone_by(
+        &self,
+        stable_id: StableId,
+        zone: Zone,
+        caster: Option<PlayerId>,
+    ) -> bool {
         self.projected_records().any(|record| {
             let Some(cast) = record.event.downcast::<SpellCastEvent>() else {
                 return false;
             };
             cast.from_zone == zone
+                && caster.is_none_or(|caster| cast.caster == caster)
                 && cast
                     .snapshot
                     .as_ref()

@@ -308,6 +308,9 @@ impl TriggerMatcher for AttacksTrigger {
             }
             (Some(PlayerFilter::Any), false) => " a player or planeswalker",
             (Some(PlayerFilter::You), true) => " you",
+            (Some(PlayerFilter::TaggedPlayer(tag)), true) if tag.as_str() == "enchanted" => {
+                " enchanted player"
+            }
             _ => "",
         };
 

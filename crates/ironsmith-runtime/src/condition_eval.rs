@@ -2098,6 +2098,10 @@ fn evaluate_condition_shared_core(
                     crate::game_state::Phase::FirstMain | crate::game_state::Phase::NextMain
                 ),
         ),
+        Condition::SourceControllersEndStep => Some(
+            game.is_active_player(ctx.controller)
+                && game.turn.phase == crate::game_state::Phase::Ending,
+        ),
         Condition::YourFirstTurnsOfTheGameOrFewer(count) => {
             Some(game.is_active_player(ctx.controller) && game.turn.turn_number <= *count)
         }
@@ -2418,6 +2422,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::YouHaveCardInHandMatching(..) => {}
         Condition::YourTurn => {}
         Condition::SourceControllersMainPhase => {}
+        Condition::SourceControllersEndStep => {}
         Condition::YourFirstTurnsOfTheGameOrFewer(..) => {}
         Condition::CreatureDiedThisTurn => {}
         Condition::CreatureDiedThisTurnOrMore(..) => {}
@@ -3481,6 +3486,7 @@ pub fn evaluate_condition_external(
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
         | Condition::SourceControllersMainPhase
+        | Condition::SourceControllersEndStep
         | Condition::SourceIsRenowned
         | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
@@ -4314,6 +4320,7 @@ fn evaluate_condition_simple(
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
         | Condition::SourceControllersMainPhase
+        | Condition::SourceControllersEndStep
         | Condition::SourceIsRenowned
         | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn
@@ -5564,6 +5571,7 @@ fn evaluate_condition(
         | Condition::YouHaveCardInHandMatching(_)
         | Condition::YourTurn
         | Condition::SourceControllersMainPhase
+        | Condition::SourceControllersEndStep
         | Condition::SourceIsRenowned
         | Condition::YourFirstTurnsOfTheGameOrFewer(_)
         | Condition::CreatureDiedThisTurn

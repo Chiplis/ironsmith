@@ -741,6 +741,7 @@ fn sync_counter_from_name(raw: &str) -> ironsmith::object::CounterType {
         "+0/+1" => CounterType::PlusZeroPlusOne,
         "+1/+2" => CounterType::PlusOnePlusTwo,
         "+2/+2" => CounterType::PlusTwoPlusTwo,
+        "-0/-1" => CounterType::MinusZeroMinusOne,
         "-0/-2" => CounterType::MinusZeroMinusTwo,
         "-2/-2" => CounterType::MinusTwoMinusTwo,
         "deathtouch" => CounterType::Deathtouch,

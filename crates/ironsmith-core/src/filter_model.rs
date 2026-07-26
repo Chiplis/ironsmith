@@ -836,6 +836,7 @@ pub struct ObjectFilter {
     pub untapped: bool,
     pub attacking: bool,
     pub attacked_this_turn: bool,
+    pub didnt_attack_this_turn: bool,
     pub attacking_player_or_planeswalker_controlled_by: Option<PlayerFilter>,
     /// When set with `attacking_player_or_planeswalker_controlled_by`, require
     /// the attack target itself to be that player rather than a planeswalker
@@ -846,6 +847,9 @@ pub struct ObjectFilter {
     /// and is valid without a prior effect establishing a tag.
     pub attached_to_object: Option<Box<ObjectFilter>>,
     pub attached_to_player: Option<PlayerFilter>,
+    /// At least one attachment on this object must match the inner filter
+    /// ("a creature with a legendary Equipment attached to it").
+    pub with_attached_object: Option<Box<ObjectFilter>>,
     pub nonattacking: bool,
     pub enlist_eligible: bool,
     pub blocking: bool,
@@ -2209,11 +2213,25 @@ impl ObjectFilter {
         if self.has_nonbasic_land_type {
             post_noun_qualifiers.push("with a nonbasic land type".to_string());
         }
+        // Chosen-quality back-references follow the controller suffix in
+        // oracle order ("creatures you control of the chosen type") — but
+        // only when there IS one; zone qualifiers ("cards of that type from
+        // their graveyard") keep the chosen phrase next to the noun.
+        let defer_chosen_qualifiers = controller_suffix.is_some() || owner_suffix.is_some();
+        let mut chosen_trailing_qualifiers: Vec<String> = Vec::new();
         if self.chosen_creature_type {
-            post_noun_qualifiers.push("of the chosen type".to_string());
+            if defer_chosen_qualifiers {
+                chosen_trailing_qualifiers.push("of the chosen type".to_string());
+            } else {
+                post_noun_qualifiers.push("of the chosen type".to_string());
+            }
         }
         if self.chosen_card_type {
-            post_noun_qualifiers.push("of the chosen type".to_string());
+            if defer_chosen_qualifiers {
+                chosen_trailing_qualifiers.push("of the chosen type".to_string());
+            } else {
+                post_noun_qualifiers.push("of the chosen type".to_string());
+            }
         }
         if let Some(set_name) = &self.name_originally_printed_in_set {
             post_noun_qualifiers.push(format!(
@@ -2221,7 +2239,11 @@ impl ObjectFilter {
             ));
         }
         if self.excluded_chosen_creature_type {
-            post_noun_qualifiers.push("that aren't of the chosen type".to_string());
+            if defer_chosen_qualifiers {
+                chosen_trailing_qualifiers.push("that aren't of the chosen type".to_string());
+            } else {
+                post_noun_qualifiers.push("that aren't of the chosen type".to_string());
+            }
         }
         if !self.no_shared_creature_types_with.is_empty() {
             let comparison = self
@@ -2471,10 +2493,17 @@ impl ObjectFilter {
             }
         }
         if let Some(exactly_two_colors) = self.exactly_two_colors {
-            if exactly_two_colors {
-                post_noun_qualifiers.push("that are exactly two colors".to_string());
+            // Oracle order puts the color-count clause after the controller
+            // suffix ("permanents you control that are exactly two colors").
+            let clause = if exactly_two_colors {
+                "that are exactly two colors".to_string()
             } else {
-                post_noun_qualifiers.push("that are not exactly two colors".to_string());
+                "that are not exactly two colors".to_string()
+            };
+            if defer_chosen_qualifiers {
+                chosen_trailing_qualifiers.push(clause);
+            } else {
+                post_noun_qualifiers.push(clause);
             }
         }
         if self.historic {
@@ -2483,7 +2512,14 @@ impl ObjectFilter {
         if self.nonhistoric {
             post_noun_qualifiers.push("that's not historic".to_string());
         }
-        if self.is_commander {
+        if self.is_commander
+            && !(self.card_types.is_empty()
+                && self.all_card_types.is_empty()
+                && self.subtypes.is_empty()
+                && !self.token)
+        {
+            // With no type noun, "commander" IS the noun ("Commanders you
+            // control"), handled by the default-noun selection below.
             parts.push("commander".to_string());
         }
         if self.noncommander {
@@ -2530,6 +2566,9 @@ impl ObjectFilter {
         }
         if self.attacked_this_turn {
             post_noun_qualifiers.push("that attacked this turn".to_string());
+        }
+        if self.didnt_attack_this_turn {
+            post_noun_qualifiers.push("that didn't attack this turn".to_string());
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = player_filter.description();
@@ -2631,6 +2670,7 @@ impl ObjectFilter {
                 }
             } else {
                 match self.zone {
+                    Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
                         let kind = self.stack_kind.unwrap_or_else(|| {
@@ -3143,12 +3183,22 @@ impl ObjectFilter {
             (None, Some(owner)) => parts.push(owner),
             (None, None) => {}
         }
+        parts.extend(chosen_trailing_qualifiers);
 
         if let Some(attached_to) = &self.attached_to_object {
             parts.push(format!(
                 "attached to {}",
                 ensure_indefinite_article(attached_to.description())
             ));
+        }
+        if let Some(with_attached) = &self.with_attached_object {
+            let inner = with_attached.description();
+            let surfaced = if inner.starts_with("another ") || inner.starts_with("other ") {
+                inner
+            } else {
+                ensure_indefinite_article(inner)
+            };
+            parts.push(format!("with {surfaced} attached to it"));
         }
         if let Some(attached_to_player) = &self.attached_to_player {
             parts.push(format!("attached to {}", attached_to_player.description()));
@@ -3773,6 +3823,14 @@ fn describe_count_filter_subject(filter: &ObjectFilter) -> String {
         " that player owns",
         " they control",
         " they own",
+        " defending player controls",
+        " defending player owns",
+        " attacking player controls",
+        " active player controls",
+        " its controller controls",
+        " target player controls",
+        " target opponent controls",
+        " a teammate controls",
         " in ",
         " on ",
         " with ",
@@ -3946,6 +4004,12 @@ fn describe_comparison(cmp: &Comparison) -> String {
             Value::ColorsAmong(filter) => {
                 format!("the number of colors among {}", filter.description())
             }
+            Value::ColorPairsAmong(filter) => {
+                format!(
+                    "the number of different color pairs among {}",
+                    filter.description()
+                )
+            }
             Value::CardTypesAmong(filter) => {
                 format!("the number of card types among {}", filter.description())
             }
@@ -4093,6 +4157,16 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 metric: EffectMetric::OtherNumber,
                 ..
             } => "the other result".to_string(),
+            Value::BasicLandTypesAmong(filter) => {
+                let among = if filter.card_types == [crate::types::CardType::Land]
+                    && filter.controller == Some(PlayerFilter::You)
+                {
+                    "lands you control".to_string()
+                } else {
+                    filter.description()
+                };
+                format!("the number of basic land types among {among}")
+            }
             _ => "a dynamic value".to_string(),
         }
     }

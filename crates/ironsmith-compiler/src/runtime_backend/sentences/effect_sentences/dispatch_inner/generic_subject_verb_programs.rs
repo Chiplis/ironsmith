@@ -1559,10 +1559,78 @@ fn parse_target_gets_then_gains_subject_verb(
     if shape.ability_verb == effect_grammar::gain_ability_shapes::SharedAbilityVerb::Lose {
         return Ok(None);
     }
-    super::gain_ability::parse_gain_ability_sentence_with_typed_subject(
+    let Some(mut effects) = super::gain_ability::parse_gain_ability_sentence_with_typed_subject(
         tokens,
         shape.subject_tokens,
-    )
+    )?
+    else {
+        return Ok(None);
+    };
+    // "Creatures of the creature type of your choice get ... and gain ..."
+    // — the plain subject-filter parse drops the choice qualifier; restore
+    // it the way the standalone creature-type-choice pump primitive does.
+    if subject_has_creature_type_choice(shape.subject_tokens) {
+        patch_creature_type_choice_effects(&mut effects);
+    }
+    Ok(Some(effects))
+}
+
+fn subject_has_creature_type_choice(tokens: &[OwnedLexToken]) -> bool {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    words
+        .windows(5)
+        .any(|window| window == ["creature", "type", "of", "your", "choice"])
+}
+
+fn patch_creature_type_choice_effect(effect: &mut EffectAst) -> bool {
+    // Compound gain sentences wrap their members in coordination nodes;
+    // patch through them.
+    match effect {
+        EffectAst::Coordinated { effects, .. } | EffectAst::Sequence { effects, .. } => {
+            let mut patched = false;
+            for inner in effects.iter_mut() {
+                patched |= patch_creature_type_choice_effect(inner);
+            }
+            return patched;
+        }
+        _ => {}
+    }
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
+        return false;
+    };
+    match action {
+        SubjectVerbActionAst::PumpAll { filter, .. }
+        | SubjectVerbActionAst::GrantAbilitiesAll { filter, .. }
+        | SubjectVerbActionAst::GrantAbilitiesChoiceAll { filter, .. } => {
+            filter.chosen_creature_type = true;
+            true
+        }
+        SubjectVerbActionAst::Pump {
+            target: TargetAst::Object(filter, _, _),
+            ..
+        }
+        | SubjectVerbActionAst::GrantAbilitiesToTarget {
+            target: TargetAst::Object(filter, _, _),
+            ..
+        } => {
+            filter.chosen_creature_type = true;
+            true
+        }
+        _ => false,
+    }
+}
+
+fn patch_creature_type_choice_effects(effects: &mut Vec<EffectAst>) {
+    let mut patched = false;
+    for effect in effects.iter_mut() {
+        patched |= patch_creature_type_choice_effect(effect);
+    }
+    if patched {
+        effects.insert(
+            0,
+            EffectAst::subject_verb_choose_creature_type(PlayerAst::You, vec![]),
+        );
+    }
 }
 
 fn parse_target_has_base_pt_then_loses_subject_verb(

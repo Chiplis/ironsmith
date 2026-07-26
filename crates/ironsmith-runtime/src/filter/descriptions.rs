@@ -900,6 +900,16 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
                     describe_value_expr(right)
                 )
             }
+            Value::BasicLandTypesAmong(filter) => {
+                let among = if filter.card_types == [crate::types::CardType::Land]
+                    && filter.controller == Some(crate::target::PlayerFilter::You)
+                {
+                    "lands you control".to_string()
+                } else {
+                    filter.description()
+                };
+                format!("the number of basic land types among {among}")
+            }
             _ => "a dynamic value".to_string(),
         }
     }

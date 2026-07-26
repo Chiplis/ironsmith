@@ -36,17 +36,7 @@ fn rewrite_count_that_number_life_total_trigger_tokens(
 fn trigger_has_moved_or_cast_origin_condition(
     trigger: &crate::runtime_backend::ast::TriggerSpec,
 ) -> bool {
-    match trigger {
-        crate::runtime_backend::ast::TriggerSpec::WithIntro { trigger, .. } => {
-            trigger_has_moved_or_cast_origin_condition(trigger)
-        }
-        crate::runtime_backend::ast::TriggerSpec::EntersBattlefieldOneOrMore {
-            origin_condition:
-                Some(ironsmith_core::trigger_model::ZoneChangeOriginCondition::MovedFromOrCastFrom(_)),
-            ..
-        } => true,
-        _ => false,
-    }
+    crate::runtime_backend::families::activation_and_restrictions::trigger_clause_core::trigger_spec_has_moved_or_cast_origin_condition(trigger)
 }
 
 fn moved_or_cast_origin_trigger_split_index(

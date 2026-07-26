@@ -349,8 +349,16 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
         return None;
     }
 
-    color_only_hexproof_filter_words(&words[first_word_idx + 2..])
-        .map(|filter| vec![KeywordAction::HexproofFrom(filter)])
+    if let Some(filter) = color_only_hexproof_filter_words(&words[first_word_idx + 2..]) {
+        return Some(vec![KeywordAction::HexproofFrom(filter)]);
+    }
+    // "hexproof from monocolored/multicolored/planeswalkers" — the same
+    // non-color qualities the granted-ability path accepts.
+    let filter_token_first = *words_view
+        .token_start_indices()
+        .get(first_word_idx + 2)?;
+    let filter = parse_object_filter_lexed(&tokens[filter_token_first..], false).ok()?;
+    Some(vec![KeywordAction::HexproofFrom(filter)])
 }
 
 pub(crate) fn parse_ability_line_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordAction>> {
@@ -879,6 +887,49 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
                     }
                 }
             }
+        }
+    }
+
+    // "…enters, if it entered from X or was cast from X, <effects>" folds the
+    // origin qualifier into the trigger clause itself. Split at the comma that
+    // completes the origin condition so the qualifier is not re-modeled as a
+    // conditional effect wrapper.
+    if tokens.iter().any(|token| token.is_word("entered")) {
+        let mut inside_quotes = false;
+        for (separator_idx, separator) in tokens.iter().enumerate() {
+            if separator.kind == crate::runtime_backend::lexer::TokenKind::Quote {
+                inside_quotes = !inside_quotes;
+                continue;
+            }
+            if inside_quotes
+                || !separator.is_comma()
+                || separator_idx <= start_idx
+                || separator_idx + 1 >= tokens.len()
+            {
+                continue;
+            }
+            let trigger_tokens = trim_commas(&tokens[start_idx..separator_idx]);
+            let Ok(trigger) = parse_trigger_clause_lexed(&trigger_tokens) else {
+                continue;
+            };
+            if !super::activation_and_restrictions::trigger_clause_core::trigger_spec_has_moved_or_cast_origin_condition(&trigger)
+            {
+                continue;
+            }
+            let effects_tokens = trim_commas(&tokens[separator_idx + 1..]);
+            if effects_tokens.is_empty() {
+                break;
+            }
+            if let Ok(effects) = parse_effect_sentences_or_single_sentence_lexed(&effects_tokens) {
+                let max_triggers_per_turn =
+                    parse_triggered_times_each_turn_lexed_from_sentences(&effects_tokens);
+                return Ok(LineAst::Triggered {
+                    trigger,
+                    effects,
+                    max_triggers_per_turn,
+                });
+            }
+            break;
         }
     }
 

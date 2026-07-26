@@ -802,6 +802,22 @@ impl AnthemValueRuntimeExt for AnthemValue {
     }
 }
 
+fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
+    match value {
+        AnthemValue::Fixed(value) => Some(Value::Fixed(*value)),
+        AnthemValue::Dynamic(_) => None,
+        AnthemValue::PerCount {
+            multiplier,
+            count: AnthemCountExpression::MatchingFilter(filter),
+        } => Some(if *multiplier == 1 {
+            Value::Count(filter.clone())
+        } else {
+            Value::CountScaled(filter.clone(), *multiplier)
+        }),
+        AnthemValue::PerCount { .. } => None,
+    }
+}
+
 fn color_count_multiplier(value: &AnthemValue) -> Option<i32> {
     match value {
         AnthemValue::Fixed(0) => Some(0),
@@ -1770,11 +1786,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 crate::effect::Value::Fixed(threshold),
             ) = (left, operator, right)
             {
-                return format!(
-                    "as long as {} has {} or less life",
-                    describe_static_player(player),
-                    threshold
-                );
+                let subject = describe_static_player(player);
+                let verb = if subject == "you" { "have" } else { "has" };
+                return format!("as long as {subject} {verb} {threshold} or less life");
             }
             if let (
                 crate::effect::Value::LifeTotal(player),
@@ -1782,11 +1796,9 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
                 crate::effect::Value::Fixed(threshold),
             ) = (left, operator, right)
             {
-                return format!(
-                    "as long as {} has {} or more life",
-                    describe_static_player(player),
-                    threshold
-                );
+                let subject = describe_static_player(player);
+                let verb = if subject == "you" { "have" } else { "has" };
+                return format!("as long as {subject} {verb} {threshold} or more life");
             }
             let operator_text = match operator {
                 crate::effect::ValueComparisonOperator::GreaterThan => "is greater than",
@@ -2966,13 +2978,32 @@ impl StaticAbilityKind for Anthem {
             return effects;
         }
 
-        let power = self.power.evaluate(game, source, controller);
-        let toughness = self.toughness.evaluate(game, source, controller);
         let target = if self.source_only {
             EffectTarget::Source
         } else {
             effect_target_for_filter(source, &self.filter)
         };
+        if (!matches!(self.power, AnthemValue::Fixed(_))
+            || !matches!(self.toughness, AnthemValue::Fixed(_)))
+            && let (Some(power), Some(toughness)) = (
+                anthem_value_as_layer_value(&self.power),
+                anthem_value_as_layer_value(&self.toughness),
+            )
+        {
+            return vec![effect_with_optional_static_condition(
+                ContinuousEffect::new(
+                    source,
+                    controller,
+                    target,
+                    Modification::ModifyPowerToughnessValue { power, toughness },
+                )
+                .with_source_type(EffectSourceType::StaticAbility),
+                &self.condition,
+            )];
+        }
+
+        let power = self.power.evaluate(game, source, controller);
+        let toughness = self.toughness.evaluate(game, source, controller);
         vec![effect_with_optional_static_condition(
             ContinuousEffect::new(
                 source,

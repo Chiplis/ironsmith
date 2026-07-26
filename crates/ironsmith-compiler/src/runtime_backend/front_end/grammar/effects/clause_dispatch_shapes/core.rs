@@ -118,6 +118,8 @@ fn may_actor<'a>(input: &mut LexStream<'a>) -> WResult<LeadingMayActorShape> {
                 primitives::phrase(&["owner", "may"]),
             )
                 .value(LeadingMayActorShape::Player(PlayerAst::ItsOwner)),
+            primitives::phrase(&["the", "player", "whose", "turn", "it", "is", "may"])
+                .value(LeadingMayActorShape::Player(PlayerAst::Active)),
             (primitives::kw("the"), player_word, primitives::kw("may"))
                 .value(LeadingMayActorShape::Player(PlayerAst::That)),
             primitives::phrase(&["defending", "player", "may"])

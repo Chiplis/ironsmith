@@ -314,6 +314,32 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
+        // "that targets <object filter>" — the countered object's own target
+        // scope, shared by every term ("spell or ability that targets a
+        // permanent you control").
+        if word == "that"
+            && clause_tokens
+                .get(idx + 1)
+                .and_then(OwnedLexToken::as_word)
+                == Some("targets")
+            && !term_filters.is_empty()
+        {
+            let filter_tokens: Vec<OwnedLexToken> = clause_tokens[idx + 2..].to_vec();
+            if let Ok(targeted) =
+                crate::runtime_backend::families::object_filters::parse_object_filter_lexed(
+                    &filter_tokens,
+                    false,
+                )
+            {
+                for (filter, _) in &mut term_filters {
+                    filter.targets_only_object = Some(Box::new(targeted.clone()));
+                }
+                idx = clause_tokens.len();
+                break;
+            }
+            return Ok(None);
+        }
+
         return Ok(None);
     }
 

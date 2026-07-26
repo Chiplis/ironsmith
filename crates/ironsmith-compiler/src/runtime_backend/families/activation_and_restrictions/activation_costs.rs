@@ -320,6 +320,16 @@ pub(crate) fn parse_cant_clauses(
         return Ok(None);
     }
 
+    // NOTE(equip-grant threshold, 2026-07-25): a guard declining
+    // "equipped/enchanted creature has ..." lines here was tried and
+    // REVERTED — with parse_cant_clauses out of the way the line reaches
+    // parse_equipped_creature_has_line (whose parse_ability_line now handles
+    // the by-more-than tail via KeywordAction::CantBeBlockedByMoreThan), but
+    // compilation then fails downstream with "unsupported subject target
+    // phrase (clause: 'trample')" from parse_subject_object_filter — a later
+    // stage re-parses the grant subject. Root-cause that error before
+    // re-adding the guard.
+
     if let Some((condition, remainder)) = strip_static_restriction_condition(tokens)?
         && remainder.as_slice() != tokens
     {

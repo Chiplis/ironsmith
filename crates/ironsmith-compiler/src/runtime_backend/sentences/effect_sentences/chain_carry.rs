@@ -3239,6 +3239,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::EmptyManaPool
                 | SubjectVerbActionAst::SetLifeTotal { .. }
                 | SubjectVerbActionAst::SkipTurn
+                | SubjectVerbActionAst::EndTurn
                 | SubjectVerbActionAst::SkipCombatPhases
                 | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
                 | SubjectVerbActionAst::SkipMainPhasesThisTurn
@@ -3323,6 +3324,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::EmptyManaPool
                 | SubjectVerbActionAst::SetLifeTotal { .. }
                 | SubjectVerbActionAst::SkipTurn
+                | SubjectVerbActionAst::EndTurn
                 | SubjectVerbActionAst::SkipCombatPhases
                 | SubjectVerbActionAst::SkipNextCombatPhaseThisTurn
                 | SubjectVerbActionAst::SkipMainPhasesThisTurn

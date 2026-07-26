@@ -212,6 +212,21 @@ pub(crate) fn parse_copy_spell_clause(
     {
         return Ok(None);
     }
+    // Duration-scoped trigger grants such as "Until end of turn, whenever a
+    // player casts an instant or sorcery spell, that player copies it ..."
+    // register a temporary delayed trigger. They are not resolution-time copy
+    // effects, so leave them for `parse_until_duration_triggered_clause`.
+    if super::super::grammar::effects::clause_primitive_shapes::parse_duration_trigger_prefix_shape(
+        tokens,
+    )
+    .is_some()
+        && LexedClause::new(tokens)
+            .word_refs()
+            .iter()
+            .any(|word| matches!(*word, "when" | "whenever"))
+    {
+        return Ok(None);
+    }
 
     fn target_from_shape(shape: clause_shapes::CopyTargetShape<'_>) -> Option<TargetAst> {
         match shape {
@@ -352,15 +367,30 @@ pub(crate) fn parse_copy_spell_clause(
         }
         return Ok(Some(base));
     }
-    if !copy_shape.mentions_spell_or_ability {
-        return Ok(None);
-    }
-
     let subject = parse_subject(&tokens[..copy_idx]);
     let player = match subject {
         SubjectAst::Player(player) => player,
         SubjectAst::This => PlayerAst::Implicit,
     };
+
+    if !copy_shape.mentions_spell_or_ability {
+        // "that player copies it and may choose new targets for the copy"
+        // names the copied spell only through a pronoun. A player subject
+        // plus a retarget tail still pins the reference to a stack object.
+        let pronoun_stack_reference = matches!(subject, SubjectAst::Player(_))
+            && split_idx.is_some_and(|idx| {
+                matches!(
+                    clause_shapes::parse_copy_target_shape_tokens(trim_lexed_commas(
+                        &tail[..idx]
+                    )),
+                    clause_shapes::CopyTargetShape::TaggedIt
+                        | clause_shapes::CopyTargetShape::Triggering
+                )
+            });
+        if !pronoun_stack_reference {
+            return Ok(None);
+        }
+    }
 
     if tail.is_empty() {
         return Err(CardTextError::ParseError(format!(
@@ -529,7 +559,15 @@ pub(crate) fn parse_counter_target_phrase(
 fn parse_counter_ability_target_phrase(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<TargetAst>, CardTextError> {
-    let Some(shape) = clause_shapes::parse_counter_ability_target_tokens(tokens) else {
+    let shape_result = clause_shapes::parse_counter_ability_target_tokens(tokens);
+    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+        eprintln!(
+            "counter-ability shape: tokens={:?} shape={:?}",
+            crate::runtime_backend::token_word_refs(tokens),
+            shape_result.is_some()
+        );
+    }
+    let Some(shape) = shape_result else {
         return Ok(None);
     };
     let target = TargetAst::Object(

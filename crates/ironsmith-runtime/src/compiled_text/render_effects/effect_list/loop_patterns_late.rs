@@ -1021,7 +1021,13 @@
             continue;
         }
         if idx + 1 < filtered.len()
-            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(with_id) = {
+                let mut inner: &Effect = filtered[idx];
+                while let Some(tagged) = inner.downcast_ref::<crate::effects::TaggedEffect>() {
+                    inner = &tagged.effect;
+                }
+                inner.downcast_ref::<crate::effects::WithIdEffect>()
+            }
             && let Some(choose_new) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ChooseNewTargetsEffect>()
             && let Some(compact) = describe_with_id_then_choose_new_targets(with_id, choose_new)

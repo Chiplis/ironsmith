@@ -87,6 +87,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         Vec<Supertype>,
         Option<(i32, i32)>,
         Vec<StaticAbility>,
+        bool,
     ),
     CardTextError,
 > {
@@ -100,6 +101,7 @@ pub(crate) fn parse_copy_modifiers_from_tail(
         parsed.removed_supertypes,
         parsed.set_base_power_toughness,
         parsed.granted_abilities,
+        parsed.loses_soulbond,
     ))
 }
 
@@ -578,6 +580,7 @@ pub(crate) fn parse_create(
                 removed_supertypes,
                 set_base_power_toughness,
                 granted_abilities,
+                loses_soulbond,
             ) = parse_copy_modifiers_from_tail(&tail_words)?;
             let half_pt = tail_surface.has(CreateWord::Half)
                 && tail_surface.has(CreateWord::Power)
@@ -642,6 +645,7 @@ pub(crate) fn parse_create(
                             half_power_toughness_round_up: half_pt,
                             has_haste,
                             exile_at_end_of_combat: false,
+                            loses_soulbond,
                             sacrifice_at_next_end_step,
                             sacrifice_at_next_end_step_ability_text,
                             exile_at_next_end_step,
@@ -675,6 +679,7 @@ pub(crate) fn parse_create(
                     half_power_toughness_round_up: half_pt,
                     has_haste,
                     exile_at_end_of_combat: false,
+                    loses_soulbond,
                     sacrifice_at_next_end_step,
                     sacrifice_at_next_end_step_ability_text,
                     exile_at_next_end_step,

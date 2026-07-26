@@ -1347,6 +1347,18 @@ fn resolve_filter_comparison_rhs_value(
             }
             Some(seen.len() as i32)
         }
+        Value::ColorPairsAmong(filter) => {
+            let mut seen = std::collections::HashSet::new();
+            for object in game.objects_in_deterministic_order() {
+                if filter.matches(object, ctx, game) {
+                    let colors = object.colors();
+                    if colors.count() == 2 {
+                        seen.insert(colors);
+                    }
+                }
+            }
+            Some(seen.len() as i32)
+        }
         Value::GreatestPower(filter) => aggregate_pt(filter, game, ctx, true, true),
         Value::GreatestToughness(filter) => aggregate_pt(filter, game, ctx, false, true),
         Value::GreatestManaValue(filter) => aggregate_mana_value(filter, game, ctx, true),
@@ -2112,6 +2124,16 @@ impl ObjectFilterExt for ObjectFilter {
                 return false;
             };
             if !attached_to_filter.matches(attached_to, ctx, game) {
+                return false;
+            }
+        }
+
+        if let Some(with_attached_filter) = &self.with_attached_object {
+            let has_matching_attachment = subject.subject_attachments().iter().any(|&id| {
+                game.object(id)
+                    .is_some_and(|attachment| with_attached_filter.matches(attachment, ctx, game))
+            });
+            if !has_matching_attachment {
                 return false;
             }
         }
@@ -2910,6 +2932,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.attacked_this_turn && !game.creature_attacked_this_turn(object.id) {
             return false;
         }
+        if self.didnt_attack_this_turn && game.creature_attacked_this_turn(object.id) {
+            return false;
+        }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let defending_player = if self.attacking_player_only {
                 attacking_player_for_object(object.id, game)
@@ -3642,6 +3667,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.attacked_this_turn && !game.creature_attacked_this_turn(snapshot.object_id) {
             return false;
         }
+        if self.didnt_attack_this_turn && game.creature_attacked_this_turn(snapshot.object_id) {
+            return false;
+        }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let defending_player = if self.attacking_player_only {
                 attacking_player_for_object(snapshot.object_id, game)
@@ -4193,8 +4221,29 @@ impl ObjectFilterExt for ObjectFilter {
                 }
             }
         }
+        // Chosen-quality back-references follow the controller suffix in
+        // oracle order ("creatures you control of the chosen type") — but
+        // only when there IS one; zone qualifiers ("cards of that type from
+        // their graveyard") keep the chosen phrase next to the noun.
+        let defer_chosen_qualifiers =
+            controller_suffix.is_some() || owner_suffix.is_some();
+        let mut chosen_trailing_qualifiers: Vec<String> = Vec::new();
+        let mut push_chosen_qualifier =
+            |text: &str,
+             post_noun_qualifiers: &mut Vec<String>,
+             chosen_trailing_qualifiers: &mut Vec<String>| {
+                if defer_chosen_qualifiers {
+                    chosen_trailing_qualifiers.push(text.to_string());
+                } else {
+                    post_noun_qualifiers.push(text.to_string());
+                }
+            };
         if self.chosen_color {
-            post_noun_qualifiers.push("of the chosen color".to_string());
+            push_chosen_qualifier(
+                "of the chosen color",
+                &mut post_noun_qualifiers,
+                &mut chosen_trailing_qualifiers,
+            );
         }
         if let Some(sticker) = self.sticker {
             let sticker = match sticker {
@@ -4209,13 +4258,25 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push(format!("with {sticker} on it"));
         }
         if self.chosen_creature_type {
-            post_noun_qualifiers.push("of the chosen type".to_string());
+            push_chosen_qualifier(
+                "of the chosen type",
+                &mut post_noun_qualifiers,
+                &mut chosen_trailing_qualifiers,
+            );
         }
         if self.chosen_card_type {
-            post_noun_qualifiers.push("of the chosen type".to_string());
+            push_chosen_qualifier(
+                "of the chosen type",
+                &mut post_noun_qualifiers,
+                &mut chosen_trailing_qualifiers,
+            );
         }
         if self.excluded_chosen_creature_type {
-            post_noun_qualifiers.push("that aren't of the chosen type".to_string());
+            push_chosen_qualifier(
+                "that aren't of the chosen type",
+                &mut post_noun_qualifiers,
+                &mut chosen_trailing_qualifiers,
+            );
         }
         if !self.no_shared_creature_types_with.is_empty() {
             let comparison = self
@@ -4236,7 +4297,7 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::IsTaggedObject
                 | TaggedOpbjectRelation::IsTaggedObjectSacrificedAsSourceEntered => {
                     match constraint.tag.as_str() {
-                        "it" | "__it__" => parts.push("that".to_string()),
+                        "it" | "__it__" | "blocking" => parts.push("that".to_string()),
                         "enchanted" => parts.push("enchanted".to_string()),
                         "equipped" => parts.push("equipped".to_string()),
                         "convoked_this_spell" => {
@@ -4411,11 +4472,18 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if let Some(exactly_two_colors) = self.exactly_two_colors {
-            if exactly_two_colors {
-                post_noun_qualifiers.push("that are exactly two colors".to_string());
+            // Oracle order puts the color-count clause after the controller
+            // suffix ("permanents you control that are exactly two colors").
+            let clause = if exactly_two_colors {
+                "that are exactly two colors"
             } else {
-                post_noun_qualifiers.push("that are not exactly two colors".to_string());
-            }
+                "that are not exactly two colors"
+            };
+            push_chosen_qualifier(
+                clause,
+                &mut post_noun_qualifiers,
+                &mut chosen_trailing_qualifiers,
+            );
         }
         if self.historic {
             parts.push("historic".to_string());
@@ -4423,7 +4491,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self.nonhistoric {
             post_noun_qualifiers.push("that's not historic".to_string());
         }
-        if self.is_commander {
+        if self.is_commander
+            && !(self.card_types.is_empty()
+                && self.all_card_types.is_empty()
+                && self.subtypes.is_empty()
+                && !self.token)
+        {
+            // With no type noun, "commander" IS the noun ("Commanders you
+            // control"), handled by the default-noun selection below.
             parts.push("commander".to_string());
         }
         if self.noncommander {
@@ -4470,6 +4545,23 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.attacked_this_turn {
             post_noun_qualifiers.push("that attacked this turn".to_string());
+        }
+        if self.didnt_attack_this_turn {
+            post_noun_qualifiers.push("that didn't attack this turn".to_string());
+        }
+        if let Some(with_attached) = &self.with_attached_object {
+            let inner = with_attached.description();
+            if inner.starts_with("another ") || inner.starts_with("other ") {
+                post_noun_qualifiers.push(format!("with {inner} attached to it"));
+            } else {
+                let article =
+                    if inner.starts_with(['a', 'e', 'i', 'o', 'u', 'A', 'E', 'I', 'O', 'U']) {
+                        "an"
+                    } else {
+                        "a"
+                    };
+                post_noun_qualifiers.push(format!("with {article} {inner} attached to it"));
+            }
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = player_filter.description();
@@ -4574,6 +4666,7 @@ impl ObjectFilterExt for ObjectFilter {
                 }
             } else {
                 match self.zone {
+                    Some(Zone::Battlefield) | None if self.is_commander => "commander",
                     Some(Zone::Battlefield) | None => "permanent",
                     Some(Zone::Stack) => {
                         let kind = self.stack_kind.unwrap_or_else(|| {
@@ -5034,6 +5127,7 @@ impl ObjectFilterExt for ObjectFilter {
             (None, Some(owner)) => parts.push(owner),
             (None, None) => {}
         }
+        parts.extend(chosen_trailing_qualifiers);
 
         let ensure_indefinite_article = |text: String| -> String {
             let trimmed = text.trim();

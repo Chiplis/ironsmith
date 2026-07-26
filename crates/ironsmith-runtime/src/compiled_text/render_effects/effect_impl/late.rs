@@ -635,10 +635,24 @@
             });
         }
         if create_copy.has_haste {
-            exception_clauses.push(if singular_copy {
+            let mut clause = if singular_copy {
                 "it has haste".to_string()
             } else {
                 "they have haste".to_string()
+            };
+            if create_copy.loses_soulbond {
+                clause.push_str(if singular_copy {
+                    " and loses soulbond"
+                } else {
+                    " and lose soulbond"
+                });
+            }
+            exception_clauses.push(clause);
+        } else if create_copy.loses_soulbond {
+            exception_clauses.push(if singular_copy {
+                "it loses soulbond".to_string()
+            } else {
+                "they lose soulbond".to_string()
             });
         }
         if let Some(ability_text) = &create_copy.sacrifice_at_next_end_step_ability_text {

@@ -1568,11 +1568,24 @@ pub(super) fn parse_battlefield_entry_predicate(tokens: &[OwnedLexToken]) -> Opt
     match condition {
         crate::runtime_backend::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
             filter,
+            min_count,
             window:
                 crate::runtime_backend::grammar::conditions::BattlefieldEntryTurnWindowAst::ThisTurn,
-        } => Some(PredicateAst::ObjectEnteredBattlefieldThisTurn(filter)),
+        } => {
+            if let Some(count) = min_count.filter(|count| *count > 1) {
+                return Some(PredicateAst::ValueComparison {
+                    left: Value::TurnHistoryCount(
+                        ironsmith_core::TurnHistoryCount::EnteredBattlefield(filter),
+                    ),
+                    operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+                    right: Value::Fixed(count as i32),
+                });
+            }
+            Some(PredicateAst::ObjectEnteredBattlefieldThisTurn(filter))
+        }
         crate::runtime_backend::grammar::conditions::BattlefieldEntryConditionAst::ObjectEntered {
             filter,
+            min_count: _,
             window:
                 crate::runtime_backend::grammar::conditions::BattlefieldEntryTurnWindowAst::LastTurn,
         } => Some(PredicateAst::ObjectEnteredBattlefieldLastTurn(filter)),

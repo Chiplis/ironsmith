@@ -1796,7 +1796,7 @@ fn filtered_enters_counters_keep_each_other_subject_and_lost_life_basis() {
 
     assert_eq!(
         ability.display(),
-        "Other creatures you control enter with an additional +1/+1 counter on them for each opponent who lost life this turn"
+        "Each other creature you control enters with an additional +1/+1 counter on it for each opponent who lost life this turn"
     );
 }
 
@@ -1828,7 +1828,7 @@ fn filtered_enters_counters_render_mana_source_provenance_basis() {
         EnterWithCountersForFilter::new(other_creatures, CounterType::PlusOnePlusOne, kalain_count);
     assert_eq!(
         kalain.display(),
-        "Other creatures you control enter with an additional +1/+1 counter on them for each mana from a Treasure spent to cast them"
+        "Each other creature you control enters with an additional +1/+1 counter on it for each mana from a Treasure spent to cast it"
     );
 }
 

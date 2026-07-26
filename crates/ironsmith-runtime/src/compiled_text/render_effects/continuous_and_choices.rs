@@ -2497,14 +2497,14 @@ pub(crate) fn describe_draw_then_lose_life(
 ) -> Option<String> {
     if !matches!(draw.player, PlayerFilter::You)
         || !matches!(lose.player, ChooseSpec::Player(PlayerFilter::You))
-        || draw.count != lose.amount
+        || draw.count.unhinted() != lose.amount.unhinted()
     {
         return None;
     }
-    if draw.count == Value::X {
+    if draw.count.unhinted() == &Value::X {
         return Some("You draw X cards and you lose X life".to_string());
     }
-    if let Value::Fixed(amount) = &draw.count {
+    if let Value::Fixed(amount) = draw.count.unhinted() {
         return Some(format!(
             "You draw {} and lose {amount} life",
             describe_card_count(&draw.count)

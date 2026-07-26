@@ -1012,6 +1012,7 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
         .iter()
         .filter_map(|ability| match ability {
             StaticAbilityId::Flash => Some("flash"),
+            StaticAbilityId::Flying => Some("flying"),
             _ => None,
         })
         .collect::<Vec<_>>();

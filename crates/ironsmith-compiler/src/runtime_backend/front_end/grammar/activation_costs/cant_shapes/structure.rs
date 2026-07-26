@@ -211,19 +211,22 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
     // such clauses whole for the subject-filter parse.
     for segment in &segments[..negated_anchor] {
         let trimmed = trim_lexed_commas(segment);
-        let pure_type_adjectives = !trimmed.is_empty()
-            && trimmed.iter().all(|token| {
-                token.as_word().is_some_and(|word| {
+        let pure_type_nouns = !trimmed.is_empty() && trimmed.iter().all(|token| {
+            token.kind == crate::runtime_backend::front_end::lexer::TokenKind::Comma
+                || token.as_word().is_some_and(|word| {
                     let singular = word.strip_suffix('s').unwrap_or(word);
-                    crate::runtime_backend::front_end::shared::util::parse_card_type(word)
-                        .is_some()
+                    crate::runtime_backend::front_end::shared::util::parse_card_type(word).is_some()
                         || crate::runtime_backend::front_end::shared::util::parse_card_type(
                             singular,
                         )
                         .is_some()
+                        || crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(
+                            word,
+                        )
+                        .is_some()
                 })
-            });
-        if pure_type_adjectives {
+        });
+        if pure_type_nouns {
             return None;
         }
     }
@@ -246,7 +249,33 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
             None if index < negated_anchor => {
                 expanded.extend(shared_negated_tail.iter().cloned());
             }
-            None => continue,
+            // A negation-less trailing segment of bare type/subtype nouns is
+            // a continuation of the anchor's own object list ("... except by
+            // A, B, and C"); dropping it silently loses that list arm —
+            // decline the expansion so the clause parses whole. Verb-phrase
+            // tails keep the legacy behavior.
+            None => {
+                let noun_continuation = !segment.is_empty() && segment.iter().all(|token| {
+                    let Some(word) = token.as_word() else {
+                        // Punctuation inside or ending the list arm.
+                        return true;
+                    };
+                    let singular = word.strip_suffix('s').unwrap_or(word);
+                    crate::runtime_backend::front_end::shared::util::parse_card_type(word).is_some()
+                        || crate::runtime_backend::front_end::shared::util::parse_card_type(
+                            singular,
+                        )
+                        .is_some()
+                        || crate::runtime_backend::front_end::shared::util::parse_subtype_flexible(
+                            word,
+                        )
+                        .is_some()
+                });
+                if noun_continuation {
+                    return None;
+                }
+                continue;
+            }
             Some(span) if index > 0 && !shared_subject.is_empty() && span.first == 0 => {
                 expanded = shared_subject.to_vec();
                 expanded.extend(segment.iter().cloned());

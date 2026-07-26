@@ -195,6 +195,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
                 TriggerIntroSurfaceAst::At => crate::triggers::TriggerIntroSurface::At,
             }),
         TriggerSpec::StateBased { display, .. } => Trigger::state_based(display),
+        TriggerSpec::AnyOf(branches) => {
+            Trigger::any_of(branches.into_iter().map(compile_trigger_spec).collect())
+        }
         TriggerSpec::ThisAttacks => Trigger::this_attacks(),
         TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { count, filter } => {
             Trigger::this_attacks_player_who_controls_at_least(count as usize, filter)
@@ -261,6 +264,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             )
         }
         TriggerSpec::ThisLeavesBattlefield => Trigger::this_leaves_battlefield(),
+        TriggerSpec::ThisPhasesOut => Trigger::this_phases_out(),
         TriggerSpec::ThisLeavesBattlefieldWithSurface(surface) => Trigger::new(
             crate::triggers::ZoneChangeTrigger::new()
                 .from(crate::zone::Zone::Battlefield)
@@ -630,16 +634,33 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::EntersBattlefield {
             mut filter,
             cause_filter,
+            origin_condition,
         } => {
             if filter.source {
                 filter.source = false;
+                let mut trigger = crate::triggers::zone_changes::ZoneChangeTrigger::new()
+                    .to(crate::zone::Zone::Battlefield)
+                    .filter(filter)
+                    .this()
+                    .cause_filter(cause_filter);
+                if let Some(origin_condition) = origin_condition {
+                    trigger = trigger.origin_condition(origin_condition);
+                }
+                Trigger::new(trigger)
+            } else if let Some(origin_condition) = origin_condition {
+                let display = format!(
+                    "Whenever {} enters the battlefield{}",
+                    filter.description(),
+                    origin_condition.display_suffix(false),
+                );
                 Trigger::new(
                     crate::triggers::zone_changes::ZoneChangeTrigger::new()
                         .to(crate::zone::Zone::Battlefield)
                         .filter(filter)
-                        .this()
-                        .cause_filter(cause_filter),
+                        .cause_filter(cause_filter)
+                        .origin_condition(origin_condition),
                 )
+                .with_display_label(display)
             } else {
                 let display = format!("Whenever {} enters the battlefield", filter.description());
                 Trigger::enters_battlefield(filter, cause_filter).with_display_label(display)
@@ -652,8 +673,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         } => {
             if let Some(origin_condition) = origin_condition {
                 let display = format!(
-                    "Whenever {} enter the battlefield, if one or more of them entered from exile or was cast from exile",
+                    "Whenever {} enter the battlefield{}",
                     one_or_more_subject_description(&filter),
+                    origin_condition.display_suffix(true),
                 );
                 Trigger::new(
                     crate::triggers::zone_changes::ZoneChangeTrigger::new()
@@ -714,17 +736,30 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::beginning_of_postcombat_main_phase(player)
         }
         TriggerSpec::DayNightChanged => Trigger::day_night_changed(),
-        TriggerSpec::ThisEntersBattlefield => Trigger::this_enters_battlefield(),
+        TriggerSpec::ThisEntersBattlefield { origin_condition } => match origin_condition {
+            None => Trigger::this_enters_battlefield(),
+            Some(origin_condition) => Trigger::new(
+                crate::triggers::ZoneChangeTrigger::new()
+                    .to(crate::zone::Zone::Battlefield)
+                    .this()
+                    .origin_condition(origin_condition),
+            ),
+        },
         TriggerSpec::ThisEntersBattlefieldWithSurface {
             surface,
             subject_number,
-        } => Trigger::new(
-            crate::triggers::ZoneChangeTrigger::new()
+            origin_condition,
+        } => {
+            let mut trigger = crate::triggers::ZoneChangeTrigger::new()
                 .to(crate::zone::Zone::Battlefield)
                 .this()
                 .this_surface(surface.clone())
-                .this_subject_number(subject_number),
-        ),
+                .this_subject_number(subject_number);
+            if let Some(origin_condition) = origin_condition {
+                trigger = trigger.origin_condition(origin_condition);
+            }
+            Trigger::new(trigger)
+        }
         TriggerSpec::ThisEntersBattlefieldFromZone {
             mut subject_filter,
             from,

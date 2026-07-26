@@ -725,6 +725,7 @@ pub(super) fn calculate_with_layers(
                 | Modification::ModifyPower(_)
                 | Modification::ModifyToughness(_)
                 | Modification::ModifyPowerToughness { .. }
+                | Modification::ModifyPowerToughnessValue { .. }
                 | Modification::ModifyPowerToughnessByColorCount { .. }
                 | Modification::SwitchPowerToughness => {}
             }
@@ -1007,6 +1008,25 @@ pub(super) fn apply_layer_7_effects(
                 power: dp,
                 toughness: dt,
             } => {
+                if let Some(ref mut p) = power {
+                    *p += dp;
+                }
+                if let Some(ref mut t) = toughness {
+                    *t += dt;
+                }
+            }
+            Modification::ModifyPowerToughnessValue {
+                power: power_value,
+                toughness: toughness_value,
+            } => {
+                let dp =
+                    resolve_value_with_context(power_value, ctx, effect.source, effect.controller);
+                let dt = resolve_value_with_context(
+                    toughness_value,
+                    ctx,
+                    effect.source,
+                    effect.controller,
+                );
                 if let Some(ref mut p) = power {
                     *p += dp;
                 }
@@ -1662,6 +1682,22 @@ pub(super) fn resolve_value_with_context(
                 + (has_black as i32)
                 + (has_red as i32)
                 + (has_green as i32)
+        }
+        Value::ColorPairsAmong(filter) => {
+            use std::collections::HashSet;
+
+            let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+
+            let mut seen: HashSet<crate::color::ColorSet> = HashSet::new();
+            for_each_filter_candidate(ctx, filter, |obj| {
+                if filter.matches_non_recursive(obj, &filter_ctx, ctx.game) {
+                    let colors = obj.colors();
+                    if colors.count() == 2 {
+                        seen.insert(colors);
+                    }
+                }
+            });
+            seen.len() as i32
         }
         Value::DistinctNames(filter) => {
             use std::collections::HashSet;

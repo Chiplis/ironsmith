@@ -637,6 +637,14 @@
     {
         return format!("{}. {copy_cast}", describe_effect(raw_effects[0]));
     }
+    if let Some(compact) = describe_sequence_copy_then_may_cast(&raw_effects) {
+        return compact;
+    }
+    if raw_effects.len() == 3
+        && let Some(copy_cast) = describe_sequence_copy_then_may_cast(&raw_effects[1..])
+    {
+        return format!("{}. {copy_cast}", describe_effect(raw_effects[0]));
+    }
 
 
     if let Some(compact) = describe_targeted_conditional_action_then_fight(&raw_effects) {
