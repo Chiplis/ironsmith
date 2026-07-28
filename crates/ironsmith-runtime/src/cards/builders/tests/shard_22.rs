@@ -488,8 +488,10 @@ pub(super) fn parse_return_x_target_creatures_of_creature_type_of_choice_targets
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("x target") && rendered.contains("of the chosen type"),
-        "expected rendered text to mention X targeting and the chosen creature type, got {rendered}"
+        rendered.contains(
+            "return x target creatures of the creature type of your choice to their owners' hands"
+        ),
+        "expected the dynamic chosen-type target program to recover its one-sentence oracle surface, got {rendered}"
     );
 }
 
@@ -3245,11 +3247,12 @@ pub(super) fn score_surface_compacts_each_player_sacrifice_sequence() {
         .expect("each-player sacrifice sequence should parse");
 
     let rendered = crate::compiled_text::compiled_text_lines(&def).join(" ");
+    let effects_debug = format!("{:#?}", def.spell_effect);
     assert!(
         rendered.contains(
             "Each player loses 1 life, discards a card, sacrifices a creature of their choice, then sacrifices a land of their choice"
         ),
-        "expected compact each-player sacrifice sequence, got {rendered}"
+        "expected compact each-player sacrifice sequence, got {rendered}\n{effects_debug}"
     );
 }
 

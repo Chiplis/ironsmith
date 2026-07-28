@@ -54,6 +54,7 @@ pub(crate) enum DynamicCostValueShape<'a> {
     CreaturesDiedThisTurn,
     OpponentsLifeLostThisTurn,
     ControlledCreaturesDiedThisTurn,
+    PlayersBeingAttacked,
     SpellCast {
         player: DynamicPlayerKind,
         kind: SpellCastDynamicKind,
@@ -145,6 +146,19 @@ fn classify_dynamic_filter(tokens: &[OwnedLexToken]) -> DynamicCostValueShape<'_
     ) && has_phrase(tokens, &["this", "turn"])
     {
         return DynamicCostValueShape::ControlledCreaturesDiedThisTurn;
+    }
+    if starts_with_any(
+        tokens,
+        &[
+            &["opponent", "youre", "attacking"],
+            &["opponents", "youre", "attacking"],
+            &["opponent", "you're", "attacking"],
+            &["opponents", "you're", "attacking"],
+            &["opponent", "you", "are", "attacking"],
+            &["opponents", "you", "are", "attacking"],
+        ],
+    ) {
+        return DynamicCostValueShape::PlayersBeingAttacked;
     }
     if let Some(player) = parse_spell_cast_this_turn_player_tokens(tokens) {
         let kind = if has_card_type_marker(tokens) {

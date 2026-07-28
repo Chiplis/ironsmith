@@ -230,6 +230,29 @@ fn tagged_unattach_cost_precheck(
     }
 }
 
+fn dynamic_counter_removal_cost_precheck(
+    effect: &Effect,
+    game: &GameState,
+    ctx: &CostContext,
+) -> Option<Result<(), CostPaymentError>> {
+    let effect = transparent_cost_effect(effect)
+        .downcast_ref::<crate::effects::RemoveAnyCountersAmongEffect>()?;
+    let announced_x = ctx.x_value?;
+    if !effect.dynamic_count {
+        return None;
+    }
+    let available = crate::effects::counters::remove_any_counters_among_total_available(
+        effect, game, ctx.source, ctx.payer,
+    );
+    if announced_x < effect.min_count || announced_x > effect.count || announced_x > available {
+        Some(Err(CostPaymentError::Other(
+            "not enough counters".to_string(),
+        )))
+    } else {
+        Some(Ok(()))
+    }
+}
+
 fn simple_exile_from_hand_filter(
     filter: &crate::filter::ObjectFilter,
 ) -> Option<Option<crate::color::ColorSet>> {
@@ -269,6 +292,9 @@ impl CostPayer for CostEffect {
             return result;
         }
         if let Some(result) = tagged_unattach_cost_precheck(&self.effect, game, ctx) {
+            return result;
+        }
+        if let Some(result) = dynamic_counter_removal_cost_precheck(&self.effect, game, ctx) {
             return result;
         }
         if let Some(pay_energy) = self

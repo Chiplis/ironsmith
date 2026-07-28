@@ -36,6 +36,13 @@ pub(crate) struct SpellCastThisWayTaxShape {
     pub(crate) additional_cost: ManaCost,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct EachPlayerHandExilePlayConstraintsShape {
+    pub(crate) players: PlayerFilter,
+    pub(crate) additional_cost: ManaCost,
+    pub(crate) lands_enter_tapped: bool,
+}
+
 fn commas<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     repeat::<_, _, (), _, _>(0.., primitives::comma().void()).parse_next(input)
 }
@@ -211,9 +218,11 @@ pub(crate) fn parse_spell_cast_this_way_tax_tokens(
         _ => tokens,
     };
     let (_, tax_tail) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
-        primitives::phrase(&["a", "spell", "cast"])
-            .void()
-            .parse_next(input)
+        alt((
+            primitives::phrase(&["a", "spell", "cast"]).void(),
+            primitives::phrase(&["each", "spell", "cast"]).void(),
+        ))
+        .parse_next(input)
     })?;
     let (caster_tokens, cost_tokens) = primitives::split_lexed_once_on_separator(tax_tail, || {
         primitives::phrase(&["this", "way", "costs"]).void()
@@ -241,6 +250,64 @@ pub(crate) fn parse_spell_cast_this_way_tax_tokens(
     Some(SpellCastThisWayTaxShape {
         taxed_caster,
         additional_cost: cost_prefix.cost,
+    })
+}
+
+fn each_player_hand_exile_play_permission<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<PlayerFilter> {
+    let players = alt((
+        primitives::phrase(&["each", "opponent"]).value(PlayerFilter::Opponent),
+        primitives::phrase(&["each", "player"]).value(PlayerFilter::Any),
+    ))
+    .parse_next(input)?;
+    primitives::phrase(&[
+        "exiles", "a", "card", "from", "their", "hand", "and", "may", "play", "that", "card",
+        "for", "as", "long", "as", "it", "remains", "exiled",
+    ])
+    .parse_next(input)?;
+    Ok(players)
+}
+
+fn each_land_played_this_way_enters_tapped<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<()> {
+    primitives::phrase(&["each", "land", "played", "this", "way", "enters"])
+        .parse_next(input)?;
+    opt(primitives::phrase(&["the", "battlefield"])).parse_next(input)?;
+    primitives::kw("tapped").void().parse_next(input)
+}
+
+pub(crate) fn parse_each_player_hand_exile_play_constraints_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<EachPlayerHandExilePlayConstraintsShape> {
+    let sentences = split_lexed_sentences(tokens);
+    let [exile_and_permission, tax, land_entry] = sentences.as_slice() else {
+        return None;
+    };
+    let players = primitives::parse_all_or_none(
+        trim_lexed_commas(exile_and_permission),
+        each_player_hand_exile_play_permission,
+        "each-player hand exile play permission",
+    )
+    .ok()
+    .flatten()?;
+    let tax = parse_spell_cast_this_way_tax_tokens(tax)?;
+    if tax.taxed_caster.is_some() {
+        return None;
+    }
+    primitives::parse_all_or_none(
+        trim_lexed_commas(land_entry),
+        each_land_played_this_way_enters_tapped,
+        "each land played this way enters tapped",
+    )
+    .ok()
+    .flatten()?;
+
+    Some(EachPlayerHandExilePlayConstraintsShape {
+        players,
+        additional_cost: tax.additional_cost,
+        lands_enter_tapped: true,
     })
 }
 
@@ -328,5 +395,16 @@ mod tests {
         .unwrap();
         assert_eq!(shape.taxed_caster, None);
         assert_eq!(shape.additional_cost.to_oracle(), "{2}");
+    }
+
+    #[test]
+    fn parses_each_opponent_hand_exile_with_linked_play_constraints() {
+        let shape = parse_each_player_hand_exile_play_constraints_tokens(&lex(
+            "Each opponent exiles a card from their hand and may play that card for as long as it remains exiled. Each spell cast this way costs {1} more to cast. Each land played this way enters tapped.",
+        ))
+        .expect("typed hand-exile permission bundle");
+        assert_eq!(shape.players, PlayerFilter::Opponent);
+        assert_eq!(shape.additional_cost.to_oracle(), "{1}");
+        assert!(shape.lands_enter_tapped);
     }
 }

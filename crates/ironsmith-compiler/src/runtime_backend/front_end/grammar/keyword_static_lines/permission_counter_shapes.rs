@@ -4,6 +4,7 @@ use winnow::prelude::*;
 use winnow::token::any;
 
 use crate::object::CounterType;
+use crate::target::ObjectFilter;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 use super::super::{filters, primitives};
@@ -34,10 +35,12 @@ pub(crate) struct ExileCounterPermissionSpec {
     pub(crate) mana_permission: ExileCounterManaPermission,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct PlayPermissionEnterCounterSpec<'a> {
     pub(crate) permission_tokens: &'a [OwnedLexToken],
     pub(crate) counter_type: CounterType,
+    pub(crate) additional: bool,
+    pub(crate) cast_this_way_filter: Option<ObjectFilter>,
 }
 
 pub(crate) fn parse_exile_counter_permission_tokens(
@@ -174,9 +177,16 @@ fn parse_play_permission_enter_counter_lexed<'a>(
             .take()
             .parse_next(input)?;
     primitives::end_of_sentence().parse_next(input)?;
-    primitives::phrase(&["if", "you", "do"]).parse_next(input)?;
-    opt(primitives::comma()).parse_next(input)?;
-    primitives::phrase(&["it", "enters", "with"]).parse_next(input)?;
+    let cast_this_way_filter = alt((
+        (
+            primitives::phrase(&["if", "you", "do"]),
+            opt(primitives::comma()),
+            primitives::phrase(&["it", "enters", "with"]),
+        )
+            .value(None),
+        parse_cast_this_way_enters_with_intro.map(Some),
+    ))
+    .parse_next(input)?;
     alt((primitives::kw("a"), primitives::kw("an"))).parse_next(input)?;
     let counter_tokens =
         repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::kw("counter")))
@@ -192,7 +202,35 @@ fn parse_play_permission_enter_counter_lexed<'a>(
     Ok(PlayPermissionEnterCounterSpec {
         permission_tokens: trim_lexed_commas(permission_tokens),
         counter_type,
+        additional: counter_tokens
+            .iter()
+            .any(|token| token.is_word("additional")),
+        cast_this_way_filter,
     })
+}
+
+fn parse_cast_this_way_enters_with_intro(input: &mut LexStream<'_>) -> WResult<ObjectFilter> {
+    primitives::phrase(&["if", "you", "cast"]).parse_next(input)?;
+    let spell_filter_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["spell", "this", "way"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["spell", "this", "way"]).parse_next(input)?;
+    opt(primitives::comma()).parse_next(input)?;
+    alt((
+        primitives::phrase(&["that", "creature", "enters", "with"]),
+        primitives::phrase(&["that", "permanent", "enters", "with"]),
+        primitives::phrase(&["it", "enters", "with"]),
+    ))
+    .void()
+    .parse_next(input)?;
+    Ok(filters::parse_spell_filter_with_grammar_entrypoint_lexed(
+        trim_lexed_commas(spell_filter_tokens),
+    ))
 }
 
 #[cfg(test)]
@@ -235,5 +273,23 @@ mod tests {
         .unwrap();
         let spec = parse_play_permission_enter_counter_tokens(&tokens).unwrap();
         assert!(!spec.permission_tokens.is_empty());
+        assert!(!spec.additional);
+        assert!(spec.cast_this_way_filter.is_none());
+
+        let tokens = lex_line(
+            "You may play lands and cast Mutant, Ninja, or Turtle spells from the top of your library. If you cast a creature spell this way, that creature enters with an additional +1/+1 counter on it.",
+            0,
+        )
+        .unwrap();
+        let spec = parse_play_permission_enter_counter_tokens(&tokens).unwrap();
+        assert_eq!(spec.counter_type, CounterType::PlusOnePlusOne);
+        assert!(!spec.permission_tokens.is_empty());
+        assert!(spec.additional);
+        assert_eq!(
+            spec.cast_this_way_filter
+                .as_ref()
+                .map(|filter| filter.card_types.as_slice()),
+            Some([crate::types::CardType::Creature].as_slice())
+        );
     }
 }

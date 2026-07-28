@@ -88,6 +88,7 @@ pub(crate) enum ThisCostReductionRemainder {
 pub(crate) enum ActivatedAbilitiesReductionRemainder {
     Unbounded,
     MinimumOneMana,
+    MinimumOneManaAbilityActivationCost,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -480,14 +481,37 @@ pub(crate) fn parse_activated_abilities_reduction_remainder_tokens(
         .parse_next(&mut input)
         .ok()?;
 
-    let has_minimum_one_mana = word_phrase_present(
+    let uses_ability_activation_cost = word_phrase_present(
+        &words,
+        &[
+            "this",
+            "effect",
+            "cant",
+            "reduce",
+            "the",
+            "mana",
+            "in",
+            "that",
+            "abilitys",
+            "activation",
+            "cost",
+            "to",
+            "less",
+            "than",
+            "one",
+            "mana",
+        ],
+    );
+    let uses_that_cost = word_phrase_present(
         &words,
         &[
             "this", "effect", "cant", "reduce", "the", "mana", "in", "that", "cost", "to", "less",
             "than", "one", "mana",
         ],
     );
-    Some(if has_minimum_one_mana {
+    Some(if uses_ability_activation_cost {
+        ActivatedAbilitiesReductionRemainder::MinimumOneManaAbilityActivationCost
+    } else if uses_that_cost {
         ActivatedAbilitiesReductionRemainder::MinimumOneMana
     } else {
         ActivatedAbilitiesReductionRemainder::Unbounded
@@ -775,6 +799,16 @@ mod tests {
         assert_eq!(
             parse_activated_abilities_reduction_remainder_tokens(&minimum_one),
             Some(ActivatedAbilitiesReductionRemainder::MinimumOneMana)
+        );
+
+        let ability_activation_cost = lex_line(
+            "less to activate. This effect can't reduce the mana in that ability's activation cost to less than one mana.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_activated_abilities_reduction_remainder_tokens(&ability_activation_cost),
+            Some(ActivatedAbilitiesReductionRemainder::MinimumOneManaAbilityActivationCost)
         );
     }
 

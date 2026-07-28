@@ -69,6 +69,20 @@ pub(super) fn clash_loss_and_repeat_branches_render_from_the_same_typed_result()
 }
 
 #[test]
+pub(super) fn clash_and_win_trigger_preserves_the_win_gate_and_optional_action() {
+    let definition = parse_oracle_card_definition("Sylvan Echoes");
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("WinsClashTrigger") && debug.contains("MayEffect"),
+        "the trigger must require a clash win and keep the draw optional: {debug}"
+    );
+    assert_eq!(
+        compiled_text_lines(&definition).join("\n"),
+        "Whenever you clash and win, you may draw a card."
+    );
+}
+
+#[test]
 pub(super) fn scattering_stroke_schedules_the_clash_reward_for_the_next_main_phase() {
     let definition = parse_oracle_card_definition("Scattering Stroke");
     let debug = format!("{definition:#?}");
@@ -230,7 +244,7 @@ pub(super) fn ajani_goldmane_preserves_separate_token_ability_presentation() {
 
     assert_eq!(
         create.ability_presentation,
-        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence),
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined),
         "Ajani Goldmane must retain the parser's token-ability presentation through runtime conversion"
     );
     assert!(

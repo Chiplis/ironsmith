@@ -1891,6 +1891,11 @@ pub(super) fn resolve_value_with_context(
             }
         }
 
+        Value::NameStickerCharacterCountOnSource { character, .. } => {
+            ctx.game
+                .name_sticker_character_count_on_object(source, *character) as i32
+        }
+
         Value::CountersOnSource(counter_type) => ctx
             .objects
             .get(&source)
@@ -2087,6 +2092,16 @@ pub(super) fn resolve_value_with_context(
         Value::CountPlayers(player_filter) => {
             continuous_value_players(ctx, player_filter, controller, source).len() as i32
         }
+        Value::CountPlayersWithCardsInHandAtLeast(player_filter, minimum) => {
+            continuous_value_players(ctx, player_filter, controller, source)
+                .into_iter()
+                .filter(|player| {
+                    ctx.game
+                        .player(*player)
+                        .is_some_and(|player| player.hand.len() >= *minimum as usize)
+                })
+                .count() as i32
+        }
         Value::PlayersWhoControlMoreThanYou { players, filter } => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);
             let mut your_filter = filter.clone();
@@ -2155,6 +2170,19 @@ pub(super) fn resolve_value_with_context(
             greatest.unwrap_or(0)
         }
         Value::GreatestManaValue(filter) => {
+            if filter.cast_this_turn && filter.zone == Some(Zone::Stack) {
+                let filter_ctx = continuous_filter_context(ctx.game, controller, source);
+                return ctx
+                    .game
+                    .turn_store
+                    .turn_history
+                    .spell_cast_snapshot_history()
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, ctx.game))
+                    .map(crate::filter::snapshot_mana_value_for_filter)
+                    .max()
+                    .unwrap_or(0);
+            }
             let mut greatest = None::<i32>;
             for_each_matching_continuous_object(ctx, filter, controller, source, |object, _| {
                 let mana_value = object
@@ -2175,6 +2203,11 @@ pub(super) fn resolve_value_with_context(
             .game
             .object(source)
             .map(|object| object.mana_spent_to_cast.total() as i32)
+            .unwrap_or(0),
+        Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => ctx
+            .game
+            .object(source)
+            .map(|object| object.mana_spent_to_cast.amount(*symbol) as i32)
             .unwrap_or(0),
         Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
             let filter_ctx = continuous_filter_context(ctx.game, controller, source);

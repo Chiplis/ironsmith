@@ -31,15 +31,9 @@ pub(crate) struct ConsultCastShape {
     pub(crate) timing: ConsultCastTimingShape,
     pub(crate) cost: ConsultCastCostShape,
     pub(crate) mana_value_condition: Option<ConsultManaValueConditionShape>,
+    pub(crate) surface: ironsmith_core::GrantPlayTaggedSurface,
 }
 
-const CAST_CARD_PHRASES: &[&[&str]] = &[
-    &["cast", "that", "card"],
-    &["cast", "it"],
-    &["cast", "that", "exiled", "card"],
-    &["cast", "the", "exiled", "card"],
-];
-const PLAY_CARD_PHRASES: &[&[&str]] = &[&["play", "that", "card"], &["play", "it"]];
 const PAY_LIFE_MANA_VALUE_CLAUSE: &[&str] = &[
     "by", "paying", "life", "equal", "to", "the", "spell's", "mana", "value", "rather", "than",
     "paying", "its", "mana", "cost",
@@ -58,10 +52,28 @@ fn trim_commas(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     &tokens[start..end]
 }
 
-fn consult_cast_action(input: &mut LexStream<'_>) -> WResult<bool> {
+fn consult_cast_action(
+    input: &mut LexStream<'_>,
+) -> WResult<(bool, ironsmith_core::GrantPlayTaggedObjectSurface)> {
     alt((
-        sequence_any_phrase(CAST_CARD_PHRASES).value(false),
-        sequence_any_phrase(PLAY_CARD_PHRASES).value(true),
+        sequence_phrase(&["cast", "that", "card"]).value((
+            false,
+            ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard,
+        )),
+        sequence_phrase(&["cast", "it"])
+            .value((false, ironsmith_core::GrantPlayTaggedObjectSurface::It)),
+        sequence_any_phrase(&[
+            &["cast", "that", "exiled", "card"],
+            &["cast", "the", "exiled", "card"],
+        ])
+        .value((
+            false,
+            ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard,
+        )),
+        sequence_phrase(&["play", "that", "card"])
+            .value((true, ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)),
+        sequence_phrase(&["play", "it"])
+            .value((true, ironsmith_core::GrantPlayTaggedObjectSurface::It)),
     ))
     .parse_next(input)
 }
@@ -69,15 +81,18 @@ fn consult_cast_action(input: &mut LexStream<'_>) -> WResult<bool> {
 pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<ConsultCastShape> {
     let mut clause = trim_commas(tokens);
     let mut timing = ConsultCastTimingShape::Immediate;
+    let mut leading_duration = false;
     if let Some(parsed) = leaf::parse_leaf_turn_duration_prefix_tokens(clause) {
         match parsed.duration {
             leaf::LeafTurnDurationPhrase::UntilEndOfTurn => {
                 clause = trim_commas(parsed.rest);
                 timing = ConsultCastTimingShape::UntilEndOfTurn;
+                leading_duration = true;
             }
             leaf::LeafTurnDurationPhrase::UntilYourNextTurnEnd => {
                 clause = trim_commas(parsed.rest);
                 timing = ConsultCastTimingShape::UntilYourNextTurnEnd;
+                leading_duration = true;
             }
             leaf::LeafTurnDurationPhrase::ThisTurn
             | leaf::LeafTurnDurationPhrase::UntilYourNextTurn => {}
@@ -95,9 +110,12 @@ pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<Consu
     if caster.is_empty() {
         return None;
     }
-    let (allow_land, remainder) =
+    let ((allow_land, object_surface), remainder) =
         primitives::parse_prefix(&clause[after_may..], consult_cast_action)?;
     let remainder = trim_commas(remainder);
+    let surface = ironsmith_core::GrantPlayTaggedSurface::default()
+        .with_leading_duration(leading_duration)
+        .with_object(object_surface);
 
     if permission_shapes::exact_tokens(remainder, &["this", "turn"]) {
         return Some(ConsultCastShape {
@@ -106,6 +124,7 @@ pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<Consu
             timing: ConsultCastTimingShape::UntilEndOfTurn,
             cost: ConsultCastCostShape::Normal,
             mana_value_condition: None,
+            surface,
         });
     }
     if permission_shapes::exact_tokens(remainder, PAY_LIFE_MANA_VALUE_CLAUSE) {
@@ -115,6 +134,7 @@ pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<Consu
             timing,
             cost: ConsultCastCostShape::PayLifeEqualToManaValue,
             mana_value_condition: None,
+            surface,
         });
     }
 
@@ -132,6 +152,7 @@ pub(crate) fn parse_consult_cast_shape(tokens: &[OwnedLexToken]) -> Option<Consu
         timing,
         cost: ConsultCastCostShape::WithoutPayingManaCost,
         mana_value_condition,
+        surface,
     })
 }
 
@@ -151,6 +172,11 @@ mod tests {
         assert!(normal.allow_land);
         assert_eq!(normal.timing, ConsultCastTimingShape::UntilEndOfTurn);
         assert_eq!(normal.cost, ConsultCastCostShape::Normal);
+        assert!(!normal.surface.leading_duration);
+        assert_eq!(
+            normal.surface.object,
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
+        );
 
         let conditioned = parse_consult_cast_shape(&lex(
             "Until the end of your next turn, you may cast it without paying its mana cost if its mana value is less than 4",
@@ -163,6 +189,11 @@ mod tests {
         assert_eq!(
             conditioned.cost,
             ConsultCastCostShape::WithoutPayingManaCost
+        );
+        assert!(conditioned.surface.leading_duration);
+        assert_eq!(
+            conditioned.surface.object,
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::It)
         );
         let condition = conditioned.mana_value_condition.unwrap();
         assert_eq!(condition.operator, ValueComparisonOperator::LessThan);

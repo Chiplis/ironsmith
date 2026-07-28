@@ -1996,6 +1996,31 @@ pub(super) fn test_parse_eternalize_keyword_line_renders_keyword_activation() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn eternalize_keeps_an_authored_additional_activation_cost() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Eternalize Additional Cost Test")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Eternalize—{2}{W}{W}, Discard a card.")
+        .expect("eternalize with an additional discard cost should parse");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("eternalize should compile to an activated ability");
+    let cost_debug = format!("{:#?}", activated.mana_cost);
+    assert!(cost_debug.contains("DiscardEffect"), "{cost_debug}");
+    assert!(cost_debug.contains("ExileEffect"), "{cost_debug}");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec!["Eternalize {2}{W}{W}, Discard a card.".to_string()]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn test_parse_emerge_keyword_line_compiles_to_hand_alternative_cast() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Emerge Test")
         .card_types(vec![CardType::Creature])
@@ -2372,11 +2397,10 @@ pub(super) fn jhoira_of_the_ghitu_strict_parser_text_and_suspend_grant_regressio
 
     let def = parse_oracle_card_definition("Jhoira of the Ghitu");
     let rendered = unprocessed_compiled_lines(&def).join("\n");
-    assert!(
-        rendered.contains(
-            "{2}, Exile a nonland card from your hand: Put four time counters on the exiled card. If it isn't a permanent with suspend, the exiled card gains"
-        ),
-        "expected Jhoira's activated ability to render with compact gained suspend text, got {rendered}"
+    assert_eq!(
+        rendered,
+        "{2}, Exile a nonland card from your hand: Put four time counters on the exiled card. If it doesn't have suspend, it gains suspend.",
+        "Jhoira should keep the exact tagged-card suspend condition"
     );
 
     let debug = format!("{def:#?}");
@@ -2417,7 +2441,7 @@ pub(super) fn doom_time_platform_exiles_with_time_counters_before_granting_suspe
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "exile target nonland card from your graveyard with two time counters on it. If a permanent with suspend wasn't exiled this way, it gains"
+            "exile target nonland card from your graveyard with two time counters on it. If it doesn't have suspend, it gains suspend"
         ),
         "expected compact exile-with-counters suspend wording, got {rendered}"
     );

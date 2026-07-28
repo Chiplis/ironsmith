@@ -481,6 +481,29 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
     // prior-action counts (notably "destroyed this way") deliberately retain
     // the effect-metric path below, which counts the producer's actual outcome.
     let words = primitives::TokenWordView::new(tokens).to_word_refs();
+    let counter_words = words
+        .strip_prefix(&["the", "number", "of"])
+        .or_else(|| words.strip_prefix(&["number", "of"]))
+        .unwrap_or(&words);
+    if let Some(counter_idx) = counter_words
+        .iter()
+        .position(|word| matches!(*word, "counter" | "counters"))
+        .filter(|counter_idx| *counter_idx <= 2)
+        && counter_words.get(counter_idx + 1..) == Some(&["removed", "this", "way"][..])
+    {
+        let counter_type = filters::parse_counter_type_words(&counter_words[..=counter_idx]);
+        return Some(
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed)
+                .with_counter_type(counter_type),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
+        );
+    }
     let put_into_graveyard =
         words.windows(2).any(|window| window == ["put", "into"]) && words.contains(&"graveyard");
     let mut for_each_words = vec!["for", "each"];
@@ -537,6 +560,13 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
         );
     }
     Some(metric)
+}
+
+pub(crate) fn parse_draw_equal_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trimmed(tokens);
+    let ((), value_tokens) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["equal", "to"]).void())?;
+    parse_draw_this_way_metric_shape(value_tokens)
 }
 
 fn exact_any(tokens: &[OwnedLexToken], phrases: &'static [&'static [&'static str]]) -> bool {
@@ -732,6 +762,26 @@ mod tests {
             );
             assert_eq!(parsed, Some(expected), "{text}");
         }
+    }
+
+    #[test]
+    fn parses_equal_to_named_counters_removed_this_way_as_typed_metric() {
+        let parsed = parse_draw_equal_this_way_metric_shape(&tokens(
+            "equal to the number of stun counters removed this way",
+        ))
+        .expect("typed removed-counter metric");
+        assert!(
+            parsed.has_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay,),
+            "{parsed:#?}"
+        );
+        let Value::PendingPriorEffectMetric(query) = parsed.unhinted() else {
+            panic!("expected pending prior-effect metric, got {parsed:#?}");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Removed)
+        );
+        assert_eq!(query.counter_type, Some(crate::object::CounterType::Stun));
     }
 
     #[test]

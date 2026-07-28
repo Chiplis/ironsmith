@@ -27,7 +27,6 @@ pub(crate) enum UnsupportedRewriteLineKind {
     PowerOrToughnessUnblockable,
     DiscardQualifier,
     Predicate,
-    EachPlayerExileSacrificeReturn,
     SaddledConditional,
     LookedCardFallback,
     AnthemSubject,
@@ -68,9 +67,6 @@ impl UnsupportedRewriteLineKind {
             }
             Self::DiscardQualifier => "unsupported discard qualifier clause",
             Self::Predicate => "unsupported predicate",
-            Self::EachPlayerExileSacrificeReturn => {
-                "unsupported each-player exile/sacrifice/return-this-way clause"
-            }
             Self::SaddledConditional => "unsupported saddled conditional tail",
             Self::LookedCardFallback => "unsupported looked-card fallback tail",
             Self::AnthemSubject => "unsupported anthem subject",
@@ -294,29 +290,6 @@ const RULES: &[UnsupportedRule] = &[
             "your", "starting", "life", "total", "plus", "one",
         ],
         kind: UnsupportedRewriteLineKind::Predicate,
-    },
-    UnsupportedRule {
-        match_kind: UnsupportedRuleMatch::Contains,
-        phrase: &[
-            "then",
-            "sacrifices",
-            "all",
-            "creatures",
-            "they",
-            "control",
-            "then",
-            "puts",
-            "all",
-            "cards",
-            "they",
-            "exiled",
-            "this",
-            "way",
-            "onto",
-            "the",
-            "battlefield",
-        ],
-        kind: UnsupportedRewriteLineKind::EachPlayerExileSacrificeReturn,
     },
     UnsupportedRule {
         match_kind: UnsupportedRuleMatch::Contains,

@@ -310,9 +310,16 @@ fn search_put_attachment_target(
         return Ok(None);
     };
     let put_tokens = &search_tokens[put_idx..];
-    let Some((_, _, target_tokens)) =
-        primitives::find_prefix(put_tokens, || primitives::phrase(&["attached", "to"]))
-    else {
+    let Some((_, _, target_tokens)) = primitives::find_prefix(put_tokens, || {
+        use winnow::Parser as _;
+        alt((
+            primitives::phrase(&["attached", "to"]),
+            primitives::phrase(&["attach", "it", "to"]),
+            primitives::phrase(&["attach", "them", "to"]),
+            primitives::phrase(&["attach", "that", "card", "to"]),
+        ))
+        .void()
+    }) else {
         return Ok(None);
     };
     let target_tokens = primitives::split_lexed_once_on_separator(target_tokens, || {
@@ -329,6 +336,20 @@ fn search_put_attachment_target(
     let target_tokens = trim_commas(target_tokens);
     if target_tokens.is_empty() {
         return Ok(None);
+    }
+    let target_words = parser_token_word_refs(&target_tokens);
+    let search_words = parser_token_word_refs(search_tokens);
+    if target_words.len() == 2
+        && target_words[0].eq_ignore_ascii_case("that")
+        && target_words[1].eq_ignore_ascii_case("player")
+        && search_words.windows(2).any(|words| {
+            words[0].eq_ignore_ascii_case("enchanted") && words[1].eq_ignore_ascii_case("player")
+        })
+    {
+        return Ok(Some(TargetAst::Player(
+            PlayerFilter::TaggedPlayer(TagKey::from("enchanted")),
+            span_from_tokens(&target_tokens),
+        )));
     }
     parse_target_phrase(&target_tokens).map(Some)
 }
@@ -541,12 +562,25 @@ pub(crate) fn split_cant_sentence_next_turn_prefix_lexed(
 #[derive(Debug, Clone)]
 pub(crate) struct CantSentencePreparedClause {
     pub(crate) duration: crate::effect::Until,
+    pub(crate) duration_surface: crate::effect::RestrictionDurationSurface,
     pub(crate) clause_tokens: Vec<OwnedLexToken>,
 }
 
 pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<CantSentencePreparedClause>, CardTextError> {
+    let duration_surface = parse_search_restriction_duration_shape_lexed(tokens)?
+        .filter(|shape| shape.placement == SearchRestrictionDurationPlacement::Prefix)
+        .map(|shape| match shape.duration {
+            crate::effect::Until::EndOfTurn => {
+                crate::effect::RestrictionDurationSurface::LeadingUntilEndOfTurn
+            }
+            crate::effect::Until::YourNextTurn => {
+                crate::effect::RestrictionDurationSurface::LeadingUntilYourNextTurn
+            }
+            _ => crate::effect::RestrictionDurationSurface::Default,
+        })
+        .unwrap_or_default();
     let Some((duration, clause_tokens)) = parse_restriction_duration_lexed(tokens)? else {
         return Ok(None);
     };
@@ -569,6 +603,7 @@ pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
 
     Ok(Some(CantSentencePreparedClause {
         duration,
+        duration_surface,
         clause_tokens,
     }))
 }
@@ -1344,6 +1379,41 @@ pub(crate) fn parse_conditional_sentence_family_lexed(
     .map(Some)
 }
 
+/// Parse the player subject of a resolving rule that removes maximum hand
+/// size for the rest of the game.
+///
+/// The duration is intentionally part of this grammar. A bare "You have no
+/// maximum hand size" is a static ability, while the same words followed by
+/// "for the rest of the game" establish a rule as a resolving effect.
+pub(crate) fn parse_persistent_no_maximum_hand_size_player_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<PlayerFilter> {
+    let words = token_word_refs(tokens);
+    let (player, remainder): (PlayerFilter, &[&str]) = match words.as_slice() {
+        ["you", remainder @ ..] => (PlayerFilter::You, remainder),
+        ["each", "player", remainder @ ..] => (PlayerFilter::Any, remainder),
+        ["each", "opponent", remainder @ ..] => (PlayerFilter::Opponent, remainder),
+        _ => return None,
+    };
+    matches!(
+        remainder,
+        [
+            "have" | "has",
+            "no",
+            "maximum",
+            "hand",
+            "size",
+            "for",
+            "the",
+            "rest",
+            "of",
+            "the",
+            "game"
+        ]
+    )
+    .then_some(player)
+}
+
 pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -1369,6 +1439,14 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         )
     }) {
         return Ok(None);
+    }
+
+    if let Some(player) = parse_persistent_no_maximum_hand_size_player_lexed(tokens) {
+        return Ok(Some(vec![EffectAst::subject_verb_cant(
+            crate::effect::Restriction::no_maximum_hand_size(player),
+            crate::effect::Until::Forever,
+            None,
+        )]));
     }
 
     if let Some(prefix_tokens) = split_cant_sentence_next_turn_prefix_lexed(tokens) {
@@ -1432,7 +1510,24 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
         return Ok(None);
     };
     let duration = prepared_clause.duration;
+    let duration_surface = prepared_clause.duration_surface;
     let clause_tokens = prepared_clause.clause_tokens;
+
+    if let Some(fact) =
+        super::activation_costs::cant_shapes::parse_per_attacker_cant_tax_tokens(&clause_tokens)
+    {
+        return Ok(Some(vec![
+            EffectAst::subject_verb_cant_starting_with_duration_surface(
+                crate::effect::Restriction::attack_you_unless_controller_pays_per_attacker(
+                    fact.amount,
+                ),
+                duration,
+                crate::effect::RestrictionStart::Immediate,
+                duration_surface,
+                source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
+            ),
+        ]));
+    }
 
     let Some(restrictions) = parse_cant_restrictions(&clause_tokens)? else {
         return Err(CardTextError::ParseError(format!(
@@ -1456,9 +1551,11 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
                 target = Some(parsed_target);
             }
         }
-        effects.push(EffectAst::subject_verb_cant(
+        effects.push(EffectAst::subject_verb_cant_starting_with_duration_surface(
             parsed.restriction,
             duration.clone(),
+            crate::effect::RestrictionStart::Immediate,
+            duration_surface,
             source_tapped_duration.then_some(crate::ConditionExpr::SourceIsTapped),
         ));
     }
@@ -1480,6 +1577,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     subject_starts_effect_lexed: fn(&[OwnedLexToken]) -> bool,
     parse_leading_effects_lexed: fn(&[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError>,
     parse_effect_clause_lexed: fn(&[OwnedLexToken]) -> Result<EffectAst, CardTextError>,
+    carry_conjugated_search_player: fn(&[EffectAst], &mut [EffectAst]),
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     fn has_trailing_that_player_shuffle(tokens: &[OwnedLexToken]) -> bool {
         TRAILING_THAT_PLAYER_SHUFFLE_PHRASES
@@ -1923,7 +2021,10 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             });
         }
         sequence
-    } else if let Some(search_zones) = search_zones_override.clone() {
+    } else if let Some(search_zones) = search_zones_override
+        .clone()
+        .or_else(|| attachment_target.as_ref().map(|_| vec![Zone::Library]))
+    {
         let chosen_tag: TagKey = "searched_multi_zone".into();
         let battlefield_tapped =
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier;
@@ -2040,6 +2141,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                     tag: searched_tag,
                     keep_tagged: battlefield_tag,
                     zone: Zone::Hand,
+                    surface: ironsmith_core::LibraryRemainderSurface::Rest,
                 },
             ),
         ]);
@@ -2231,6 +2333,19 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
     }
 
     if !leading_effects.is_empty() {
+        // A conjugated search with no repeated subject belongs to the
+        // preceding grammatical subject: "... that player loses 3 life,
+        // searches their library ...". The search grammar deliberately
+        // leaves that actor implicit, so carry it only for `searches`.
+        // Imperative `search your library` starts a new actor and must remain
+        // the ability controller even when another player was mentioned by a
+        // leading effect.
+        if search_tokens
+            .first()
+            .is_some_and(|token| token.is_word("searches"))
+        {
+            carry_conjugated_search_player(&leading_effects, &mut effects);
+        }
         leading_effects.extend(effects);
         return Ok(Some(leading_effects));
     }

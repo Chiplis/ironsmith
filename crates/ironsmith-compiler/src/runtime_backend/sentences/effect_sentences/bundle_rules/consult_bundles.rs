@@ -134,6 +134,7 @@ fn append_consult_remainder(
                     tag: all_tag,
                     keep_tagged: keep_tag,
                     zone: Zone::Graveyard,
+                    surface: ironsmith_core::LibraryRemainderSurface::Rest,
                 },
             ));
         }

@@ -3,8 +3,8 @@
 use crate::decision::FallbackStrategy;
 use crate::decisions::{NumberSpec, make_decision_with_fallback};
 use crate::effect::{EffectOutcome, Value};
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -62,8 +62,14 @@ impl EffectExecutor for RemoveUpToCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
         let max_count = resolve_value(game, &self.max_count, ctx)?.max(0) as u32;
+        if let ChooseSpec::All(filter) = self.target.unhinted() {
+            let distributed =
+                RemoveAnyCountersAmongEffect::dynamic(0, max_count, filter.clone(), false)
+                    .with_counter_type(Some(self.counter_type));
+            return distributed.execute(game, ctx);
+        }
+        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
         // Get the current count of counters on the target
         let available = game
@@ -235,6 +241,40 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+    }
+
+    #[test]
+    fn test_remove_up_to_counters_distributes_across_all_matching_permanents() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = create_creature_with_counters(
+            &mut game,
+            "First Stunned Creature",
+            alice,
+            CounterType::Stun,
+            1,
+        );
+        let second = create_creature_with_counters(
+            &mut game,
+            "Second Stunned Creature",
+            bob,
+            CounterType::Stun,
+            1,
+        );
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = RemoveUpToCountersEffect::new(
+            CounterType::Stun,
+            2,
+            ChooseSpec::All(crate::filter::ObjectFilter::permanent().in_zone(Zone::Battlefield)),
+        );
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(game.counter_count(first, CounterType::Stun), 0);
+        assert_eq!(game.counter_count(second, CounterType::Stun), 0);
     }
 
     #[test]

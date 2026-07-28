@@ -84,6 +84,7 @@ fn pluralize_filter_description(description: &str) -> String {
     for suffix in [
         " you control",
         " you own",
+        " your team controls",
         " an opponent controls",
         " an opponent owns",
         " that player controls",
@@ -109,14 +110,7 @@ fn indefinite_article(text: &str) -> &'static str {
 
 fn enters_with_counters_where_x_value(count: &Value) -> Option<String> {
     let unhinted = count.unhinted();
-    if matches!(
-        unhinted,
-        Value::Fixed(_)
-            | Value::X
-            | Value::ManaSpentToCastThisSpell
-            | Value::ManaFromSourceSpentToCastThisSpell { .. }
-            | Value::ColorsOfManaSpentToCastThisSpell
-    ) {
+    if matches!(unhinted, Value::Fixed(_) | Value::X) {
         return None;
     }
 
@@ -142,6 +136,43 @@ fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
         format!("one plus {rest}")
     } else {
         value
+    }
+}
+
+fn describe_matching_object_count_for_each_basis(value: &Value) -> Option<(i32, String)> {
+    match value.unhinted() {
+        Value::Count(filter) => {
+            let description = describe_enters_with_counters_count_filter(filter);
+            let description = description
+                .strip_prefix("an ")
+                .or_else(|| description.strip_prefix("a "))
+                .unwrap_or(&description)
+                .to_string();
+            Some((1, description))
+        }
+        Value::CountScaled(filter, multiplier) => {
+            let (_, description) =
+                describe_matching_object_count_for_each_basis(&Value::Count(filter.clone()))?;
+            Some((*multiplier, description))
+        }
+        Value::Scaled(inner, multiplier) => {
+            let (inner_multiplier, description) =
+                describe_matching_object_count_for_each_basis(inner)?;
+            Some((inner_multiplier.checked_mul(*multiplier)?, description))
+        }
+        Value::Add(left, right) => {
+            let (left_multiplier, left_description) =
+                describe_matching_object_count_for_each_basis(left)?;
+            let (right_multiplier, right_description) =
+                describe_matching_object_count_for_each_basis(right)?;
+            (left_description == right_description).then(|| {
+                (
+                    left_multiplier.saturating_add(right_multiplier),
+                    left_description,
+                )
+            })
+        }
+        _ => None,
     }
 }
 
@@ -180,6 +211,9 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
         if let Some(history_basis) = describe_turn_history_for_each_basis(value) {
             return Some(history_basis);
         }
+        if let Some(count_basis) = describe_matching_object_count_for_each_basis(value) {
+            return Some(count_basis);
+        }
         if value.has_surface_hint(ValueSurfaceHint::PermanentsSacrificedThisWay) {
             let kind = value.surface_hints().iter().find_map(|hint| match hint {
                 ValueSurfaceHint::SacrificedObject(kind) => Some(*kind),
@@ -203,22 +237,6 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
             }
             Value::ColorsOfManaSpentToCastThisSpell => {
                 Some((1, "color of mana spent to cast it".to_string()))
-            }
-            Value::Count(filter) => {
-                if is_revealed_this_way_count_filter(filter) {
-                    return Some((1, "card revealed this way".to_string()));
-                }
-                let description = describe_enters_with_counters_count_filter(filter);
-                let description = description
-                    .strip_prefix("an ")
-                    .or_else(|| description.strip_prefix("a "))
-                    .unwrap_or(&description)
-                    .to_string();
-                Some((1, description))
-            }
-            Value::CountScaled(filter, multiplier) => {
-                let (_, description) = basis(&Value::Count(filter.clone()))?;
-                Some((*multiplier, description))
             }
             Value::CountersOn(spec, counter_type) => {
                 let object = match spec.unhinted() {
@@ -254,6 +272,49 @@ fn describe_enters_with_counters_for_each_value(count: &Value, counter: &str) ->
     };
     Some(format!(
         "Enters the battlefield with {counter_phrase} on it for each {basis}"
+    ))
+}
+
+fn describe_fixed_plus_for_each_entry_counters(count: &Value, counter: &str) -> Option<String> {
+    let Value::Add(left, right) = count.unhinted() else {
+        return None;
+    };
+    let (fixed, per_basis) = match (left.unhinted(), right.unhinted()) {
+        (Value::Fixed(fixed), _) if right.has_surface_hint(ValueSurfaceHint::ForEach) => {
+            (*fixed, right.as_ref())
+        }
+        (_, Value::Fixed(fixed)) if left.has_surface_hint(ValueSurfaceHint::ForEach) => {
+            (*fixed, left.as_ref())
+        }
+        _ => return None,
+    };
+    if fixed <= 0 {
+        return None;
+    }
+
+    let per_basis = describe_enters_with_counters_for_each_value(per_basis, counter)?;
+    let per_basis = per_basis.strip_prefix("Enters the battlefield with ")?;
+    let (per_counter, basis) = per_basis.split_once(" on it for each ")?;
+    let additional = if let Some(counter) = per_counter
+        .strip_prefix("a ")
+        .or_else(|| per_counter.strip_prefix("an "))
+    {
+        format!("an additional {counter}")
+    } else {
+        let (amount, counter) = per_counter.split_once(' ')?;
+        format!("{amount} additional {counter}")
+    };
+    let fixed = if fixed == 1 {
+        format!("{} {counter} counter", counter_indefinite_article(counter))
+    } else {
+        let amount = u32::try_from(fixed)
+            .ok()
+            .and_then(number_word_u32)
+            .unwrap_or_else(|| fixed.to_string());
+        format!("{amount} {counter} counters")
+    };
+    Some(format!(
+        "Enters the battlefield with {fixed} on it plus {additional} on it for each {basis}"
     ))
 }
 
@@ -367,10 +428,27 @@ fn describe_turn_history_for_each_basis(count: &Value) -> Option<(i32, String)> 
                 describe_turn_history_for_each_filter(filter, "that entered the battlefield")?,
             ))
         }
-        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(filter)) => Some((
-            1,
-            describe_turn_history_for_each_filter(filter, "that died")?,
-        )),
+        Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died {
+            filter,
+            controller_surface,
+        }) => {
+            let mut subject_filter = filter.clone();
+            let controller = subject_filter.controller.take();
+            subject_filter.zone = None;
+            let description = subject_filter.description();
+            let subject = description
+                .strip_prefix("an ")
+                .or_else(|| description.strip_prefix("a "))
+                .unwrap_or(&description);
+            Some((
+                1,
+                crate::compiled_text::describe_death_history_subject(
+                    subject,
+                    controller.as_ref(),
+                    *controller_surface,
+                ),
+            ))
+        }
         Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::PlayersLostLife(player)) => {
             let subject = match player {
                 PlayerFilter::Opponent => "opponent who lost life this turn",
@@ -386,6 +464,9 @@ fn describe_turn_history_for_each_basis(count: &Value) -> Option<(i32, String)> 
 fn describe_filtered_enters_with_counters_subject(filter: &ObjectFilter) -> String {
     let description = filter.description();
     if let Some(rest) = description.strip_prefix("another ") {
+        if filter.has_plural_object_noun_surface() {
+            return format!("Other {}", pluralize_filter_description(rest));
+        }
         // Oracle uses the distributive singular: "Each other creature you
         // control of the chosen type enters with ...".
         return format!("Each other {rest}");
@@ -414,7 +495,8 @@ fn describe_filtered_enters_with_counters_for_each_clause(
     object_pronoun: &str,
 ) -> Option<String> {
     let (multiplier, basis) = describe_mana_source_spent_for_each_basis(count, object_pronoun)
-        .or_else(|| describe_turn_history_for_each_basis(count))?;
+        .or_else(|| describe_turn_history_for_each_basis(count))
+        .or_else(|| describe_matching_object_count_for_each_basis(count))?;
     if multiplier <= 0 {
         return None;
     }
@@ -1571,6 +1653,34 @@ impl StaticAbilityKind for EntersWithCounters {
 
     fn display(&self) -> String {
         let counter = self.counter_type.description().into_owned();
+        if self
+            .count
+            .has_surface_hint(ValueSurfaceHint::AdditionalEntryCounter)
+        {
+            let count = self
+                .count
+                .clone()
+                .without_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
+            if let Value::Fixed(value) = count {
+                if value == 1 {
+                    return format!(
+                        "Enters the battlefield with an additional {counter} counter on it"
+                    );
+                }
+                let rendered = u32::try_from(value)
+                    .ok()
+                    .and_then(number_word_u32)
+                    .unwrap_or_else(|| value.to_string());
+                return format!(
+                    "Enters the battlefield with {rendered} additional {counter} counters on it"
+                );
+            }
+        }
+        if let Some(fixed_plus_for_each) =
+            describe_fixed_plus_for_each_entry_counters(&self.count, &counter)
+        {
+            return fixed_plus_for_each;
+        }
         if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
             return format!(
                 "Enters the battlefield with X {counter} counters on it, where X is {where_x_value}"
@@ -3167,12 +3277,37 @@ impl StaticAbilityKind for UmbraArmor {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterTappedForFilter {
     pub filter: ObjectFilter,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl EnterTappedForFilter {
     pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+        Self {
+            filter,
+            condition: None,
+        }
     }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
+    }
+}
+
+fn render_conditioned_entry_rule(text: String, condition: Option<&crate::ConditionExpr>) -> String {
+    let Some(condition) = condition else {
+        return text;
+    };
+    let condition = super::describe_static_condition(condition);
+    if let Some(rest) = condition.strip_prefix("as long as ") {
+        let mut chars = text.chars();
+        let lowered = match chars.next() {
+            Some(first) => format!("{}{}", first.to_ascii_lowercase(), chars.as_str()),
+            None => String::new(),
+        };
+        return format!("As long as {rest}, {lowered}");
+    }
+    format!("{text} {condition}")
 }
 
 impl StaticAbilityKind for EnterTappedForFilter {
@@ -3182,6 +3317,40 @@ impl StaticAbilityKind for EnterTappedForFilter {
 
     fn display(&self) -> String {
         let filter = &self.filter;
+        if let Some(surface) = filter.played_by_opponent_surface()
+            && filter.controller == Some(PlayerFilter::Opponent)
+        {
+            let mut subject_filter = filter.clone();
+            subject_filter.controller = None;
+            subject_filter.zone = None;
+            let subject = if !subject_filter.card_types.is_empty()
+                && subject_filter.all_card_types.is_empty()
+                && subject_filter.subtypes.is_empty()
+                && subject_filter.supertypes.is_empty()
+                && subject_filter.excluded_card_types.is_empty()
+                && subject_filter.excluded_subtypes.is_empty()
+                && subject_filter.excluded_supertypes.is_empty()
+            {
+                join_with_and(
+                    &subject_filter
+                        .card_types
+                        .iter()
+                        .map(|card_type| pluralize(card_type_word(*card_type)))
+                        .collect::<Vec<_>>(),
+                )
+            } else {
+                pluralize_filter_description(&subject_filter.description())
+            };
+            return render_conditioned_entry_rule(
+                format!(
+                    "{} played by {} enter tapped",
+                    capitalize_first(&subject),
+                    surface.description()
+                ),
+                self.condition.as_ref(),
+            );
+        }
+
         let is_simple_type_list = !filter.card_types.is_empty()
             && filter.all_card_types.is_empty()
             && filter.subtypes.is_empty()
@@ -3225,7 +3394,15 @@ impl StaticAbilityKind for EnterTappedForFilter {
         };
 
         if is_simple_type_list && has_all_permanent_types {
-            return "Permanents enter tapped".to_string();
+            let subject = if filter.other {
+                "Other permanents"
+            } else {
+                "Permanents"
+            };
+            return render_conditioned_entry_rule(
+                format!("{subject} enter tapped"),
+                self.condition.as_ref(),
+            );
         }
 
         if is_simple_type_list && filter.card_types.len() >= 2 {
@@ -3235,10 +3412,20 @@ impl StaticAbilityKind for EnterTappedForFilter {
                 .map(|card_type| pluralize(card_type_word(*card_type)))
                 .collect::<Vec<_>>();
             let list = join_with_and(&words);
-            return format!("{} enter tapped", capitalize_first(&list));
+            return render_conditioned_entry_rule(
+                format!("{} enter tapped", capitalize_first(&list)),
+                self.condition.as_ref(),
+            );
         }
 
-        format!("{} enter the battlefield tapped", self.filter.description())
+        render_conditioned_entry_rule(
+            format!("{} enter the battlefield tapped", self.filter.description()),
+            self.condition.as_ref(),
+        )
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_replacement_effect(
@@ -3249,7 +3436,10 @@ impl StaticAbilityKind for EnterTappedForFilter {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            ConditionalWouldEnterBattlefieldMatcher {
+                enter_matcher: WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+                condition: self.condition.clone(),
+            },
             ReplacementAction::EnterTapped,
         ))
     }
@@ -3259,11 +3449,20 @@ impl StaticAbilityKind for EnterTappedForFilter {
 #[derive(Debug, Clone, PartialEq)]
 pub struct EnterUntappedForFilter {
     pub filter: ObjectFilter,
+    pub condition: Option<crate::ConditionExpr>,
 }
 
 impl EnterUntappedForFilter {
     pub fn new(filter: ObjectFilter) -> Self {
-        Self { filter }
+        Self {
+            filter,
+            condition: None,
+        }
+    }
+
+    pub fn with_condition(mut self, condition: crate::ConditionExpr) -> Self {
+        self.condition = Some(condition);
+        self
     }
 }
 
@@ -3300,13 +3499,53 @@ impl StaticAbilityKind for EnterUntappedForFilter {
             && filter.excluded_ability_markers.is_empty()
             && !filter.noncommander;
         if is_simple_lands_you_control {
-            return "Lands you control enter untapped".to_string();
+            return render_conditioned_entry_rule(
+                "Lands you control enter untapped".to_string(),
+                self.condition.as_ref(),
+            );
         }
 
-        format!(
-            "{} enter untapped",
-            capitalize_first(&self.filter.description())
-        )
+        let has_all_permanent_types = {
+            let required = [
+                crate::types::CardType::Artifact,
+                crate::types::CardType::Creature,
+                crate::types::CardType::Enchantment,
+                crate::types::CardType::Land,
+                crate::types::CardType::Planeswalker,
+                crate::types::CardType::Battle,
+            ];
+            filter.card_types.len() == required.len()
+                && required
+                    .iter()
+                    .all(|card_type| filter.card_types.contains(card_type))
+                && filter.all_card_types.is_empty()
+                && filter.subtypes.is_empty()
+                && filter.supertypes.is_empty()
+                && filter.colors.is_none()
+                && filter.excluded_card_types.is_empty()
+                && filter.excluded_subtypes.is_empty()
+                && filter.excluded_supertypes.is_empty()
+                && filter.excluded_colors.is_empty()
+                && !filter.token
+                && !filter.nontoken
+                && filter.controller.is_none()
+                && filter.owner.is_none()
+        };
+        let text = if has_all_permanent_types && filter.other {
+            "Other permanents enter untapped".to_string()
+        } else if has_all_permanent_types {
+            "Permanents enter untapped".to_string()
+        } else {
+            format!(
+                "{} enter untapped",
+                capitalize_first(&self.filter.description())
+            )
+        };
+        render_conditioned_entry_rule(text, self.condition.as_ref())
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        Some(StaticAbility::new(self.clone().with_condition(condition)))
     }
 
     fn generate_replacement_effect(
@@ -3317,7 +3556,10 @@ impl StaticAbilityKind for EnterUntappedForFilter {
         Some(ReplacementEffect::with_matcher(
             source,
             controller,
-            WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+            ConditionalWouldEnterBattlefieldMatcher {
+                enter_matcher: WouldEnterBattlefieldMatcher::new(self.filter.clone()),
+                condition: self.condition.clone(),
+            },
             ReplacementAction::EnterUntapped,
         ))
     }
@@ -3413,7 +3655,7 @@ impl StaticAbilityKind for EnterWithCountersForFilter {
             for_each_clause
         } else if let Some(where_x_value) = enters_with_counters_where_x_value(&self.count) {
             format!(
-                "with an additional X {counter} counters on {object_pronoun}, where X is {where_x_value}"
+                "with X additional {counter} counters on {object_pronoun}, where X is {where_x_value}"
             )
         } else {
             match &self.count {
@@ -3873,6 +4115,20 @@ impl StaticAbilityKind for LegendRuleDoesntApplyToController {
 
     fn display(&self) -> String {
         "The legend rule doesn't apply to permanents you control".to_string()
+    }
+}
+
+/// The legend rule doesn't apply to tokens the source's controller controls.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct LegendRuleDoesntApplyToControllerTokens;
+
+impl StaticAbilityKind for LegendRuleDoesntApplyToControllerTokens {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::LegendRuleDoesntApplyToControllerTokens
+    }
+
+    fn display(&self) -> String {
+        "The \"legend rule\" doesn't apply to tokens you control".to_string()
     }
 }
 

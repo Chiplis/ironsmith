@@ -69,6 +69,7 @@ pub(crate) enum AttachedControllerSubject {
 pub(crate) enum PossessivePlayerReference {
     EnchantedPlayer,
     AttachedController(AttachedControllerSubject),
+    ChosenPlayer,
     You,
     Opponent,
     Any,
@@ -244,6 +245,8 @@ pub(crate) fn parse_spell_activity_verb_facts(tokens: &[OwnedLexToken]) -> Spell
 pub(crate) fn parse_possessive_player_reference(words: &[&str]) -> PossessivePlayerReference {
     if normalized_phrase_occurs(words, &["enchanted", "player"])
         || normalized_phrase_occurs(words, &["enchanted", "players"])
+        || normalized_phrase_occurs(words, &["enchanted", "opponent"])
+        || normalized_phrase_occurs(words, &["enchanted", "opponents"])
     {
         return PossessivePlayerReference::EnchantedPlayer;
     }
@@ -252,6 +255,11 @@ pub(crate) fn parse_possessive_player_reference(words: &[&str]) -> PossessivePla
     }
     if attached_controller_occurs(words, "equipped") {
         return PossessivePlayerReference::AttachedController(AttachedControllerSubject::Equipped);
+    }
+    if normalized_phrase_occurs(words, &["chosen", "player"])
+        || normalized_phrase_occurs(words, &["chosen", "players"])
+    {
+        return PossessivePlayerReference::ChosenPlayer;
     }
     if normalized_phrase_occurs(words, &["each", "player"]) {
         return PossessivePlayerReference::Any;
@@ -332,6 +340,17 @@ pub(crate) fn parse_spell_or_ability_controller_tail(
         4
     } else if word_slice_has_prefix(words, &["spell", "or", "ability"]) {
         3
+    } else {
+        return None;
+    };
+    parse_trigger_control_tail(&words[prefix_words..])
+}
+
+pub(crate) fn parse_spell_controller_tail(words: &[&str]) -> Option<TriggerControllerReference> {
+    let prefix_words = if word_slice_has_prefix(words, &["a", "spell"]) {
+        2
+    } else if word_slice_has_prefix(words, &["spell"]) {
+        1
     } else {
         return None;
     };

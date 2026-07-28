@@ -181,6 +181,28 @@ pub(super) fn exile_play_event_followups_lower_as_reflexive_or_delayed_triggers(
 }
 
 #[test]
+pub(super) fn repeated_payment_reflexive_count_stays_on_the_enter_trigger() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Repeated Payment Adversary")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you may pay {1}{U} any number of times. \
+             When you pay this cost one or more times, put that many +1/+1 counters on this creature, then up to that many other target artifacts, creatures, and/or enchantments phase out.",
+        )
+        .expect("repeated-payment reflexive trigger should parse");
+    let debug = format!("{:#?}", def);
+
+    assert!(debug.contains("RepeatProcessEffect"), "{debug}");
+    assert!(debug.contains("ReflexiveTriggerEffect"), "{debug}");
+    assert!(debug.contains("PutCountersEffect"), "{debug}");
+    assert!(debug.contains("PhaseOutEffect"), "{debug}");
+    assert!(debug.contains("WithCountValue"), "{debug}");
+    assert!(
+        !debug.contains("spell_effect: Some"),
+        "the reflexive continuation must stay on the enters trigger: {debug}"
+    );
+}
+
+#[test]
 pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
     fn is_source_plus_one_counter_count(value: &Value) -> bool {
         match value {
@@ -205,7 +227,7 @@ pub(super) fn typed_counter_where_x_carries_into_payment_and_result_followup() {
         .expect("expected one typed triggered ability");
     fn source_sentence_effects<'a>(effect: &'a EffectAst) -> &'a [EffectAst] {
         match effect {
-            EffectAst::SourceSentence { effects } => effects.as_slice(),
+            EffectAst::SourceSentence { effects, .. } => effects.as_slice(),
             other => std::slice::from_ref(other),
         }
     }

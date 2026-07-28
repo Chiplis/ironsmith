@@ -38,6 +38,52 @@ fn render_clause_words(tokens: &[OwnedLexToken]) -> String {
 }
 
 fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value> {
+    // Counter clauses have a few historical/count surfaces whose qualifiers
+    // are broader than an object filter (for example, "spells you've cast
+    // this turn other than the first"). Recognize those typed values before
+    // the generic object-count fallback, which would otherwise retain only
+    // "other spell" and silently lose the turn-history semantics.
+    let affected_this_way_fallback = match shapes::parse_dynamic_counter_count_shape(tokens) {
+        Some(dynamic) => match dynamic {
+            shapes::DynamicCounterCountShape::LifeLostThisWay { group_size } => {
+                let life_lost = Value::EventValue(EventValueSpec::LifeAmount);
+                return Some(if group_size <= 1 {
+                    life_lost
+                } else {
+                    Value::DividedRoundedDown(Box::new(life_lost), group_size)
+                });
+            }
+            shapes::DynamicCounterCountShape::CreaturesDiedThisTurn => {
+                return Some(Value::CreaturesDiedThisTurn);
+            }
+            shapes::DynamicCounterCountShape::SpellsCastThisTurn {
+                player,
+                other_than_first,
+            } => {
+                let count = Value::SpellsCastThisTurn(player);
+                return Some(if other_than_first {
+                    Value::Add(Box::new(count), Box::new(Value::Fixed(-1)))
+                } else {
+                    count
+                });
+            }
+            shapes::DynamicCounterCountShape::ColorsOfManaSpentToCastThisSpell => {
+                return Some(Value::ColorsOfManaSpentToCastThisSpell);
+            }
+            shapes::DynamicCounterCountShape::BasicLandTypesAmongLandsYouControl => {
+                return Some(Value::BasicLandTypesAmong(
+                    ObjectFilter::land().you_control(),
+                ));
+            }
+            // This is only a compatibility fallback. Give the typed
+            // prior-action grammar first refusal so authored facts such as
+            // "permanent destroyed this way" retain both their action and
+            // object filter instead of collapsing to "objects affected".
+            shapes::DynamicCounterCountShape::ObjectsAffectedThisWay => true,
+        },
+        None => false,
+    };
+
     // Reuse the generic for-each value grammar so a prior-action reference
     // retains its object restriction (for example, creature cards among all
     // cards exiled this way). Reference resolution replaces IT_TAG with the
@@ -52,40 +98,7 @@ fn parse_create_for_each_dynamic_count(tokens: &[OwnedLexToken]) -> Option<Value
     {
         return Some(value);
     }
-
-    match shapes::parse_dynamic_counter_count_shape(tokens)? {
-        shapes::DynamicCounterCountShape::LifeLostThisWay { group_size } => {
-            let life_lost = Value::EventValue(EventValueSpec::LifeAmount);
-            Some(if group_size <= 1 {
-                life_lost
-            } else {
-                Value::DividedRoundedDown(Box::new(life_lost), group_size)
-            })
-        }
-        shapes::DynamicCounterCountShape::CreaturesDiedThisTurn => {
-            Some(Value::CreaturesDiedThisTurn)
-        }
-        shapes::DynamicCounterCountShape::SpellsCastThisTurn {
-            player,
-            other_than_first,
-        } => {
-            let count = Value::SpellsCastThisTurn(player);
-            Some(if other_than_first {
-                Value::Add(Box::new(count), Box::new(Value::Fixed(-1)))
-            } else {
-                count
-            })
-        }
-        shapes::DynamicCounterCountShape::ColorsOfManaSpentToCastThisSpell => {
-            Some(Value::ColorsOfManaSpentToCastThisSpell)
-        }
-        shapes::DynamicCounterCountShape::BasicLandTypesAmongLandsYouControl => Some(
-            Value::BasicLandTypesAmong(ObjectFilter::land().you_control()),
-        ),
-        shapes::DynamicCounterCountShape::ObjectsAffectedThisWay => {
-            Some(this_way_object_count_value())
-        }
-    }
+    affected_this_way_fallback.then(this_way_object_count_value)
 }
 
 pub(crate) fn describe_counter_type_for_mode(counter_type: CounterType) -> String {
@@ -570,6 +583,12 @@ pub(crate) fn split_until_source_leaves_tail(tokens: &[OwnedLexToken]) -> (&[Own
     shapes::split_until_source_leaves_shape(tokens)
 }
 
+pub(crate) fn split_until_target_leaves_tail(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    shapes::split_until_target_leaves_shape(tokens)
+}
+
 pub(crate) fn parse_half_starting_life_total_value(
     tokens: &[OwnedLexToken],
     player: PlayerAst,
@@ -745,6 +764,32 @@ mod filtered_prior_action_counter_tests {
                 .contains(&crate::types::CardType::Creature)
         );
         assert!(filter.union_surface.explicit_card_noun());
+    }
+
+    #[test]
+    fn counter_count_preserves_destroyed_permanent_action() {
+        let tokens = lex_line("permanent destroyed this way", 0).unwrap();
+        let Some(Value::PendingPriorEffectMetric(query)) =
+            parse_create_for_each_dynamic_count(&tokens)
+        else {
+            panic!("expected a typed prior-effect metric");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Destroyed)
+        );
+        let filter = query.filter.expect("metric should retain permanent scope");
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        for card_type in [
+            crate::types::CardType::Artifact,
+            crate::types::CardType::Creature,
+            crate::types::CardType::Enchantment,
+            crate::types::CardType::Land,
+            crate::types::CardType::Planeswalker,
+            crate::types::CardType::Battle,
+        ] {
+            assert!(filter.card_types.contains(&card_type));
+        }
     }
 
     #[test]

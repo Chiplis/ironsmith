@@ -1,4 +1,6 @@
 use crate::cards::builders::CardTextError;
+#[cfg(test)]
+use crate::filter::Comparison;
 use crate::filter::ObjectFilterUnionConnective;
 #[cfg(test)]
 use crate::{CardType, PlayerFilter, Subtype, Zone};
@@ -6,12 +8,12 @@ use crate::{ColorSet, ObjectFilter, TaggedOpbjectRelation};
 
 pub(crate) use super::grammar::filters::parse_simple_object_filter_words;
 use super::grammar::filters::{
-    apply_filter_tail_decoration, parse_extremum_object_filter_lexed,
-    parse_extremum_object_filter_words, parse_filter_distinct_names_tokens,
-    parse_filter_lexed_envelope, parse_filter_tail_decoration_split_words,
-    parse_filter_tail_decoration_tokens, parse_filter_word_envelope,
-    parse_simple_object_filter_lexed, preserve_branch_scoped_card_type_union,
-    preserve_filter_counter_constraint_surface_tokens,
+    apply_filter_tail_decoration, parse_branch_scoped_object_filter_union_lexed,
+    parse_extremum_object_filter_lexed, parse_extremum_object_filter_words,
+    parse_filter_distinct_names_tokens, parse_filter_lexed_envelope,
+    parse_filter_tail_decoration_split_words, parse_filter_tail_decoration_tokens,
+    parse_filter_word_envelope, parse_simple_object_filter_lexed,
+    preserve_branch_scoped_card_type_union, preserve_filter_counter_constraint_surface_tokens,
     preserve_filter_counter_constraint_surface_words,
 };
 use super::grammar::primitives::split_lexed_slices_on_or;
@@ -20,6 +22,7 @@ use super::lexer::{
 };
 use super::util::{
     apply_filter_keyword_constraint, non_article_word_refs, parse_filter_keyword_constraint_words,
+    parse_card_type, parse_subtype_flexible, parse_supertype_word,
 };
 
 #[cfg(test)]
@@ -152,6 +155,47 @@ fn apply_original_printing_set(mut filter: ObjectFilter, set_name: Option<String
     filter
 }
 
+fn split_trailing_where_x_filter_clause(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    let comma = tokens.windows(4).position(|window| {
+        window[0].is_comma()
+            && window[1].is_word("where")
+            && window[2].is_word("x")
+            && window[3].is_word("is")
+    })?;
+    (comma > 0 && comma + 4 < tokens.len()).then_some(&tokens[..comma])
+}
+
+fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
+    let words = parser_token_word_refs(tokens);
+    let origin_start = words
+        .windows(4)
+        .rposition(|window| window == ["that", "wasnt", "cast", "from"])
+        .map(|index| index + 4)
+        .or_else(|| {
+            words
+                .windows(5)
+                .rposition(|window| window == ["that", "was", "not", "cast", "from"])
+                .map(|index| index + 5)
+        })?;
+    let origin_words = words.get(origin_start..)?;
+
+    let last = origin_words.last().copied()?;
+    match last {
+        "hand" => Some(crate::Zone::Hand),
+        "graveyard" | "graveyards" => Some(crate::Zone::Graveyard),
+        "library" | "libraries" => Some(crate::Zone::Library),
+        "exile" => Some(crate::Zone::Exile),
+        "battlefield" => Some(crate::Zone::Battlefield),
+        "stack" => Some(crate::Zone::Stack),
+        "ante" => Some(crate::Zone::Ante),
+        "game" if origin_words.ends_with(&["outside", "the", "game"]) => {
+            Some(crate::Zone::OutsideGame)
+        }
+        "zone" if origin_words.ends_with(&["command", "zone"]) => Some(crate::Zone::Command),
+        _ => None,
+    }
+}
+
 fn object_filter_word_is_any(word: &str, candidates: &[&str]) -> bool {
     candidates.iter().any(|candidate| word == *candidate)
 }
@@ -164,6 +208,107 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     if tokens.iter().any(|token| token.is_word("and/or")) {
         filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }
+
+    let selector_member_count = filter.card_types.len()
+        + filter.all_card_types.len()
+        + filter.subtypes.len()
+        + filter.all_subtypes.len()
+        + filter.supertypes.len();
+    let words = parser_token_word_refs(tokens);
+    let is_selector_member = |word: &str| {
+        parse_card_type(word).is_some_and(|card_type| {
+            filter.card_types.contains(&card_type)
+                || filter.all_card_types.contains(&card_type)
+        }) || parse_subtype_flexible(word).is_some_and(|subtype| {
+            filter.subtypes.contains(&subtype) || filter.all_subtypes.contains(&subtype)
+        }) || parse_supertype_word(word)
+            .is_some_and(|supertype| filter.supertypes.contains(&supertype))
+    };
+    let has_plain_and = words.windows(3).any(|window| {
+        window[1] == "and"
+            && is_selector_member(window[0])
+            && is_selector_member(window[2])
+    });
+    let has_disjunction = tokens
+        .iter()
+        .any(|token| token.is_word("or") || token.is_word("and/or"));
+    if selector_member_count >= 2 && has_plain_and && !has_disjunction {
+        // A shared terminal noun can flatten "instant and sorcery card" to
+        // one executable filter. Retain the inclusive authored conjunction
+        // even though no `any_of` branches are needed for matching.
+        filter.set_conjunctive_set_surface(true);
+    }
+
+    let subtype_member_count = filter.subtypes.len() + filter.excluded_subtypes.len();
+    if subtype_member_count < 2 {
+        return;
+    }
+
+    let serial_or = subtype_member_count >= 3
+        && filter.union_connective() == ObjectFilterUnionConnective::Or
+        && tokens.iter().any(OwnedLexToken::is_comma)
+        && words.iter().any(|word| *word == "or");
+    filter.set_serial_or_list_surface(serial_or);
+
+    let first_member = words.iter().position(|word| {
+        parse_subtype_flexible(word).is_some_and(|subtype| {
+            filter.subtypes.contains(&subtype) || filter.excluded_subtypes.contains(&subtype)
+        })
+    });
+    let shared_article = first_member
+        .and_then(|index| index.checked_sub(1))
+        .and_then(|index| words.get(index))
+        .is_some_and(|word| matches!(*word, "a" | "an"))
+        && !filter.has_explicit_union_branch_articles();
+    filter.set_shared_indefinite_article_surface(shared_article);
+}
+
+fn preserve_controller_qualifier_order_words(filter: &mut ObjectFilter, words: &[&str]) {
+    if filter.controller.is_none() {
+        return;
+    }
+
+    // This is presentation-only metadata: retain any authored restrictive
+    // phrase that precedes controller scope, rather than limiting the signal
+    // to keyword-ability tails. Numeric comparisons ("with power 4 or
+    // greater") and chosen-characteristic predicates ("of the chosen type")
+    // need the same ordering treatment.
+    let qualifier = words.iter().enumerate().position(|(idx, word)| {
+        matches!(
+            *word,
+            "with" | "without" | "chosen" | "that's" | "named" | "attached" | "cast" | "put"
+        ) || matches!(*word, "that" | "which")
+            && words.get(idx + 1).is_some_and(|next| {
+                matches!(
+                    *next,
+                    "has"
+                        | "have"
+                        | "is"
+                        | "isn't"
+                        | "isnt"
+                        | "was"
+                        | "were"
+                        | "shares"
+                        | "shared"
+                        | "entered"
+                        | "dealt"
+                        | "attacked"
+                        | "blocked"
+                        | "died"
+                )
+            })
+    });
+    let controller = words
+        .iter()
+        .position(|word| matches!(*word, "control" | "controls"));
+    filter.set_controller_after_qualifiers_surface(
+        matches!((qualifier, controller), (Some(qualifier), Some(controller)) if qualifier < controller),
+    );
+}
+
+fn preserve_controller_qualifier_order(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    let words = parser_token_word_refs(tokens);
+    preserve_controller_qualifier_order_words(filter, &words);
 }
 
 /// Parse an explicitly generic card noun whose only characteristic is a
@@ -230,6 +375,7 @@ fn normalize_generic_card_ability_tail(tokens: &[OwnedLexToken], filter: &mut Ob
     filter.all_card_types.clear();
     filter.excluded_card_types.clear();
     filter.subtypes.clear();
+    filter.all_subtypes.clear();
     filter.excluded_subtypes.clear();
     filter.supertypes.clear();
     filter.excluded_supertypes.clear();
@@ -327,11 +473,103 @@ pub(super) fn parse_attached_reference_or_another_disjunction(
     Ok(Some(disjunction))
 }
 
+/// A terminal `spell` noun scopes over every characteristic in a preceding
+/// coordinated list.
+///
+/// For example, `instant or sorcery spell you control with mana value X`
+/// names one stack-object filter. Treating the two card types as independently
+/// scoped union arms strands `spell`, controller, and mana-value facts on only
+/// the final arm. The ordinary complete-filter grammar already preserves the
+/// shared typed facts, so keep this shape out of the branch-scoped union path.
+pub(crate) fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool {
+    let is_shared_noun = |token: &OwnedLexToken| {
+        token.is_word("card")
+            || token.is_word("cards")
+            || token.is_word("spell")
+            || token.is_word("spells")
+            || token.is_word("permanent")
+            || token.is_word("permanents")
+    };
+    let Some(noun_idx) = tokens.iter().rposition(is_shared_noun) else {
+        return false;
+    };
+    if tokens[..=noun_idx]
+        .iter()
+        .filter(|token| is_shared_noun(token))
+        .count()
+        != 1
+    {
+        return false;
+    }
+    if !tokens[..noun_idx]
+        .iter()
+        .any(|token| token.is_word("and") || token.is_word("or") || token.is_word("and/or"))
+    {
+        return false;
+    }
+
+    let Some(head) = parse_simple_object_filter_lexed(&tokens[..=noun_idx], false) else {
+        return false;
+    };
+    let characteristic_count = head.card_types.len()
+        + head.all_card_types.len()
+        + head.subtypes.len()
+        + head.all_subtypes.len()
+        + head.supertypes.len();
+    let shared_spell_noun = tokens[noun_idx].is_word("spell") || tokens[noun_idx].is_word("spells");
+    characteristic_count >= 2
+        && head.any_of.is_empty()
+        && head.excluded_card_types.is_empty()
+        && head.excluded_subtypes.is_empty()
+        && head.excluded_supertypes.is_empty()
+        && (!shared_spell_noun
+            || (head.zone == Some(crate::Zone::Stack)
+                && head.stack_kind == Some(crate::filter::StackObjectKind::Spell)))
+}
+
+fn has_requantified_comma_collection(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().filter(|token| token.is_comma()).count() >= 2
+        && tokens
+            .iter()
+            .filter(|token| token.is_word("all") || token.is_word("each"))
+            .count()
+            >= 2
+}
+
+fn has_shared_terminal_spell_noun(tokens: &[OwnedLexToken]) -> bool {
+    has_shared_terminal_object_noun(tokens)
+        && tokens
+            .iter()
+            .rev()
+            .find(|token| {
+                token.is_word("card")
+                    || token.is_word("cards")
+                    || token.is_word("spell")
+                    || token.is_word("spells")
+                    || token.is_word("permanent")
+                    || token.is_word("permanents")
+            })
+            .is_some_and(|noun| noun.is_word("spell") || noun.is_word("spells"))
+}
+
 pub(crate) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    // The surrounding sentence owns an authored `where X is ...` binding.
+    // Keep that definition out of the object-domain grammar: characteristic
+    // words in the value expression (for example, `Shrines you control`) are
+    // not additional characteristics of the targeted object. The sentence
+    // binder subsequently replaces the comparison's typed `Value::X`.
+    if let Some(base_tokens) = split_trailing_where_x_filter_clause(tokens) {
+        return parse_object_filter(base_tokens, other);
+    }
     if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
+        return Ok(filter);
+    }
+    if (!has_shared_terminal_object_noun(tokens) || has_requantified_comma_collection(tokens))
+        && let Some(filter) = parse_branch_scoped_object_filter_union_lexed(tokens, other)
+    {
         return Ok(filter);
     }
     if let Some(filter) = parse_generic_card_tail_filter(tokens) {
@@ -364,7 +602,16 @@ pub(crate) fn parse_object_filter(
         filter
     };
     filter = envelope.decorations.apply_distinct_names_only(filter);
+    if has_shared_terminal_spell_noun(tokens) {
+        filter.zone = Some(crate::Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        filter.has_mana_cost = true;
+    }
+    if let Some(zone) = excluded_cast_origin_zone(tokens) {
+        filter.excluded_cast_origin_zone = Some(zone);
+    }
     preserve_union_surface(&mut filter, tokens);
+    preserve_controller_qualifier_order(&mut filter, tokens);
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     normalize_generic_card_ability_tail(tokens, &mut filter);
     let filter =
@@ -396,6 +643,7 @@ pub(crate) fn parse_object_filter_words(
             .unwrap_or((entry_sacrifice_words, None));
     let envelope = parse_filter_word_envelope(original_printing_words);
     if let Some(mut filter) = parse_extremum_object_filter_words(&envelope.core_words, other)? {
+        preserve_controller_qualifier_order_words(&mut filter, &envelope.core_words);
         preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
         return Ok(apply_sacrificed_as_it_entered_relation(
             apply_original_printing_set(envelope.decorations.apply(filter), original_printing_set),
@@ -403,6 +651,7 @@ pub(crate) fn parse_object_filter_words(
         ));
     }
     if let Some(mut filter) = parse_simple_object_filter_words(&envelope.core_words, other) {
+        preserve_controller_qualifier_order_words(&mut filter, &envelope.core_words);
         preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
         return Ok(apply_sacrificed_as_it_entered_relation(
             apply_original_printing_set(envelope.decorations.apply(filter), original_printing_set),
@@ -413,6 +662,7 @@ pub(crate) fn parse_object_filter_words(
         && let Some(mut filter) = parse_simple_object_filter_words(split.base_words, other)
     {
         apply_filter_tail_decoration(&mut filter, split.decoration);
+        preserve_controller_qualifier_order_words(&mut filter, &envelope.core_words);
         preserve_filter_counter_constraint_surface_words(&mut filter, &envelope.core_words);
         return Ok(apply_sacrificed_as_it_entered_relation(
             apply_original_printing_set(envelope.decorations.apply(filter), original_printing_set),
@@ -434,7 +684,25 @@ pub(crate) fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(base_tokens) = split_trailing_where_x_filter_clause(tokens) {
+        return parse_object_filter_lexed(base_tokens, other);
+    }
     if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
+        return Ok(filter);
+    }
+    if let Some(mut filter) =
+        super::grammar::filters::parse_elided_shared_domain_union(tokens, other)
+    {
+        preserve_union_surface(&mut filter, tokens);
+        preserve_controller_qualifier_order(&mut filter, tokens);
+        preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
+        return Ok(filter);
+    }
+    let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
+    if (!has_shared_terminal_noun || has_requantified_comma_collection(tokens))
+        && let Some(filter) =
+            super::grammar::filters::parse_branch_scoped_object_filter_union_lexed(tokens, other)
+    {
         return Ok(filter);
     }
     let (original_printing_tokens, original_printing_set) =
@@ -449,16 +717,20 @@ pub(crate) fn parse_object_filter_lexed(
             other,
         )?;
         preserve_union_surface(&mut filter, &envelope.core_tokens);
+        preserve_controller_qualifier_order(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
             original_printing_set,
         ));
     }
-    if let Some(mut filter) = super::grammar::filters::parse_domain_union_object_filter_lexed(
-        &envelope.core_tokens,
-        other,
-    ) {
+    if !has_shared_terminal_noun
+        && let Some(mut filter) = super::grammar::filters::parse_domain_union_object_filter_lexed(
+            &envelope.core_tokens,
+            other,
+        )
+    {
         preserve_union_surface(&mut filter, &envelope.core_tokens);
+        preserve_controller_qualifier_order(&mut filter, &envelope.core_tokens);
         preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
@@ -466,6 +738,8 @@ pub(crate) fn parse_object_filter_lexed(
         ));
     }
     if let Some(mut filter) = parse_extremum_object_filter_lexed(&envelope.core_tokens, other)? {
+        preserve_union_surface(&mut filter, &envelope.core_tokens);
+        preserve_controller_qualifier_order(&mut filter, &envelope.core_tokens);
         preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
@@ -473,6 +747,8 @@ pub(crate) fn parse_object_filter_lexed(
         ));
     }
     if let Some(mut filter) = parse_simple_object_filter_lexed(&envelope.core_tokens, other) {
+        preserve_union_surface(&mut filter, &envelope.core_tokens);
+        preserve_controller_qualifier_order(&mut filter, &envelope.core_tokens);
         preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
@@ -490,22 +766,24 @@ pub(crate) fn parse_object_filter_lexed(
 
 fn tokens_contain_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToken]) -> bool {
     let words = parser_token_word_refs(tokens);
-    words.iter().enumerate().any(|(idx, word)| {
-        *word == "or"
-            && words[..idx]
-                .iter()
-                .any(|word| matches!(*word, "permanent" | "permanents"))
-            && matches!(
-                words.get(idx + 1..idx + 3),
-                Some(["suspended", "card"] | ["suspended", "cards"])
-            )
-    })
+    let has_permanent = words
+        .iter()
+        .any(|word| matches!(*word, "permanent" | "permanents"));
+    let has_suspended_card = words
+        .windows(2)
+        .any(|window| matches!(window, ["suspended", "card"] | ["suspended", "cards"]));
+    let has_connector = words
+        .iter()
+        .any(|word| matches!(*word, "and" | "or" | "and/or"));
+    has_permanent && has_suspended_card && has_connector
 }
 
 pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
     !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.subtypes.is_empty()
+        || !filter.all_subtypes.is_empty()
         || !filter.excluded_subtypes.is_empty()
         || !filter.supertypes.is_empty()
         || !filter.excluded_supertypes.is_empty()
@@ -544,6 +822,7 @@ pub(crate) fn spell_filter_has_identity(filter: &ObjectFilter) -> bool {
         || filter.target_count.is_some()
         || filter.could_be_targeted_by.is_some()
         || filter.alternative_cast.is_some()
+        || !filter.characteristic_relations.is_empty()
         || filter.shares_creature_type_with_source
         || !filter.tagged_constraints.is_empty()
         || !filter.any_of.is_empty()
@@ -624,6 +903,9 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
     if base.cast_by.is_none() {
         base.cast_by = extra.cast_by;
     }
+    if base.excluded_cast_origin_zone.is_none() {
+        base.excluded_cast_origin_zone = extra.excluded_cast_origin_zone;
+    }
     if base.owner.is_none() {
         base.owner = extra.owner;
     }
@@ -657,6 +939,9 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
         base.could_be_targeted_by = extra.could_be_targeted_by;
     }
     base.shares_creature_type_with_source |= extra.shares_creature_type_with_source;
+    for relation in extra.characteristic_relations {
+        crate::slice_primitives::push_unique(&mut base.characteristic_relations, relation);
+    }
     for constraint in extra.tagged_constraints {
         crate::slice_primitives::push_unique(&mut base.tagged_constraints, constraint);
     }
@@ -669,6 +954,29 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
 mod tests {
     use super::*;
     use crate::runtime_backend::util::tokenize_line;
+
+    #[test]
+    fn shared_untapped_type_union_keeps_controller_scope() {
+        let tokens = tokenize_line("untapped artifacts and/or creatures you control", 0);
+        let filter =
+            parse_object_filter(&tokens, false).expect("shared-state type union should parse");
+
+        assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.zone, Some(Zone::Battlefield), "{filter:#?}");
+        assert_eq!(
+            filter.union_connective(),
+            ironsmith_core::ObjectFilterUnionConnective::AndOr
+        );
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(
+            filter.any_of.iter().all(|branch| branch.untapped),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.description(),
+            "an untapped artifact and/or creature you control"
+        );
+    }
 
     #[test]
     fn explicit_card_filter_disjunction_preserves_branch_local_predicates() {
@@ -727,6 +1035,204 @@ mod tests {
     }
 
     #[test]
+    fn ability_filter_preserves_authored_controller_qualifier_order() {
+        let permanent_tokens = tokenize_line("permanent with fading you control", 0);
+        let permanent = parse_object_filter(&permanent_tokens, false)
+            .expect("postpositive permanent ability filter should parse");
+        assert!(permanent.has_all_permanent_card_types(), "{permanent:#?}");
+        assert_eq!(permanent.ability_markers, ["fading".to_string()]);
+        assert!(
+            permanent.has_controller_after_qualifiers_surface(),
+            "{permanent:#?}"
+        );
+        let permanent_lexed = parse_object_filter_lexed(&permanent_tokens, false)
+            .expect("lexed postpositive permanent ability filter should parse");
+        assert!(
+            permanent_lexed.has_controller_after_qualifiers_surface(),
+            "{permanent_lexed:#?}"
+        );
+        let permanent_words =
+            parse_object_filter_words(&["permanent", "with", "fading", "you", "control"], false)
+                .expect("word-based postpositive permanent ability filter should parse");
+        assert!(
+            permanent_words.has_controller_after_qualifiers_surface(),
+            "{permanent_words:#?}"
+        );
+
+        let postpositive_creature_tokens = tokenize_line("creature with defender you control", 0);
+        let postpositive_creature = parse_object_filter(&postpositive_creature_tokens, false)
+            .expect("postpositive creature ability filter should parse");
+        assert_eq!(postpositive_creature.card_types, [CardType::Creature]);
+        assert!(
+            postpositive_creature.has_controller_after_qualifiers_surface(),
+            "{postpositive_creature:#?}"
+        );
+
+        let canonical_tokens = tokenize_line("creature you control with defender", 0);
+        let canonical = parse_object_filter(&canonical_tokens, false)
+            .expect("canonical creature ability filter should parse");
+        assert_eq!(canonical.card_types, [CardType::Creature]);
+        assert!(
+            !canonical.has_controller_after_qualifiers_surface(),
+            "{canonical:#?}"
+        );
+    }
+
+    #[test]
+    fn numeric_and_chosen_filters_preserve_authored_controller_qualifier_order() {
+        let numeric_tokens = tokenize_line("creature with power 4 or greater you control", 0);
+        let numeric = parse_object_filter(&numeric_tokens, false)
+            .expect("postpositive numeric filter should parse");
+        assert_eq!(numeric.power, Some(Comparison::GreaterThanOrEqual(4)));
+        assert!(
+            numeric.has_controller_after_qualifiers_surface(),
+            "{numeric:#?}"
+        );
+
+        let chosen_tokens = tokenize_line("permanent of the chosen type you control", 0);
+        let chosen = parse_object_filter(&chosen_tokens, false)
+            .expect("postpositive chosen-type filter should parse");
+        assert!(chosen.chosen_creature_type, "{chosen:#?}");
+        assert!(
+            chosen.has_controller_after_qualifiers_surface(),
+            "{chosen:#?}"
+        );
+
+        let canonical_tokens = tokenize_line("creature you control with power 4 or greater", 0);
+        let canonical = parse_object_filter(&canonical_tokens, false)
+            .expect("canonical numeric filter should parse");
+        assert!(
+            !canonical.has_controller_after_qualifiers_surface(),
+            "{canonical:#?}"
+        );
+
+        let that_player_tokens =
+            tokenize_line("creature that player controls with power 4 or greater", 0);
+        let that_player = parse_object_filter(&that_player_tokens, false)
+            .expect("that-player controller filter should parse");
+        assert!(
+            !that_player.has_controller_after_qualifiers_surface(),
+            "{that_player:#?}"
+        );
+    }
+
+    #[test]
+    fn subtype_union_preserves_shared_article_and_serial_or_surface() {
+        let tokens = tokenize_line("a Kraken, Leviathan, Merfolk, Octopus, or Serpent", 0);
+        let filter =
+            parse_object_filter(&tokens, false).expect("serial subtype union should parse");
+
+        assert_eq!(
+            filter.subtypes,
+            [
+                Subtype::Kraken,
+                Subtype::Leviathan,
+                Subtype::Merfolk,
+                Subtype::Octopus,
+                Subtype::Serpent,
+            ]
+        );
+        assert!(filter.has_serial_or_list_surface(), "{filter:#?}");
+        assert!(
+            filter.has_shared_indefinite_article_surface(),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.description(),
+            "a Kraken, Leviathan, Merfolk, Octopus, or Serpent"
+        );
+
+        let excluded_tokens = tokenize_line(
+            "creature that isn't a Kraken, Leviathan, Merfolk, Octopus, or Serpent",
+            0,
+        );
+        let excluded = parse_object_filter(&excluded_tokens, false)
+            .expect("negative serial subtype union should parse");
+        assert!(excluded.has_serial_or_list_surface(), "{excluded:#?}");
+        assert_eq!(excluded.card_types, [CardType::Creature]);
+        assert!(excluded.subtypes.is_empty(), "{excluded:#?}");
+        assert_eq!(
+            excluded.excluded_subtypes,
+            [
+                Subtype::Kraken,
+                Subtype::Leviathan,
+                Subtype::Merfolk,
+                Subtype::Octopus,
+                Subtype::Serpent,
+            ],
+        );
+        assert!(excluded.any_of.is_empty(), "{excluded:#?}");
+        assert_eq!(
+            ironsmith_core::filter_model::describe_relative_characteristic_list_filter(&excluded)
+                .as_deref(),
+            Some("creature that isn't a Kraken, Leviathan, Merfolk, Octopus, or Serpent")
+        );
+
+        let each_tokens = tokenize_line(
+            "each creature that isn't an Insect, Rat, Spider, or Squirrel",
+            0,
+        );
+        let each = parse_object_filter(&each_tokens, false)
+            .expect("quantified negative subtype list should parse");
+        assert_eq!(each.card_types, [CardType::Creature]);
+        assert_eq!(
+            each.excluded_subtypes,
+            [
+                Subtype::Insect,
+                Subtype::Rat,
+                Subtype::Spider,
+                Subtype::Squirrel,
+            ],
+        );
+        assert!(
+            each.subtypes.is_empty() && each.any_of.is_empty(),
+            "{each:#?}"
+        );
+        assert_eq!(
+            ironsmith_core::filter_model::describe_relative_characteristic_list_filter(&each)
+                .as_deref(),
+            Some("creature that isn't an Insect, Rat, Spider, or Squirrel"),
+        );
+    }
+
+    #[test]
+    fn general_filter_entrypoint_keeps_branch_scoped_comma_collection() {
+        let tokens = tokenize_line(
+            "enchantments you both own and control, all Auras you own attached to permanents you control, and all Auras you own attached to attacking creatures your opponents control",
+            0,
+        );
+        let filter =
+            parse_object_filter(&tokens, false).expect("branch-scoped collection should parse");
+
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface());
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.subtypes == [Subtype::Aura]
+                && branch.attached_to_object.as_deref().is_some_and(|host| {
+                    host.attacking && host.controller == Some(PlayerFilter::Opponent)
+                })
+        }));
+    }
+
+    #[test]
+    fn repeated_or_subtype_union_does_not_infer_serial_comma_surface() {
+        let tokens = tokenize_line("a Kraken or Leviathan or Merfolk or Octopus or Serpent", 0);
+        let filter =
+            parse_object_filter(&tokens, false).expect("repeated-or subtype union should parse");
+
+        assert!(!filter.has_serial_or_list_surface(), "{filter:#?}");
+        assert!(
+            filter.has_shared_indefinite_article_surface(),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.description(),
+            "a Kraken or Leviathan or Merfolk or Octopus or Serpent"
+        );
+    }
+
+    #[test]
     fn parsed_card_noun_remains_visible_after_context_clears_the_zone() {
         let tokens = tokenize_line("instant or sorcery card", 0);
         let mut filter =
@@ -735,6 +1241,50 @@ mod tests {
         filter.zone = None;
         assert!(filter.has_explicit_card_noun());
         assert_eq!(filter.description(), "instant or sorcery card");
+    }
+
+    #[test]
+    fn shared_card_noun_preserves_plain_and_as_an_inclusive_set_surface() {
+        let tokens = tokenize_line("instant and sorcery card in your graveyard", 0);
+        let filter =
+            parse_object_filter(&tokens, false).expect("conjunctive card filter should parse");
+
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.card_types,
+            [CardType::Instant, CardType::Sorcery],
+            "{filter:#?}"
+        );
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+        assert_eq!(
+            filter.description(),
+            "instant and sorcery card in your graveyard"
+        );
+
+        let disjunctive = tokenize_line("instant or sorcery card in your graveyard", 0);
+        let disjunctive =
+            parse_object_filter(&disjunctive, false).expect("disjunctive filter should parse");
+        assert!(
+            !disjunctive.has_conjunctive_set_surface(),
+            "{disjunctive:#?}"
+        );
+        assert_eq!(
+            disjunctive.description(),
+            "instant or sorcery card in your graveyard"
+        );
+
+        let compound_type = tokenize_line("artifact creature with flying and vigilance", 0);
+        let compound_type =
+            parse_object_filter(&compound_type, false).expect("compound type filter should parse");
+        assert!(
+            !compound_type.has_conjunctive_set_surface(),
+            "an `and` in a later qualifier must not join adjacent card types: {compound_type:#?}"
+        );
+        assert!(
+            !compound_type.description().starts_with("artifact and creature"),
+            "{}",
+            compound_type.description()
+        );
     }
 
     #[test]
@@ -850,6 +1400,60 @@ mod tests {
     }
 
     #[test]
+    fn shared_terminal_card_noun_lifts_dynamic_mana_value_over_type_union() {
+        let tokens = tokenize_line(
+            "instant or sorcery card with mana value less than or equal to his power from your graveyard",
+            0,
+        );
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.card_types,
+            vec![CardType::Instant, CardType::Sorcery]
+        );
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert!(matches!(
+            filter.mana_value.as_ref(),
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if value.unhinted() == &crate::effect::Value::SourcePower
+                    && value.has_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::MasculineSourcePossessive
+                    )
+        ));
+    }
+
+    #[test]
+    fn repeated_card_nouns_keep_trailing_mana_value_branch_local() {
+        let tokens = tokenize_line(
+            "land card or creature card with mana value less than or equal to his power from your graveyard",
+            0,
+        );
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        let land = filter
+            .any_of
+            .iter()
+            .find(|branch| branch.card_types == [CardType::Land])
+            .expect("land arm");
+        let creature = filter
+            .any_of
+            .iter()
+            .find(|branch| branch.card_types == [CardType::Creature])
+            .expect("creature arm");
+        assert!(land.mana_value.is_none(), "{land:#?}");
+        assert!(matches!(
+            creature.mana_value.as_ref(),
+            Some(crate::filter::Comparison::LessThanOrEqualExpr(value))
+                if value.unhinted() == &crate::effect::Value::SourcePower
+        ));
+    }
+
+    #[test]
     fn parse_object_filter_lexed_parses_controller_without_owner_suffix() {
         let tokens = tokenize_line("land you control but don't own", 0);
 
@@ -889,6 +1493,18 @@ mod tests {
             vec![CardType::Artifact, CardType::Creature]
         );
         assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_preserves_adjacent_compound_subtypes() {
+        let tokens =
+            crate::runtime_backend::lexer::lex_line("Eldrazi Spawn creatures you control", 0)
+                .expect("compound subtype fixture should lex");
+        let filter =
+            parse_object_filter_lexed(&tokens, false).expect("compound subtype should parse");
+
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(filter.all_subtypes, vec![Subtype::Eldrazi, Subtype::Spawn]);
     }
 
     #[test]
@@ -962,6 +1578,64 @@ mod tests {
     }
 
     #[test]
+    fn parse_object_filter_preserves_excluded_cast_origin_zone() {
+        let tokens = tokenize_line(
+            "spell that wasn't cast from its owner's hand",
+            0,
+        );
+
+        let filter = parse_object_filter(&tokens, false)
+            .expect("negative spell cast-origin filter should parse");
+
+        assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.excluded_cast_origin_zone,
+            Some(Zone::Hand),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.description(),
+            "spell that wasn't cast from its owner's hand"
+        );
+    }
+
+    #[test]
+    fn shared_terminal_spell_noun_scopes_over_type_union_and_qualifiers() {
+        let tokens = tokenize_line("instant or sorcery spell you control with mana value X", 0);
+
+        let filter =
+            parse_object_filter(&tokens, false).expect("shared-noun spell filter should parse");
+
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.card_types,
+            [CardType::Instant, CardType::Sorcery],
+            "{filter:#?}"
+        );
+        assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
+        assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell),
+            "{filter:#?}"
+        );
+        assert!(matches!(
+            filter.mana_value.as_ref(),
+            Some(Comparison::EqualExpr(value))
+                if value.unhinted() == &crate::effect::Value::X
+        ));
+        assert_eq!(
+            filter.description(),
+            "instant or sorcery spell you control with mana value X"
+        );
+    }
+
+    #[test]
     fn parse_object_filter_lexed_parses_split_face_state_and_chosen_type_atoms() {
         let tokens = tokenize_line("face down chosen type creatures", 0);
 
@@ -995,6 +1669,144 @@ mod tests {
         assert!(!filter.chosen_creature_type);
         assert!(filter.excluded_chosen_creature_type);
         assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
+    fn relative_unions_keep_the_common_domain_outside_the_union_arms() {
+        let mycotyrant = tokenize_line("creatures you control that are Fungi and/or Saprolings", 0);
+        let mycotyrant =
+            parse_object_filter_lexed(&mycotyrant, false).expect("relative subtype union");
+        assert_eq!(mycotyrant.card_types, [CardType::Creature]);
+        assert_eq!(mycotyrant.subtypes, [Subtype::Fungus, Subtype::Saproling]);
+        assert!(!mycotyrant.type_or_subtype_union, "{mycotyrant:#?}");
+        assert!(mycotyrant.any_of.is_empty(), "{mycotyrant:#?}");
+        assert!(mycotyrant.has_relative_characteristic_list_surface());
+        assert_eq!(
+            mycotyrant.union_connective(),
+            ObjectFilterUnionConnective::AndOr
+        );
+
+        let zombies_or_tokens =
+            tokenize_line("creatures you control that are Zombies and/or tokens", 0);
+        let zombies_or_tokens =
+            parse_object_filter_lexed(&zombies_or_tokens, false).expect("relative mixed union");
+        assert_eq!(zombies_or_tokens.card_types, [CardType::Creature]);
+        assert_eq!(zombies_or_tokens.controller, Some(PlayerFilter::You));
+        assert!(!zombies_or_tokens.token, "{zombies_or_tokens:#?}");
+        assert!(
+            zombies_or_tokens.subtypes.is_empty(),
+            "{zombies_or_tokens:#?}"
+        );
+        assert_eq!(zombies_or_tokens.any_of.len(), 2, "{zombies_or_tokens:#?}");
+        assert!(
+            zombies_or_tokens
+                .any_of
+                .iter()
+                .any(|arm| arm.subtypes == [Subtype::Zombie]),
+            "{zombies_or_tokens:#?}"
+        );
+        assert!(
+            zombies_or_tokens.any_of.iter().any(|arm| arm.token),
+            "{zombies_or_tokens:#?}"
+        );
+        assert!(zombies_or_tokens.has_relative_characteristic_list_surface());
+
+        let token_or_rabbit =
+            tokenize_line("other creature you control that's a token or a Rabbit", 0);
+        let token_or_rabbit =
+            parse_object_filter_lexed(&token_or_rabbit, false).expect("relative mixed union");
+        assert_eq!(token_or_rabbit.card_types, [CardType::Creature]);
+        assert_eq!(token_or_rabbit.controller, Some(PlayerFilter::You));
+        assert!(token_or_rabbit.other);
+        assert_eq!(token_or_rabbit.any_of.len(), 2, "{token_or_rabbit:#?}");
+        assert!(
+            token_or_rabbit.any_of.iter().any(|arm| arm.token),
+            "{token_or_rabbit:#?}"
+        );
+        assert!(
+            token_or_rabbit
+                .any_of
+                .iter()
+                .any(|arm| arm.subtypes == [Subtype::Rabbit]),
+            "{token_or_rabbit:#?}"
+        );
+        assert!(token_or_rabbit.has_relative_characteristic_list_surface());
+        assert_eq!(
+            token_or_rabbit.description(),
+            "another creature you control that's a token or a Rabbit"
+        );
+
+        let spirits_or_enchantments = tokenize_line(
+            "permanents you control that are Spirits and/or enchantments",
+            0,
+        );
+        let spirits_or_enchantments = parse_object_filter_lexed(&spirits_or_enchantments, false)
+            .expect("relative type-or-subtype union");
+        assert!(spirits_or_enchantments.card_types.is_empty());
+        assert!(spirits_or_enchantments.subtypes.is_empty());
+        assert_eq!(spirits_or_enchantments.any_of.len(), 2);
+        assert!(
+            spirits_or_enchantments
+                .any_of
+                .iter()
+                .any(|arm| arm.subtypes == [Subtype::Spirit])
+        );
+        assert!(
+            spirits_or_enchantments
+                .any_of
+                .iter()
+                .any(|arm| arm.card_types == [CardType::Enchantment])
+        );
+        assert!(spirits_or_enchantments.has_relative_characteristic_list_surface());
+    }
+
+    #[test]
+    fn comparison_qualified_union_keeps_the_comparison_on_its_authored_arm() {
+        let tokens = tokenize_line("creatures with power 2 or less and/or Walls", 0);
+        let filter = parse_object_filter_lexed(&tokens, false)
+            .expect("comparison-qualified characteristic union");
+
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert!(filter.power.is_none(), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+
+        let creature_arm = filter
+            .any_of
+            .iter()
+            .find(|arm| arm.card_types == [CardType::Creature])
+            .expect("creature arm");
+        assert_eq!(creature_arm.power, Some(Comparison::LessThanOrEqual(2)));
+        let wall_arm = filter
+            .any_of
+            .iter()
+            .find(|arm| arm.subtypes == [Subtype::Wall])
+            .expect("Wall arm");
+        assert!(wall_arm.power.is_none());
+        assert_eq!(
+            filter.description(),
+            "creature with power 2 or less and/or Wall"
+        );
+    }
+
+    #[test]
+    fn where_x_comparison_clause_is_not_an_object_filter_union_arm() {
+        let tokens = tokenize_line(
+            "creature with toughness X or less, where X is the number of Shrines you control",
+            0,
+        );
+        let filter = parse_object_filter_lexed(&tokens, false)
+            .expect("dynamic toughness filter should parse");
+
+        assert_eq!(filter.card_types, [CardType::Creature], "{filter:#?}");
+        assert!(filter.controller.is_none(), "{filter:#?}");
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        let Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) = filter.toughness.as_ref()
+        else {
+            panic!("expected dynamic toughness comparison: {filter:#?}");
+        };
+        assert_eq!(value.unhinted(), &crate::effect::Value::X, "{filter:#?}");
     }
 
     #[test]
@@ -1108,6 +1920,32 @@ mod tests {
             }),
             "{filter:?}"
         );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_keeps_repeated_each_suspended_and_permanent_domains() {
+        let tokens = tokenize_line(
+            "suspended card you own and each other permanent you control with a time counter on it",
+            0,
+        );
+
+        let filter = parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(filter.any_of.iter().any(|arm| {
+            arm.zone == Some(Zone::Exile)
+                && arm.owner == Some(PlayerFilter::You)
+                && arm.alternative_cast == Some(crate::filter::AlternativeCastKind::Suspend)
+        }));
+        assert!(filter.any_of.iter().any(|arm| {
+            arm.zone == Some(Zone::Battlefield)
+                && arm.controller == Some(PlayerFilter::You)
+                && arm.other
+                && arm.with_counter
+                    == Some(crate::filter::CounterConstraint::Typed(
+                        crate::object::CounterType::Time,
+                    ))
+        }));
     }
 }
 

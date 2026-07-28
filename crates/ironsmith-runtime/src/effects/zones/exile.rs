@@ -450,6 +450,7 @@ impl CostExecutableEffect for ExileEffect {
 mod tests {
     use super::*;
     use crate::card::{Card, CardBuilder};
+    use crate::decision::DecisionMaker;
     use crate::effect::ChoiceCount;
     use crate::effects::ChooseObjectsEffect;
     use crate::effects::LookAtTopCardsEffect;
@@ -490,6 +491,21 @@ mod tests {
         let card = make_card(id.0 as u32, name, mana_symbols, card_type);
         let obj = Object::from_card(id, &card, owner, zone);
         game.add_object(obj);
+        id
+    }
+
+    fn add_card_with_types_to_zone(
+        game: &mut GameState,
+        owner: PlayerId,
+        zone: Zone,
+        name: &str,
+        card_types: Vec<CardType>,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .card_types(card_types)
+            .build();
+        game.add_object(Object::from_card(id, &card, owner, zone));
         id
     }
 
@@ -564,6 +580,78 @@ mod tests {
         let result = effect.execute(&mut game, &mut ctx).unwrap();
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.exile.len(), 1);
+    }
+
+    #[test]
+    fn exile_one_per_card_type_uses_distinct_assignable_type_slots() {
+        struct SelectAll;
+
+        impl DecisionMaker for SelectAll {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &crate::decisions::context::SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                ctx.candidates
+                    .iter()
+                    .filter(|candidate| candidate.legal)
+                    .map(|candidate| candidate.id)
+                    .collect()
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let artifact_creature = add_card_with_types_to_zone(
+            &mut game,
+            bob,
+            Zone::Graveyard,
+            "Artifact Creature",
+            vec![CardType::Creature, CardType::Artifact],
+        );
+        let creature = add_card_with_types_to_zone(
+            &mut game,
+            bob,
+            Zone::Graveyard,
+            "Creature",
+            vec![CardType::Creature],
+        );
+        let first_instant = add_card_with_types_to_zone(
+            &mut game,
+            bob,
+            Zone::Graveyard,
+            "First Instant",
+            vec![CardType::Instant],
+        );
+        let second_instant = add_card_with_types_to_zone(
+            &mut game,
+            bob,
+            Zone::Graveyard,
+            "Second Instant",
+            vec![CardType::Instant],
+        );
+
+        let mut filter = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::Specific(bob));
+        filter.one_per_card_type = true;
+        let effect = ExileEffect::with_spec(
+            ChooseSpec::Object(filter).with_count(ChoiceCount::any_number()),
+        );
+        let source = game.new_object_id();
+        let mut dm = SelectAll;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("one-per-type exile should resolve");
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(3));
+        assert!(game.object(artifact_creature).is_none());
+        assert!(game.object(creature).is_none());
+        assert!(game.object(first_instant).is_none());
+        assert!(game.object(second_instant).is_some());
     }
 
     #[test]

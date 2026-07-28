@@ -191,6 +191,7 @@ fn next_cast_instant_sorcery_or_loyalty_trigger_from_core(
 
     let spell_cast = TriggerSpec::SpellCast {
         filter: Some(ObjectFilter::instant_or_sorcery()),
+        mana_source_filter: None,
         caster: PlayerFilter::You,
         timing: None,
         during_turn: None,
@@ -373,14 +374,15 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
         )));
     }
 
-    let delayed_target_shape = delayed_shapes::parse_delayed_target_dies_subject(
-        trigger_core_tokens,
-    )
-    .map(|subject| (subject, false))
-    .or_else(|| {
-        delayed_shapes::parse_delayed_target_put_into_your_graveyard_subject(trigger_core_tokens)
-            .map(|subject| (subject, true))
-    });
+    let delayed_target_shape =
+        delayed_shapes::parse_delayed_target_dies_subject(trigger_core_tokens)
+            .map(|subject| (subject, false))
+            .or_else(|| {
+                delayed_shapes::parse_delayed_target_put_into_your_graveyard_subject(
+                    trigger_core_tokens,
+                )
+                .map(|subject| (subject, true))
+            });
     if let Some((subject_tokens, put_into_your_graveyard)) = delayed_target_shape {
         let filter = parse_object_filter(subject_tokens, false).map_err(|_| {
             CardTextError::ParseError(format!(
@@ -620,6 +622,7 @@ pub(crate) fn merge_filters(base: &ObjectFilter, specific: &ObjectFilter) -> Obj
     merged.other |= specific.other;
     merged.token |= specific.token;
     merged.nontoken |= specific.nontoken;
+    merged.suspected |= specific.suspected;
     merged.tapped |= specific.tapped;
     merged.untapped |= specific.untapped;
     merged.attacking |= specific.attacking;

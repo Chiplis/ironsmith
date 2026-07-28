@@ -2,9 +2,48 @@ use winnow::combinator::alt;
 use winnow::prelude::*;
 
 use crate::mana::ManaSymbol;
-use crate::runtime_backend::lexer::{LexStream, OwnedLexToken};
+use crate::runtime_backend::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
 
-use super::super::super::{permission_shapes, primitives};
+use super::super::super::{leaf, permission_shapes, primitives};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BoundedXMaximumShape {
+    TriggeringLifeGained,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct BoundedXPaymentShape {
+    pub(crate) cost: crate::mana::ManaCost,
+    pub(crate) maximum: BoundedXMaximumShape,
+}
+
+/// Parse a mana payment whose printed X is chosen subject to an authored
+/// upper bound, rather than defined to equal another value.
+pub(crate) fn parse_bounded_x_payment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<BoundedXPaymentShape> {
+    let (_, after_pay) = primitives::parse_prefix(tokens, primitives::kw("pay").void())?;
+    let parsed_cost = leaf::parse_leaf_mana_cost_prefix_tokens(after_pay)?;
+    if !parsed_cost.cost.has_x() {
+        return None;
+    }
+
+    let after_cost = trim_lexed_commas(after_pay.get(parsed_cost.consumed..)?);
+    let (_, maximum_tokens) = primitives::parse_prefix(
+        after_cost,
+        primitives::phrase(&["where", "x", "is", "less", "than", "or", "equal", "to"]).void(),
+    )?;
+    let maximum = permission_shapes::exact_tokens(
+        maximum_tokens,
+        &["the", "amount", "of", "life", "you", "gained"],
+    )
+    .then_some(BoundedXMaximumShape::TriggeringLifeGained)?;
+
+    Some(BoundedXPaymentShape {
+        cost: parsed_cost.cost,
+        maximum,
+    })
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UntapActionShape<'a> {
@@ -174,5 +213,18 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[test]
+    fn parses_x_payment_bounded_by_triggering_life_gain() {
+        let payment = lex_line(
+            "pay {X}, where X is less than or equal to the amount of life you gained",
+            0,
+        )
+        .unwrap();
+        let parsed =
+            parse_bounded_x_payment_tokens(&payment).expect("bounded X payment should parse");
+        assert_eq!(parsed.cost.to_oracle(), "{X}");
+        assert_eq!(parsed.maximum, BoundedXMaximumShape::TriggeringLifeGained);
     }
 }

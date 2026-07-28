@@ -832,8 +832,9 @@ pub(super) fn bottom_score_parse_laquatus_creativity_draws_then_discards_that_ma
     assert!(debug.contains("DrawCardsEffect"), "{debug}");
     assert!(debug.contains("DiscardEffect"), "{debug}");
     assert!(
-        rendered.contains("target player draws cards equal to the number of cards in their hand")
-            && rendered.contains("and discards that many cards"),
+        rendered.contains(
+            "target player draws cards equal to the number of cards in their hand, then discards that many cards"
+        ),
         "expected discard follow-up to render, got {rendered}"
     );
 }

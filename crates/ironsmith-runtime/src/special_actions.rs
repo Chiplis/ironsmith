@@ -419,6 +419,13 @@ pub enum SpecialAction {
 
     /// Pay {3} to put the chosen companion into its owner's hand (CR 116.2g).
     Companion { card_id: ObjectId },
+
+    /// Sacrifice a permanent so the controller of the object attached to this
+    /// source ignores the source's static effect until end of turn.
+    IgnoreAttachedRestriction {
+        source_id: ObjectId,
+        ability_index: usize,
+    },
 }
 
 /// Errors that can occur when attempting to perform a special action.
@@ -544,6 +551,10 @@ pub fn can_perform(
             can_turn_conspiracy_face_up(game, player, *conspiracy_id)
         }
         SpecialAction::Companion { card_id } => can_take_companion_action(game, player, *card_id),
+        SpecialAction::IgnoreAttachedRestriction {
+            source_id,
+            ability_index,
+        } => can_ignore_attached_restriction(game, player, *source_id, *ability_index),
     }
 }
 
@@ -576,6 +587,10 @@ pub fn can_perform_check(
             can_turn_conspiracy_face_up(game, player, *conspiracy_id)
         }
         SpecialAction::Companion { card_id } => can_take_companion_action(game, player, *card_id),
+        SpecialAction::IgnoreAttachedRestriction {
+            source_id,
+            ability_index,
+        } => can_ignore_attached_restriction(game, player, *source_id, *ability_index),
     }
 }
 
@@ -618,7 +633,99 @@ pub fn perform(
             .turn_conspiracy_face_up(player, conspiracy_id)
             .map_err(|_| ActionError::InvalidTarget),
         SpecialAction::Companion { card_id } => perform_companion_action(game, player, card_id),
+        SpecialAction::IgnoreAttachedRestriction {
+            source_id,
+            ability_index,
+        } => perform_ignore_attached_restriction(
+            game,
+            player,
+            source_id,
+            ability_index,
+            decision_maker,
+        ),
     }
+}
+
+fn ignore_attached_restriction_cost() -> crate::cost::TotalCost {
+    crate::cost::TotalCost::from_cost(crate::costs::Cost::sacrifice(
+        ObjectFilter::permanent().controlled_by(crate::target::PlayerFilter::You),
+    ))
+}
+
+fn can_ignore_attached_restriction(
+    game: &GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    ability_index: usize,
+) -> Result<(), ActionError> {
+    if !game.team_has_priority(player) {
+        return Err(ActionError::NotYourPriority);
+    }
+    if game.player_ignores_attached_static_restrictions_this_turn(source_id, player) {
+        return Err(ActionError::InvalidTiming);
+    }
+
+    let source = game.object(source_id).ok_or(ActionError::ObjectNotFound)?;
+    if source.zone != Zone::Battlefield {
+        return Err(ActionError::WrongZone {
+            expected: Zone::Battlefield,
+            actual: source.zone,
+        });
+    }
+    let ability = source
+        .abilities
+        .get(ability_index)
+        .ok_or(ActionError::NoSuchAbility)?;
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return Err(ActionError::NoSuchAbility);
+    };
+    if !ability.functions_in(&Zone::Battlefield)
+        || static_ability.id()
+            != crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+        || !static_ability.is_active(game, source_id)
+    {
+        return Err(ActionError::NoSuchAbility);
+    }
+
+    let Some(crate::object::AttachmentTarget::Object(attached_id)) = source.attached_to else {
+        return Err(ActionError::InvalidTarget);
+    };
+    if game.object(attached_id).is_none_or(|attached| {
+        attached.zone != Zone::Battlefield || game.controller_of(attached) != player
+    }) {
+        return Err(ActionError::InvalidTarget);
+    }
+
+    crate::cost::can_pay_cost_with_reason(
+        game,
+        source_id,
+        player,
+        &ignore_attached_restriction_cost(),
+        crate::costs::PaymentReason::Other,
+    )
+    .map_err(cost_error_to_action_error)
+}
+
+fn perform_ignore_attached_restriction(
+    game: &mut GameState,
+    player: PlayerId,
+    source_id: ObjectId,
+    ability_index: usize,
+    decision_maker: &mut impl crate::decision::DecisionMaker,
+) -> Result<(), ActionError> {
+    can_ignore_attached_restriction(game, player, source_id, ability_index)?;
+    pay_total_cost_with_choice(
+        game,
+        player,
+        source_id,
+        &ignore_attached_restriction_cost(),
+        crate::costs::PaymentReason::Other,
+        decision_maker,
+    )
+    .map_err(cost_error_to_action_error)?;
+    game.player_ignores_attached_static_restrictions_until_end_of_turn(source_id, player);
+    game.update_cant_effects();
+    Ok(())
 }
 
 fn companion_action_cost() -> ManaCost {
@@ -3502,6 +3609,106 @@ mod tests {
             .expect("static-ability source should exist")
             .abilities_mut()
             .push(Ability::static_ability(ability));
+    }
+
+    #[test]
+    fn attached_controller_can_sacrifice_to_ignore_source_static_effects_for_turn() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        game.turn.priority_player = Some(bob);
+
+        let sacrifice_card = CardBuilder::new(CardId::new(), "Restriction Test Fodder")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&sacrifice_card, bob, Zone::Battlefield);
+        let creature_card = CardBuilder::new(CardId::new(), "Restriction Test Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let attached_id = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
+        let alice_attached_id =
+            game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+        let aura_card = CardBuilder::new(CardId::new(), "Ignore Restriction Test Aura")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let aura_id = game.create_object_from_card(&aura_card, alice, Zone::Battlefield);
+        let marker_model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::attached_controller_may_sacrifice_permanent_to_ignore_source_effect_until_end_of_turn(
+                "That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn",
+            );
+        let marker = StaticAbility::from_model(marker_model);
+        let restriction_model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::restriction(
+                crate::effect::Restriction::attack_or_block(ObjectFilter::creature().match_tagged(
+                    "enchanted",
+                    crate::target::TaggedOpbjectRelation::IsTaggedObject,
+                )),
+                "enchanted creature can't attack or block",
+            );
+        let restricted_effect = StaticAbility::from_model(restriction_model);
+        let unrelated_effect = StaticAbility::flying();
+        {
+            let aura = game.object_mut(aura_id).expect("test Aura should exist");
+            aura.abilities_mut()
+                .push(Ability::static_ability(restricted_effect.clone()));
+            aura.abilities_mut()
+                .push(Ability::static_ability(unrelated_effect.clone()));
+            aura.abilities_mut()
+                .push(Ability::static_ability(marker.clone()));
+        }
+        assert!(game.attach_object_to_target(
+            aura_id,
+            crate::object::AttachmentTarget::Object(attached_id),
+        ));
+
+        let action = SpecialAction::IgnoreAttachedRestriction {
+            source_id: aura_id,
+            ability_index: 2,
+        };
+        assert!(can_perform_check(&action, &game, bob).is_ok());
+        assert!(restricted_effect.is_active(&game, aura_id));
+
+        let mut decision_maker = SelectFirstDecisionMaker;
+        perform(action.clone(), &mut game, bob, &mut decision_maker)
+            .expect("attached creature's controller should pay the special-action cost");
+        assert!(
+            game.player(bob).is_some_and(|player| {
+                player.graveyard.iter().any(|id| {
+                    game.object(*id)
+                        .is_some_and(|object| object.name.as_str() == "Restriction Test Fodder")
+                })
+            }),
+            "the selected fodder should be sacrificed as the action's cost"
+        );
+        assert!(game.player_ignores_attached_static_restrictions_this_turn(aura_id, bob));
+        assert!(!restricted_effect.is_active(&game, aura_id));
+        assert!(
+            unrelated_effect.is_active(&game, aura_id),
+            "ignoring this restriction must not disable unrelated static abilities"
+        );
+        assert!(game.attach_object_to_target(
+            aura_id,
+            crate::object::AttachmentTarget::Object(alice_attached_id),
+        ));
+        assert!(
+            restricted_effect.is_active(&game, aura_id),
+            "one player's payment must not let a later controller ignore the restriction"
+        );
+        assert!(game.attach_object_to_target(
+            aura_id,
+            crate::object::AttachmentTarget::Object(attached_id),
+        ));
+        assert!(!restricted_effect.is_active(&game, aura_id));
+        assert!(
+            can_perform_check(&action, &game, bob).is_err(),
+            "the already-ignored source should not offer a redundant action"
+        );
+
+        game.turn_store.turn_history.clear_for_new_turn();
+        assert!(restricted_effect.is_active(&game, aura_id));
     }
 
     #[test]

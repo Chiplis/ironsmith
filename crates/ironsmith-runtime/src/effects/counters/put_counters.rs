@@ -7,6 +7,7 @@ use crate::effects::helpers::{resolve_objects_for_effect, resolve_value};
 use crate::effects::{CostExecutableEffect, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::processing::process_put_counters_with_event;
+use crate::filter::{FilterContext, ObjectFilterExt as _};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
 use crate::target::ChooseSpec;
@@ -283,6 +284,40 @@ mod tests {
         assert_eq!(result.as_count(), Some(1));
         assert_eq!(game.counter_count(target, CounterType::Lore), 1);
     }
+
+    #[test]
+    fn chosen_object_counter_cost_is_legal_and_does_not_collapse_to_source() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source_card = CardBuilder::new(CardId::from_raw(700), "Hatchet")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let target = create_creature_on_battlefield(&mut game, "Cost Bear", alice);
+        let effect = PutCountersEffect::new(
+            CounterType::MinusOneMinusOne,
+            1,
+            ChooseSpec::Object(
+                crate::filter::ObjectFilter::creature()
+                    .you_control()
+                    .in_zone(Zone::Battlefield),
+            ),
+        );
+
+        assert!(
+            CostExecutableEffect::can_execute_as_cost(&effect, &game, source, alice).is_ok(),
+            "the chosen creature, not the source, should make the cost legal"
+        );
+        let mut dm = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new_default(source, alice).with_decision_maker(&mut dm);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("chosen counter cost should execute");
+
+        assert_eq!(outcome.as_count(), Some(1));
+        assert_eq!(game.counter_count(target, CounterType::MinusOneMinusOne), 1);
+        assert_eq!(game.counter_count(source, CounterType::MinusOneMinusOne), 0);
+    }
 }
 
 impl CostExecutableEffect for PutCountersEffect {
@@ -290,22 +325,42 @@ impl CostExecutableEffect for PutCountersEffect {
         &self,
         game: &GameState,
         source: crate::ids::ObjectId,
-        _controller: crate::ids::PlayerId,
+        controller: crate::ids::PlayerId,
     ) -> Result<(), crate::effects::CostValidationError> {
-        if !matches!(self.target.base(), ChooseSpec::Source) {
+        if self.target.is_target() {
             return Err(crate::effects::CostValidationError::Other(
-                "put-counters cost supports only source".to_string(),
+                "a cost object must be chosen, not targeted".to_string(),
             ));
         }
-        if game
-            .object(source)
-            .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
-        {
-            Ok(())
-        } else {
-            Err(crate::effects::CostValidationError::Other(
-                "source must be on the battlefield".to_string(),
-            ))
+        match self.target.base() {
+            ChooseSpec::Source => {
+                if game
+                    .object(source)
+                    .is_some_and(|obj| obj.zone == crate::zone::Zone::Battlefield)
+                {
+                    Ok(())
+                } else {
+                    Err(crate::effects::CostValidationError::Other(
+                        "source must be on the battlefield".to_string(),
+                    ))
+                }
+            }
+            ChooseSpec::Object(filter) => {
+                let filter_ctx = FilterContext::new(controller).with_source(source);
+                if game.battlefield.iter().copied().any(|object_id| {
+                    game.object(object_id)
+                        .is_some_and(|object| filter.matches(object, &filter_ctx, game))
+                }) {
+                    Ok(())
+                } else {
+                    Err(crate::effects::CostValidationError::Other(
+                        "no valid object for the counter cost".to_string(),
+                    ))
+                }
+            }
+            _ => Err(crate::effects::CostValidationError::Other(
+                "put-counters cost supports only source or one chosen object".to_string(),
+            )),
         }
     }
 }

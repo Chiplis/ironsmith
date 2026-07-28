@@ -1,10 +1,10 @@
-use winnow::combinator::alt;
+use winnow::combinator::{alt, opt};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
 use super::super::super::lexer::{LexStream, OwnedLexToken};
-use super::super::primitives;
+use super::super::{leaf, primitives};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AnthemPrefixConditionKind {
@@ -18,6 +18,12 @@ pub(crate) struct AnthemPrefixConditionShape {
     pub(crate) kind: AnthemPrefixConditionKind,
     pub(crate) prefix_end: usize,
     pub(crate) comma_subject_start: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct FixedAnthemPrefixConditionShape<'a> {
+    pub(crate) kind: AnthemPrefixConditionKind,
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -47,6 +53,21 @@ pub(crate) fn parse_prefix_condition_shape(
         kind,
         prefix_end,
         comma_subject_start,
+    })
+}
+
+pub(crate) fn parse_fixed_prefix_condition_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<FixedAnthemPrefixConditionShape<'_>> {
+    let shape = parse_prefix_condition_shape(tokens, tokens.len())?;
+    if shape.kind == AnthemPrefixConditionKind::AsLongAs {
+        return None;
+    }
+    let subject_start = shape.comma_subject_start?;
+    let subject_tokens = tokens.get(subject_start..)?;
+    (!subject_tokens.is_empty()).then_some(FixedAnthemPrefixConditionShape {
+        kind: shape.kind,
+        subject_tokens,
     })
 }
 
@@ -93,6 +114,27 @@ pub(crate) fn parse_tail_shape(tokens: &[OwnedLexToken]) -> Option<AnthemTailSha
     let (_, condition_tokens) =
         primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"]))?;
     Some(AnthemTailShape::AsLongAs { condition_tokens })
+}
+
+pub(crate) fn split_trailing_modifier_maximum(
+    tokens: &[OwnedLexToken],
+) -> (&[OwnedLexToken], Option<i32>) {
+    let tokens = super::trim_anthem_clause_tokens(tokens);
+    let Some((body, maximum)) =
+        primitives::split_lexed_once_before_suffix(tokens, 1, || parse_modifier_maximum)
+    else {
+        return (tokens, None);
+    };
+    (
+        super::trim_anthem_clause_tokens(body),
+        i32::try_from(maximum).ok(),
+    )
+}
+
+fn parse_modifier_maximum(input: &mut LexStream<'_>) -> WResult<u32> {
+    opt(primitives::comma()).parse_next(input)?;
+    primitives::phrase(&["to", "a", "maximum", "of"]).parse_next(input)?;
+    leaf::parse_leaf_number_prefix_lexed(input)
 }
 
 pub(crate) fn parse_word_token_candidates(
@@ -156,11 +198,42 @@ mod tests {
     }
 
     #[test]
+    fn splits_fixed_turn_prefix_only_at_an_authored_comma() {
+        let tokens = lex("During turns other than yours, this Vehicle is an artifact creature.");
+        let shape = parse_fixed_prefix_condition_shape(&tokens).expect("fixed prefix");
+        assert_eq!(
+            shape.kind,
+            AnthemPrefixConditionKind::DuringTurnsOtherThanYours
+        );
+        assert_eq!(
+            crate::runtime_backend::lexer::render_token_slice(shape.subject_tokens),
+            "this Vehicle is an artifact creature."
+        );
+
+        let no_comma = lex("During turns other than yours this Vehicle is an artifact creature.");
+        assert!(parse_fixed_prefix_condition_shape(&no_comma).is_none());
+        let as_long_as = lex("As long as it is your turn, this Vehicle is an artifact creature.");
+        assert!(parse_fixed_prefix_condition_shape(&as_long_as).is_none());
+    }
+
+    #[test]
     fn parses_typed_anthem_tail() {
         let tokens = lex("for each creature you control");
         assert!(matches!(
             parse_tail_shape(&tokens),
             Some(AnthemTailShape::ForEach(_))
         ));
+    }
+
+    #[test]
+    fn splits_authored_modifier_maximum_from_count_body() {
+        let tokens = lex("for each of its creature types, to a maximum of 10.");
+        let (body, maximum) = split_trailing_modifier_maximum(&tokens);
+
+        assert_eq!(maximum, Some(10));
+        assert_eq!(
+            crate::runtime_backend::lexer::render_token_slice(body),
+            "for each of its creature types"
+        );
     }
 }

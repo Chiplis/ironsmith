@@ -434,21 +434,83 @@ fn parse_cant_be_spent_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsage
     let start = parse_any_prefix_word_count(&words, PREFIXES)?;
     (start < words.len()).then_some(())?;
     let spec = token_slice_for_words(tokens, &view, start, words.len())?;
-    let filter = matches_any_exact_tokens(
+    let forbidden_filter = if matches_any_exact_tokens(
         spec,
-        &[&["nonartifact", "spell"], &["nonartifact", "spells"]],
-    )
-    .then(|| ObjectFilter::default().with_type(CardType::Artifact))?;
-    Some(ManaUsageRestriction::CastSpellMatching {
-        filter,
-        restrict_to_matching_spell: true,
-        grant_uncounterable: false,
-        enters_with_counters: vec![],
-        granted_abilities: vec![],
+        &[
+            &["a", "nonartifact", "spell"],
+            &["nonartifact", "spell"],
+            &["nonartifact", "spells"],
+        ],
+    ) {
+        ObjectFilter::default().without_type(CardType::Artifact)
+    } else if matches_any_exact_tokens(
+        spec,
+        &[
+            &["a", "spell", "from", "your", "hand"],
+            &["spells", "from", "your", "hand"],
+        ],
+    ) {
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You)
+    } else {
+        return None;
+    };
+    Some(ManaUsageRestriction::PaymentTransaction {
+        restriction: Some(ManaPaymentPredicate::Not(Box::new(
+            ManaPaymentPredicate::All(vec![
+                ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+                ManaPaymentPredicate::SourceMatches(forbidden_filter),
+            ]),
+        ))),
+        on_spend: Vec::new(),
     })
 }
 
 fn parse_activate_ability_restriction(tokens: &[OwnedLexToken]) -> Option<ManaUsageRestriction> {
+    if matches_any_exact_tokens(
+        tokens,
+        &[
+            &[
+                "spend",
+                "this",
+                "mana",
+                "only",
+                "to",
+                "activate",
+                "abilities",
+                "of",
+                "artifact",
+                "sources",
+            ],
+            &[
+                "spend",
+                "that",
+                "mana",
+                "only",
+                "to",
+                "activate",
+                "abilities",
+                "of",
+                "artifact",
+                "sources",
+            ],
+        ],
+    ) {
+        return Some(ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::All(vec![
+                ManaPaymentPredicate::AnyOf(vec![
+                    ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateAbility),
+                    ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateManaAbility),
+                ]),
+                ManaPaymentPredicate::SourceMatches(
+                    ObjectFilter::default().with_type(CardType::Artifact),
+                ),
+            ])),
+            on_spend: Vec::new(),
+        });
+    }
+
     matches_any_exact_tokens(
         tokens,
         &[

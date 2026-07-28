@@ -29,8 +29,9 @@ pub use ironsmith_core::{
     ExileUntilDuration, ExileUntilEffect, ExperienceCountersEffect, ExploreEffect,
     ExtraTurnAfterNextTurnEffect, ExtraTurnEffect, FatesealEffect, FightEffect, FlipCoinEffect,
     FlipEffect, ForEachControllerOfTaggedEffect, ForEachCounterKindPutOrRemoveEffect,
-    ForEachObject as CoreForEachObject, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
-    ForPlayersEffect, GainLifeEffect, GoadEffect,
+    ForEachObject as CoreForEachObject,
+    ForEachObjectCorrelatedResultEffect as CoreForEachObjectCorrelatedResultEffect,
+    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, GainLifeEffect, GoadEffect,
     GrantAbilitiesTargetEffect as CoreGrantAbilitiesTargetEffect,
     GrantBySpecEffect as CoreGrantBySpecEffect, GrantEffect as CoreGrantEffect,
     GrantNextSpellCostReductionEffect, GrantPlayTaggedDuration, GrantPlayTaggedEffect,
@@ -74,8 +75,8 @@ pub use ironsmith_core::{
     ScheduleEffectsWhenTaggedLeavesEffect as CoreScheduleEffectsWhenTaggedLeavesEffect, ScryEffect,
     SearchLibraryEffect as CoreSearchLibraryEffect, SearchLibrarySlot,
     SearchLibrarySlotsEffect as CoreSearchLibrarySlotsEffect, SecretChoiceEffect,
-    SequenceEffect as CoreSequenceEffect, SetBasePowerToughnessEffect, SetLifeTotalEffect,
-    SharedTypeConstraint, ShuffleGraveyardIntoLibraryEffect,
+    SecretObjectChoice, SequenceEffect as CoreSequenceEffect, SetBasePowerToughnessEffect,
+    SetLifeTotalEffect, SharedTypeConstraint, ShuffleGraveyardIntoLibraryEffect,
     ShuffleHandAndGraveyardIntoLibraryEffect, ShuffleLibraryEffect,
     ShuffleObjectsIntoLibraryEffect, SkipCombatPhasesEffect, SkipCombatPhasesThisTurnEffect,
     SkipDrawStepEffect, SkipMainPhasesThisTurnEffect, SkipNextCombatPhaseThisTurnEffect,
@@ -97,6 +98,7 @@ pub type ConditionalEffect = CoreConditionalEffect<Effect>;
 pub type CumulativeUpkeepEffect = CoreCumulativeUpkeepEffect<Effect>;
 pub type ExecuteWithSourceEffect = CoreExecuteWithSourceEffect<Effect>;
 pub type ForEachObject = CoreForEachObject<Effect>;
+pub type ForEachObjectCorrelatedResultEffect = CoreForEachObjectCorrelatedResultEffect<Effect>;
 pub type HauntExileEffect = CoreHauntExileEffect<Effect>;
 pub type IfEffect = CoreIfEffect<Effect>;
 pub type LocalRewriteEffect = CoreLocalRewriteEffect<Effect>;
@@ -203,6 +205,6 @@ pub mod consult_helpers {
 pub mod mana {
     pub use ironsmith_core::{
         AddManaOfChosenColorEffect, AddManaOfColorsAmongEffect, AddManaOfImprintedColorsEffect,
-        AddScaledManaEffect,
+        AddOneManaOfAnyColorAmongEffect, AddScaledManaEffect,
     };
 }

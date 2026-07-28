@@ -1,6 +1,9 @@
 use super::*;
 use crate::ability::ActivatedAbilityRuntimeExt as _;
-use crate::filter::{ObjectFilterExt as _, PlayerFilterExt as _};
+use crate::filter::{
+    FilterContext, ObjectFilterExt as _, PlayerFilterExt as _, TaggedConstraintSubject as _,
+};
+use crate::types::CardType;
 
 mod mechanics;
 
@@ -49,6 +52,131 @@ fn count_basic_land_types_among_filter(
         }
     }
     seen.len() as u32
+}
+
+fn shared_spell_characteristic_count(
+    game: &GameState,
+    spell: &crate::object::Object,
+    source: ObjectId,
+    controller: PlayerId,
+    intersection: &ironsmith_core::CostReductionCharacteristicIntersection,
+) -> i32 {
+    let filter_ctx = with_source_exiled_tagged_objects(
+        game,
+        FilterContext::new(controller)
+            .with_source(source)
+            .with_active_player(game.turn.active_player)
+            .with_opponents(
+                game.turn_store
+                    .turn_order
+                    .iter()
+                    .copied()
+                    .filter(|player| *player != controller)
+                    .collect(),
+            ),
+        source,
+    );
+    let comparison_objects = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .filter(|object| intersection.comparison.matches(object, &filter_ctx, game))
+        .collect::<Vec<_>>();
+
+    match intersection.characteristic {
+        crate::ObjectCharacteristic::CardType => {
+            let comparison = comparison_objects
+                .iter()
+                .flat_map(|object| {
+                    game.current_card_types(object.id)
+                        .unwrap_or_else(|| object.card_types.to_vec())
+                })
+                .collect::<std::collections::HashSet<_>>();
+            game.current_card_types(spell.id)
+                .unwrap_or_else(|| spell.card_types.to_vec())
+                .into_iter()
+                .filter(|card_type| comparison.contains(card_type))
+                .count() as i32
+        }
+        crate::ObjectCharacteristic::PermanentType => {
+            let is_permanent_type = |card_type: &CardType| {
+                matches!(
+                    card_type,
+                    CardType::Land
+                        | CardType::Creature
+                        | CardType::Artifact
+                        | CardType::Enchantment
+                        | CardType::Planeswalker
+                        | CardType::Battle
+                )
+            };
+            let comparison = comparison_objects
+                .iter()
+                .flat_map(|object| {
+                    game.current_card_types(object.id)
+                        .unwrap_or_else(|| object.card_types.to_vec())
+                })
+                .filter(is_permanent_type)
+                .collect::<std::collections::HashSet<_>>();
+            game.current_card_types(spell.id)
+                .unwrap_or_else(|| spell.card_types.to_vec())
+                .into_iter()
+                .filter(is_permanent_type)
+                .filter(|card_type| comparison.contains(card_type))
+                .count() as i32
+        }
+        crate::ObjectCharacteristic::Subtype(family) => {
+            let comparison = comparison_objects
+                .iter()
+                .flat_map(|object| game.calculated_subtypes(object.id))
+                .filter(|subtype| subtype.belongs_to_family(family))
+                .collect::<std::collections::HashSet<_>>();
+            game.calculated_subtypes(spell.id)
+                .into_iter()
+                .filter(|subtype| subtype.belongs_to_family(family))
+                .filter(|subtype| comparison.contains(subtype))
+                .count() as i32
+        }
+        crate::ObjectCharacteristic::Color => {
+            let comparison = comparison_objects.iter().fold(
+                crate::color::ColorSet::COLORLESS,
+                |colors, object| {
+                    colors.union(
+                        game.current_colors(object.id)
+                            .unwrap_or_else(|| object.colors()),
+                    )
+                },
+            );
+            game.current_colors(spell.id)
+                .unwrap_or_else(|| spell.colors())
+                .intersection(comparison)
+                .count() as i32
+        }
+        crate::ObjectCharacteristic::ManaValue => comparison_objects
+            .iter()
+            .any(|object| object.subject_mana_value() == spell.subject_mana_value())
+            as i32,
+    }
+}
+
+fn resolve_cost_reduction_amount(
+    game: &GameState,
+    spell: &crate::object::Object,
+    source: ObjectId,
+    controller: PlayerId,
+    reduction: &crate::static_abilities::CostReduction,
+) -> i32 {
+    let per_characteristic =
+        resolve_cost_modifier_value_for_source(game, source, controller, &reduction.reduction);
+    let Some(intersection) = &reduction.characteristic_intersection else {
+        return per_characteristic;
+    };
+    per_characteristic.saturating_mul(shared_spell_characteristic_count(
+        game,
+        spell,
+        source,
+        controller,
+        intersection,
+    ))
 }
 
 fn alternative_method_is_emerge(
@@ -3788,6 +3916,17 @@ pub(crate) fn apply_spell_cost_modifiers(
     let mut total_reduction: i32 = 0;
     let mut increase_pips: Vec<Vec<ManaSymbol>> = Vec::new();
     let mut reduction_pips: Vec<Vec<ManaSymbol>> = Vec::new();
+    if let CastingMethod::PlayFrom { source, zone, .. }
+    | CastingMethod::SplitOtherHalfPlayFrom { source, zone, .. } = casting_method
+    {
+        let constraints = game
+            .effect_store
+            .grant_registry
+            .play_from_constraints_for_card(game, spell.id, *zone, player, *source);
+        if let Some(increase) = constraints.spell_cost_increase {
+            increase_pips.extend(increase.pips().iter().cloned());
+        }
+    }
     let ctx = with_source_exiled_tagged_objects(
         game,
         FilterContext::new(player)
@@ -3863,7 +4002,7 @@ pub(crate) fn apply_spell_cost_modifiers(
             } else {
                 1
             };
-            let amount = resolve_cost_modifier_value(game, player, spell, &reduction.reduction)
+            let amount = resolve_cost_reduction_amount(game, spell, spell.id, player, reduction)
                 .saturating_mul(multiplier);
             if amount > 0 {
                 total_reduction = total_reduction.saturating_add(amount);
@@ -4107,13 +4246,9 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                     } else {
                         1
                     };
-                    let amount = resolve_cost_modifier_value_for_source(
-                        game,
-                        perm_id,
-                        controller,
-                        &reduction.reduction,
-                    )
-                    .saturating_mul(multiplier);
+                    let amount =
+                        resolve_cost_reduction_amount(game, spell, perm_id, controller, reduction)
+                            .saturating_mul(multiplier);
                     if amount > 0 {
                         total_reduction = total_reduction.saturating_add(amount);
                     }
@@ -4233,13 +4368,9 @@ pub(crate) fn apply_battlefield_spell_cost_modifiers(
                     } else {
                         1
                     };
-                    let amount = resolve_cost_modifier_value_for_source(
-                        game,
-                        perm_id,
-                        controller,
-                        &reduction.reduction,
-                    )
-                    .saturating_mul(multiplier);
+                    let amount =
+                        resolve_cost_reduction_amount(game, spell, perm_id, controller, reduction)
+                            .saturating_mul(multiplier);
                     if amount > 0 {
                         total_reduction = total_reduction.saturating_add(amount);
                     }
@@ -4390,7 +4521,7 @@ pub(crate) fn add_generic_mana_cost(
         remaining -= chunk as u32;
     }
 
-    crate::mana::ManaCost::from_pips(new_pips)
+    crate::mana::ManaCost::from_pips(coalesce_plain_generic_pips(new_pips))
 }
 
 pub(crate) fn add_mana_cost(
@@ -4402,7 +4533,44 @@ pub(crate) fn add_mana_cost(
     }
     let mut new_pips = cost.pips().to_vec();
     new_pips.extend(add.pips().iter().cloned());
-    crate::mana::ManaCost::from_pips(new_pips)
+    crate::mana::ManaCost::from_pips(coalesce_plain_generic_pips(new_pips))
+}
+
+fn coalesce_plain_generic_pips(
+    pips: Vec<Vec<crate::mana::ManaSymbol>>,
+) -> Vec<Vec<crate::mana::ManaSymbol>> {
+    use crate::mana::ManaSymbol;
+
+    let generic_total = pips
+        .iter()
+        .filter_map(|pip| match pip.as_slice() {
+            [ManaSymbol::Generic(amount)] => Some(*amount as u32),
+            _ => None,
+        })
+        .fold(0u32, u32::saturating_add);
+    if generic_total == 0 {
+        return pips;
+    }
+
+    let mut non_generic = pips
+        .into_iter()
+        .filter(|pip| !matches!(pip.as_slice(), [ManaSymbol::Generic(_)]))
+        .collect::<Vec<_>>();
+    // Canonical mana-cost order keeps leading X symbols ahead of the generic
+    // numeral and the remaining colored/hybrid pips after it.
+    let insert_at = non_generic
+        .iter()
+        .take_while(|pip| matches!(pip.as_slice(), [ManaSymbol::X]))
+        .count();
+    let mut generic_pips = Vec::new();
+    let mut remaining = generic_total;
+    while remaining > 0 {
+        let chunk = remaining.min(u8::MAX as u32) as u8;
+        generic_pips.push(vec![ManaSymbol::Generic(chunk)]);
+        remaining -= chunk as u32;
+    }
+    non_generic.splice(insert_at..insert_at, generic_pips);
+    non_generic
 }
 
 pub(crate) fn reduce_mana_cost(

@@ -42,6 +42,128 @@ fn test_enters_tapped() {
 }
 
 #[test]
+fn played_by_opponents_entry_filter_preserves_authored_surface() {
+    let mut filter = ObjectFilter::creature()
+        .controlled_by(PlayerFilter::Opponent)
+        .in_zone(Zone::Battlefield);
+    filter.set_played_by_opponent_surface(ironsmith_core::PlayedByOpponentSurface::YourOpponents);
+    let ability = EnterTappedForFilter::new(filter);
+
+    assert_eq!(
+        ability.display(),
+        "Creatures played by your opponents enter tapped"
+    );
+}
+
+#[test]
+fn conditional_other_permanent_entry_rules_follow_source_status_and_exclude_source() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source_card = CardBuilder::new(CardId::from_raw(6001), "Entry Rule Source")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 4))
+        .build();
+    let incoming_card = CardBuilder::new(CardId::from_raw(6002), "Incoming Permanent")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+    let incoming = game.create_object_from_card(&incoming_card, alice, Zone::Hand);
+
+    let mut other_permanents = ObjectFilter::default().in_zone(Zone::Battlefield);
+    other_permanents.card_types = vec![
+        CardType::Artifact,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+        CardType::Battle,
+    ];
+    other_permanents.other = true;
+
+    let tapped_rule = EnterTappedForFilter::new(other_permanents.clone())
+        .with_condition(Condition::SourceIsTapped);
+    let untapped_rule =
+        EnterUntappedForFilter::new(other_permanents).with_condition(Condition::SourceIsUntapped);
+    assert_eq!(
+        tapped_rule.display(),
+        "As long as this creature is tapped, other permanents enter tapped"
+    );
+    assert_eq!(
+        untapped_rule.display(),
+        "As long as this creature is untapped, other permanents enter untapped"
+    );
+
+    let tapped_replacement = tapped_rule
+        .generate_replacement_effect(source, alice)
+        .expect("tapped entry rule should generate a replacement");
+    let untapped_replacement = untapped_rule
+        .generate_replacement_effect(source, alice)
+        .expect("untapped entry rule should generate a replacement");
+    let incoming_event = ZoneChangeEvent::with_cause(
+        incoming,
+        Zone::Hand,
+        Zone::Battlefield,
+        EventCause::effect(),
+        None,
+    );
+
+    {
+        let ctx = EventContext::for_replacement_effect(alice, source, &game);
+        assert!(
+            !tapped_replacement
+                .matcher
+                .as_ref()
+                .expect("tapped rule matcher")
+                .matches_event(&incoming_event, &ctx),
+            "the tapped rule must be inactive while its source is untapped"
+        );
+        assert!(
+            untapped_replacement
+                .matcher
+                .as_ref()
+                .expect("untapped rule matcher")
+                .matches_event(&incoming_event, &ctx),
+            "the untapped rule must be active while its source is untapped"
+        );
+    }
+
+    game.tap(source);
+    let ctx = EventContext::for_replacement_effect(alice, source, &game);
+    assert!(
+        tapped_replacement
+            .matcher
+            .as_ref()
+            .expect("tapped rule matcher")
+            .matches_event(&incoming_event, &ctx),
+        "the tapped rule must become active when its source is tapped"
+    );
+    assert!(
+        !untapped_replacement
+            .matcher
+            .as_ref()
+            .expect("untapped rule matcher")
+            .matches_event(&incoming_event, &ctx),
+        "the untapped rule must become inactive when its source is tapped"
+    );
+
+    let source_event = ZoneChangeEvent::with_cause(
+        source,
+        Zone::Hand,
+        Zone::Battlefield,
+        EventCause::effect(),
+        None,
+    );
+    assert!(
+        !tapped_replacement
+            .matcher
+            .as_ref()
+            .expect("tapped rule matcher")
+            .matches_event(&source_event, &ctx),
+        "other permanents must exclude the entry-rule source itself"
+    );
+}
+
+#[test]
 fn test_no_maximum_hand_size() {
     let ability = NoMaximumHandSize;
     assert_eq!(ability.id(), StaticAbilityId::NoMaximumHandSize);
@@ -1050,7 +1172,9 @@ fn test_enters_with_counters_if_condition_matches_when_permanent_left_battlefiel
     let ability = EntersWithCountersIfCondition::new(
         CounterType::PlusOnePlusOne,
         Value::Fixed(1),
-        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn,
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn {
+            surface: crate::effect::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
+        },
         "a permanent left the battlefield under your control this turn".to_string(),
     );
     let replacement = ability
@@ -1801,6 +1925,29 @@ fn filtered_enters_counters_keep_each_other_subject_and_lost_life_basis() {
 }
 
 #[test]
+fn filtered_enters_counters_render_matching_object_count_as_for_each() {
+    let mut dog = ObjectFilter::default();
+    dog.subtypes = vec![Subtype::Dog];
+    let mut wolf = ObjectFilter::default();
+    wolf.subtypes = vec![Subtype::Wolf];
+    let mut dogs_or_wolves = ObjectFilter::default()
+        .controlled_by(PlayerFilter::You)
+        .in_zone(Zone::Battlefield);
+    dogs_or_wolves.any_of = vec![dog, wolf];
+    let count = Value::Count(dogs_or_wolves).with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EnterWithCountersForFilter::new(
+        creatures_you_control_filter(),
+        CounterType::PlusOnePlusOne,
+        count,
+    );
+
+    assert_eq!(
+        ability.display(),
+        "Each creature you control enters with an additional +1/+1 counter on it for each Dog or Wolf you control"
+    );
+}
+
+#[test]
 fn filtered_enters_counters_render_mana_source_provenance_basis() {
     let coin_count = Value::ManaFromSourceSpentToCastThisSpell {
         source_filter: ObjectFilter::artifact(),
@@ -1909,7 +2056,7 @@ fn filtered_enters_counters_pluralize_nontoken_subject_and_died_basis() {
     subject.nontoken = true;
     let mut creatures = ObjectFilter::creature();
     creatures.controller = Some(PlayerFilter::You);
-    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(creatures))
+    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(creatures))
         .with_surface_hint(ValueSurfaceHint::ForEach);
     let ability = EnterWithCountersForFilter::new(subject, CounterType::PlusOnePlusOne, count);
 
@@ -1956,5 +2103,85 @@ fn enters_counters_render_for_each_other_spell_cast_this_turn() {
     assert_eq!(
         ability.display(),
         "Enters the battlefield with a +1/+1 counter on it for each other spell cast this turn"
+    );
+}
+
+#[test]
+fn enters_counters_preserve_authored_additional_surface_hint() {
+    let count = Value::Fixed(1).with_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
+    let ability = EntersWithCounters::new(CounterType::PlusOnePlusOne, count);
+
+    assert_eq!(
+        ability.display(),
+        "Enters the battlefield with an additional +1/+1 counter on it"
+    );
+}
+
+#[test]
+fn self_enters_with_dynamic_count_resolves_matching_permanents() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let island = CardBuilder::new(CardId::from_raw(62_100), "Island Probe")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island])
+        .build();
+    let plains = CardBuilder::new(CardId::from_raw(62_101), "Plains Probe")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Plains])
+        .build();
+    game.create_object_from_card(&island, alice, Zone::Battlefield);
+    game.create_object_from_card(&island, alice, Zone::Battlefield);
+    game.create_object_from_card(&plains, alice, Zone::Battlefield);
+
+    let source_card = CardBuilder::new(CardId::from_raw(62_102), "Dynamic Counter Probe")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::new(PtValue::Fixed(1), PtValue::Fixed(1)))
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Stack);
+    let island_count = Value::Count(
+        ObjectFilter::default()
+            .with_subtype(Subtype::Island)
+            .controlled_by(PlayerFilter::You)
+            .in_zone(Zone::Battlefield),
+    )
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+    game.object_mut(source)
+        .expect("source should exist")
+        .abilities_mut()
+        .push(Ability::static_ability(
+            StaticAbility::enters_with_counters_value(CounterType::Time, island_count),
+        ));
+
+    let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+    let result = game
+        .move_object_with_etb_processing_with_dm(source, Zone::Battlefield, &mut decision_maker)
+        .expect("source should enter");
+    assert_eq!(
+        game.object(result.new_id)
+            .expect("source should be on the battlefield")
+            .counters
+            .get(&CounterType::Time)
+            .copied(),
+        Some(2)
+    );
+}
+
+#[test]
+fn play_permission_renders_narrow_cast_this_way_entry_counter_filter() {
+    let count = Value::Fixed(1).with_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
+    let grant = crate::grant::GrantSpec::new(
+        crate::grant::Grantable::PlayFrom,
+        ObjectFilter::default(),
+        Zone::Library,
+    )
+    .with_cast_this_way_filter(ObjectFilter::creature())
+    .with_cast_this_way_grant(StaticAbility::enters_with_counters_value(
+        CounterType::PlusOnePlusOne,
+        count,
+    ));
+
+    assert_eq!(
+        grant.display(),
+        "You may play lands and cast spells from the top of your library. If you cast a creature spell this way, that creature enters with an additional +1/+1 counter on it"
     );
 }

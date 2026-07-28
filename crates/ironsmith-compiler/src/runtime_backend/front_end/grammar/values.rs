@@ -55,6 +55,7 @@ struct ValueStatSegmentShape {
 enum ValueManaValueSubjectShape {
     Source,
     Tagged,
+    TaggedPossessivePronoun,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -231,6 +232,20 @@ fn parse_value_mana_value_segment_shape_lexed<'a>(
     }
     input.reset(&checkpoint);
 
+    let pronoun_matches = primitives::phrase(&["its", "mana", "value"])
+        .parse_next(input)
+        .is_ok();
+    let pronoun_is_complete = pronoun_matches && {
+        let result: WResult<&[OwnedLexToken]> = eof.parse_next(input);
+        result.is_ok()
+    };
+    if pronoun_is_complete {
+        return Ok(ValueManaValueSegmentShape {
+            subject: ValueManaValueSubjectShape::TaggedPossessivePronoun,
+        });
+    }
+    input.reset(&checkpoint);
+
     primitives::any_phrase(&[
         &["that", "spell", "mana", "value"],
         &["that", "spell's", "mana", "value"],
@@ -294,7 +309,6 @@ fn parse_value_mana_value_segment_shape_lexed<'a>(
         &["sacrificed", "artifacts", "mana", "value"],
         &["sacrificed", "enchantments", "mana", "value"],
         &["sacrificed", "permanents", "mana", "value"],
-        &["its", "mana", "value"],
     ])
     .parse_next(input)?;
     let _: Vec<&OwnedLexToken> = repeat(0.., any).parse_next(input)?;
@@ -319,6 +333,12 @@ fn value_from_mana_value_segment_shape(shape: ValueManaValueSegmentShape) -> Val
     let choose_spec = match shape.subject {
         ValueManaValueSubjectShape::Source => ChooseSpec::Source,
         ValueManaValueSubjectShape::Tagged => ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+        ValueManaValueSubjectShape::TaggedPossessivePronoun => ChooseSpec::Tagged(TagKey::from(
+            IT_TAG,
+        ))
+        .with_surface_hint(ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+        )),
     };
     Value::ManaValueOf(Box::new(choose_spec))
 }
@@ -1000,6 +1020,26 @@ mod migrated_shape_tests {
             Some(ValueManaValueSegmentShape {
                 subject: ValueManaValueSubjectShape::Tagged,
             })
+        );
+
+        let possessive_tokens = lex("its mana value");
+        let possessive_shape =
+            parse_value_mana_value_segment_shape(LexedClause::new(&possessive_tokens))
+                .expect("possessive mana value should parse");
+        assert_eq!(
+            possessive_shape,
+            ValueManaValueSegmentShape {
+                subject: ValueManaValueSubjectShape::TaggedPossessivePronoun,
+            }
+        );
+        let Value::ManaValueOf(spec) = value_from_mana_value_segment_shape(possessive_shape) else {
+            panic!("possessive shape should lower to a mana-value reference");
+        };
+        assert_eq!(
+            spec.source_reference_surface(),
+            Some(&crate::target::SourceReferenceSurface::ThisPermanentType(
+                "it".to_string()
+            ))
         );
     }
 

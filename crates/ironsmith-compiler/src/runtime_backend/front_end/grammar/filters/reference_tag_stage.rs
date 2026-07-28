@@ -5,9 +5,22 @@ use super::reference_tag_word_facts::{
     parse_phrase_whole, parse_word_choice, parse_word_choice_anywhere,
 };
 use super::*;
+use crate::filter::ObjectFilterUnionConnective;
+use crate::target::{ObjectCharacteristic, ObjectCharacteristicRelation};
+use crate::types::SubtypeFamily;
 
 const TARGET_OR_TARGETS_WORDS: &[&str] = &["target", "targets"];
 const THAT_WORD: &str = "that";
+
+fn parse_compound_filter_subtype(words: &[&str], idx: usize) -> Option<Subtype> {
+    parse_subtype_flexible(*words.get(idx)?).or_else(|| {
+        let subtype = super::super::leaf::classify_token_definition_subtype(*words.get(idx)?)?;
+        words
+            .get(idx + 1)
+            .and_then(|next| parse_subtype_flexible(next))
+            .map(|_| subtype)
+    })
+}
 const ONLY_WORD: &str = "only";
 const SINGLE_WORD: &str = "single";
 const YOU_TARGET_PREFIX: &[&str] = &["you"];
@@ -229,6 +242,51 @@ fn split_with_attached_object_filter(
     Some((subject.to_vec(), inner.to_vec()))
 }
 
+/// Split "<subject> that's enchanted by <inner>" (and the expanded
+/// "that is/are enchanted by" forms) into the selected subject and the Aura
+/// filter that must match one of its attachments.
+fn split_enchanted_by_object_filter(
+    tokens: &[OwnedLexToken],
+) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
+    let trimmed = trim_commas(tokens);
+    let enchanted_idx = trimmed
+        .iter()
+        .position(|token| token.is_word("enchanted"))?;
+    if !trimmed
+        .get(enchanted_idx + 1)
+        .is_some_and(|token| token.is_word("by"))
+    {
+        return None;
+    }
+
+    let subject_end = if enchanted_idx >= 1
+        && (trimmed[enchanted_idx - 1].is_word("that's")
+            || trimmed[enchanted_idx - 1].is_word("thats"))
+    {
+        enchanted_idx - 1
+    } else if enchanted_idx >= 2
+        && trimmed[enchanted_idx - 2].is_word("that")
+        && (trimmed[enchanted_idx - 1].is_word("is") || trimmed[enchanted_idx - 1].is_word("are"))
+    {
+        enchanted_idx - 2
+    } else {
+        return None;
+    };
+
+    let subject = trim_commas(&trimmed[..subject_end]);
+    let mut inner = trim_commas(&trimmed[enchanted_idx + 2..]);
+    if inner
+        .first()
+        .is_some_and(|token| token.is_word("a") || token.is_word("an"))
+    {
+        inner.remove(0);
+    }
+    if subject.is_empty() || inner.is_empty() {
+        return None;
+    }
+    Some((subject.to_vec(), inner.to_vec()))
+}
+
 fn split_attached_to_object_filter(
     tokens: &[OwnedLexToken],
 ) -> Option<(Vec<OwnedLexToken>, Vec<OwnedLexToken>)> {
@@ -270,6 +328,74 @@ fn split_attached_to_object_filter(
         return None;
     }
     Some((head, tail))
+}
+
+fn has_plural_object_noun_surface(tokens: &[OwnedLexToken]) -> bool {
+    tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .any(|word| {
+            matches!(
+                word,
+                "artifacts"
+                    | "auras"
+                    | "battles"
+                    | "cards"
+                    | "creatures"
+                    | "enchantments"
+                    | "lands"
+                    | "objects"
+                    | "permanents"
+                    | "planeswalkers"
+                    | "spells"
+                    | "tokens"
+            )
+        })
+}
+
+/// Whether the head object noun in a phrase is plural.
+///
+/// Unlike [`has_plural_object_noun_surface`], this stops at the first object
+/// noun so a singular destination such as "a permanent attached to creatures
+/// you control" is not widened by a plural noun in its relative clause.
+pub(crate) fn has_plural_object_head_surface(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().filter_map(OwnedLexToken::as_word).find_map(|word| {
+        if matches!(
+            word,
+            "artifacts"
+                | "auras"
+                | "battles"
+                | "cards"
+                | "creatures"
+                | "enchantments"
+                | "lands"
+                | "objects"
+                | "permanents"
+                | "planeswalkers"
+                | "spells"
+                | "tokens"
+        ) {
+            Some(true)
+        } else if matches!(
+            word,
+            "artifact"
+                | "aura"
+                | "battle"
+                | "card"
+                | "creature"
+                | "enchantment"
+                | "land"
+                | "object"
+                | "permanent"
+                | "planeswalker"
+                | "spell"
+                | "token"
+        ) {
+            Some(false)
+        } else {
+            None
+        }
+    }) == Some(true)
 }
 
 fn source_reference_tail_prefix(
@@ -498,6 +624,257 @@ fn non_article_parser_word_refs(tokens: &[OwnedLexToken]) -> Vec<&str> {
         .into_iter()
         .filter(|word| !is_article(word))
         .collect()
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SharedCharacteristicClause {
+    start: usize,
+    negated: bool,
+    characteristics: Vec<ObjectCharacteristic>,
+    rhs_start: usize,
+}
+
+fn parse_shared_characteristic_axis(
+    words: &[&str],
+    start: usize,
+) -> Option<(Vec<ObjectCharacteristic>, usize)> {
+    let mut idx = start;
+    if words.get(idx..idx + 3) == Some(["at", "least", "one"].as_slice()) {
+        idx += 3;
+    }
+
+    let (characteristics, consumed) = if words.get(idx..idx + 4)
+        == Some(["color", "or", "mana", "value"].as_slice())
+        || words.get(idx..idx + 4) == Some(["colors", "or", "mana", "value"].as_slice())
+    {
+        (
+            vec![ObjectCharacteristic::Color, ObjectCharacteristic::ManaValue],
+            4,
+        )
+    } else if words.get(idx..idx + 2) == Some(["card", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["card", "types"].as_slice())
+    {
+        (vec![ObjectCharacteristic::CardType], 2)
+    } else if words.get(idx..idx + 2) == Some(["permanent", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["permanent", "types"].as_slice())
+    {
+        (vec![ObjectCharacteristic::PermanentType], 2)
+    } else if words.get(idx..idx + 2) == Some(["creature", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["creature", "types"].as_slice())
+    {
+        (
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Creature)],
+            2,
+        )
+    } else if words.get(idx..idx + 2) == Some(["land", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["land", "types"].as_slice())
+    {
+        (vec![ObjectCharacteristic::Subtype(SubtypeFamily::Land)], 2)
+    } else if words.get(idx..idx + 2) == Some(["artifact", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["artifact", "types"].as_slice())
+    {
+        (
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Artifact)],
+            2,
+        )
+    } else if words.get(idx..idx + 2) == Some(["enchantment", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["enchantment", "types"].as_slice())
+    {
+        (
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Enchantment)],
+            2,
+        )
+    } else if words.get(idx..idx + 2) == Some(["spell", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["spell", "types"].as_slice())
+    {
+        (vec![ObjectCharacteristic::Subtype(SubtypeFamily::Spell)], 2)
+    } else if words.get(idx..idx + 2) == Some(["planeswalker", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["planeswalker", "types"].as_slice())
+    {
+        (
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Planeswalker)],
+            2,
+        )
+    } else if words.get(idx..idx + 2) == Some(["battle", "type"].as_slice())
+        || words.get(idx..idx + 2) == Some(["battle", "types"].as_slice())
+    {
+        (
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Battle)],
+            2,
+        )
+    } else if words
+        .get(idx)
+        .is_some_and(|word| matches!(*word, "color" | "colors"))
+    {
+        (vec![ObjectCharacteristic::Color], 1)
+    } else {
+        return None;
+    };
+
+    Some((characteristics, idx + consumed))
+}
+
+fn parse_shared_characteristic_clause_at(
+    words: &[&str],
+    start: usize,
+) -> Option<SharedCharacteristicClause> {
+    if !words
+        .get(start)
+        .is_some_and(|word| matches!(*word, "that" | "which"))
+    {
+        return None;
+    }
+
+    let mut idx = start + 1;
+    let negated = match words.get(idx).copied()? {
+        "share" | "shares" => {
+            idx += 1;
+            false
+        }
+        "doesn't" | "doesnt" | "don't" | "dont" => {
+            if words.get(idx + 1) != Some(&"share") {
+                return None;
+            }
+            idx += 2;
+            true
+        }
+        "does" | "do" => {
+            if words.get(idx + 1) != Some(&"not") || words.get(idx + 2) != Some(&"share") {
+                return None;
+            }
+            idx += 3;
+            true
+        }
+        _ => return None,
+    };
+
+    let (characteristics, with_idx) = parse_shared_characteristic_axis(words, idx)?;
+    if words.get(with_idx) != Some(&"with") || with_idx + 1 >= words.len() {
+        return None;
+    }
+
+    Some(SharedCharacteristicClause {
+        start,
+        negated,
+        characteristics,
+        rhs_start: with_idx + 1,
+    })
+}
+
+fn find_shared_characteristic_clause(words: &[&str]) -> Option<SharedCharacteristicClause> {
+    (0..words.len()).find_map(|start| parse_shared_characteristic_clause_at(words, start))
+}
+
+fn shared_characteristic_rhs_uses_legacy_reference_path(rhs: &[&str]) -> bool {
+    rhs.iter().any(|word| matches!(*word, "it" | "them"))
+        || rhs.first() == Some(&"that")
+        || rhs
+            .iter()
+            .any(|word| matches!(*word, "sacrificed" | "tapped" | "additional" | "discarded"))
+}
+
+fn token_boundary_for_non_article_word(
+    tokens: &[OwnedLexToken],
+    non_article_word_idx: usize,
+) -> Option<usize> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let full_word_idx = words
+        .iter()
+        .enumerate()
+        .filter(|(_, word)| !is_article(word))
+        .nth(non_article_word_idx)
+        .map(|(idx, _)| idx)?;
+    word_view.token_boundary_for_word_or_end(full_word_idx)
+}
+
+fn try_apply_shared_characteristic_relation_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> Result<bool, CardTextError> {
+    let Some(clause) = find_shared_characteristic_clause(all_words) else {
+        return Ok(false);
+    };
+    let rhs = &all_words[clause.rhs_start..];
+    if shared_characteristic_rhs_uses_legacy_reference_path(rhs) {
+        return Ok(false);
+    }
+
+    let comparison = crate::runtime_backend::object_filters::parse_object_filter_words(rhs, false)?;
+    let relation = if clause.negated {
+        ObjectCharacteristicRelation::shares_none(clause.characteristics.clone(), comparison)
+    } else {
+        ObjectCharacteristicRelation::shares(clause.characteristics.clone(), comparison)
+    };
+
+    let segment_words = non_article_parser_word_refs(segment_tokens);
+    let segment_clause = find_shared_characteristic_clause(&segment_words).filter(|candidate| {
+        candidate.negated == clause.negated && candidate.characteristics == clause.characteristics
+    });
+    let token_boundary = segment_clause
+        .and_then(|candidate| token_boundary_for_non_article_word(segment_tokens, candidate.start));
+
+    filter.characteristic_relations.push(relation);
+    all_words.truncate(clause.start);
+    if let Some(token_boundary) = token_boundary {
+        segment_tokens.truncate(token_boundary);
+    }
+    Ok(true)
+}
+
+fn try_apply_blocked_or_was_blocked_by_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> Result<bool, CardTextError> {
+    let words = non_article_parser_word_refs(segment_tokens);
+    let Some(blocked_idx) = (0..words.len().saturating_sub(4)).find(|&idx| {
+        words.get(idx..idx + 5) == Some(["blocked", "or", "was", "blocked", "by"].as_slice())
+    }) else {
+        return Ok(false);
+    };
+    let partner_start = blocked_idx + 5;
+    let Some(this_turn_idx) = words
+        .windows(2)
+        .enumerate()
+        .rev()
+        .find_map(|(idx, window)| (window == ["this", "turn"]).then_some(idx))
+    else {
+        return Ok(false);
+    };
+    if partner_start >= this_turn_idx || this_turn_idx + 2 != words.len() {
+        return Ok(false);
+    }
+
+    let clause_start = blocked_idx
+        .checked_sub(1)
+        .filter(|idx| matches!(words[*idx], "that" | "which"))
+        .unwrap_or(blocked_idx);
+    let Some(partner_token_start) =
+        token_boundary_for_non_article_word(segment_tokens, partner_start)
+    else {
+        return Ok(false);
+    };
+    let Some(this_turn_token_start) =
+        token_boundary_for_non_article_word(segment_tokens, this_turn_idx)
+    else {
+        return Ok(false);
+    };
+    let partner_tokens = trim_commas(&segment_tokens[partner_token_start..this_turn_token_start]);
+    if partner_tokens.is_empty() {
+        return Ok(false);
+    }
+    let combat_partner = parse_object_filter(&partner_tokens, false)?;
+    filter.blocked_or_was_blocked_by_this_turn = Some(Box::new(combat_partner));
+
+    all_words.truncate(clause_start);
+    if let Some(clause_token_start) =
+        token_boundary_for_non_article_word(segment_tokens, clause_start)
+    {
+        segment_tokens.truncate(clause_token_start);
+    }
+    Ok(true)
 }
 
 fn has_tap_activated_ability_phrase(words: &[&str]) -> bool {
@@ -802,16 +1179,26 @@ pub(super) fn parse_object_filter_inner(
 
     let not_on_battlefield = strip_not_on_battlefield_phrase(&mut base_tokens);
 
-    // "<subject> with a <inner> attached to it" — the subject carries a
-    // matching attachment; intercept before the attached-to-tail split
-    // claims "attached to it" as the subject's own attachment reference.
-    if let Some((subject_tokens, inner_tokens)) = split_with_attached_object_filter(&base_tokens) {
+    // "<subject> with a <inner> attached to it" and "<subject> that's
+    // enchanted by <inner>" both select the subject based on an attachment
+    // it carries. Intercept before the attached-to-tail split claims the
+    // attachment words as the subject's own attachment reference.
+    let attachment_split = split_with_attached_object_filter(&base_tokens)
+        .map(|(subject, inner)| (subject, inner, false))
+        .or_else(|| {
+            split_enchanted_by_object_filter(&base_tokens)
+                .map(|(subject, inner)| (subject, inner, true))
+        });
+    if let Some((subject_tokens, inner_tokens, uses_enchanted_by_surface)) = attachment_split {
         let inner_other = inner_tokens
             .first()
             .is_some_and(|token| token.is_word("another") || token.is_word("other"));
         let mut inner = parse_object_filter_permissive(&inner_tokens, inner_other)?;
         inner.other |= inner_other;
         filter.with_attached_object = Some(Box::new(inner));
+        if uses_enchanted_by_surface {
+            filter.set_relative_attachment_state_surface(true);
+        }
         base_tokens = subject_tokens;
     }
 
@@ -827,6 +1214,9 @@ pub(super) fn parse_object_filter_inner(
                 ))
             } else {
                 let mut attached = parse_object_filter_permissive(&attached_to_tokens, false)?;
+                attached.set_plural_object_noun_surface(has_plural_object_noun_surface(
+                    &attached_to_tokens,
+                ));
                 // `this creature` is both a source identity reference and a
                 // typed object selector. Preserve the noun on the nested
                 // filter so attachment legality does not widen to every
@@ -1118,6 +1508,12 @@ pub(super) fn parse_object_filter_inner(
 
     try_apply_could_be_targeted_by_that_spell_clause(&mut filter, &mut all_words);
 
+    try_apply_blocked_or_was_blocked_by_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    )?;
+
     // "that were put there from the battlefield this turn" means the card entered
     // a graveyard from the battlefield this turn.
     try_apply_put_there_from_battlefield_this_turn_clause(
@@ -1140,6 +1536,10 @@ pub(super) fn parse_object_filter_inner(
         &mut all_words,
         &mut segment_tokens,
     );
+
+    // A zone-qualified "put there this turn" clause has the same executable
+    // graveyard-entry history as the explicit "from anywhere" surface.
+    try_apply_put_there_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // "... graveyard from the battlefield this turn" means the card entered a graveyard
     // from the battlefield this turn.
@@ -1164,6 +1564,15 @@ pub(super) fn parse_object_filter_inner(
     // requirement that the selected token itself be an enchantment.
     try_apply_created_with_source_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
+    // Preserve negative turn history such as "creatures that didn't attack or
+    // enter this turn" before the ordinary word pass can discard the
+    // conjunctive predicate.
+    try_apply_didnt_enter_battlefield_this_turn_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
+
     // "... entered the battlefield ... this turn" marks a battlefield entry this turn.
     try_apply_entered_battlefield_this_turn_clause(
         &mut filter,
@@ -1177,6 +1586,16 @@ pub(super) fn parse_object_filter_inner(
     // creature that was dealt damage this turn". This is a runtime legality
     // constraint, not disposable surface text.
     try_apply_was_dealt_damage_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+
+    // A prior player-or-planeswalker target can be referenced through either
+    // the chosen player or the chosen planeswalker's controller. Remove that
+    // relation before its `or planeswalker` surface is mistaken for a second
+    // selected card type.
+    try_apply_target_player_or_planeswalker_controller_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    );
 
     if parse_phrase_choice_anywhere(
         &non_article_parser_word_refs(&segment_tokens),
@@ -1259,6 +1678,7 @@ pub(super) fn parse_object_filter_inner(
         &all_words_with_articles,
         &map_non_article_index,
         &map_non_article_end,
+        &base_tokens,
     )?;
 
     let _ = try_apply_named_clause(
@@ -1308,6 +1728,17 @@ pub(super) fn parse_object_filter_inner(
             all_words.join(" ")
         )));
     }
+
+    // A sharing clause compares the candidate's characteristics with a
+    // separately filtered object set. Parse and remove the entire relation
+    // before the ordinary noun/controller passes can leak the comparison
+    // object's identity into the candidate filter.
+    let _ = try_apply_shared_characteristic_relation_clause(
+        &mut filter,
+        &mut all_words,
+        &mut segment_tokens,
+    )?;
+
     let explicit_card_rhs_ranges = filter_comparison_rhs_ranges(&all_words)?;
     if contains_explicit_card_noun(&all_words, &explicit_card_rhs_ranges) {
         filter.set_explicit_card_noun(true);
@@ -1350,6 +1781,17 @@ pub(super) fn parse_object_filter_inner(
             }
         })
         .collect::<Vec<_>>();
+    let has_attack_destination_planeswalker_clause = all_words_with_articles
+        .iter()
+        .position(|word| matches!(*word, "attacking" | "attacks"))
+        .is_some_and(|attacking_idx| {
+            all_words_with_articles[..attacking_idx]
+                .iter()
+                .any(|word| matches!(*word, "creature" | "creatures"))
+                && all_words_with_articles[attacking_idx + 1..]
+                    .iter()
+                    .any(|word| matches!(*word, "planeswalker" | "planeswalkers"))
+        });
     if let Some(attacking_filter) =
         attacking_player_filter_from_words(&outer_filter_words, &pronoun_player_filter)
     {
@@ -1734,6 +2176,7 @@ pub(super) fn parse_object_filter_inner(
     let mut saw_subtype = false;
     let mut negated_word_indices = std::collections::HashSet::new();
     let mut negated_historic_indices = std::collections::HashSet::new();
+    let mut has_coordinated_negated_characteristic_list = false;
     let is_text_negation_word = |word: &str| parse_word_choice(word, TEXT_NEGATION_WORDS).is_some();
     for idx in 0..all_words.len().saturating_sub(1) {
         if word_is_in_ranges(idx, &comparison_rhs_ranges) {
@@ -1847,6 +2290,12 @@ pub(super) fn parse_object_filter_inner(
         // listed subtype, not just the first one. Token punctuation has
         // already been removed here, so walk through conjunctions/articles
         // until the first word that is not another characteristic.
+        let mut coordinated_characteristic_count = usize::from(
+            parse_card_type(negated_word).is_some()
+                || parse_supertype_word(negated_word).is_some()
+                || parse_color(negated_word).is_some()
+                || parse_subtype_flexible(negated_word).is_some(),
+        );
         let mut list_idx = target_idx + 1;
         while list_idx < all_words.len() {
             let word = all_words[list_idx];
@@ -1874,9 +2323,11 @@ pub(super) fn parse_object_filter_inner(
             if !recognized {
                 break;
             }
+            coordinated_characteristic_count += 1;
             negated_word_indices.insert(list_idx);
             list_idx += 1;
         }
+        has_coordinated_negated_characteristic_list |= coordinated_characteristic_count > 1;
     }
     for idx in 0..all_words.len().saturating_sub(1) {
         if word_is_in_ranges(idx, &comparison_rhs_ranges) {
@@ -1977,6 +2428,7 @@ pub(super) fn parse_object_filter_inner(
             }
             "token" | "tokens" => filter.token = true,
             "nontoken" => filter.nontoken = true,
+            "foretold" if !is_negated_word => filter.foretold = true,
             "other" => filter.other = true,
             "tapped" => filter.tapped = true,
             "untapped" => filter.untapped = true,
@@ -2038,6 +2490,7 @@ pub(super) fn parse_object_filter_inner(
             "nonhistoric" => filter.nonhistoric = true,
             "historic" if !set_has(&negated_historic_indices, &idx) => filter.historic = true,
             "modified" if !is_negated_word => filter.modified = true,
+            "suspected" if !is_negated_word => filter.suspected = true,
             _ => {}
         }
 
@@ -2088,13 +2541,14 @@ pub(super) fn parse_object_filter_inner(
         }
 
         if let Some(card_type) = parse_card_type(word) {
+            filter.set_explicit_card_type_noun(Some(card_type));
             push_unique(&mut filter.card_types, card_type);
             if is_permanent_type(card_type) {
                 saw_permanent_type = true;
             }
         }
 
-        if let Some(subtype) = parse_subtype_flexible(word) {
+        if let Some(subtype) = parse_compound_filter_subtype(&all_words, idx) {
             push_unique(&mut filter.subtypes, subtype);
             saw_subtype = true;
         }
@@ -2143,7 +2597,7 @@ pub(super) fn parse_object_filter_inner(
             if let Some(card_type) = parse_card_type(word) {
                 push_unique(&mut types, card_type);
             }
-            if let Some(subtype) = parse_subtype_flexible(word) {
+            if let Some(subtype) = parse_compound_filter_subtype(&segment_word_refs, word_idx) {
                 push_unique(&mut subtypes, subtype);
             }
         }
@@ -2192,39 +2646,60 @@ pub(super) fn parse_object_filter_inner(
     }
 
     if segments.len() > 1 {
-        let type_list_candidate = !segment_marker_counts.is_empty()
-            && segment_marker_counts.iter().all(|count| *count == 1);
+        if !has_coordinated_negated_characteristic_list {
+            let type_list_candidate = !segment_marker_counts.is_empty()
+                && segment_marker_counts.iter().all(|count| *count == 1);
 
-        if type_list_candidate {
-            let mut any_types = Vec::new();
-            let mut any_subtypes = Vec::new();
-            for types in segment_types {
-                let Some(card_type) = types.first().copied() else {
-                    continue;
-                };
-                push_unique(&mut any_types, card_type);
-            }
-            for subtypes in segment_subtypes {
-                let Some(subtype) = subtypes.first().copied() else {
-                    continue;
-                };
-                push_unique(&mut any_subtypes, subtype);
-            }
-            if !any_types.is_empty() {
-                filter.card_types = any_types;
-            }
-            if !any_subtypes.is_empty() {
-                filter.subtypes = any_subtypes;
-            }
-            if !filter.card_types.is_empty() && !filter.subtypes.is_empty() {
-                filter.type_or_subtype_union = true;
+            if type_list_candidate {
+                let mut any_types = Vec::new();
+                let mut any_subtypes = Vec::new();
+                for types in segment_types {
+                    let Some(card_type) = types.first().copied() else {
+                        continue;
+                    };
+                    push_unique(&mut any_types, card_type);
+                }
+                for subtypes in segment_subtypes {
+                    let Some(subtype) = subtypes.first().copied() else {
+                        continue;
+                    };
+                    push_unique(&mut any_subtypes, subtype);
+                }
+                if !any_types.is_empty() {
+                    filter.card_types = any_types;
+                }
+                if !any_subtypes.is_empty() {
+                    filter.subtypes = any_subtypes;
+                    filter.all_subtypes.clear();
+                }
+                if !filter.card_types.is_empty() && !filter.subtypes.is_empty() {
+                    filter.type_or_subtype_union = true;
+                }
             }
         }
     } else if let Some(types) = segment_types.into_iter().next() {
+        let subtypes = segment_subtypes.into_iter().next().unwrap_or_default();
         let normalized_segment_words = non_article_parser_word_refs(&segment_tokens);
-        let has_conjunction =
-            parse_word_choice_anywhere(&normalized_segment_words, TYPE_LIST_CONJUNCTION_WORDS)
-                .is_some();
+        // Only a connector between characteristic atoms makes those atoms an
+        // inclusive list. A later suffix connector ("you own and control")
+        // must not turn an adjacent compound type or subtype phrase into OR.
+        let characteristic_word_indices = normalized_segment_words
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, word)| {
+                (parse_card_type(word).is_some()
+                    || parse_compound_filter_subtype(&normalized_segment_words, idx).is_some())
+                .then_some(idx)
+            })
+            .collect::<Vec<_>>();
+        let has_conjunction = characteristic_word_indices
+            .first()
+            .zip(characteristic_word_indices.last())
+            .is_some_and(|(first, last)| {
+                normalized_segment_words[*first..=*last]
+                    .iter()
+                    .any(|word| TYPE_LIST_CONJUNCTION_WORDS.contains(word))
+            });
         let has_and = parse_word_choice_anywhere(&normalized_segment_words, &["and"]).is_some();
         let has_or = parse_word_choice_anywhere(&normalized_segment_words, &["or"]).is_some();
         let has_and_or =
@@ -2237,6 +2712,22 @@ pub(super) fn parse_object_filter_inner(
             }
         } else if types.len() == 1 {
             filter.card_types = types;
+        }
+        // The fast typed filter parser may already have recognized a compound
+        // subtype phrase. Preserve that complete set: the flexible reference
+        // scan intentionally recognizes fewer subtype spellings and must not
+        // replace it with a partial subset.
+        if filter.all_subtypes.is_empty() {
+            if subtypes.len() > 1 {
+                if has_conjunction {
+                    filter.subtypes = subtypes;
+                } else {
+                    filter.all_subtypes = subtypes;
+                    filter.subtypes.clear();
+                }
+            } else if subtypes.len() == 1 {
+                filter.subtypes = subtypes;
+            }
         }
         if (has_and_or || (has_and && has_or))
             && !filter.card_types.is_empty()
@@ -2331,6 +2822,7 @@ pub(super) fn parse_object_filter_inner(
         spell_filter.card_types.clear();
         spell_filter.all_card_types.clear();
         spell_filter.subtypes.clear();
+        spell_filter.all_subtypes.clear();
         spell_filter.type_or_subtype_union = false;
 
         let mut permanent_filter = filter.clone();
@@ -2340,6 +2832,7 @@ pub(super) fn parse_object_filter_inner(
         if permanent_filter.card_types.is_empty()
             && permanent_filter.all_card_types.is_empty()
             && permanent_filter.subtypes.is_empty()
+            && permanent_filter.all_subtypes.is_empty()
         {
             permanent_filter.card_types = permanent_type_defaults.clone();
         }
@@ -2355,6 +2848,7 @@ pub(super) fn parse_object_filter_inner(
         if spell_filter.card_types.is_empty()
             && spell_filter.all_card_types.is_empty()
             && spell_filter.subtypes.is_empty()
+            && spell_filter.all_subtypes.is_empty()
         {
             spell_filter.card_types = permanent_type_defaults.clone();
         }
@@ -2366,6 +2860,7 @@ pub(super) fn parse_object_filter_inner(
         if permanent_filter.card_types.is_empty()
             && permanent_filter.all_card_types.is_empty()
             && permanent_filter.subtypes.is_empty()
+            && permanent_filter.all_subtypes.is_empty()
         {
             permanent_filter.card_types = permanent_type_defaults.clone();
         }
@@ -2508,6 +3003,27 @@ pub(super) fn parse_object_filter_inner(
         }
     }
 
+    // In "creature attacking you or a planeswalker you control", the
+    // planeswalker and its controller describe the attack destination, not
+    // another candidate object. Apply this cleanup after the ordinary
+    // characteristic scan so those later passes cannot reintroduce the
+    // destination as a candidate. The position check distinguishes this from
+    // "creature or planeswalker attacking you", where both nouns genuinely
+    // select candidates.
+    if has_attack_destination_planeswalker_clause
+        && filter
+            .attacking_player_or_planeswalker_controlled_by
+            .is_some()
+    {
+        filter
+            .card_types
+            .retain(|card_type| *card_type != CardType::Planeswalker);
+        filter
+            .all_card_types
+            .retain(|card_type| *card_type != CardType::Planeswalker);
+        filter.controller = None;
+    }
+
     if exclude_basic_land_cards {
         apply_basic_land_exception(&mut filter);
     }
@@ -2546,6 +3062,7 @@ pub(super) fn parse_object_filter_inner(
         || !filter.excluded_card_types.is_empty()
         || !filter.excluded_subtypes.is_empty()
         || !filter.subtypes.is_empty()
+        || !filter.all_subtypes.is_empty()
         || filter.zone.is_some()
         || filter.controller.is_some()
         || filter.owner.is_some()
@@ -2553,6 +3070,7 @@ pub(super) fn parse_object_filter_inner(
         || filter.token
         || filter.nontoken
         || filter.face_down.is_some()
+        || filter.foretold
         || filter.tapped
         || filter.untapped
         || filter.attacking
@@ -2600,6 +3118,7 @@ pub(super) fn parse_object_filter_inner(
         || !filter.tagged_constraints.is_empty()
         || filter.targets_player.is_some()
         || filter.targets_object.is_some()
+        || !filter.characteristic_relations.is_empty()
         || !filter.any_of.is_empty();
 
     if !has_constraints {
@@ -2616,10 +3135,12 @@ pub(super) fn parse_object_filter_inner(
         || !filter.excluded_card_types.is_empty()
         || !filter.excluded_subtypes.is_empty()
         || !filter.subtypes.is_empty()
+        || !filter.all_subtypes.is_empty()
         || filter.zone.is_some()
         || filter.token
         || filter.nontoken
         || filter.face_down.is_some()
+        || filter.foretold
         || filter.tapped
         || filter.untapped
         || filter.attacking
@@ -2663,6 +3184,7 @@ pub(super) fn parse_object_filter_inner(
         || !filter.ability_markers.is_empty()
         || !filter.excluded_ability_markers.is_empty()
         || !filter.no_shared_creature_types_with.is_empty()
+        || !filter.characteristic_relations.is_empty()
         || filter.shares_creature_type_with_source
         || filter.chosen_color
         || filter.chosen_creature_type
@@ -2680,6 +3202,8 @@ pub(super) fn parse_object_filter_inner(
     }
 
     preserve_relative_characteristic_list_surface(&mut filter, tokens.as_slice());
+    preserve_branch_scoped_comparison_union(&mut filter, tokens.as_slice());
+    lift_shared_trailing_mana_value_from_type_union(&mut filter, tokens.as_slice());
 
     if vote_winners_only {
         filter = filter.match_tagged(
@@ -2767,28 +3291,431 @@ pub(super) fn parse_object_filter_inner(
     Ok(filter)
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RelativeCharacteristicSelector {
+    CardType(CardType),
+    Subtype(Subtype),
+    Token,
+}
+
+fn positive_relative_characteristic_union(
+    words: &[&str],
+) -> Option<(
+    usize,
+    Vec<RelativeCharacteristicSelector>,
+    ObjectFilterUnionConnective,
+    bool,
+)> {
+    let (relation_start, characteristic_start) =
+        words
+            .iter()
+            .enumerate()
+            .find_map(|(idx, word)| match *word {
+                "that's" | "thats" => Some((idx, idx + 1)),
+                _ if matches!(
+                    words.get(idx..idx + 2),
+                    Some(["that", "is"] | ["that", "are"])
+                ) =>
+                {
+                    Some((idx, idx + 2))
+                }
+                _ => None,
+            })?;
+    let characteristic_words = words.get(characteristic_start..)?;
+    let connective = if characteristic_words.contains(&"and/or") {
+        ObjectFilterUnionConnective::AndOr
+    } else if characteristic_words.contains(&"or") {
+        ObjectFilterUnionConnective::Or
+    } else {
+        return None;
+    };
+
+    let mut selectors = Vec::new();
+    let mut selector_occurrences = 0usize;
+    let mut selectors_with_articles = 0usize;
+    for (idx, word) in characteristic_words.iter().enumerate() {
+        if matches!(
+            *word,
+            "a" | "an" | "the" | "and" | "or" | "and/or" | "card" | "cards"
+        ) {
+            continue;
+        }
+        let selector = if matches!(*word, "token" | "tokens") {
+            RelativeCharacteristicSelector::Token
+        } else if let Some(card_type) = parse_card_type(word) {
+            RelativeCharacteristicSelector::CardType(card_type)
+        } else if let Some(subtype) = parse_subtype_flexible(word) {
+            RelativeCharacteristicSelector::Subtype(subtype)
+        } else {
+            return None;
+        };
+        selector_occurrences += 1;
+        if idx
+            .checked_sub(1)
+            .and_then(|previous| characteristic_words.get(previous))
+            .is_some_and(|previous| matches!(*previous, "a" | "an"))
+        {
+            selectors_with_articles += 1;
+        }
+        if !selectors.contains(&selector) {
+            selectors.push(selector);
+        }
+    }
+    (selectors.len() >= 2).then_some((
+        relation_start,
+        selectors,
+        connective,
+        selector_occurrences >= 2 && selectors_with_articles == selector_occurrences,
+    ))
+}
+
 fn preserve_relative_characteristic_list_surface(
     filter: &mut ObjectFilter,
     tokens: &[OwnedLexToken],
 ) {
-    if filter.subtypes.len() + filter.excluded_subtypes.len() < 2 {
+    let words = parser_token_word_refs(tokens);
+    let has_negative_relative_copula = words
+        .iter()
+        .any(|word| matches!(*word, "isn't" | "isnt" | "aren't" | "arent"))
+        || words
+            .windows(2)
+            .any(|pair| matches!(pair, ["is", "not"] | ["are", "not"]));
+    if has_negative_relative_copula && filter.subtypes.len() + filter.excluded_subtypes.len() >= 2 {
+        filter.set_relative_characteristic_list_surface(true);
         return;
     }
+
+    let Some((relation_start, selectors, connective, explicit_branch_articles)) =
+        positive_relative_characteristic_union(&words)
+    else {
+        return;
+    };
+    if !filter.any_of.is_empty() {
+        return;
+    }
+
+    let prefix_words = &words[..relation_start];
+    let prefix_card_types = prefix_words
+        .iter()
+        .filter_map(|word| parse_card_type(word))
+        .collect::<Vec<_>>();
+    let prefix_subtypes = prefix_words
+        .iter()
+        .filter_map(|word| parse_subtype_flexible(word))
+        .collect::<Vec<_>>();
+    let prefix_is_token = prefix_words
+        .iter()
+        .any(|word| matches!(*word, "token" | "tokens"));
+
+    let mut base = filter.clone();
+    for selector in &selectors {
+        match selector {
+            RelativeCharacteristicSelector::CardType(card_type) => {
+                base.card_types.retain(|candidate| candidate != card_type);
+                base.all_card_types
+                    .retain(|candidate| candidate != card_type);
+            }
+            RelativeCharacteristicSelector::Subtype(subtype) => {
+                base.subtypes.retain(|candidate| candidate != subtype);
+            }
+            RelativeCharacteristicSelector::Token => base.token = false,
+        }
+    }
+    for card_type in prefix_card_types {
+        push_unique(&mut base.card_types, card_type);
+    }
+    for subtype in prefix_subtypes {
+        push_unique(&mut base.subtypes, subtype);
+    }
+    if prefix_is_token {
+        base.token = true;
+    }
+    base.type_or_subtype_union = false;
+    base.set_union_connective(connective);
+    base.set_explicit_union_branch_articles(explicit_branch_articles);
+    base.set_relative_characteristic_list_surface(true);
+
+    if selectors
+        .iter()
+        .all(|selector| matches!(selector, RelativeCharacteristicSelector::Subtype(_)))
+    {
+        for selector in selectors {
+            let RelativeCharacteristicSelector::Subtype(subtype) = selector else {
+                unreachable!("all relative selectors were checked as subtypes");
+            };
+            push_unique(&mut base.subtypes, subtype);
+        }
+        *filter = base;
+        return;
+    }
+
+    base.any_of = selectors
+        .into_iter()
+        .map(|selector| match selector {
+            RelativeCharacteristicSelector::CardType(card_type) => {
+                ObjectFilter::default().with_type(card_type)
+            }
+            RelativeCharacteristicSelector::Subtype(subtype) => {
+                ObjectFilter::default().with_subtype(subtype)
+            }
+            RelativeCharacteristicSelector::Token => ObjectFilter::default().token(),
+        })
+        .collect();
+    *filter = base;
+}
+
+/// Lift a trailing mana-value qualifier out of a card-type union when Oracle
+/// supplies the object noun only once after the final type.
+///
+/// `instant or sorcery card with mana value ...` gives both type arms the
+/// same qualifier. Parsing the arms independently can otherwise leave the
+/// comparison only on the final `sorcery card` arm. By contrast,
+/// `land card or creature card with mana value ...` repeats the noun and
+/// deliberately keeps the qualifier branch-local.
+fn lift_shared_trailing_mana_value_from_type_union(
+    filter: &mut ObjectFilter,
+    tokens: &[OwnedLexToken],
+) {
+    if filter.any_of.is_empty() || filter.mana_value.is_some() {
+        return;
+    }
+
     let words = parser_token_word_refs(tokens);
-    let has_relative_copula = words.iter().any(|word| {
+    let Some(mana_idx) = words.windows(2).position(|pair| pair == ["mana", "value"]) else {
+        return;
+    };
+    let Some(connector_idx) = words[..mana_idx]
+        .iter()
+        .rposition(|word| matches!(*word, "or" | "and/or"))
+    else {
+        return;
+    };
+    let selector_count = words[..mana_idx]
+        .iter()
+        .filter_map(|word| parse_card_type(word))
+        .collect::<std::collections::HashSet<_>>()
+        .len();
+    if selector_count < 2 {
+        return;
+    }
+    let is_shared_noun = |word: &&str| {
         matches!(
             *word,
-            "that's" | "thats" | "isn't" | "isnt" | "aren't" | "arent"
+            "card" | "cards" | "spell" | "spells" | "permanent" | "permanents"
         )
-    }) || words.windows(2).any(|pair| {
-        matches!(
-            pair,
-            ["that", "is"] | ["that", "are"] | ["is", "not"] | ["are", "not"]
-        )
-    });
-    if has_relative_copula {
-        filter.set_relative_characteristic_list_surface(true);
+    };
+    if words[..connector_idx].iter().any(is_shared_noun)
+        || words[connector_idx + 1..mana_idx]
+            .iter()
+            .filter(|word| is_shared_noun(word))
+            .count()
+            > 1
+    {
+        return;
     }
+
+    fn collect_mana_value(
+        filter: &ObjectFilter,
+        shared: &mut Option<crate::filter::Comparison>,
+    ) -> bool {
+        if let Some(comparison) = &filter.mana_value {
+            match shared {
+                Some(existing) if existing != comparison => return false,
+                Some(_) => {}
+                None => *shared = Some(comparison.clone()),
+            }
+        }
+        filter
+            .any_of
+            .iter()
+            .all(|branch| collect_mana_value(branch, shared))
+    }
+
+    let mut shared = None;
+    if !filter
+        .any_of
+        .iter()
+        .all(|branch| collect_mana_value(branch, &mut shared))
+    {
+        return;
+    }
+    let Some(shared) = shared else {
+        return;
+    };
+
+    fn clear_mana_value(filter: &mut ObjectFilter) {
+        filter.mana_value = None;
+        for branch in &mut filter.any_of {
+            clear_mana_value(branch);
+        }
+    }
+    for branch in &mut filter.any_of {
+        clear_mana_value(branch);
+    }
+    filter.mana_value = Some(shared);
+
+    let shared_zone = filter
+        .any_of
+        .iter()
+        .filter_map(|branch| branch.zone)
+        .try_fold(None, |current, zone| match current {
+            Some(existing) if existing != zone => None,
+            Some(existing) => Some(Some(existing)),
+            None => Some(Some(zone)),
+        })
+        .flatten();
+    if filter.zone.is_none() {
+        filter.zone = shared_zone;
+    }
+    let shared_controller = filter
+        .any_of
+        .iter()
+        .filter_map(|branch| branch.controller.clone())
+        .try_fold(None, |current, controller| match current {
+            Some(existing) if existing != controller => None,
+            Some(existing) => Some(Some(existing)),
+            None => Some(Some(controller)),
+        })
+        .flatten();
+    if filter.controller.is_none() {
+        filter.controller = shared_controller;
+    }
+    let shared_owner = filter
+        .any_of
+        .iter()
+        .filter_map(|branch| branch.owner.clone())
+        .try_fold(None, |current, owner| match current {
+            Some(existing) if existing != owner => None,
+            Some(existing) => Some(Some(existing)),
+            None => Some(Some(owner)),
+        })
+        .flatten();
+    if filter.owner.is_none() {
+        filter.owner = shared_owner;
+    }
+    for branch in &mut filter.any_of {
+        if branch.zone == filter.zone {
+            branch.zone = None;
+        }
+        if branch.controller == filter.controller {
+            branch.controller = None;
+        }
+        if branch.owner == filter.owner {
+            branch.owner = None;
+        }
+    }
+
+    let mut card_types = Vec::new();
+    for branch in &filter.any_of {
+        let [card_type] = branch.card_types.as_slice() else {
+            return;
+        };
+        let mut remainder = branch.clone();
+        remainder.card_types.clear();
+        remainder.union_surface = Default::default();
+        remainder.type_or_subtype_union = false;
+        if remainder != ObjectFilter::default() {
+            return;
+        }
+        if !card_types.contains(card_type) {
+            card_types.push(*card_type);
+        }
+    }
+    if card_types.len() < 2 {
+        return;
+    }
+
+    filter.card_types = card_types;
+    filter.any_of.clear();
+    filter.type_or_subtype_union = true;
+    filter.set_explicit_card_noun(true);
+    filter.set_terminal_noun_after_type_subtype_union_surface(true);
+}
+
+/// Keep a comparison next to the characteristic arm it grammatically
+/// qualifies instead of distributing it over the whole inclusive union.
+fn preserve_branch_scoped_comparison_union(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    if !filter.type_or_subtype_union || !filter.any_of.is_empty() || filter.token {
+        return;
+    }
+    let connector_indices = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, token)| token.is_word("and/or").then_some(idx))
+        .collect::<Vec<_>>();
+    let [connector_idx] = connector_indices.as_slice() else {
+        return;
+    };
+    let left_tokens = trim_commas(&tokens[..*connector_idx]);
+    let right_tokens = trim_commas(&tokens[*connector_idx + 1..]);
+    if left_tokens.is_empty() || right_tokens.is_empty() {
+        return;
+    }
+
+    let Ok(left) = parse_object_filter_lexed(&left_tokens, false) else {
+        return;
+    };
+    let Ok(right) = parse_object_filter_lexed(&right_tokens, false) else {
+        return;
+    };
+    if !left.any_of.is_empty()
+        || !right.any_of.is_empty()
+        || left.card_types.len() + left.subtypes.len() != 1
+        || right.card_types.len() + right.subtypes.len() != 1
+        || !left.all_card_types.is_empty()
+        || !right.all_card_types.is_empty()
+        || !left.all_subtypes.is_empty()
+        || !right.all_subtypes.is_empty()
+    {
+        return;
+    }
+
+    let power_is_branch_local = filter.power.is_some()
+        && ((left.power == filter.power && right.power.is_none())
+            || (right.power == filter.power && left.power.is_none()));
+    let toughness_is_branch_local = filter.toughness.is_some()
+        && ((left.toughness == filter.toughness && right.toughness.is_none())
+            || (right.toughness == filter.toughness && left.toughness.is_none()));
+    let mana_value_is_branch_local = filter.mana_value.is_some()
+        && ((left.mana_value == filter.mana_value && right.mana_value.is_none())
+            || (right.mana_value == filter.mana_value && left.mana_value.is_none()));
+    if !power_is_branch_local && !toughness_is_branch_local && !mana_value_is_branch_local {
+        return;
+    }
+
+    let mut outer = filter.clone();
+    outer.card_types.clear();
+    outer.all_card_types.clear();
+    outer.subtypes.clear();
+    outer.all_subtypes.clear();
+    outer.type_or_subtype_union = false;
+    if power_is_branch_local {
+        outer.power = None;
+    }
+    if toughness_is_branch_local {
+        outer.toughness = None;
+    }
+    if mana_value_is_branch_local {
+        outer.mana_value = None;
+    }
+
+    let mut branches = vec![left, right];
+    for branch in &mut branches {
+        if branch.zone == outer.zone {
+            branch.zone = None;
+        }
+        if branch.controller == outer.controller {
+            branch.controller = None;
+        }
+        if branch.owner == outer.owner {
+            branch.owner = None;
+        }
+        if outer.other && branch.other {
+            branch.other = false;
+        }
+    }
+    outer.any_of = branches;
+    *filter = outer;
 }
 
 fn relation_clause_is_inside_aggregate_scope(words: &[&str], relation_start: usize) -> bool {
@@ -2901,7 +3828,17 @@ enum PermanentOrSuspendedCardArm {
 }
 
 fn parse_permanent_or_suspended_card_disjunction(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
-    let segments = split_lexed_slices_on_or(tokens);
+    let or_segments = split_lexed_slices_on_or(tokens);
+    let segments = if or_segments.len() == 2 {
+        or_segments
+    } else {
+        // Count expressions commonly coordinate the two disjoint domains
+        // additively: "each suspended card ... and each other permanent ...".
+        // They still need inclusive `any_of` semantics; flattening them gives
+        // the exile arm battlefield/controller constraints from the permanent
+        // arm.
+        primitives::split_lexed_slices_on_list_conjunction(tokens)
+    };
     if segments.len() != 2 {
         return None;
     }
@@ -2922,18 +3859,29 @@ fn parse_permanent_or_suspended_card_arm(
     tokens: &[OwnedLexToken],
 ) -> Option<(PermanentOrSuspendedCardArm, ObjectFilter)> {
     let words = non_article_parser_word_refs(tokens);
+    let mut words = words.as_slice();
+    if words.first().is_some_and(|word| *word == "each") {
+        words = &words[1..];
+    }
+    let arm_other = words
+        .first()
+        .is_some_and(|word| matches!(*word, "other" | "another"));
+    if arm_other {
+        words = &words[1..];
+    }
     let words = if words
         .first()
         .is_some_and(|word| parse_word_choice(word, TARGET_OR_TARGETS_WORDS).is_some())
     {
         &words[1..]
     } else {
-        words.as_slice()
+        words
     };
 
     match words.first().copied() {
         Some("permanent" | "permanents") => {
             let mut filter = ObjectFilter::permanent();
+            filter.other = arm_other;
             consume_permanent_or_suspended_card_tail(words, 1, &mut filter, true, true)?;
             Some((PermanentOrSuspendedCardArm::Permanent, filter))
         }
@@ -2945,6 +3893,7 @@ fn parse_permanent_or_suspended_card_arm(
             let mut filter = ObjectFilter::default()
                 .in_zone(Zone::Exile)
                 .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend);
+            filter.other = arm_other;
             consume_permanent_or_suspended_card_tail(words, 2, &mut filter, false, true)?;
             Some((PermanentOrSuspendedCardArm::SuspendedCard, filter))
         }
@@ -3146,4 +4095,253 @@ fn try_apply_shared_creature_type_with_source_clause(
         return true;
     }
     false
+}
+
+#[cfg(test)]
+mod shared_characteristic_relation_tests {
+    use super::*;
+    use crate::runtime_backend::lex_line;
+    use crate::target::ObjectCharacteristicRelationKind;
+
+    fn parse_filter(text: &str) -> ObjectFilter {
+        let tokens = lex_line(text, 0).expect("filter text should lex");
+        parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
+            .expect("filter text should parse")
+    }
+
+    #[test]
+    fn suffix_conjunction_does_not_weaken_compound_subtype_identity() {
+        let filter = parse_filter("Eldrazi Spawn creature you both own and control");
+
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(filter.all_subtypes, vec![Subtype::Eldrazi, Subtype::Spawn]);
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+    }
+
+    #[test]
+    fn foretold_owner_zone_filter_keeps_runtime_state_and_authored_scope() {
+        let filter = parse_filter("foretold card you own in exile");
+
+        assert!(filter.foretold);
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert_eq!(filter.description(), "foretold card you own in exile");
+    }
+
+    #[test]
+    fn excluded_literal_name_keeps_original_case_apostrophe_and_comma_surface() {
+        let filter = parse_filter(
+            "target legendary permanent card not named Staff of Eden, Vault's Key from a graveyard",
+        );
+
+        assert_eq!(
+            filter.excluded_name.as_deref(),
+            Some("staff of eden vaults key")
+        );
+        assert_eq!(
+            filter.excluded_name_surface(),
+            Some("Staff of Eden, Vault's Key")
+        );
+    }
+
+    #[test]
+    fn creature_type_relation_keeps_comparison_controller_out_of_candidate() {
+        let filter =
+            parse_filter("creature card that shares a creature type with a creature you control");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, None);
+        assert_eq!(filter.characteristic_relations.len(), 1);
+        let relation = &filter.characteristic_relations[0];
+        assert_eq!(relation.kind, ObjectCharacteristicRelationKind::SharesAny);
+        assert_eq!(
+            relation.characteristics,
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Creature)]
+        );
+        assert_eq!(relation.comparison.card_types, vec![CardType::Creature]);
+        assert_eq!(relation.comparison.controller, Some(PlayerFilter::You));
+        assert_eq!(relation.comparison.zone, Some(Zone::Battlefield));
+        assert_eq!(
+            filter.description(),
+            "creature card that shares a creature type with a creature you control"
+        );
+    }
+
+    #[test]
+    fn attacked_planeswalker_clause_does_not_expand_or_control_the_attacker() {
+        let filter = parse_filter("creature that's attacking you or a planeswalker you control");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, None);
+        assert!(filter.attacking);
+        assert_eq!(
+            filter.attacking_player_or_planeswalker_controlled_by,
+            Some(PlayerFilter::You)
+        );
+        assert!(!filter.attacking_player_only);
+    }
+
+    #[test]
+    fn attacking_last_chosen_player_keeps_persistent_player_relation() {
+        let filter = parse_filter("creature attacking the last chosen player");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.attacking);
+        assert_eq!(
+            filter.attacking_player_or_planeswalker_controlled_by,
+            Some(PlayerFilter::ChosenPlayer)
+        );
+        assert!(filter.attacking_player_only);
+    }
+
+    #[test]
+    fn compound_ambiguous_subtype_phrase_keeps_both_subtypes() {
+        let filter = parse_filter("all Sand Warriors");
+
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(filter.all_subtypes, vec![Subtype::Sand, Subtype::Warrior]);
+    }
+
+    #[test]
+    fn historical_block_relation_keeps_partner_characteristics_nested() {
+        let filter =
+            parse_filter("creature that blocked or was blocked by a Zombie you control this turn");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(filter.subtypes.is_empty());
+        assert!(!filter.blocked);
+        assert!(!filter.blocking);
+        let partner = filter
+            .blocked_or_was_blocked_by_this_turn
+            .as_deref()
+            .expect("typed historical combat partner");
+        assert_eq!(partner.subtypes, vec![Subtype::Zombie]);
+        assert_eq!(partner.controller, Some(PlayerFilter::You));
+        assert_eq!(partner.zone, Some(Zone::Battlefield));
+        assert_eq!(
+            filter.description(),
+            "a creature that blocked or was blocked by a Zombie you control this turn"
+        );
+    }
+
+    #[test]
+    fn color_relation_keeps_legendary_comparison_identity_nested() {
+        let filter = parse_filter("card that shares a color with a legendary creature you control");
+
+        assert!(filter.has_explicit_card_noun());
+        assert!(filter.supertypes.is_empty());
+        assert_eq!(filter.controller, None);
+        let relation = &filter.characteristic_relations[0];
+        assert_eq!(relation.characteristics, vec![ObjectCharacteristic::Color]);
+        assert_eq!(relation.comparison.supertypes, vec![Supertype::Legendary]);
+        assert_eq!(relation.comparison.card_types, vec![CardType::Creature]);
+        assert_eq!(relation.comparison.controller, Some(PlayerFilter::You));
+        assert_eq!(
+            filter.description(),
+            "card that shares a color with a legendary creature you control"
+        );
+    }
+
+    #[test]
+    fn negated_land_type_relation_keeps_basic_on_candidate_only() {
+        let filter =
+            parse_filter("basic land card that doesn't share a land type with a land you control");
+
+        assert_eq!(filter.supertypes, vec![Supertype::Basic]);
+        assert_eq!(filter.card_types, vec![CardType::Land]);
+        assert_eq!(filter.controller, None);
+        let relation = &filter.characteristic_relations[0];
+        assert_eq!(relation.kind, ObjectCharacteristicRelationKind::SharesNone);
+        assert_eq!(
+            relation.characteristics,
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Land)]
+        );
+        assert!(relation.comparison.supertypes.is_empty());
+        assert_eq!(relation.comparison.card_types, vec![CardType::Land]);
+        assert_eq!(relation.comparison.controller, Some(PlayerFilter::You));
+        assert_eq!(
+            filter.description(),
+            "basic land card that doesn't share a land type with a land you control"
+        );
+    }
+
+    #[test]
+    fn tagged_comparison_surfaces_remain_nested_in_generic_relations() {
+        let equipped = parse_filter("creature that shares a color with equipped creature");
+        let equipped_relation = &equipped.characteristic_relations[0];
+        assert_eq!(
+            equipped_relation.characteristics,
+            vec![ObjectCharacteristic::Color]
+        );
+        assert!(
+            equipped_relation
+                .comparison
+                .tagged_constraints
+                .iter()
+                .any(|constraint| {
+                    constraint.tag.as_str() == "equipped"
+                        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                })
+        );
+        assert_eq!(
+            equipped_relation.comparison_description(),
+            "equipped creature"
+        );
+
+        let exiled = parse_filter("spell that shares a color or mana value with the exiled card");
+        let exiled_relation = &exiled.characteristic_relations[0];
+        assert_eq!(
+            exiled_relation.characteristics,
+            vec![ObjectCharacteristic::Color, ObjectCharacteristic::ManaValue]
+        );
+        assert!(
+            exiled_relation
+                .comparison
+                .tagged_constraints
+                .iter()
+                .any(|constraint| {
+                    constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                })
+        );
+        assert_eq!(exiled_relation.comparison_description(), "the exiled card");
+    }
+
+    #[test]
+    fn convoked_comparison_keeps_its_tag_and_candidate_identity_separate() {
+        let filter = parse_filter(
+            "creature that shares a creature type with a creature that convoked this spell",
+        );
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.tagged_constraints.len(), 0);
+        let comparison = &filter.characteristic_relations[0].comparison;
+        assert_eq!(comparison.card_types, vec![CardType::Creature]);
+        assert!(comparison.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "convoked_this_spell"
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert_eq!(
+            filter.description(),
+            "creature that shares a creature type with a creature that convoked this spell"
+        );
+    }
+
+    #[test]
+    fn enchanted_by_relation_keeps_host_and_aura_constraints_separate() {
+        let filter =
+            parse_filter("creature your opponents control that's enchanted by an Aura you control");
+
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::Opponent));
+        assert!(filter.subtypes.is_empty());
+        assert!(filter.has_relative_attachment_state_surface());
+        let aura = filter
+            .with_attached_object
+            .as_deref()
+            .expect("enchanted-by clause should create a nested attachment filter");
+        assert_eq!(aura.subtypes, vec![Subtype::Aura]);
+        assert_eq!(aura.controller, Some(PlayerFilter::You));
+    }
 }

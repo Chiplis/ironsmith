@@ -79,6 +79,8 @@ pub(crate) fn parse_become_clause(
     let target_subject_tokens = base_pt_subject
         .map(|shape| shape.target_tokens)
         .unwrap_or(subject_tokens);
+    let set_quantifier_surface =
+        become_grammar::become_subject_set_quantifier_surface(target_subject_tokens);
     let subject = parse_subject(subject_tokens);
     let become_surface = become_grammar::parse_become_body_surface_shape(&become_tokens);
     let become_body_tokens = become_surface.body_tokens;
@@ -157,9 +159,11 @@ pub(crate) fn parse_become_clause(
                 target, subtype, duration,
             ));
         }
-        Some(become_grammar::BecomeExactKind::ColorChoice) => {
+        Some(become_grammar::BecomeExactKind::ColorChoice { allow_multiple }) => {
             return Ok(EffectAst::subject_verb_become_color_choice(
-                target, duration,
+                target,
+                duration,
+                allow_multiple,
             ));
         }
         Some(become_grammar::BecomeExactKind::CreatureTypeChoice) => {
@@ -371,7 +375,8 @@ pub(crate) fn parse_become_clause(
                     Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
                     animation_duration_surface,
                     duration,
-                ));
+                )
+                .with_set_quantifier_surface(set_quantifier_surface));
             }
             return Ok(EffectAst::subject_verb_become_base_pt_creature(
                 power,
@@ -388,7 +393,8 @@ pub(crate) fn parse_become_clause(
                 Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
                 animation_duration_surface,
                 duration,
-            ));
+            )
+            .with_set_quantifier_surface(set_quantifier_surface));
         }
         let (descriptor_words, preserve_other_types) =
             become_grammar::strip_become_addition_tail_words(&become_words[value_word_count..]);
@@ -412,7 +418,8 @@ pub(crate) fn parse_become_clause(
                 Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
                 animation_duration_surface,
                 duration,
-            ));
+            )
+            .with_set_quantifier_surface(set_quantifier_surface));
         }
     }
 
@@ -435,7 +442,8 @@ pub(crate) fn parse_become_clause(
             Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness),
             animation_duration_surface,
             duration,
-        ));
+        )
+        .with_set_quantifier_surface(set_quantifier_surface));
     }
 
     if let Some(pt) = become_grammar::parse_become_iterated_mana_value_pt_words(become_words)
@@ -457,7 +465,8 @@ pub(crate) fn parse_become_clause(
             Some(ironsmith_core::AnimationPtSurface::ExplicitBasePowerToughness),
             animation_duration_surface,
             duration,
-        ));
+        )
+        .with_set_quantifier_surface(set_quantifier_surface));
     }
 
     match become_grammar::parse_become_simple_descriptor_words(become_words) {

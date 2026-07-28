@@ -59,6 +59,7 @@ fn compose_put_filtered_looked_cards_to_zone_rest_to_zone(
             tag: looked_tag,
             keep_tagged: chosen_tag,
             zone: rest_zone,
+            surface: ironsmith_core::LibraryRemainderSurface::Rest,
         },
     ));
     effects
@@ -143,6 +144,18 @@ pub(crate) fn parse_lose_life(
     validate_life_keyword(rest)?;
     let trailing = trim_commas(&rest[1..]);
     if !trailing.is_empty() {
+        let base_effect = subject_verb_player_resource_effect(
+            SubjectVerbRoleAst::AffectedPlayer,
+            player,
+            SubjectVerbActionAst::LoseLife {
+                amount: amount.clone(),
+            },
+        );
+        if let Some(delayed) =
+            wrap_parsed_effect_in_delayed_next_step_unless_pays(&trailing, base_effect)?
+        {
+            return Ok(delayed);
+        }
         if let Some(resolved) = parse_life_amount_from_trailing(&amount, &trailing)? {
             amount = resolved;
             return Ok(subject_verb_player_resource_effect(
@@ -416,7 +429,7 @@ pub(crate) fn parse_exiled_with_source_move_surface(
     let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     let destination_marker = words
         .iter()
-        .position(|word| matches!(*word, "into" | "onto" | "to"))?;
+        .position(|word| matches!(*word, "into" | "onto" | "to" | "on"))?;
     let target_words = &words[..destination_marker];
     let verb = if target_words.first() == Some(&"return") {
         MoveVerbSurface::Return
@@ -612,10 +625,7 @@ pub(crate) fn parse_put_into_hand(
         }
     }
 
-    fn apply_explicit_source_location(
-        target: &mut TargetAst,
-        tokens: &[OwnedLexToken],
-    ) {
+    fn apply_explicit_source_location(target: &mut TargetAst, tokens: &[OwnedLexToken]) {
         let words = crate::runtime_backend::token_word_refs(tokens);
         let location = if words
             .windows(3)
@@ -670,13 +680,14 @@ pub(crate) fn parse_put_into_hand(
             crate::cards::builders::LibraryBottomOrderAst::ChooserChooses
         };
         return Ok(
-            EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
                 TagKey::from("__last_revealed__"),
                 shape
                     .exclude_current_reference
                     .then(|| TagKey::from(IT_TAG)),
                 order,
                 cca_shapes::parse_destination_player(tokens).unwrap_or(player),
+                shape.surface,
             ),
         );
     }
@@ -940,7 +951,7 @@ pub(crate) fn parse_put_into_hand(
         )
         .with_destination_player_surface(Some(destination_player))
         .with_move_to_zone_actor_surface(player)
-        .with_move_to_zone_plural_surface_if(cca_shapes::is_plural_tagged_object_reference(tokens));
+        .with_move_to_zone_plural_surface_if(put_shape.plural_reference);
         return Ok(wrap_return_with_delayed_timing(
             effect,
             parse_put_into_hand_delayed_timing(tokens),
@@ -1071,6 +1082,7 @@ pub(crate) fn parse_put_into_hand(
             .with_destination_player_reference_surface(
                 cca_shapes::parse_destination_player_reference_surface(shape.destination_tokens),
             )
+            .with_exiled_with_source_surface(exiled_with_source_surface.clone())
             .with_move_to_zone_actor_surface(player)
             .with_move_to_zone_plural_surface_if(cca_shapes::is_plural_tagged_object_reference(
                 target_tokens,
@@ -1485,6 +1497,41 @@ mod looked_card_count_tests {
     use super::*;
 
     #[test]
+    fn life_loss_handler_wraps_delayed_draw_step_unless_payment() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "1 life at the beginning of their next draw step unless they pay {1} before that draw step.",
+            0,
+        )
+        .expect("lex delayed life loss");
+        let effect = parse_lose_life(&tokens, Some(SubjectAst::Player(PlayerAst::That)))
+            .expect("delayed life loss should parse");
+
+        let EffectAst::DelayedUntilNextDrawStep {
+            player: PlayerAst::That,
+            effects,
+        } = effect
+        else {
+            panic!("expected delayed draw-step wrapper: {effect:#?}");
+        };
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::UnlessPays {
+                player: PlayerAst::That,
+                effects,
+                ..
+            }] if matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::LoseLife {
+                        amount: Value::Fixed(1),
+                    },
+                    ..
+                })]
+            )
+        ));
+    }
+
+    #[test]
     fn source_exiled_move_surface_preserves_typed_subjects_and_onto_marker() {
         let tokens = crate::runtime_backend::front_end::lexer::lex_line(
             "Put target creature card with mana value X exiled with this creature onto the battlefield under your control.",
@@ -1540,6 +1587,40 @@ mod looked_card_count_tests {
             surface.subject,
             ironsmith_core::ExiledWithSourceSubjectSurface::Custom("all cards you own".to_string())
         );
+
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Put all cards exiled with this enchantment on the bottom of their library in a random order.",
+            0,
+        )
+        .expect("lex source-exiled bottom-library move");
+        let surface = parse_exiled_with_source_move_surface(&tokens)
+            .expect("parse source-exiled bottom-library move surface");
+        assert_eq!(
+            surface.subject,
+            ironsmith_core::ExiledWithSourceSubjectSurface::AllCards
+        );
+        assert!(matches!(
+            surface.source,
+            ironsmith_core::ExiledWithSourceReferenceSurface::Source(
+                crate::target::SourceReferenceSurface::ThisPermanentType(ref text)
+            ) if text == "this enchantment"
+        ));
+        let effect =
+            parse_put_into_hand(&tokens, None).expect("parse source-exiled bottom-library move");
+        assert!(matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone {
+                    exiled_with_source_surface: Some(ironsmith_core::ExiledWithSourceMoveSurface {
+                        subject: ironsmith_core::ExiledWithSourceSubjectSurface::AllCards,
+                        ..
+                    }),
+                    zone: Zone::Library,
+                    ..
+                },
+                ..
+            })
+        ));
     }
 
     #[test]
@@ -1572,5 +1653,31 @@ mod looked_card_count_tests {
         ));
         assert_eq!(zone, Zone::Hand);
         assert_eq!(destination_player_surface, Some(PlayerAst::You));
+    }
+
+    #[test]
+    fn explicit_you_revealed_collection_binds_the_reveal_producer() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Put the cards you revealed this way on the bottom of your library in any order.",
+            0,
+        )
+        .expect("lex revealed collection move");
+        let effect = parse_put_into_hand(&tokens, None).expect("parse revealed collection move");
+
+        assert!(matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        tag,
+                        keep_tagged: None,
+                        order: crate::cards::builders::LibraryBottomOrderAst::ChooserChooses,
+                        surface:
+                            ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay,
+                        ..
+                    },
+                ..
+            }) if tag.as_str() == "__last_revealed__"
+        ));
     }
 }

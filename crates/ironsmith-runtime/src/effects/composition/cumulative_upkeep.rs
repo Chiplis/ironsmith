@@ -36,6 +36,41 @@ fn execute_failure(
     execute_sequence(game, ctx, effects)
 }
 
+fn execute_unpaid_failure(
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+    player: crate::ids::PlayerId,
+    effects: &[Effect],
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut lookback_source_snapshots = game.trigger_source_lookback_snapshots();
+    let source_snapshot = game
+        .object(ctx.source)
+        .map(|object| game.cached_object_snapshot_with_calculated_characteristics(object));
+    if let Some(snapshot) = source_snapshot.as_ref()
+        && !lookback_source_snapshots
+            .iter()
+            .any(|candidate| candidate.stable_id == snapshot.stable_id)
+    {
+        lookback_source_snapshots.push(snapshot.clone());
+    }
+    let outcome = execute_failure(game, ctx, effects)?;
+    game.queue_trigger_event(
+        ctx.provenance,
+        crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::other::KeywordActionEvent::new(
+                crate::events::other::KeywordActionKind::CumulativeUpkeepNotPaid,
+                player,
+                ctx.source,
+                1,
+            )
+            .with_snapshot(source_snapshot),
+            ctx.provenance,
+        )
+        .with_lookback_source_snapshots(lookback_source_snapshots),
+    );
+    Ok(outcome)
+}
+
 fn restore_payment_checkpoint(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
@@ -236,11 +271,11 @@ impl EffectExecutor for CumulativeUpkeepEffect {
             if game.controller_of_id(ctx.source) != Some(player) {
                 return Ok(EffectOutcome::count(0));
             }
-            return execute_failure(game, ctx, &self.failure);
+            return execute_unpaid_failure(game, ctx, player, &self.failure);
         }
 
         let Some(outcome) = execute_payment_atomically(game, ctx, &self.payment, count)? else {
-            return execute_failure(game, ctx, &self.failure);
+            return execute_unpaid_failure(game, ctx, player, &self.failure);
         };
         Ok(outcome)
     }
@@ -401,6 +436,29 @@ mod tests {
 
         assert_eq!(game.player(alice).expect("alice").life, 20);
         assert!(!game.battlefield.contains(&source));
+        let events = game.take_pending_trigger_events();
+        let unpaid = events
+            .iter()
+            .find_map(|event| {
+                event
+                    .downcast::<crate::events::other::KeywordActionEvent>()
+                    .filter(|event| {
+                        event.action
+                            == crate::events::other::KeywordActionKind::CumulativeUpkeepNotPaid
+                    })
+            })
+            .expect("declining cumulative upkeep should emit a typed unpaid action");
+        assert_eq!(unpaid.player, alice);
+        assert_eq!(unpaid.source, source);
+        assert!(
+            events.iter().any(|event| {
+                event
+                    .lookback_source_snapshots()
+                    .iter()
+                    .any(|snapshot| snapshot.object_id == source)
+            }),
+            "unpaid cumulative upkeep event should retain pre-sacrifice trigger-source LKI"
+        );
     }
 
     #[test]

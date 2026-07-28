@@ -284,53 +284,7 @@ impl StaticAbilityModelInterpreter {
     }
 
     fn is_simple_keyword_id(id: StaticAbilityId) -> bool {
-        matches!(
-            id,
-            StaticAbilityId::Flying
-                | StaticAbilityId::FirstStrike
-                | StaticAbilityId::DoubleStrike
-                | StaticAbilityId::Deathtouch
-                | StaticAbilityId::Defender
-                | StaticAbilityId::Flash
-                | StaticAbilityId::Haste
-                | StaticAbilityId::Hexproof
-                | StaticAbilityId::Indestructible
-                | StaticAbilityId::Intimidate
-                | StaticAbilityId::Lifelink
-                | StaticAbilityId::Menace
-                | StaticAbilityId::Reach
-                | StaticAbilityId::Shroud
-                | StaticAbilityId::Trample
-                | StaticAbilityId::Vigilance
-                | StaticAbilityId::Fear
-                | StaticAbilityId::Skulk
-                | StaticAbilityId::Prowess
-                | StaticAbilityId::Flanking
-                | StaticAbilityId::UmbraArmor
-                | StaticAbilityId::Phasing
-                | StaticAbilityId::Wither
-                | StaticAbilityId::Infect
-                | StaticAbilityId::Changeling
-                | StaticAbilityId::LivingMetal
-                | StaticAbilityId::Partner
-                | StaticAbilityId::PartnerWith
-                | StaticAbilityId::StartYourEngines
-                | StaticAbilityId::SpaceSculptor
-                | StaticAbilityId::DoctorsCompanion
-                | StaticAbilityId::Assist
-                | StaticAbilityId::Ascend
-                | StaticAbilityId::SplitSecond
-                | StaticAbilityId::Rebound
-                | StaticAbilityId::Cascade
-                | StaticAbilityId::CascadeLandDrop
-                | StaticAbilityId::ReadAhead
-                | StaticAbilityId::Unleash
-                | StaticAbilityId::Bloodthirst
-                | StaticAbilityId::Tribute
-                | StaticAbilityId::Protection
-                | StaticAbilityId::Ward
-                | StaticAbilityId::Landwalk
-        )
+        id.is_keyword()
     }
 
     fn core_landwalk_to_runtime(
@@ -350,7 +304,7 @@ impl StaticAbilityModelInterpreter {
         }
     }
 
-    fn ability_from_model(ability: &CompiledAbilityModel) -> crate::ability::Ability {
+    pub(crate) fn ability_from_model(ability: &CompiledAbilityModel) -> crate::ability::Ability {
         let kind = match &ability.kind {
             ironsmith_core::AbilityKind::Static(static_ability) => {
                 crate::ability::AbilityKind::Static(StaticAbility::from_model(
@@ -431,6 +385,7 @@ impl StaticAbilityModelInterpreter {
             zone: spec.zone,
             beneficiary: spec.beneficiary.clone(),
             usage_limit: spec.usage_limit,
+            cast_this_way_filter: spec.cast_this_way_filter.clone(),
             cast_this_way_grants: spec
                 .cast_this_way_grants
                 .iter()
@@ -578,6 +533,9 @@ impl StaticAbilityModelInterpreter {
                 }
                 if reduction.per_target {
                     parsed = parsed.with_per_target();
+                }
+                if let Some(intersection) = reduction.characteristic_intersection.clone() {
+                    parsed = parsed.with_characteristic_intersection(intersection);
                 }
                 Some(parsed)
             }
@@ -922,6 +880,12 @@ impl StaticAbilityModelInterpreter {
         }
 
         Some(match &model.payload {
+            ironsmith_core::StaticAbilityPayload::SourceLineKeywordGroup { keyword_count } => {
+                StaticAbility::source_line_keyword_group(*keyword_count)
+            }
+            ironsmith_core::StaticAbilityPayload::SourceLineStaticGroup { member_count } => {
+                StaticAbility::source_line_static_group(*member_count)
+            }
             ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
                 let mut converted = match &anthem.filter {
                     Some(filter) => crate::static_abilities::Anthem::new(filter.clone(), 0, 0)

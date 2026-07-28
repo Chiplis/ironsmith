@@ -4,6 +4,66 @@ use crate::CardId;
 use crate::cards::builders::CardDefinitionBuilder;
 
 #[test]
+fn quoted_source_relative_restriction_remains_a_temporary_static_grant() {
+    for text in [
+        "Until end of turn, this creature gains \"Creatures dealt damage by this creature this turn can't be regenerated this turn.\"",
+        "Until end of turn, this creature gains Creatures dealt damage by this creature this turn can't be regenerated this turn.",
+    ] {
+        let tokens = tokenize_line(text, 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("source-relative restriction grant should parse")
+            .expect("source-relative restriction grant should produce effects");
+
+        let ast_debug = format!("{effects:#?}");
+        assert!(ast_debug.contains("GrantAbilitiesToTarget"), "{ast_debug}");
+        assert!(ast_debug.contains("duration: EndOfTurn"), "{ast_debug}");
+        assert!(
+            ast_debug.contains("dealt_damage_by_source_this_turn: Some(\n")
+                && ast_debug.contains("ThisCreature"),
+            "{ast_debug}"
+        );
+
+        let compiled = compile_statement_effects(&effects)
+            .expect("source-relative restriction grant should lower");
+        let compiled_debug = format!("{compiled:#?}");
+        assert!(
+            compiled_debug.contains("ApplyContinuousEffect"),
+            "{compiled_debug}"
+        );
+        assert!(compiled_debug.contains("AddAbility"), "{compiled_debug}");
+        assert!(
+            compiled_debug.contains("dealt_damage_by_source_this_turn: Some(\n")
+                && compiled_debug.contains("ThisCreature"),
+            "{compiled_debug}"
+        );
+    }
+}
+
+#[test]
+fn activated_quoted_source_relative_restriction_uses_the_grant_pipeline() {
+    let (definition, trace) = crate::parse_trace::capture(|| {
+        CardDefinitionBuilder::new(CardId::new(), "Source Relative Restriction Probe")
+            .card_types(vec![crate::types::CardType::Creature])
+            .parse_text(
+                "{B}: Until end of turn, this creature gains \"Creatures dealt damage by this creature this turn can't be regenerated this turn.\"",
+            )
+    });
+    let definition = definition.expect("activated source-relative restriction grant should parse");
+    let debug = format!("{definition:#?}");
+
+    assert!(
+        debug.contains("ApplyContinuousEffect"),
+        "{trace:#?}\n{debug}"
+    );
+    assert!(debug.contains("AddAbility"), "{trace:#?}\n{debug}");
+    assert!(
+        debug.contains("dealt_damage_by_source_this_turn: Some(\n")
+            && debug.contains("ThisCreature"),
+        "{trace:#?}\n{debug}"
+    );
+}
+
+#[test]
 fn additional_pump_and_ability_grant_are_both_present_in_semantic_ast() {
     let tokens = tokenize_line(
         "Soldiers you control get an additional +1/+1 and gain vigilance until end of turn.",

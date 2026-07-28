@@ -2892,6 +2892,227 @@ pub(super) fn test_strip_bare_destroys_attached_auras_and_equipment_only() {
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn test_fumble_uses_lki_for_every_former_attachment_and_one_chosen_recipient() {
+    struct ChooseRecipient {
+        recipient: ObjectId,
+        prompts: usize,
+    }
+
+    impl DecisionMaker for ChooseRecipient {
+        fn decide_objects(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::SelectObjectsContext,
+        ) -> Vec<ObjectId> {
+            self.prompts += 1;
+            assert_eq!(ctx.min, 1, "Fumble should require one new recipient");
+            assert_eq!(ctx.max, Some(1), "Fumble should choose only one recipient");
+            assert!(
+                ctx.candidates
+                    .iter()
+                    .any(|candidate| candidate.id == self.recipient && candidate.legal),
+                "the scripted recipient must be a legal creature choice: {ctx:?}"
+            );
+            vec![self.recipient]
+        }
+    }
+
+    let mut game = setup_game();
+    let mut trigger_queue = TriggerQueue::new();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    game.turn.phase = Phase::FirstMain;
+    game.turn.step = None;
+    game.turn.active_player = alice;
+    game.turn.priority_player = Some(alice);
+    game.player_mut(alice)
+        .expect("alice exists")
+        .mana_pool
+        .add(ManaSymbol::Blue, 2);
+
+    let fumble = CardDefinitionBuilder::new(CardId::new(), "Fumble Runtime Variant")
+        .mana_cost(ManaCost::from_pips(vec![
+            vec![ManaSymbol::Generic(1)],
+            vec![ManaSymbol::Blue],
+        ]))
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Return target creature to its owner's hand. Gain control of all Auras and Equipment that were attached to it, then attach them to another creature.",
+        )
+        .expect("Fumble should parse strictly");
+    let fumble_id = game.create_object_from_definition(&fumble, alice, Zone::Hand);
+
+    let target_id = create_creature(&mut game, "Fumble Target", bob, 3, 3);
+    let target_stable_id = game.object(target_id).expect("target exists").stable_id;
+    let recipient_id = create_creature(&mut game, "Fumble Recipient", alice, 2, 2);
+    let wrong_recipient_id = create_creature(&mut game, "Wrong Recipient", alice, 2, 2);
+    let unrelated_host_id = create_creature(&mut game, "Unrelated Host", bob, 2, 2);
+
+    let aura = CardDefinitionBuilder::new(CardId::new(), "Fumble Aura")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text("Enchant creature")
+        .expect("test Aura should parse");
+    let equipment = CardBuilder::new(CardId::new(), "Fumble Equipment")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+
+    let former_auras = [
+        game.create_object_from_definition(&aura, bob, Zone::Battlefield),
+        game.create_object_from_definition(&aura, bob, Zone::Battlefield),
+    ];
+    let former_equipment = [
+        game.create_object_from_card(&equipment, bob, Zone::Battlefield),
+        game.create_object_from_card(&equipment, bob, Zone::Battlefield),
+    ];
+    for attachment in former_auras.into_iter().chain(former_equipment) {
+        assert!(
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut game,
+                attachment,
+                crate::object::AttachmentTarget::Object(target_id),
+            ),
+            "every former attachment should attach to Fumble's target"
+        );
+    }
+
+    let unrelated_aura = game.create_object_from_definition(&aura, bob, Zone::Battlefield);
+    let unrelated_equipment = game.create_object_from_card(&equipment, bob, Zone::Battlefield);
+    for attachment in [unrelated_aura, unrelated_equipment] {
+        assert!(
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut game,
+                attachment,
+                crate::object::AttachmentTarget::Object(unrelated_host_id),
+            ),
+            "unrelated attachment should attach to its current host"
+        );
+    }
+
+    let mut state = PriorityLoopState::new(game.players_in_game());
+    let cast = PriorityResponse::PriorityAction(LegalAction::CastSpell {
+        spell_id: fumble_id,
+        from_zone: Zone::Hand,
+        casting_method: CastingMethod::Normal,
+    });
+    let progress = apply_priority_response(&mut game, &mut trigger_queue, &mut state, &cast)
+        .expect("Fumble cast should start");
+    assert!(matches!(
+        progress,
+        GameProgress::NeedsDecisionCtx(crate::decisions::context::DecisionContext::Targets(_))
+    ));
+    apply_priority_response(
+        &mut game,
+        &mut trigger_queue,
+        &mut state,
+        &PriorityResponse::Targets(vec![Target::Object(target_id)]),
+    )
+    .expect("choosing Fumble's target should complete casting");
+
+    let mut recipient_choice = ChooseRecipient {
+        recipient: recipient_id,
+        prompts: 0,
+    };
+    resolve_stack_entry_with(&mut game, &mut recipient_choice).expect("Fumble should resolve");
+    assert_eq!(
+        recipient_choice.prompts, 1,
+        "all attachments must use one shared new-recipient choice"
+    );
+
+    let returned_target = game
+        .find_object_by_stable_id(target_stable_id)
+        .and_then(|id| game.object(id))
+        .expect("returned target should remain tracked by stable identity");
+    assert_eq!(returned_target.zone, Zone::Hand);
+    assert_eq!(returned_target.owner, bob);
+
+    let control_effects = game
+        .effect_store
+        .continuous_effects
+        .effects_sorted()
+        .into_iter()
+        .filter(|effect| {
+            matches!(
+                &effect.modification,
+                crate::continuous::Modification::ChangeController(controller)
+                    if *controller == alice
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        control_effects.len(),
+        1,
+        "Fumble must register one control effect for its former attachments: {control_effects:#?}"
+    );
+    let crate::continuous::EffectSourceType::Resolution { locked_targets } =
+        &control_effects[0].source_type
+    else {
+        panic!(
+            "Fumble's former attachment set must lock at resolution: {:#?}",
+            control_effects[0]
+        );
+    };
+    for attachment in former_auras.into_iter().chain(former_equipment) {
+        assert!(
+            locked_targets.contains(&attachment),
+            "every former attachment must be locked into Fumble's control effect: {control_effects:#?}"
+        );
+    }
+    for attachment in [unrelated_aura, unrelated_equipment] {
+        assert!(
+            !locked_targets.contains(&attachment),
+            "current attachments of another host must stay outside Fumble's locked set: {control_effects:#?}"
+        );
+    }
+
+    for attachment in former_auras.into_iter().chain(former_equipment) {
+        let object = game
+            .object(attachment)
+            .expect("former attachment still exists");
+        assert_eq!(
+            object.zone,
+            Zone::Battlefield,
+            "every former attachment must remain on the battlefield through Fumble's reattachment"
+        );
+        assert_eq!(
+            game.current_controller(attachment),
+            Some(alice),
+            "Alice should gain control from the bounced target's LKI attachment set"
+        );
+        assert_eq!(
+            object.attached_to,
+            Some(crate::object::AttachmentTarget::Object(recipient_id)),
+            "every former attachment must attach to the one chosen recipient"
+        );
+    }
+
+    for attachment in [unrelated_aura, unrelated_equipment] {
+        let object = game
+            .object(attachment)
+            .expect("unrelated current attachment still exists");
+        assert_eq!(
+            game.current_controller(attachment),
+            Some(bob),
+            "an attachment on a different current host must not be gained"
+        );
+        assert_eq!(
+            object.attached_to,
+            Some(crate::object::AttachmentTarget::Object(unrelated_host_id))
+        );
+    }
+    assert!(
+        game.object(wrong_recipient_id)
+            .expect("wrong recipient exists")
+            .attachments
+            .is_empty(),
+        "Fumble must not split or redirect the attachment set to another creature"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
 pub(super) fn soul_nova_definition() -> crate::cards::CardDefinition {
     CardDefinitionBuilder::new(CardId::from_raw(48_101), "Soul Nova")
         .mana_cost(ManaCost::from_pips(vec![
@@ -3453,6 +3674,7 @@ pub(super) fn test_gift_promise_updates_cast_time_target_requirements() {
                 crate::effect::Condition::ThisSpellPaidLabel("Gift".into()),
                 vec![Effect::move_to_zone(gift_target, Zone::Hand, false)],
             )],
+            starts_new_source_line: false,
         }]);
 
     if let Some(obj) = game.object_mut(spell_id) {

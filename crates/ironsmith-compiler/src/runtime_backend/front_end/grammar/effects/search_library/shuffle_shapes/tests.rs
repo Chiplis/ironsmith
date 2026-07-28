@@ -49,6 +49,24 @@ fn parses_shuffle_shapes() {
         shape.reference,
         SearchShuffleObjectReference::SingularBackReference
     );
+    assert!(!shape.possessive_owner_subject);
+
+    let tokens = lex_line("Target creature's owner shuffles it into their library", 0).unwrap();
+    let shape = parse_shuffle_object_shape_lexed(&tokens).unwrap();
+    assert_eq!(
+        parser_token_word_refs(
+            shape
+                .owner_subject_target_tokens
+                .as_deref()
+                .expect("possessive owner target")
+        ),
+        ["target", "creature"]
+    );
+    assert_eq!(
+        shape.reference,
+        SearchShuffleObjectReference::SingularBackReference
+    );
+    assert!(shape.possessive_owner_subject);
 
     let tokens = lex_line("Its owner shuffles them into their library", 0).unwrap();
     let shape = parse_shuffle_object_shape_lexed(&tokens).unwrap();

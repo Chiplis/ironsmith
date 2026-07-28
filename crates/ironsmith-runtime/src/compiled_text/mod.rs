@@ -27,8 +27,9 @@ use self::render_effects::*;
 use self::surface_helpers::*;
 
 pub(crate) use self::normalize_common::{
-    describe_counter_for_each_basis, describe_party_size_for_each_basis,
-    describe_turn_history_for_each_basis, describe_value, party_size_multiplier,
+    describe_counter_for_each_basis, describe_death_history_subject,
+    describe_party_size_for_each_basis, describe_turn_history_for_each_basis, describe_value,
+    party_size_multiplier,
 };
 pub use self::oracle_style::canonical_compiled_lines;
 pub use self::render_effects::compile_effect_list;
@@ -59,6 +60,7 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     let lines = compact_post_substitution_surface_lines(lines)
         .into_iter()
         .map(normalize_scored_compiled_line)
+        .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .collect();
     prefix_attraction_visit_surface(def, lines)
 }
@@ -76,8 +78,23 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .into_iter()
         .map(normalize_unprocessed_compiled_line)
         .map(|line| normalize_duplicate_optional_subject(&line))
+        .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
         .collect();
     prefix_attraction_visit_surface(def, lines)
+}
+
+/// A card name's terminal `!` or `?` is part of the name, not a sentence
+/// boundary. Generic sentence casing cannot know that without card context,
+/// so restore the verb casing after the final normalization pass.
+fn normalize_punctuated_card_name_damage_case(line: String, card_name: &str) -> String {
+    if !card_name.ends_with('!') && !card_name.ends_with('?') {
+        return line;
+    }
+    line.replace(
+        &format!("{card_name} Deals "),
+        &format!("{card_name} deals "),
+    )
+    .replace(&format!("{card_name} Deal "), &format!("{card_name} deal "))
 }
 
 fn prefix_attraction_visit_surface(def: &CardDefinition, mut lines: Vec<String>) -> Vec<String> {
@@ -484,6 +501,8 @@ fn normalize_scored_compiled_line(line: String) -> String {
         || lower_for_common.contains("dynamic value of their choice")
         || lower_for_common.contains("return all cards from your graveyard to your hand")
         || lower_for_common.contains("permanent that shares a card type with that object")
+        || lower_for_common
+            .contains("a permanent that shares a card type with it was revealed this way")
         || lower_for_common.contains("target colored creature")
         || lower_for_common.contains("repeat roll a d6")
         || lower_for_common.contains("behold cost")
@@ -1419,29 +1438,56 @@ fn replace_ascii_case_insensitive_once(
 fn merge_ast_surface_lines(mut lines: Vec<String>) -> Vec<String> {
     loop {
         let previous = lines;
-        let merged =
-            merge_cast_permission_any_mana_lines(merge_conditioned_spell_and_activation_tax_lines(
-                merge_adjacent_simple_mana_add_lines(drop_redundant_spell_cost_lines(
-                    merge_specific_adjacent_surface_lines(merge_base_pt_loss_transform_lines(
-                        merge_shared_as_long_as_tail_lines(merge_lose_all_transform_lines(
-                            merge_attached_transform_keyword_loss_lines(merge_blockability_lines(
-                                annotate_color_choice_exclusions(merge_same_true_color_lines(
-                                    merge_same_true_type_addition_lines(
-                                        merge_same_true_keyword_grant_lines(
-                                            merge_subject_predicate_surface_lines(previous.clone()),
-                                        ),
-                                    ),
-                                )),
-                            )),
-                        )),
-                    )),
-                )),
-            ));
+        let merged = merge_subject_predicate_surface_lines(previous.clone());
+        let merged = merge_same_true_keyword_grant_lines(merged);
+        let merged = merge_same_true_type_addition_lines(merged);
+        let merged = merge_same_true_color_lines(merged);
+        let merged = annotate_color_choice_exclusions(merged);
+        let merged = merge_blockability_lines(merged);
+        let merged = merge_attached_transform_keyword_loss_lines(merged);
+        let merged = merge_lose_all_transform_lines(merged);
+        let merged = merge_shared_as_long_as_tail_lines(merged);
+        let merged = merge_base_pt_loss_transform_lines(merged);
+        let merged = merge_specific_adjacent_surface_lines(merged);
+        let merged = drop_redundant_spell_cost_lines(merged);
+        let merged = merge_adjacent_simple_mana_add_lines(merged);
+        let merged = merge_conditioned_spell_and_activation_tax_lines(merged);
+        let merged = merge_as_enters_color_and_creature_type_choice_lines(merged);
+        let merged = merge_cast_permission_any_mana_lines(merged);
         if merged == previous {
             return merged;
         }
         lines = merged;
     }
+}
+
+fn merge_as_enters_color_and_creature_type_choice_lines(lines: Vec<String>) -> Vec<String> {
+    fn choice_prefix<'a>(line: &'a str, suffix: &str) -> Option<&'a str> {
+        line.trim().trim_end_matches('.').strip_suffix(suffix)
+    }
+
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0;
+    while idx < lines.len() {
+        if let Some(next) = lines.get(idx + 1) {
+            let color_then_type = choice_prefix(&lines[idx], ", choose a color")
+                .zip(choice_prefix(next, ", choose a creature type"));
+            let type_then_color = choice_prefix(&lines[idx], ", choose a creature type")
+                .zip(choice_prefix(next, ", choose a color"));
+            if let Some((first_prefix, second_prefix)) = color_then_type.or(type_then_color)
+                && first_prefix == second_prefix
+            {
+                merged.push(format!(
+                    "{first_prefix}, choose a color and a creature type"
+                ));
+                idx += 2;
+                continue;
+            }
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
 }
 
 /// Adjacent standalone statics sharing an identical "as long as" condition
@@ -1710,8 +1756,8 @@ fn merge_subject_predicate_surface_lines(mut lines: Vec<String>) -> Vec<String> 
     loop {
         let previous = lines;
         let merged = merge_subject_animation_lines(merge_subject_has_keyword_lines(
-            merge_adjacent_subject_predicate_lines(merge_during_your_turn_subject_union_lines(
-                previous.clone(),
+            merge_adjacent_subject_predicate_lines(merge_player_object_subject_union_lines(
+                merge_during_your_turn_subject_union_lines(previous.clone()),
             )),
         ));
         if merged == previous {
@@ -1853,13 +1899,16 @@ fn normalize_basic_land_type_choice_surface(line: &str) -> String {
 }
 
 fn normalize_choose_sacrifice_rest_surface(line: &str) -> String {
-    compact_choose_sacrifice_rest_surface(
-        &compact_choose_sacrifice_rest_surface(
-            line,
-            " that player controls on the battlefield. Sacrifice all other ",
-        ),
+    let mut normalized = line.to_string();
+    for marker in [
+        " that player controls on the battlefield. Sacrifice all other ",
         " that player controls on the battlefield, then that player sacrifices all other ",
-    )
+        " that player controls. Sacrifice all other ",
+        " that player controls, then that player sacrifices all other ",
+    ] {
+        normalized = compact_choose_sacrifice_rest_surface(&normalized, marker);
+    }
+    normalized
 }
 
 fn compact_choose_sacrifice_rest_surface(line: &str, marker: &str) -> String {
@@ -2066,10 +2115,6 @@ fn normalize_chosen_creature_type_surface(line: &str) -> String {
         if !effect.contains("target ") {
             return line.to_string();
         }
-        let effect_lower = effect.to_ascii_lowercase();
-        if effect_lower.starts_with("x target ") || effect_lower.starts_with("up to x target ") {
-            return line.to_string();
-        }
         // With the leading "Choose a creature type" clause folded away, the
         // chosen-type back-reference reads as the single-sentence oracle
         // idiom "of the creature type of your choice".
@@ -2119,6 +2164,35 @@ fn expand_finalized_ast_surface_line(line: String) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn adjacent_as_enters_color_and_creature_type_choices_merge() {
+        assert_eq!(
+            merge_as_enters_color_and_creature_type_choice_lines(vec![
+                "As this artifact enters, choose a color.".to_string(),
+                "As this artifact enters, choose a creature type.".to_string(),
+            ]),
+            vec!["As this artifact enters, choose a color and a creature type"]
+        );
+    }
+
+    #[test]
+    fn punctuated_card_name_does_not_capitalize_inline_damage_verb() {
+        assert_eq!(
+            normalize_punctuated_card_name_damage_case(
+                "Kaboom! Deals damage to target player.".to_string(),
+                "Kaboom!",
+            ),
+            "Kaboom! deals damage to target player."
+        );
+        assert_eq!(
+            normalize_punctuated_card_name_damage_case(
+                "Ordinary Name Deals damage to target player.".to_string(),
+                "Ordinary Name",
+            ),
+            "Ordinary Name Deals damage to target player."
+        );
+    }
 
     fn poison_program_source_fields(program: &mut crate::resolution::ResolutionProgram) {
         let original = std::mem::take(program);
@@ -2364,6 +2438,13 @@ mod tests {
             ),
             "Choose a creature at random. You gain control of that creature until end of turn. Untap it. It gains haste until end of turn. Then destroy all other creatures."
         );
+        assert_eq!(
+            normalize_scored_compiled_line(
+                "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. Then if a permanent that shares a card type with it was revealed this way, copy that spell, you may choose new targets for the copy, then each opponent draws a card. Otherwise, draw a card."
+                    .to_string()
+            ),
+            "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. Otherwise, you draw a card."
+        );
     }
 
     #[test]
@@ -2452,6 +2533,49 @@ mod tests {
         assert_eq!(
             compiled_text_lines(&definition),
             vec!["Counter target spell and Test Blast deals 3 damage to target creature."]
+        );
+    }
+
+    fn modal_source_line_probe(spree: bool) -> CardDefinition {
+        let modes = vec![
+            crate::effect::EffectMode::new("Draw a card", vec![Effect::draw(Value::Fixed(1))]),
+            crate::effect::EffectMode::new("Gain 2 life", vec![Effect::gain_life(2)]),
+        ];
+        let mut modal = crate::effects::ChooseModeEffect::new(
+            modes,
+            Value::Fixed(1),
+            Value::Fixed(if spree { 2 } else { 1 }),
+            false,
+        );
+        if spree {
+            modal = modal.with_spree_mana_costs(vec![
+                crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(1), ManaSymbol::Blue]),
+                crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]),
+            ]);
+        }
+        crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Modal Source Line Probe")
+            .card_types(vec![CardType::Instant])
+            .with_spell_effect(vec![Effect::new(modal)])
+            .build()
+    }
+
+    #[test]
+    fn typed_modal_source_group_splits_direct_spree_block() {
+        assert_eq!(
+            compiled_text_lines(&modal_source_line_probe(true)),
+            vec![
+                "Spree".to_string(),
+                "+ {1}{U} — Draw a card.".to_string(),
+                "+ {2} — Gain 2 life.".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn typed_modal_source_group_keeps_ordinary_bullet_block() {
+        assert_eq!(
+            compiled_text_lines(&modal_source_line_probe(false)),
+            vec!["Choose one —\n• Draw a card.\n• Gain 2 life.".to_string()]
         );
     }
 
@@ -2619,6 +2743,29 @@ mod tests {
 
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
+    fn undiscovered_paradise_compiles_delayed_untap_instruction_exactly() {
+        let text = "{T}: Add one mana of any color. During your next untap step, as you untap your permanents, return this land to its owner's hand.";
+        let definition =
+            crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Undiscovered Paradise")
+                .card_types(vec![CardType::Land])
+                .parse_text(text)
+                .expect("Undiscovered Paradise should compile");
+
+        let rendered = compiled_text_lines(&definition).join("\n");
+        assert_eq!(rendered, text);
+        assert!(!rendered.contains("Untap a permanent"));
+
+        let debug = format!("{definition:#?}");
+        assert!(
+            debug.contains("AsPermanentsUntapTrigger")
+                && debug.contains("ScheduleDelayedTriggerEffect")
+                && debug.contains("ReturnToHandEffect"),
+            "expected a source-bound delayed untap instruction, got {debug}"
+        );
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
     fn next_damage_prevention_exiles_prevented_top_cards_as_follow_up() {
         let text = "{2}, {T}: The next time a source of your choice would deal damage to you this turn, prevent that damage. Exile cards from the top of your library equal to the damage prevented this way.";
         let definition = crate::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Bone Mask")
@@ -2678,6 +2825,40 @@ mod tests {
         assert_eq!(
             lines,
             vec!["During your turn, equipped creature gets +2/+0 and has first strike".to_string()]
+        );
+    }
+
+    #[test]
+    fn separate_during_turn_source_and_overlapping_population_statics_stay_separate() {
+        let lines = merge_ast_surface_lines(vec![
+            "This creature has first strike as long as it's your turn.".to_string(),
+            "Creatures you control with +1/+1 counters on them have first strike as long as it's your turn."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "This creature has first strike as long as it's your turn.".to_string(),
+                "Creatures you control with +1/+1 counters on them have first strike as long as it's your turn."
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn one_during_turn_source_and_other_population_union_still_rejoins() {
+        let lines = merge_ast_surface_lines(vec![
+            "This creature has flying as long as it's your turn.".to_string(),
+            "Other Knights you control have flying as long as it's your turn.".to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "During your turn, this creature and other Knights you control have flying."
+                    .to_string()
+            ]
         );
     }
 
@@ -2863,6 +3044,13 @@ mod tests {
         );
         assert_eq!(
             finalize_ast_surface_line(
+                "At the beginning of each opponent's end step, that player chooses up to 2 creatures that player controls, then that player sacrifices all other creatures that player controls"
+                    .to_string()
+            ),
+            "At the beginning of each opponent's end step, that player chooses up to two creatures they control, then sacrifices the rest."
+        );
+        assert_eq!(
+            finalize_ast_surface_line(
                 "−9: For each opponent, that player chooses a permanent that player controls on the battlefield. Sacrifice all other permanents that player controls"
                     .to_string()
             ),
@@ -3007,7 +3195,7 @@ mod tests {
                 "Choose a creature type, then return X target creatures of the chosen type to their owners' hands"
                     .to_string()
             ),
-            "Choose a creature type, then return X target creatures of the chosen type to their owners' hands."
+            "Return X target creatures of the creature type of your choice to their owners' hands."
         );
         assert_eq!(
             finalize_ast_surface_line(
@@ -3232,6 +3420,26 @@ mod tests {
             lines,
             vec![
                 "Creatures you control are the chosen type in addition to their other types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn repeated_creature_subtype_additions_use_same_is_true_surface() {
+        let lines = merge_ast_surface_lines(vec![
+            "Slivers you control and nontoken creatures you control are the chosen type in addition to their other creature types."
+                .to_string(),
+            "Creature spells you control are the chosen type in addition to their other creature types."
+                .to_string(),
+            "Creature cards you own that aren't on the battlefield are the chosen type in addition to their other creature types."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            lines,
+            vec![
+                "Slivers you control and nontoken creatures you control are the chosen type in addition to their other creature types. The same is true for creature spells you control and creature cards you own that aren't on the battlefield."
                     .to_string()
             ]
         );

@@ -1026,12 +1026,16 @@ impl GameState {
 
     /// Mark a card as exiled via foretell.
     pub fn set_foretold(&mut self, id: ObjectId) {
-        self.cast_permission_flags_mut().foretold_cards.insert(id);
+        if self.cast_permission_flags_mut().foretold_cards.insert(id) {
+            self.mark_continuous_state_dirty();
+        }
     }
 
     /// Clear foretell exiled status.
     pub fn clear_foretold(&mut self, id: ObjectId) {
-        self.cast_permission_flags_mut().foretold_cards.remove(&id);
+        if self.cast_permission_flags_mut().foretold_cards.remove(&id) {
+            self.mark_continuous_state_dirty();
+        }
     }
 
     /// Check if a card is exiled because its Adventure spell resolved.
@@ -1654,13 +1658,26 @@ impl GameState {
 
     /// Record that `exiled_card_id` was exiled by `source_id`.
     pub fn add_exiled_with_source_link(&mut self, source_id: ObjectId, exiled_card_id: ObjectId) {
-        let entry = self
-            .exile_tracking_mut()
-            .exiled_with_source
-            .entry(source_id)
-            .or_default();
-        if !entry.contains(&exiled_card_id) {
-            entry.push(exiled_card_id);
+        let inserted = {
+            let entry = self
+                .exile_tracking_mut()
+                .exiled_with_source
+                .entry(source_id)
+                .or_default();
+            if entry.contains(&exiled_card_id) {
+                false
+            } else {
+                entry.push(exiled_card_id);
+                true
+            }
+        };
+        if inserted {
+            let revision = self
+                .exile_tracking_mut()
+                .exiled_with_source_revisions
+                .entry(source_id)
+                .or_default();
+            *revision = revision.saturating_add(1);
         }
     }
 
@@ -1721,6 +1738,15 @@ impl GameState {
             .get(&source_id)
             .map(|v| v.as_slice())
             .unwrap_or(&[])
+    }
+
+    /// Monotonic successful-exile revision for one source object identity.
+    pub fn exiled_with_source_revision(&self, source_id: ObjectId) -> u64 {
+        self.exile_tracking
+            .exiled_with_source_revisions
+            .get(&source_id)
+            .copied()
+            .unwrap_or(0)
     }
 
     /// Record an object identity put onto the battlefield by this source.

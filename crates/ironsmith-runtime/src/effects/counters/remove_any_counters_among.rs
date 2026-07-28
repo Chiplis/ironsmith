@@ -2,7 +2,7 @@
 
 use crate::decision::FallbackStrategy;
 use crate::decisions::{
-    CounterRemovalSpec, DistributeSpec, NumberSpec, make_decision_with_fallback,
+    ChooseObjectsSpec, CounterRemovalSpec, DistributeSpec, NumberSpec, make_decision_with_fallback,
 };
 use crate::effect::EffectOutcome;
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
@@ -42,14 +42,21 @@ pub(crate) fn valid_targets_with_tags(
             let Some(obj) = game.object(*id) else {
                 return false;
             };
-            let available = if let Some(counter_type) = effect.counter_type {
-                obj.counters.get(&counter_type).copied().unwrap_or(0)
-            } else {
-                obj.counters.values().copied().sum::<u32>()
-            };
+            let available = available_counter_count(effect, obj);
             effect.filter.matches(obj, &filter_ctx, game) && available > 0
         })
         .collect()
+}
+
+fn available_counter_count(
+    effect: &RemoveAnyCountersAmongEffect,
+    object: &crate::object::Object,
+) -> u32 {
+    if let Some(counter_type) = effect.counter_type {
+        object.counters.get(&counter_type).copied().unwrap_or(0)
+    } else {
+        object.counters.values().copied().sum::<u32>()
+    }
 }
 
 #[allow(dead_code)]
@@ -69,20 +76,18 @@ fn total_available_with_tags(
     payer: PlayerId,
     tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
 ) -> u32 {
-    valid_targets_with_tags(effect, game, source, payer, tagged_objects)
-        .iter()
-        .filter_map(|id| game.object(*id))
-        .map(|obj| {
-            if let Some(counter_type) = effect.counter_type {
-                obj.counters.get(&counter_type).copied().unwrap_or(0)
-            } else {
-                obj.counters.values().copied().sum::<u32>()
-            }
-        })
-        .sum()
+    let available = valid_targets_with_tags(effect, game, source, payer, tagged_objects)
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .map(|object| available_counter_count(effect, object));
+    if effect.single_object {
+        available.max().unwrap_or(0)
+    } else {
+        available.sum()
+    }
 }
 
-fn total_available(
+pub(crate) fn total_available(
     effect: &RemoveAnyCountersAmongEffect,
     game: &GameState,
     source: ObjectId,
@@ -102,18 +107,23 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
         } else {
             "any number of".to_string()
         };
-        let from = if effect.filter.source {
+        let from = if effect.filter.source || effect.single_object {
             "from"
         } else {
             "from among"
+        };
+        let target_phrase = if effect.single_object {
+            target_phrase_single
+        } else {
+            target_phrase_plural
         };
         return match effect.counter_type {
             Some(counter_type) => format!(
                 "Remove {amount_text} {} counters {from} {}",
                 counter_type.description(),
-                target_phrase_plural
+                target_phrase
             ),
-            None => format!("Remove {amount_text} counters {from} {target_phrase_plural}"),
+            None => format!("Remove {amount_text} counters {from} {target_phrase}"),
         };
     }
     match (effect.count, effect.counter_type) {
@@ -126,6 +136,13 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
                 target_phrase_single
             )
         }
+        (count, Some(counter_type)) if effect.single_object => {
+            let counter_name = counter_type.description();
+            format!(
+                "Remove {} {} counters from {}",
+                count, counter_name, target_phrase_single
+            )
+        }
         (count, Some(counter_type)) => {
             let counter_name = counter_type.description();
             format!(
@@ -134,6 +151,9 @@ pub fn cost_display(effect: &RemoveAnyCountersAmongEffect) -> String {
             )
         }
         (1, None) => format!("Remove a counter from {}", target_phrase_single),
+        (count, None) if effect.single_object => {
+            format!("Remove {} counters from {}", count, target_phrase_single)
+        }
         (count, None) => {
             format!(
                 "Remove {} counters from among {}",
@@ -196,7 +216,12 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             if max_count < self.min_count {
                 return Ok(EffectOutcome::impossible());
             }
-            let chosen = if let Some(x) = ctx.x_value {
+            let chosen = if self.display_x
+                && let Some(x) = ctx.x_value
+            {
+                if x < self.min_count || x > max_count {
+                    return Ok(EffectOutcome::impossible());
+                }
                 x
             } else {
                 make_decision_with_fallback(
@@ -216,26 +241,72 @@ impl EffectExecutor for RemoveAnyCountersAmongEffect {
             self.count
         };
 
-        let valid_targets =
-            valid_targets_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
-        let distribute_targets: Vec<Target> =
-            valid_targets.iter().copied().map(Target::Object).collect();
-        let distribution = make_decision_with_fallback(
-            game,
-            &mut ctx.decision_maker,
-            ctx.controller,
-            Some(ctx.source),
-            DistributeSpec::counters(ctx.source, requested_count, distribute_targets),
-            FallbackStrategy::Maximum,
-        );
-        if ctx.decision_maker.awaiting_choice() {
+        if requested_count == 0 {
             return Ok(EffectOutcome::count(0));
         }
 
+        let mut valid_targets =
+            valid_targets_with_tags(self, game, ctx.source, ctx.controller, &ctx.tagged_objects);
         let mut allocations: HashMap<ObjectId, u32> = HashMap::new();
-        for (target, amount) in distribution {
-            if let Target::Object(object_id) = target {
-                *allocations.entry(object_id).or_insert(0) += amount;
+        if self.single_object {
+            valid_targets.retain(|object_id| {
+                game.object(*object_id)
+                    .is_some_and(|object| available_counter_count(self, object) >= requested_count)
+            });
+            let chosen = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                ChooseObjectsSpec::new(
+                    ctx.source,
+                    "Choose one object to remove counters from",
+                    valid_targets.clone(),
+                    1,
+                    Some(1),
+                ),
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            let Some(object_id) = chosen
+                .into_iter()
+                .find(|object_id| valid_targets.contains(object_id))
+            else {
+                return Ok(EffectOutcome::impossible());
+            };
+            allocations.insert(object_id, requested_count);
+            valid_targets = vec![object_id];
+        } else {
+            let distribute_targets: Vec<Target> =
+                valid_targets.iter().copied().map(Target::Object).collect();
+            let distribution = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                ctx.controller,
+                Some(ctx.source),
+                DistributeSpec::counters(ctx.source, requested_count, distribute_targets),
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            for (target, amount) in distribution {
+                if let Target::Object(object_id) = target {
+                    let available = game
+                        .object(object_id)
+                        .map(|object| available_counter_count(self, object))
+                        .unwrap_or(0);
+                    let already_allocated = allocations.get(&object_id).copied().unwrap_or(0);
+                    let free_capacity = available.saturating_sub(already_allocated);
+                    let total_allocated: u32 = allocations.values().copied().sum();
+                    let remaining_total = requested_count.saturating_sub(total_allocated);
+                    let accepted = amount.min(free_capacity).min(remaining_total);
+                    if accepted > 0 {
+                        *allocations.entry(object_id).or_insert(0) += accepted;
+                    }
+                }
             }
         }
 
@@ -404,14 +475,28 @@ fn counter_article(counter_name: &str) -> &'static str {
 }
 
 fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String {
-    fn join_type_names(names: &[String]) -> String {
+    fn join_type_names(
+        names: &[String],
+        connective: ironsmith_core::ObjectFilterUnionConnective,
+        plural: bool,
+    ) -> String {
+        let conjunction = match connective {
+            // Oracle uses "artifact or creature" for a singular choice, but
+            // list-style "artifacts, creatures, and planeswalkers" for an
+            // aggregate "from among" cost. Preserve both established surfaces.
+            ironsmith_core::ObjectFilterUnionConnective::Or if plural => "and",
+            ironsmith_core::ObjectFilterUnionConnective::Or => "or",
+            ironsmith_core::ObjectFilterUnionConnective::AndOr => "and/or",
+        };
         match names.len() {
             0 => String::new(),
             1 => names[0].clone(),
-            2 => format!("{} and {}", names[0], names[1]),
+            2 => format!("{} {conjunction} {}", names[0], names[1]),
             _ => {
                 let mut out = names[..names.len() - 1].join(", ");
-                out.push_str(", and ");
+                out.push_str(", ");
+                out.push_str(conjunction);
+                out.push(' ');
                 out.push_str(&names[names.len() - 1]);
                 out
             }
@@ -487,7 +572,7 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
                 }
             })
             .collect::<Vec<_>>();
-        let joined = join_type_names(&type_names);
+        let joined = join_type_names(&type_names, filter.union_connective(), plural);
         if plural {
             if filter.other {
                 format!("other {joined}")
@@ -495,7 +580,15 @@ fn remove_counters_target_phrase(filter: &ObjectFilter, plural: bool) -> String 
                 joined
             }
         } else {
-            format!("a {joined}")
+            let article = joined
+                .chars()
+                .next()
+                .is_some_and(|letter| {
+                    matches!(letter.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
+                })
+                .then_some("an")
+                .unwrap_or("a");
+            format!("{article} {joined}")
         }
     };
 
@@ -701,6 +794,101 @@ mod tests {
         assert_eq!(game.counter_count(a_id, CounterType::PlusOnePlusOne), 0);
         assert_eq!(game.counter_count(b_id, CounterType::PlusOnePlusOne), 0);
         assert_eq!(ctx.x_value, Some(3));
+    }
+
+    #[test]
+    fn single_object_dynamic_cost_cannot_pool_counters_across_permanents() {
+        let mut game = create_test_game();
+        let alice = PlayerId::from_index(0);
+
+        let card_a = simple_card("A", 31);
+        let a_id = game.create_object_from_card(&card_a, alice, Zone::Battlefield);
+        let card_b = simple_card("B", 32);
+        let b_id = game.create_object_from_card(&card_b, alice, Zone::Battlefield);
+        game.object_mut(a_id)
+            .unwrap()
+            .counters
+            .insert(CounterType::Charge, 2);
+        game.object_mut(b_id)
+            .unwrap()
+            .counters
+            .insert(CounterType::Charge, 1);
+
+        let effect = RemoveAnyCountersAmongEffect::dynamic(
+            0,
+            u32::MAX / 4,
+            ObjectFilter::creature().you_control(),
+            true,
+        )
+        .from_single_object();
+        assert_eq!(
+            cost_display(&effect),
+            "Remove X counters from a creature you control"
+        );
+
+        let impossible = Cost::effect(effect.clone());
+        let mut impossible_dm = crate::decision::SelectFirstDecisionMaker;
+        let mut impossible_ctx = CostContext::new(a_id, alice, &mut impossible_dm);
+        impossible_ctx.x_value = Some(3);
+        assert!(
+            impossible.can_pay(&game, &impossible_ctx).is_err(),
+            "three counters spread over two creatures cannot pay a single-object cost"
+        );
+
+        let payable = Cost::effect(effect);
+        let mut payable_dm = crate::decision::SelectFirstDecisionMaker;
+        let mut payable_ctx = CostContext::new(a_id, alice, &mut payable_dm);
+        payable_ctx.x_value = Some(2);
+        assert_eq!(
+            payable.pay(&mut game, &mut payable_ctx),
+            Ok(crate::costs::CostPaymentResult::Paid)
+        );
+        assert_eq!(game.counter_count(a_id, CounterType::Charge), 0);
+        assert_eq!(game.counter_count(b_id, CounterType::Charge), 1);
+    }
+
+    #[test]
+    fn single_object_union_cost_preserves_or_surface_and_article() {
+        let mut filter = ObjectFilter::default().you_control();
+        filter.card_types = vec![CardType::Artifact, CardType::Creature];
+        let effect = RemoveAnyCountersAmongEffect::dynamic(0, u32::MAX / 4, filter, true)
+            .from_single_object();
+        assert_eq!(
+            cost_display(&effect),
+            "Remove X counters from an artifact or creature you control"
+        );
+    }
+
+    #[test]
+    fn single_counter_cost_preserves_explicit_permanent_type_list() {
+        let mut filter = ObjectFilter::default().you_control();
+        filter.card_types = vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Land,
+            CardType::Planeswalker,
+        ];
+        let effect = RemoveAnyCountersAmongEffect::new(1, filter).from_single_object();
+
+        assert_eq!(
+            cost_display(&effect),
+            "Remove a counter from an artifact, creature, land, or planeswalker you control"
+        );
+    }
+
+    #[test]
+    fn aggregate_union_cost_preserves_list_style_and_surface() {
+        let mut filter = ObjectFilter::default().you_control();
+        filter.card_types = vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Planeswalker,
+        ];
+        let effect = RemoveAnyCountersAmongEffect::new(3, filter);
+        assert_eq!(
+            cost_display(&effect),
+            "Remove 3 counters from among artifacts, creatures, and planeswalkers you control"
+        );
     }
 
     #[test]

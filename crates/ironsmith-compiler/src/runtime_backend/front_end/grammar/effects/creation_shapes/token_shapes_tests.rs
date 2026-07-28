@@ -105,3 +105,19 @@ fn creation_count_ignores_for_each_inside_quoted_token_rules() {
         ]
     );
 }
+
+#[test]
+fn dynamic_create_count_is_not_folded_into_the_token_name() {
+    let tokens = lex_line(
+        "twice X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life.\"",
+        0,
+    )
+    .unwrap();
+    let head = parse_create_head_tokens(&tokens).expect("dynamic create head should parse");
+
+    assert_eq!(head.count, CreateCountHead::Dynamic(Value::XTimes(2)));
+    assert_eq!(
+        head.name_words,
+        ["1/1", "black", "and", "green", "Pest", "creature"]
+    );
+}

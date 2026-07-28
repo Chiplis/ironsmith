@@ -43,6 +43,13 @@ pub enum AnthemValue {
         multiplier: i32,
         count: AnthemCountExpression,
     },
+    /// A count-scaled modifier with an authored upper bound, as in
+    /// "gets +1/+1 for each ... , to a maximum of 10."
+    CappedPerCount {
+        multiplier: i32,
+        count: AnthemCountExpression,
+        maximum: i32,
+    },
 }
 
 impl AnthemValue {
@@ -51,6 +58,18 @@ impl AnthemValue {
             Self::Fixed(0)
         } else {
             Self::PerCount { multiplier, count }
+        }
+    }
+
+    pub fn scaled_capped(multiplier: i32, count: AnthemCountExpression, maximum: i32) -> Self {
+        if multiplier == 0 {
+            Self::Fixed(0)
+        } else {
+            Self::CappedPerCount {
+                multiplier,
+                count,
+                maximum,
+            }
         }
     }
 
@@ -63,8 +82,34 @@ impl AnthemValue {
                     | AnthemCountExpression::AffectedAttackedThisTurn
                     | AnthemCountExpression::CountersOnAffected(_),
                 ..
+            }
+            | Self::CappedPerCount {
+                count:
+                    AnthemCountExpression::AttachedToAffected(_)
+                    | AnthemCountExpression::ColorsOfAffected
+                    | AnthemCountExpression::AffectedAttackedThisTurn
+                    | AnthemCountExpression::CountersOnAffected(_),
+                ..
             } => true,
             Self::PerCount {
+                count: AnthemCountExpression::MatchingFilter(filter),
+                ..
+            } => matches!(
+                filter.owner.as_ref().or(filter.controller.as_ref()),
+                Some(
+                    PlayerFilter::ControllerOf(ObjectRef::Target)
+                        | PlayerFilter::OwnerOf(ObjectRef::Target)
+                )
+            ),
+            Self::PerCount {
+                count: AnthemCountExpression::CreatureTypesAmong(filter),
+                ..
+            }
+            | Self::CappedPerCount {
+                count: AnthemCountExpression::CreatureTypesAmong(filter),
+                ..
+            } => filter.source,
+            Self::CappedPerCount {
                 count: AnthemCountExpression::MatchingFilter(filter),
                 ..
             } => matches!(

@@ -50,6 +50,11 @@ impl EffectExecutor for RollDieEffect {
         game.turn_store
             .turn_history
             .record_die_roll(player, roll.result);
+        // Die-roll history can end continuous effects (for example, "until
+        // any player rolls a 1") and can change other history-dependent
+        // characteristics. Make those derived characteristics observable
+        // immediately after the roll.
+        game.mark_continuous_state_dirty();
         game.record_ui_effect_event(
             "die_roll",
             Some(player),

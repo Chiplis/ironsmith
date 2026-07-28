@@ -106,6 +106,18 @@ fn predicate_candidate_contains_search_action(tokens: &[OwnedLexToken]) -> bool 
     phrase_occurs(tokens, &["search", "your", "library"])
 }
 
+fn predicate_candidate_contains_damage_action(tokens: &[OwnedLexToken]) -> bool {
+    let Some(deal_idx) = tokens
+        .iter()
+        .position(|token| structure_token_is_any(token, &["deal", "deals"]))
+    else {
+        return false;
+    };
+    tokens[deal_idx + 1..]
+        .iter()
+        .any(|token| structure_token_is(token, "damage"))
+}
+
 fn one_of_phrases_occurs(
     tokens: &[OwnedLexToken],
     phrases: &'static [&'static [&'static str]],
@@ -161,6 +173,7 @@ pub(crate) struct TrailingModalGateSpec<'a> {
     pub(crate) prefix_tokens: &'a [OwnedLexToken],
     pub(crate) predicate: IfResultPredicate,
     pub(crate) remove_mode_only: bool,
+    pub(crate) reflexive: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,6 +337,13 @@ pub(crate) fn classify_statement_line_family_lexed(
     }
 
     if super::effects::clause_dispatch_shapes::parse_copular_animation_shape(tokens).is_some() {
+        return Some(StatementLineFamily::Generic);
+    }
+
+    // The duration distinguishes this resolving player rule from the
+    // otherwise identical static ability. Route it through statement
+    // lowering before the broad "has/have" anthem probe can claim it.
+    if super::effects::parse_persistent_no_maximum_hand_size_player_lexed(tokens).is_some() {
         return Some(StatementLineFamily::Generic);
     }
 
@@ -655,6 +675,8 @@ pub(crate) fn classify_static_line_family_lexed(
         || primitives::parse_prefix(tokens, primitives::phrase(&["each"])).is_some()
         || primitives::parse_prefix(tokens, primitives::phrase(&["as", "long", "as"])).is_some()
         || primitives::contains_word(tokens, "can't")
+        || primitives::contains_word(tokens, "cant")
+        || primitives::contains_word(tokens, "cannot")
         || primitives::contains_word(tokens, "can")
         || primitives::contains_word(tokens, "has")
         || primitives::contains_word(tokens, "have")
@@ -1146,10 +1168,20 @@ pub(crate) fn split_if_clause_lexed(
         }
     }
 
+    // A quoted granted ability is part of the consequence, so punctuation
+    // inside that quote must not become a candidate boundary for the outer
+    // `if <predicate>, <effect>` clause.
+    let mut inside_quote = false;
     let comma_indices = tokens
         .iter()
         .enumerate()
-        .filter_map(|(idx, token)| token.is_comma().then_some(idx))
+        .filter_map(|(idx, token)| {
+            if token.is_quote() {
+                inside_quote = !inside_quote;
+                return None;
+            }
+            (token.is_comma() && !inside_quote).then_some(idx)
+        })
         .collect::<Vec<_>>();
     if comma_indices.is_empty() {
         for split_idx in (2..tokens.len()).rev() {
@@ -1201,6 +1233,19 @@ pub(crate) fn split_if_clause_lexed(
     let first_comma_idx = comma_indices[0];
     if first_comma_idx > 1 {
         let predicate_tokens = &tokens[1..first_comma_idx];
+        // Result-memory predicates such as
+        // "If two nonland cards that share a color were milled this way"
+        // are also valid ordinary object predicates. Prefer the typed result
+        // parser so cardinality and cross-object characteristic constraints
+        // survive into RepeatProcess/IfResult lowering.
+        if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
+            let effect_tokens = &tokens[first_comma_idx + 1..];
+            let effects = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)?;
+            return Ok(IfClauseSplitSpec {
+                predicate: IfClausePredicateSpec::Result(predicate),
+                effects,
+            });
+        }
         if let Ok(predicate) = parse_predicate_with_grammar_entrypoint_lexed(predicate_tokens) {
             let effect_tokens = &tokens[first_comma_idx + 1..];
             if let Some(effects) = parse_cards_in_hand_difference_draw_effect(
@@ -1208,6 +1253,27 @@ pub(crate) fn split_if_clause_lexed(
                 predicate_tokens,
                 effect_tokens,
             ) {
+                return Ok(IfClauseSplitSpec {
+                    predicate: IfClausePredicateSpec::Conditional(predicate),
+                    effects,
+                });
+            }
+            // A leading `instead` unambiguously belongs to the consequence,
+            // even when that consequence has another internal comma-then
+            // boundary. Do not require the first consequence fragment to
+            // parse independently: an anaphoric first action such as
+            // `instead exile it` needs the preceding default branch for its
+            // reference, while the complete `exile it, then return that card`
+            // program is still a valid replacement. Otherwise the reverse
+            // comma fallback can absorb that first action into the predicate
+            // and retain only the terminal action.
+            if trim_lexed_commas(effect_tokens)
+                .first()
+                .is_some_and(|token| structure_token_is(token, "instead"))
+                && let Ok(effects) =
+                    parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)
+                && !effects.is_empty()
+            {
                 return Ok(IfClauseSplitSpec {
                     predicate: IfClausePredicateSpec::Conditional(predicate),
                     effects,
@@ -1250,14 +1316,6 @@ pub(crate) fn split_if_clause_lexed(
                     effects,
                 });
             }
-        }
-        if let Some(predicate) = parse_if_result_predicate(predicate_tokens) {
-            let effect_tokens = &tokens[first_comma_idx + 1..];
-            let effects = parse_effects_with_leading_instead(effect_tokens, &mut parse_effects)?;
-            return Ok(IfClauseSplitSpec {
-                predicate: IfClausePredicateSpec::Result(predicate),
-                effects,
-            });
         }
     }
 
@@ -1592,6 +1650,9 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
         if predicate_candidate_contains_search_action(predicate_tokens) {
             continue;
         }
+        if predicate_candidate_contains_damage_action(predicate_tokens) {
+            continue;
+        }
         // A moved-or-cast origin clause ("it entered from your graveyard or
         // you cast it from your graveyard") scopes the trigger event itself;
         // leave it for the trigger parser instead of modeling it as an
@@ -1628,7 +1689,10 @@ pub(crate) fn split_triggered_conditional_clause_lexed<'a>(
                 {
                     next_fragment = trim_lexed_commas(&next_fragment[1..]);
                 }
-                if !next_fragment.is_empty() && parse_modeled_predicate(next_fragment).is_some() {
+                if !next_fragment.is_empty()
+                    && !predicate_candidate_contains_damage_action(next_fragment)
+                    && parse_modeled_predicate(next_fragment).is_some()
+                {
                     continue;
                 }
             }
@@ -1697,6 +1761,9 @@ pub(crate) fn split_trailing_modal_gate_clause<'a>(
     if sentence_tokens.is_empty() {
         return None;
     }
+    let reflexive = sentence_tokens
+        .first()
+        .is_some_and(|token| token.is_word("when"));
     let (_, predicate_tail) = primitives::parse_prefix(
         sentence_tokens,
         alt((primitives::kw("if"), primitives::kw("when"))),
@@ -1727,6 +1794,7 @@ pub(crate) fn split_trailing_modal_gate_clause<'a>(
         predicate,
         remove_mode_only: primitives::parse_prefix(predicate_tokens, parse_remove_mode_only_prefix)
             .is_some(),
+        reflexive,
     })
 }
 

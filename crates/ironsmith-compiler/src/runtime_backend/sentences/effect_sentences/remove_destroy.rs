@@ -1,7 +1,8 @@
 use super::*;
+use crate::effect::ChoiceCount;
 use crate::runtime_backend::front_end::grammar::effects::remove_destroy_shapes as shapes;
 use crate::runtime_backend::util::{
-    parse_filter_counter_constraint_words, strip_leading_token_words_any,
+    helper_tag_for_tokens, parse_filter_counter_constraint_words, strip_leading_token_words_any,
 };
 
 pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
@@ -80,9 +81,45 @@ pub(crate) fn parse_remove(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         } => {
             let counter_type = parse_counter_type_from_descriptor_tokens(counter_descriptor);
             match destination {
+                shapes::RemoveCounterDestination::EachOfAnyNumber { filter_tokens } => {
+                    let filter = parse_object_filter(filter_tokens, false)?;
+                    let selected_tag = helper_tag_for_tokens(tokens, "counter_removal_subset");
+                    Ok(EffectAst::Sequence {
+                        effects: vec![
+                            EffectAst::ChooseObjects {
+                                filter,
+                                count: ChoiceCount::any_number(),
+                                count_value: None,
+                                player: PlayerAst::You,
+                                tag: selected_tag.clone(),
+                            },
+                            EffectAst::ForEachTagged {
+                                tag: selected_tag,
+                                effects: vec![EffectAst::subject_verb_remove_up_to_any_counters(
+                                    amount,
+                                    TargetAst::Tagged(
+                                        TagKey::from(IT_TAG),
+                                        span_from_tokens(tokens),
+                                    ),
+                                    counter_type,
+                                    up_to,
+                                )],
+                            },
+                        ],
+                    })
+                }
                 shapes::RemoveCounterDestination::All { filter_tokens } => {
                     let filter = parse_object_filter(filter_tokens, false)?;
                     Ok(EffectAst::subject_verb_remove_counters_all(
+                        amount,
+                        filter,
+                        counter_type,
+                        up_to,
+                    ))
+                }
+                shapes::RemoveCounterDestination::Among { filter_tokens } => {
+                    let filter = parse_object_filter(filter_tokens, false)?;
+                    Ok(EffectAst::subject_verb_remove_up_to_counters_among(
                         amount,
                         filter,
                         counter_type,
@@ -388,18 +425,36 @@ pub(crate) fn parse_destroy(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardT
                 "unsupported conditional destroy clause (clause: '{original_clause}')"
             )));
         }
+        shapes::DestroyClauseKind::TargetAndAttached(shape) => {
+            let target = parse_target_phrase(shape.target_tokens)?;
+            let mut attachment_filter = parse_object_filter(shape.attachment_filter_tokens, false)?;
+            attachment_filter.set_demonstrative_antecedent_surface(shape.demonstrative_antecedent);
+            let target_tag = helper_tag_for_tokens(tokens, "destroy_attachment_target");
+            let tagged_target =
+                TargetAst::Tagged(target_tag.clone(), span_from_tokens(shape.target_tokens));
+
+            EffectAst::Sequence {
+                effects: vec![
+                    EffectAst::TagAffected {
+                        effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+                        tag: target_tag,
+                    },
+                    EffectAst::subject_verb_destroy_all_attached_to(
+                        attachment_filter,
+                        tagged_target.clone(),
+                    ),
+                    EffectAst::subject_verb_destroy(tagged_target),
+                ],
+            }
+        }
         shapes::DestroyClauseKind::MultiTarget => {
             return Err(CardTextError::ParseError(format!(
                 "unsupported multi-target destroy clause (clause: '{original_clause}')"
             )));
         }
-        shapes::DestroyClauseKind::Blocked { target_tokens } => EffectAst::Conditional {
-            predicate: PredicateAst::TargetIsBlocked,
-            if_true: vec![EffectAst::subject_verb_destroy(parse_target_phrase(
-                &target_tokens,
-            )?)],
-            if_false: Vec::new(),
-        },
+        shapes::DestroyClauseKind::Blocked { target_tokens } => {
+            EffectAst::subject_verb_destroy(parse_target_phrase(&target_tokens)?)
+        }
         shapes::DestroyClauseKind::Plain { target_tokens } => {
             // "Destroy target creature of an opponent's choice" delegates the
             // target choice to an opponent: declare the target with that
@@ -444,5 +499,24 @@ pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception:
         if !base.excluded_subtypes.contains(&subtype) {
             base.excluded_subtypes.push(subtype);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn destroy_all_plural_shared_color_keeps_tagged_relation() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Destroy all other creatures that share a color with it.",
+            0,
+        )
+        .expect("shared-color destroy clause should lex");
+        let effect = parse_destroy(&tokens).expect("shared-color destroy clause should parse");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("SharesColorWithTagged"), "{debug}");
+        assert!(debug.contains(IT_TAG), "{debug}");
     }
 }

@@ -32,8 +32,8 @@ use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 pub use ironsmith_core::effect::{
-    ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId, RestrictionStart,
-    SearchSelectionMode,
+    ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, EffectId,
+    RestrictionDurationSurface, RestrictionStart, SearchSelectionMode,
 };
 pub use ironsmith_core::{
     Comparison, ConditionalModeRange, EffectPredicate, EventValueSpec, PriorEffectResultActor,
@@ -282,6 +282,12 @@ pub enum ExecutionFact {
     ChosenOptions(Vec<usize>),
     ChosenNumber(u32),
     OtherNumber(u32),
+    /// A mana payment completed successfully at the given X value. This is
+    /// distinct from the numeric payload so a legal X=0 payment still counts
+    /// as having happened.
+    ManaPaid {
+        x_value: u32,
+    },
     CoinFlip {
         face: ironsmith_core::CoinFace,
         call: Option<ironsmith_core::CoinFace>,
@@ -900,6 +906,13 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::Succeeded => outcome.status.is_success(),
             Self::Failed => outcome.status.is_failure(),
             Self::Happened => {
+                if outcome
+                    .execution_facts
+                    .iter()
+                    .any(|fact| matches!(fact, ExecutionFact::ManaPaid { .. }))
+                {
+                    return true;
+                }
                 if let Some(coin_flip) = outcome.execution_facts.iter().find_map(|fact| {
                     let ExecutionFact::CoinFlip { winner, loser, .. } = fact else {
                         return None;
@@ -985,8 +998,9 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
 
 pub use ironsmith_core::value_model::{
     AttachmentConditionHost, Condition, EffectMetric, EffectMetricSource, ManaSpendPermission,
-    ManaSpendScope, PriorEffectAction, PriorEffectMetricQuery, Restriction,
-    SourceCounterThresholdSurface, Value,
+    ManaSpendScope, PermanentLeftBattlefieldControlSurface, PriorEffectAction,
+    PriorEffectMetricQuery, Restriction, SourceCounterThresholdSurface, TaggedObjectMatchMode,
+    Value,
 };
 
 pub(crate) trait RestrictionExt {
@@ -1058,6 +1072,21 @@ impl RestrictionExt for Restriction {
                     if let Some(player) = game.player_mut(player_id) {
                         player.land_plays_per_turn =
                             player.land_plays_per_turn.saturating_add(*count);
+                    }
+                }
+            }
+            Restriction::NoMaximumHandSize(filter) => {
+                let affected_players: Vec<_> = game
+                    .players
+                    .iter()
+                    .filter(|player| {
+                        player.is_in_game() && player_matches_restriction_filter(player.id, filter)
+                    })
+                    .map(|player| player.id)
+                    .collect();
+                for player_id in affected_players {
+                    if let Some(player) = game.player_mut(player_id) {
+                        player.max_hand_size = i32::MAX;
                     }
                 }
             }
@@ -1259,6 +1288,11 @@ impl RestrictionExt for Restriction {
                         tracker.add_cant_attack_defenders(obj_id, defenders.iter().copied());
                     }
                 }
+            }
+            Restriction::AttackYouUnlessControllerPaysPerAttacker(_) => {
+                // The payment exception is evaluated during attacker
+                // declaration. It must not be flattened into an unconditional
+                // `cant_attack` entry in the derived restriction tracker.
             }
             Restriction::AttackAlone(filter) => {
                 for &obj_id in &game.battlefield {
@@ -1473,6 +1507,22 @@ impl RestrictionExt for Restriction {
                         && filter.matches(obj, &ctx, game)
                     {
                         tracker.cant_phase_out.insert(obj_id);
+                    }
+                }
+            }
+            Restriction::PhaseIn(filter) => {
+                for &obj_id in &game.battlefield {
+                    let Some(obj) = game.object(obj_id) else {
+                        continue;
+                    };
+                    let matches = if game.is_phased_out(obj_id) {
+                        let snapshot = ObjectSnapshot::from_object(obj, game);
+                        filter.matches_snapshot(&snapshot, &ctx, game)
+                    } else {
+                        filter.matches(obj, &ctx, game)
+                    };
+                    if matches {
+                        tracker.cant_phase_in.insert(obj_id);
                     }
                 }
             }
@@ -2565,6 +2615,12 @@ impl Effect {
     pub fn remove_up_to_any_counters(max_count: impl Into<Value>, target: ChooseSpec) -> Self {
         use crate::effects::RemoveUpToAnyCountersEffect;
         Self::new(RemoveUpToAnyCountersEffect::new(max_count, target))
+    }
+
+    /// Create a mandatory "remove N counters of any type from target" effect.
+    pub fn remove_any_counters(count: impl Into<Value>, target: ChooseSpec) -> Self {
+        use crate::effects::RemoveUpToAnyCountersEffect;
+        Self::new(RemoveUpToAnyCountersEffect::exact(count, target))
     }
 
     /// Create an effect that reveals cards from your hand.

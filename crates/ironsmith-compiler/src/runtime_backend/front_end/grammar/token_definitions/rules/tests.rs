@@ -79,6 +79,25 @@ fn token_rules_surface_distinguishes_keyword_and_parseable_rules() {
 }
 
 #[test]
+fn creature_count_shortcut_requires_the_exact_typed_count_filter() {
+    let creatures = parse_rules(
+        "white Gnome creature token with \"This token's power and toughness are each equal to the number of creatures you control.\"",
+    );
+    assert_eq!(
+        creatures.embedded_rules,
+        vec![TokenEmbeddedRuleShape::PowerToughnessEqualCreaturesYouControl]
+    );
+
+    let artifacts_or_creatures = parse_rules(
+        "white Gnome Soldier artifact creature token with \"This token's power and toughness are each equal to the number of artifacts and/or creatures you control.\"",
+    );
+    assert!(
+        artifacts_or_creatures.embedded_rules.is_empty(),
+        "the broader typed count must be left for generic CDA parsing: {artifacts_or_creatures:#?}"
+    );
+}
+
+#[test]
 fn labeled_land_entry_counter_rule_is_typed_and_validates_its_self_reference() {
     let tokens = lex_line(
         "legendary 2/2 green Cat creature token named Zabu with \"Landfall — Whenever a land you control enters, put a +1/+1 counter on Zabu.\"",

@@ -73,6 +73,14 @@ pub(crate) fn parse_cards_in_hand_player(words: &[&str]) -> Option<PlayerFilter>
     None
 }
 
+pub(crate) fn has_that_player_possessive(words: &[&str]) -> bool {
+    // The lexer removes the apostrophe but retains the possessive `s`, so
+    // Oracle's "that player's" reaches grammar helpers as "that players".
+    // Keep this distinct from "that player controls", which is a relative
+    // clause rather than a possessive surface.
+    permission_shapes::find_words(words, &["that", "players"]).is_some()
+}
+
 pub(crate) fn parse_party_size_player(words: &[&str]) -> Option<PlayerFilter> {
     (permission_shapes::exact_words(words, &["creatures", "in", "your", "party"])
         || permission_shapes::exact_words(words, &["creature", "in", "your", "party"]))

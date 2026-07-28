@@ -22,12 +22,9 @@ const EVENT_AMOUNT_PREFIXES: &[&[&str]] = &[
     &["that", "many"],
 ];
 const EACH_PLAYER_TARGETS: &[&[&str]] = &[&["each", "player"], &["each", "players"]];
-const EACH_OPPONENT_TARGETS: &[&[&str]] = &[
-    &["each", "opponent"],
-    &["each", "opponents"],
-    &["each", "other", "player"],
-    &["each", "other", "players"],
-];
+const EACH_OPPONENT_TARGETS: &[&[&str]] = &[&["each", "opponent"], &["each", "opponents"]];
+const EACH_OTHER_PLAYER_TARGETS: &[&[&str]] =
+    &[&["each", "other", "player"], &["each", "other", "players"]];
 const EACH_OTHER_OPPONENT_TARGETS: &[&[&str]] = &[
     &["each", "other", "opponent"],
     &["each", "other", "opponents"],
@@ -43,6 +40,7 @@ const CREATURE_CONTROLLER_TARGETS: &[&[&str]] = &[
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CombatPlayerDamageTargetShape {
     EachPlayer,
+    EachOtherPlayer,
     EachOpponent,
     EachOtherOpponent,
 }
@@ -52,6 +50,16 @@ pub(crate) enum CombatSimpleDamageTargetShape {
     DefaultAny,
     CreatureController,
     IteratedPlayer,
+}
+
+/// An object target declared inside a derived damage-recipient phrase.
+///
+/// “Target spell's controller” targets the spell, not its controller.  Keep
+/// that distinction typed so lowering can materialize the spell target before
+/// resolving both the controller and any same-clause “that spell” values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CombatEmbeddedTargetControllerShape {
+    Spell,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -202,6 +210,8 @@ pub(crate) fn parse_combat_player_damage_target_shape_lexed(
     };
     if matched(EACH_PLAYER_TARGETS) {
         Some(CombatPlayerDamageTargetShape::EachPlayer)
+    } else if matched(EACH_OTHER_PLAYER_TARGETS) {
+        Some(CombatPlayerDamageTargetShape::EachOtherPlayer)
     } else if matched(EACH_OTHER_OPPONENT_TARGETS) {
         Some(CombatPlayerDamageTargetShape::EachOtherOpponent)
     } else if matched(EACH_OPPONENT_TARGETS) {
@@ -226,6 +236,20 @@ pub(crate) fn parse_combat_simple_damage_target_shape_lexed(
     } else {
         None
     }
+}
+
+pub(crate) fn parse_combat_embedded_target_controller_shape_lexed(
+    tokens: &[OwnedLexToken],
+) -> Option<CombatEmbeddedTargetControllerShape> {
+    exact_phrase(
+        tokens,
+        &[
+            &["target", "spell's", "controller"],
+            &["target", "spell’s", "controller"],
+            &["target", "spells", "controller"],
+        ],
+    )
+    .then_some(CombatEmbeddedTargetControllerShape::Spell)
 }
 
 fn required_hand_size_markers(tokens: &[OwnedLexToken]) -> bool {
@@ -444,6 +468,7 @@ pub(crate) fn parse_combat_divided_target_shape_lexed(
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         }
     };
 
@@ -740,6 +765,11 @@ mod tests {
             parse_combat_player_damage_target_shape_lexed(&tokens, false),
             Some(CombatPlayerDamageTargetShape::EachOtherOpponent)
         );
+        let tokens = lex_line("each other player", 0).unwrap();
+        assert_eq!(
+            parse_combat_player_damage_target_shape_lexed(&tokens, false),
+            Some(CombatPlayerDamageTargetShape::EachOtherPlayer)
+        );
 
         let tokens = lex_line(
             "divided as its controller chooses among any number of those Wolves",
@@ -789,5 +819,22 @@ mod tests {
                 "damage recipient should use the typed event-player binding: {text}"
             );
         }
+    }
+
+    #[test]
+    fn recognizes_spell_target_inside_controller_recipient() {
+        for text in ["target spell's controller", "target spells controller"] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_combat_embedded_target_controller_shape_lexed(&tokens),
+                Some(CombatEmbeddedTargetControllerShape::Spell),
+                "{text}"
+            );
+        }
+        let tokens = lex_line("that spell's controller", 0).unwrap();
+        assert_eq!(
+            parse_combat_embedded_target_controller_shape_lexed(&tokens),
+            None
+        );
     }
 }

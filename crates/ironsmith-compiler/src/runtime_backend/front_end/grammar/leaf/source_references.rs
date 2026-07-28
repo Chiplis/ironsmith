@@ -9,8 +9,8 @@ use crate::target::SourceReferenceSurface;
 use super::super::super::lexer::{lex_line, parser_token_word_refs};
 use super::super::primitives;
 use super::filter_atoms::{
-    parse_leaf_card_type, parse_leaf_card_type_complete, parse_leaf_subtype_flexible,
-    parse_leaf_subtype_flexible_complete,
+    parse_leaf_card_type, parse_leaf_card_type_complete, parse_leaf_color_complete,
+    parse_leaf_subtype_flexible, parse_leaf_subtype_flexible_complete,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -439,6 +439,7 @@ fn is_name_article(word: &str) -> bool {
 fn short_name_is_distinct_name(short_name: &str) -> bool {
     let lower = short_name.to_ascii_lowercase();
     !is_name_article(&lower)
+        && parse_leaf_color_complete(&lower).is_err()
         && parse_leaf_card_type_complete(&lower).is_err()
         && match parse_leaf_subtype_flexible_complete(&lower) {
             Ok(subtype) => subtype.is_planeswalker_subtype(),
@@ -598,6 +599,28 @@ mod tests {
                 Some(SourceReferenceSurface::ShortName(
                     first_name[..1].to_ascii_uppercase() + &first_name[1..]
                 ))
+            );
+        }
+    }
+
+    #[test]
+    fn color_adjectives_do_not_become_short_source_aliases() {
+        for (name, color) in [
+            ("Black Scarab", "black"),
+            ("Blue Scarab", "blue"),
+            ("Green Scarab", "green"),
+            ("Red Scarab", "red"),
+            ("White Scarab", "white"),
+        ] {
+            let aliases = parse_leaf_source_reference_aliases_for_name(name);
+            assert_eq!(
+                exact(&aliases, &[color]),
+                None,
+                "{color} must remain available to object-filter parsing: {aliases:#?}"
+            );
+            assert_eq!(
+                exact(&aliases, &[color, "scarab"]),
+                Some(SourceReferenceSurface::FullName(name.to_string()))
             );
         }
     }

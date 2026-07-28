@@ -51,12 +51,11 @@ enum EntersWithCounterPlusTail {
     Unsupported,
 }
 
-fn is_etb_source_reference_clause(clause: LexedClause<'_>) -> bool {
-    etb_grammar::parse_etb_source_reference_tokens(clause.tokens()).is_some()
-}
-
 fn starts_with_etb_source_reference(tokens: &[OwnedLexToken]) -> bool {
-    is_etb_source_reference_clause(LexedClause::new(tokens))
+    let words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    matches!(words.as_slice(), ["it"] | ["its"])
+        || crate::runtime_backend::util::this_source_surface_for_words(&words).is_some()
+        || crate::runtime_backend::util::source_reference_surface_for_words(&words).is_some()
 }
 
 fn etb_starts_with_trigger_intro_after_label(tokens: &[OwnedLexToken]) -> bool {
@@ -139,6 +138,13 @@ pub(crate) fn parse_enters_with_counters_line(
     else {
         return Ok(None);
     };
+    // This family models the source itself entering. Keep a local semantic
+    // guard even though the grammar also constrains the subject: filtered
+    // replacement rules such as "Each other creature you control enters ..."
+    // must fall through to `parse_enters_with_additional_counter_for_filter_line`.
+    if !starts_with_etb_source_reference(captured.subject_tokens) {
+        return Ok(None);
+    }
     let subject_words = crate::runtime_backend::lexer::token_word_refs(captured.subject_tokens);
     let source_name_subject = matches!(
         crate::runtime_backend::util::source_reference_surface_for_words(&subject_words),
@@ -224,6 +230,9 @@ pub(crate) fn parse_enters_with_counters_line(
                     full_words.join(" ")
                 ))
             })?;
+    let additional_entry_counter_surface = after_with[..counter_idx]
+        .iter()
+        .any(|token| etb_token_word_is(token, ETB_ADDITIONAL_WORD));
     let mut tail = &after_with[counter_idx + 1..];
     if token_slice_first_is(tail, "on") {
         tail = &tail[1..];
@@ -346,6 +355,10 @@ pub(crate) fn parse_enters_with_counters_line(
                 ))
             })?;
         }
+    }
+
+    if additional_entry_counter_surface {
+        count = count.with_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
     }
 
     if source_name_subject {
@@ -504,7 +517,10 @@ fn parse_enters_with_counter_known_for_each_tail_tokens(
         }
         EntersWithCounterKnownForEachKind::ControlledCreaturesDiedThisTurn => {
             Some(EntersWithCounterKnownForEachTail {
-                value: Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You),
+                value: Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(
+                    ObjectFilter::creature().controlled_by(PlayerFilter::You),
+                ))
+                .with_surface_hint(ValueSurfaceHint::ForEach),
                 scale_by_base_count: true,
             })
         }
@@ -729,7 +745,10 @@ fn parse_enters_with_counter_condition_clause(
             }
             EntersWithCounterConditionShape::PermanentLeftUnderYourControl => {
                 return Some(
-                    crate::ConditionExpr::PermanentLeftBattlefieldUnderYourControlThisTurn,
+                    crate::ConditionExpr::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                        surface:
+                            crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
+                    },
                 );
             }
             EntersWithCounterConditionShape::NotCastOrNoManaSpent => {
@@ -786,7 +805,27 @@ fn parse_enters_with_counter_condition_clause(
 fn parse_enters_with_counter_object_filter_tokens(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<ObjectFilter> {
-    parse_object_filter(subject_tokens, false).ok()
+    let mut filter = parse_object_filter(subject_tokens, false).ok()?;
+    let plural_noun = subject_tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .any(|word| {
+            matches!(
+                word,
+                "artifacts"
+                    | "battles"
+                    | "cards"
+                    | "creatures"
+                    | "enchantments"
+                    | "lands"
+                    | "permanents"
+                    | "planeswalkers"
+                    | "spells"
+                    | "tokens"
+            )
+        });
+    filter.set_plural_object_noun_surface(plural_noun);
+    Some(filter)
 }
 
 fn parse_enters_with_counter_equal_to_value_clause(tokens: &[OwnedLexToken]) -> Option<Value> {
@@ -937,6 +976,22 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         return Some(value);
     }
 
+    // A qualified participant count can contain both "players" and "cards in
+    // hand", but it counts the players satisfying the hand-size predicate.
+    // Recognize that typed shape before the broad all-players-hand heuristic
+    // below can collapse it into a count of cards.
+    if let Some(captured) = etb_grammar::parse_where_x_number_of_filter_tokens(tokens)
+        && let Some((players, minimum)) =
+            crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_players_with_cards_in_hand_at_least(
+                captured.filter_tokens,
+            )
+    {
+        return Some(scale_where_x_number_value(
+            Value::CountPlayersWithCardsInHandAtLeast(players, minimum),
+            captured.multiplier,
+        ));
+    }
+
     // where X is your devotion to black
     if etb_grammar::etb_tokens_have_devotion_value_marker(tokens) {
         if let Ok(Some(value)) = parse_devotion_value_from_add_clause(tokens) {
@@ -989,7 +1044,9 @@ pub(crate) fn parse_value_binding_clause(tokens: &[OwnedLexToken]) -> Option<Val
         .and_then(|tail| etb_grammar::parse_tagged_mana_value_reference_tokens(tail.tokens()))
     {
         let tag = match reference {
-            EtbTaggedManaValueReference::ExiledCard => IT_TAG,
+            EtbTaggedManaValueReference::ExiledCard | EtbTaggedManaValueReference::ThatCard => {
+                IT_TAG
+            }
             EtbTaggedManaValueReference::TriggeringSpell => "triggering",
         };
         return Some(Value::ManaValueOf(Box::new(ChooseSpec::Tagged(
@@ -1216,6 +1273,13 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
 
     if parsed.aggregate == EtbAggregateKind::Greatest
         && parsed.value_kind == EtbAggregateValueKind::ManaValue
+        && let Some(filter) = parse_spell_cast_history_aggregate_filter(parsed.filter_tokens)
+    {
+        return Some(Value::GreatestManaValue(filter));
+    }
+
+    if parsed.aggregate == EtbAggregateKind::Greatest
+        && parsed.value_kind == EtbAggregateValueKind::ManaValue
     {
         if let Some(value) =
             parse_where_x_greatest_commander_mana_value_filter(parsed.filter_tokens)
@@ -1226,32 +1290,65 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
 
     let filter_tokens = parsed.filter_tokens;
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    let prior_effect_metric = match (parsed.aggregate, parsed.value_kind) {
+        (EtbAggregateKind::Total, EtbAggregateValueKind::Power) => {
+            ironsmith_core::EffectMetric::TotalPower
+        }
+        (EtbAggregateKind::Total, EtbAggregateValueKind::Toughness) => {
+            ironsmith_core::EffectMetric::TotalToughness
+        }
+        (EtbAggregateKind::Total, EtbAggregateValueKind::ManaValue) => {
+            ironsmith_core::EffectMetric::TotalManaValue
+        }
+        (EtbAggregateKind::Greatest, EtbAggregateValueKind::Power) => {
+            ironsmith_core::EffectMetric::GreatestPower
+        }
+        (EtbAggregateKind::Greatest, EtbAggregateValueKind::Toughness) => {
+            ironsmith_core::EffectMetric::GreatestToughness
+        }
+        (EtbAggregateKind::Greatest, EtbAggregateValueKind::ManaValue) => {
+            ironsmith_core::EffectMetric::GreatestManaValue
+        }
+    };
+    if let Some(value) =
+        crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_prior_effect_aggregate_metric_value(
+            prior_effect_metric,
+            &filter_words,
+        )
+    {
+        return Some(value);
+    }
     let has_and_graveyard = etb_grammar::etb_tokens_have_and_graveyard_marker(filter_tokens);
     let should_try_split = has_and_graveyard
         && filter_words
             .iter()
             .any(|word| etb_word_is_any(word, ETB_CONTROL_OWN_WORDS));
-    let mut filter = (if should_try_split {
-        let segments =
-            crate::runtime_backend::grammar::primitives::split_lexed_slices_on_and(filter_tokens);
-        let mut branches = Vec::new();
-        for segment in segments {
-            let trimmed = trim_commas(segment);
-            if trimmed.is_empty() {
-                return None;
+    let mut filter = parse_cast_time_controlled_objects_filter(filter_tokens)
+        .or_else(|| {
+            if should_try_split {
+                let segments =
+                    crate::runtime_backend::grammar::primitives::split_lexed_slices_on_and(
+                        filter_tokens,
+                    );
+                let mut branches = Vec::new();
+                for segment in segments {
+                    let trimmed = trim_commas(segment);
+                    if trimmed.is_empty() {
+                        return None;
+                    }
+                    branches.push(parse_object_filter_lexed(&trimmed, false).ok()?);
+                }
+                if branches.len() < 2 {
+                    return None;
+                }
+                let mut combined = ObjectFilter::default();
+                combined.any_of = branches;
+                Some(combined)
+            } else {
+                None
             }
-            branches.push(parse_object_filter_lexed(&trimmed, false).ok()?);
-        }
-        if branches.len() < 2 {
-            return None;
-        }
-        let mut combined = ObjectFilter::default();
-        combined.any_of = branches;
-        Some(combined)
-    } else {
-        None
-    })
-    .or_else(|| parse_object_filter_lexed(filter_tokens, false).ok())?;
+        })
+        .or_else(|| parse_object_filter_lexed(filter_tokens, false).ok())?;
 
     if etb_grammar::etb_tokens_have_sacrificed_marker(filter_tokens) {
         if matches!(filter.zone, Some(Zone::Battlefield)) {
@@ -1301,6 +1398,85 @@ pub(crate) fn parse_where_x_is_aggregate_filter_value(tokens: &[OwnedLexToken]) 
     }
 }
 
+fn parse_cast_time_controlled_objects_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    const SUFFIX: &[&str] = &["you", "controlled", "as", "you", "cast", "this", "spell"];
+
+    let word_view = crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let suffix_start = words.len().checked_sub(SUFFIX.len())?;
+    if words.get(suffix_start..)? != SUFFIX {
+        return None;
+    }
+    let filter_range = word_view.token_span_for_words(0, suffix_start)?;
+    let filter_tokens = trim_commas(&tokens[filter_range]);
+    if filter_tokens.is_empty() {
+        return None;
+    }
+
+    let mut filter = parse_object_filter_lexed(&filter_tokens, false).ok()?;
+    if filter.zone.is_none() {
+        filter.zone = Some(Zone::Battlefield);
+    }
+    if filter.zone != Some(Zone::Battlefield) {
+        return None;
+    }
+
+    // The result set itself carries caster/controller identity. Avoid the
+    // broad object-filter parser's unrelated `cast_by` interpretation of the
+    // trailing cast-time clause.
+    filter.cast_by = None;
+    filter.cast_this_turn = false;
+    filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from(ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG),
+            relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    Some(filter)
+}
+
+/// Turn-history aggregates need the same typed spell filter used by ordinary
+/// `spells ... cast this turn` counts, while retaining that the metric is an
+/// aggregate rather than the number of matching spells.
+fn parse_spell_cast_history_aggregate_filter(
+    filter_tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    let Value::SpellsCastThisTurnMatching {
+        player,
+        mut filter,
+        exclude_source,
+    } = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_spells_cast_this_turn_matching_count_value_lexed(
+        filter_tokens,
+    )?
+    else {
+        return None;
+    };
+    if exclude_source {
+        return None;
+    }
+
+    filter.cast_by = Some(player);
+    filter.cast_this_turn = true;
+
+    // A shared trailing "spells" noun makes "instant and sorcery spells" one
+    // inclusive domain, not an impossible intersection. Keep that authored
+    // conjunction as surface metadata while the branches remain alternatives.
+    let words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if words.iter().any(|word| *word == "and")
+        && !words.iter().any(|word| *word == "or")
+        && filter.card_types.len() > 1
+        && filter.any_of.is_empty()
+    {
+        filter.any_of = std::mem::take(&mut filter.card_types)
+            .into_iter()
+            .map(|card_type| ObjectFilter::default().with_type(card_type))
+            .collect();
+        filter.set_conjunctive_set_surface(true);
+    }
+
+    Some(filter)
+}
+
 pub(crate) fn parse_where_x_greatest_commander_mana_value_filter(
     commander_tokens: &[OwnedLexToken],
 ) -> Option<Value> {
@@ -1347,7 +1523,124 @@ pub(crate) fn parse_where_x_is_greatest_number_of_filter_value(
     Some(Value::GreatestCount(filter))
 }
 
+/// Parse a relative selector list whose object domain is authored once before
+/// the relative clause, for example:
+///
+/// `cards in your graveyard that are instant cards, sorcery cards, and/or
+/// have an Adventure`
+///
+/// The ordinary disjunction parser may assign the leading graveyard scope to
+/// only the first arm and infer the battlefield for the Adventure arm. That
+/// changes both execution and rendering. Factor the explicitly shared domain
+/// onto one filter and retain only the typed characteristic alternatives.
+fn parse_shared_domain_relative_selector_filter(
+    filter_tokens: &[OwnedLexToken],
+) -> Option<ObjectFilter> {
+    let relative_idx = filter_tokens
+        .iter()
+        .position(|token| token.is_word("that") || token.is_word("which"))?;
+    let base_tokens = trim_commas(&filter_tokens[..relative_idx]);
+    let relative_tokens = trim_commas(&filter_tokens[relative_idx + 1..]);
+    if base_tokens.is_empty() || relative_tokens.is_empty() {
+        return None;
+    }
+
+    let relative_words = crate::runtime_backend::token_word_refs(&relative_tokens);
+    if relative_words.iter().any(|word| {
+        matches!(
+            *word,
+            "battlefield"
+                | "command"
+                | "exile"
+                | "graveyard"
+                | "hand"
+                | "library"
+                | "control"
+                | "controls"
+                | "own"
+                | "owns"
+        )
+    }) {
+        return None;
+    }
+
+    let mut shared = parse_object_filter_lexed(&base_tokens, false).ok()?;
+    if !shared.any_of.is_empty()
+        || !shared.card_types.is_empty()
+        || !shared.subtypes.is_empty()
+        || !shared.has_explicit_card_noun()
+        || (shared.zone.is_none() && shared.controller.is_none() && shared.owner.is_none())
+    {
+        return None;
+    }
+
+    let parsed = parse_object_filter_lexed(filter_tokens, false).ok()?;
+    if parsed.any_of.len() < 2 {
+        return None;
+    }
+    let connective = parsed.union_connective();
+    let mut outer_remainder = parsed.clone();
+    outer_remainder.any_of.clear();
+    outer_remainder.union_surface = Default::default();
+    outer_remainder.type_or_subtype_union = false;
+    if outer_remainder != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut card_types = Vec::new();
+    let mut subtypes = Vec::new();
+    for branch in &parsed.any_of {
+        if !branch.any_of.is_empty()
+            || branch.card_types.len() + branch.subtypes.len() == 0
+            || (!branch.all_card_types.is_empty() && branch.all_card_types != branch.card_types)
+            || (!branch.all_subtypes.is_empty() && branch.all_subtypes != branch.subtypes)
+        {
+            return None;
+        }
+        card_types.extend(branch.card_types.iter().copied());
+        subtypes.extend(branch.subtypes.iter().copied());
+
+        let mut remainder = branch.clone();
+        remainder.zone = None;
+        remainder.controller = None;
+        remainder.owner = None;
+        remainder.single_graveyard = false;
+        remainder.card_types.clear();
+        remainder.all_card_types.clear();
+        remainder.subtypes.clear();
+        remainder.all_subtypes.clear();
+        remainder.type_or_subtype_union = false;
+        remainder.union_surface = Default::default();
+        if remainder != ObjectFilter::default() {
+            return None;
+        }
+    }
+    card_types.dedup();
+    subtypes.dedup();
+    if card_types.len() + subtypes.len() < 2 {
+        return None;
+    }
+
+    shared.card_types = card_types;
+    shared.subtypes = subtypes;
+    shared.type_or_subtype_union = !shared.card_types.is_empty() && !shared.subtypes.is_empty();
+    shared.set_union_connective(connective);
+    Some(shared)
+}
+
 pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if words.iter().any(|word| matches!(*word, "plus" | "minus"))
+        || words
+            .windows(3)
+            .any(|window| window == ["in", "excess", "of"])
+    {
+        // This helper owns only a complete `number of ...` term. Let the
+        // arithmetic value-expression parser consume authored tails such as
+        // `twice the number of age counters ... minus 2`; otherwise the broad
+        // filter capture can absorb the suffix and silently drop the offset.
+        return None;
+    }
     let captured = etb_grammar::parse_where_x_number_of_filter_tokens(tokens)?;
 
     if etb_grammar::etb_tokens_have_common_creature_type_value(tokens) {
@@ -1386,6 +1679,16 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
             multiplier,
         ));
     }
+    if let Some((players, minimum)) =
+        crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_players_with_cards_in_hand_at_least(
+            filter_tokens,
+        )
+    {
+        return Some(scale_where_x_number_value(
+            Value::CountPlayersWithCardsInHandAtLeast(players, minimum),
+            multiplier,
+        ));
+    }
     if let Some(value) = etb_grammar::parse_number_of_counters_on_source_value_tokens(filter_tokens)
     {
         return Some(value);
@@ -1421,6 +1724,21 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
         }
     }
     if let Some(value) = parse_aggregate_scope_value_lexed(filter_tokens) {
+        return Some(scale_where_x_number_value(value, multiplier));
+    }
+    // Normalize a selector list with one authored object domain before the
+    // broad for-each count grammar can split that domain across union arms.
+    if let Some(filter) = parse_shared_domain_relative_selector_filter(filter_tokens) {
+        return Some(scale_where_x_number_value(Value::Count(filter), multiplier));
+    }
+    let mut for_each_words = vec!["for", "each"];
+    for_each_words.extend(filter_words.iter().copied());
+    if let Some((value, used)) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )
+        && used == for_each_words.len()
+    {
         return Some(scale_where_x_number_value(value, multiplier));
     }
     if let Some(kind) = etb_grammar::parse_where_x_special_number_filter_tokens(filter_tokens) {
@@ -1644,6 +1962,20 @@ pub(crate) fn parse_enters_tapped_for_filter_line(
     }
     if let Some(controller) = controller_override {
         filter.controller = Some(controller);
+    }
+    if let Some(played_suffix) = played_suffix {
+        let surface = match played_suffix.kind {
+            etb_grammar::EtbPlayedByOpponentKind::YourOpponents => {
+                ironsmith_core::PlayedByOpponentSurface::YourOpponents
+            }
+            etb_grammar::EtbPlayedByOpponentKind::AnOpponent => {
+                ironsmith_core::PlayedByOpponentSurface::AnOpponent
+            }
+            etb_grammar::EtbPlayedByOpponentKind::Opponents => {
+                ironsmith_core::PlayedByOpponentSurface::Opponents
+            }
+        };
+        filter.set_played_by_opponent_surface(surface);
     }
     Ok(Some(StaticAbility::enters_tapped_for_filter(filter)))
 }
@@ -2023,6 +2355,37 @@ mod etb_enters_tapped_with_counters_tests {
     }
 
     #[test]
+    fn enters_with_counter_for_each_controlled_subtype_keeps_dynamic_count() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "This creature enters with a time counter on it for each Island you control.",
+            0,
+        )
+        .expect("lex");
+
+        let abilities = parse_enters_with_counters_line(&tokens)
+            .expect("parser should not error")
+            .expect("dynamic enters-with-counters line should parse");
+        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersValue {
+            counter,
+            count,
+        } = &abilities[0].payload
+        else {
+            panic!(
+                "expected typed dynamic entry-counter payload: {:#?}",
+                abilities[0]
+            );
+        };
+        assert_eq!(*counter, CounterType::Time);
+        assert!(count.has_surface_hint(ValueSurfaceHint::ForEach));
+        let Value::Count(filter) = count.unhinted() else {
+            panic!("expected a filtered count, got {count:?}");
+        };
+        assert_eq!(filter.subtypes, vec![Subtype::Island]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+    }
+
+    #[test]
     fn enters_with_number_of_counters_equal_to_fixed_minus_x() {
         let tokens = crate::runtime_backend::lexer::lex_line(
             "This creature enters with a number of stun counters on it equal to three minus X.",
@@ -2263,7 +2626,7 @@ mod etb_enters_tapped_with_counters_tests {
             ),
             (
                 "for each creature that died under your control this turn",
-                "CreaturesDiedThisTurnControlledBy",
+                "TurnHistoryCount",
                 true,
             ),
             ("for each time this spell was kicked", "KickCount", true),
@@ -2682,23 +3045,29 @@ pub(crate) fn parse_enters_with_additional_counter_for_filter_line(
                 ))
             })?
     } else if base_tokens
-        .get(additional_idx + 1)
-        .is_some_and(|token| etb_token_word_is(token, "x"))
+        .get(additional_idx.saturating_sub(1))
+        .is_some_and(|token| token.is_word("x"))
+        || base_tokens
+            .get(additional_idx + 1)
+            .is_some_and(|token| token.is_word("x"))
     {
-        let where_x_tokens = where_x_tokens.ok_or_else(|| {
-            CardTextError::ParseError(format!(
-                "missing where-x clause for ETB counter count (clause: '{}')",
-                clause_words.join(" ")
-            ))
-        })?;
-        parse_value_binding_clause(where_x_tokens)
-            .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
-            .ok_or_else(|| {
-                CardTextError::ParseError(format!(
-                    "unsupported where-x clause for ETB counter count (clause: '{}')",
-                    clause_words.join(" ")
-                ))
-            })?
+        if let Some(where_x_tokens) = where_x_tokens {
+            parse_value_binding_clause(where_x_tokens)
+                .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+                .ok_or_else(|| {
+                    CardTextError::ParseError(format!(
+                        "unsupported where-x clause for ETB counter count (clause: '{}')",
+                        clause_words.join(" ")
+                    ))
+                })?
+        } else {
+            // The general where-X sentence dispatcher first parses the
+            // predicate without its trailing binding and then substitutes the
+            // typed value throughout the resulting AST. Preserve the
+            // placeholder here so that substitution can reach granted ETB
+            // replacement abilities rather than silently freezing X at one.
+            Value::X
+        }
     } else if additional_idx > 0
         && let Some((parsed, _)) = parse_number(&base_tokens[additional_idx - 1..additional_idx])
     {
@@ -2793,6 +3162,135 @@ mod filtered_turn_history_counter_tests {
             .unwrap_or_else(|| panic!("filter ETB counter line should parse: {text}"))
     }
 
+    fn parsed_count(ability: StaticAbility) -> Value {
+        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+            count,
+            ..
+        } = ability.payload
+        else {
+            panic!("expected filtered ETB counter payload, got {ability:?}");
+        };
+        count
+    }
+
+    #[test]
+    fn filtered_dynamic_entry_counter_is_not_misclassified_as_self_entry() {
+        let tokens = lex(
+            "Each other creature you control enters with a number of additional +1/+1 counters on it equal to Arwen's toughness.",
+        );
+        let ability = crate::runtime_backend::util::with_card_source_reference_context(
+            "Arwen, Weaver of Hope",
+            &[CardType::Creature],
+            &[Subtype::Elf, Subtype::Noble],
+            || {
+                assert!(
+                    parse_enters_with_counters_line(&tokens)
+                        .expect("self-entry parser should not hard-error")
+                        .is_none(),
+                    "a filtered entry replacement must not become a self-entry ability"
+                );
+                let routed = parse_static_ability_ast_line_lexed(&tokens)
+                    .expect("static dispatcher should not hard-error")
+                    .expect("static dispatcher should claim the filtered entry replacement");
+                let routed_debug = format!("{routed:#?}");
+                assert!(
+                    routed_debug.contains("EntersWithCountersAndSubtypesForFilter")
+                        && !routed_debug.contains("EntersWithCountersValue"),
+                    "the static dispatcher must prefer the filtered entry rule: {routed_debug}"
+                );
+                parse_enters_with_additional_counter_for_filter_line(&tokens)
+                    .expect("filtered entry parser should not hard-error")
+                    .expect("filtered entry replacement should parse")
+            },
+        );
+        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+            filter,
+            count,
+            ..
+        } = ability.payload
+        else {
+            panic!("expected filtered ETB counter payload, got {ability:?}");
+        };
+        assert!(filter.other);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert!(
+            matches!(
+                count.unhinted(),
+                Value::SourceToughness | Value::ToughnessOf(_)
+            ),
+            "expected a typed source-toughness count, got {count:?}"
+        );
+    }
+
+    #[test]
+    fn filtered_etb_counter_preserves_unbound_x_for_outer_sentence_binding() {
+        for line in [
+            "That creature enters with X additional +1/+1 counters on it.",
+            "That creature enters with additional X +1/+1 counters on it.",
+        ] {
+            assert_eq!(parsed_count(parse_line(line)), Value::X, "{line}");
+        }
+    }
+
+    #[test]
+    fn filtered_etb_counter_preserves_plural_subject_surface() {
+        let ability = parse_line(
+            "Other creatures you control enter with an additional +1/+1 counter on them.",
+        );
+        let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+            filter,
+            ..
+        } = ability.payload
+        else {
+            panic!("expected filtered ETB counter payload");
+        };
+        assert!(filter.has_plural_object_noun_surface());
+    }
+
+    #[test]
+    fn filtered_etb_counter_where_x_bases_are_typed() {
+        let source_counters = parsed_count(parse_line(
+            "That creature enters with X additional +1/+1 counters on it, where X is the number of ingredient counters on this enchantment.",
+        ));
+        assert!(
+            source_counters.has_surface_hint(ValueSurfaceHint::WhereXIs),
+            "{source_counters:?}"
+        );
+        assert!(
+            matches!(
+                source_counters.unhinted(),
+                Value::CountersOn(spec, Some(crate::object::CounterType::Named(name)))
+                    if matches!(spec.base(), ChooseSpec::Source) && *name == "ingredient"
+            ),
+            "{source_counters:?}"
+        );
+
+        let mana_value = parsed_count(parse_line(
+            "That creature enters with X additional +1/+1 counters on it, where X is its mana value minus 4.",
+        ));
+        assert!(
+            matches!(
+                mana_value.unhinted(),
+                Value::Add(left, right)
+                    if matches!(
+                        left.unhinted(),
+                        Value::ManaValueOf(spec)
+                            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG)
+                    ) && matches!(right.unhinted(), Value::Fixed(-4))
+            ),
+            "{mana_value:?}"
+        );
+
+        let colors = parsed_count(parse_line(
+            "That creature enters with X additional +1/+1 counters on it, where X is the number of colors of mana spent to cast it.",
+        ));
+        assert!(
+            matches!(colors.unhinted(), Value::ColorsOfManaSpentToCastThisSpell),
+            "{colors:?}"
+        );
+    }
+
     #[test]
     fn filter_etb_for_each_history_values_preserve_provenance() {
         let lands = lex("for each land that entered the battlefield under your control this turn");
@@ -2814,7 +3312,8 @@ mod filtered_turn_history_counter_tests {
             .expect("death history should not hard-error")
             .expect("death history should parse");
         assert!(deaths.has_surface_hint(ValueSurfaceHint::ForEach));
-        let Value::TurnHistoryCount(TurnHistoryCount::Died(filter)) = deaths.unhinted() else {
+        let Value::TurnHistoryCount(TurnHistoryCount::Died { filter, .. }) = deaths.unhinted()
+        else {
             panic!("expected typed death history, got {deaths:?}");
         };
         assert_eq!(filter.card_types, vec![CardType::Creature]);
@@ -3268,6 +3767,32 @@ mod party_value_tests {
     }
 
     #[test]
+    fn where_x_qualified_player_count_keeps_the_hand_threshold() {
+        assert_eq!(
+            parse_where_x_is_number_of_filter_value(&lex(
+                "where X is the number of your opponents with four or more cards in hand"
+            )),
+            Some(Value::CountPlayersWithCardsInHandAtLeast(
+                PlayerFilter::Opponent,
+                4,
+            ))
+        );
+    }
+
+    #[test]
+    fn value_binding_dispatch_prioritizes_qualified_players_over_all_cards_in_hands() {
+        assert_eq!(
+            parse_value_binding_clause(&lex(
+                "where X is the number of your opponents with four or more cards in hand"
+            )),
+            Some(Value::CountPlayersWithCardsInHandAtLeast(
+                PlayerFilter::Opponent,
+                4,
+            ))
+        );
+    }
+
+    #[test]
     fn where_x_fixed_plus_party_count_uses_party_size_value() {
         let parsed = parse_where_x_is_fixed_plus_number_of_filter_value(&lex(
             "where X is three plus the number of creatures in your party",
@@ -3307,5 +3832,137 @@ mod party_value_tests {
             panic!("expected summed value, got {parsed:?}");
         };
         assert_eq!(*left, Value::PartySize(PlayerFilter::You));
+    }
+
+    #[test]
+    fn where_x_relative_selector_list_shares_its_graveyard_domain() {
+        let parsed = parse_where_x_is_number_of_filter_value(&lex(
+            "where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure",
+        ))
+        .expect("relative selector count should parse");
+        let Value::Count(filter) = parsed else {
+            panic!("expected a typed count, got {parsed:?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, [CardType::Instant, CardType::Sorcery]);
+        assert_eq!(filter.subtypes, [Subtype::Adventure]);
+        assert!(filter.type_or_subtype_union);
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+    }
+}
+
+#[cfg(test)]
+mod spell_cast_history_aggregate_tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn greatest_mana_value_exiled_this_way_keeps_prior_effect_provenance() {
+        let tokens = lex_line(
+            "where X is the greatest mana value among cards exiled this way",
+            0,
+        )
+        .expect("prior-effect aggregate fixture should lex");
+
+        let parsed =
+            parse_value_binding_clause(&tokens).expect("prior-effect aggregate should parse");
+        let Value::PendingPriorEffectMetric(query) = parsed else {
+            panic!("expected pending prior-effect aggregate, got {parsed:?}");
+        };
+
+        assert_eq!(
+            query.metric,
+            ironsmith_core::EffectMetric::GreatestManaValue
+        );
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Exiled)
+        );
+        assert!(
+            query
+                .filter
+                .as_ref()
+                .is_some_and(ObjectFilter::has_explicit_card_noun),
+            "{query:#?}"
+        );
+    }
+
+    #[test]
+    fn greatest_mana_value_keeps_spell_history_domain_and_metric() {
+        let tokens = lex_line(
+            "where X is the greatest mana value among instant and sorcery spells you've cast this turn",
+            0,
+        )
+        .expect("spell-history aggregate fixture should lex");
+
+        let parsed =
+            parse_value_binding_clause(&tokens).expect("spell-history aggregate should parse");
+        let Value::GreatestManaValue(filter) = parsed else {
+            panic!("expected greatest-mana-value aggregate, got {parsed:?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Stack));
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You));
+        assert!(filter.cast_this_turn);
+        assert!(filter.has_conjunctive_set_surface());
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(
+            filter.any_of.iter().any(|branch| {
+                branch.card_types.as_slice() == [crate::types::CardType::Instant]
+            })
+        );
+        assert!(
+            filter.any_of.iter().any(|branch| {
+                branch.card_types.as_slice() == [crate::types::CardType::Sorcery]
+            })
+        );
+    }
+
+    #[test]
+    fn greatest_power_controlled_as_cast_uses_a_cast_time_snapshot_set() {
+        let tokens = lex_line(
+            "where X is the greatest power among creatures you controlled as you cast this spell",
+            0,
+        )
+        .expect("cast-time aggregate fixture should lex");
+
+        let parsed = parse_value_binding_clause(&tokens).expect("cast-time aggregate should parse");
+        let Value::GreatestPower(filter) = parsed else {
+            panic!("expected greatest-power aggregate, got {parsed:?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(filter.cast_by, None);
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
+    fn scaled_number_of_filter_keeps_trailing_arithmetic() {
+        let tokens = lex_line(
+            "where X is twice the number of age counters on this enchantment minus 2",
+            0,
+        )
+        .expect("scaled counter arithmetic fixture should lex");
+
+        let parsed =
+            parse_value_binding_clause(&tokens).expect("complete arithmetic value should parse");
+        let Value::Add(left, right) = parsed.unhinted() else {
+            panic!("expected additive value expression, got {parsed:?}");
+        };
+        assert!(
+            matches!(left.unhinted(), Value::Scaled(_, 2)),
+            "expected twice-scaled counter term, got {left:?}"
+        );
+        assert_eq!(right.unhinted(), &Value::Fixed(-2));
+        assert!(
+            format!("{left:?}").contains("Age"),
+            "expected age-counter basis, got {left:?}"
+        );
     }
 }

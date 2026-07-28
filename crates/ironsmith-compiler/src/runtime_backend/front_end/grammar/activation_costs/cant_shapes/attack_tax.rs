@@ -31,12 +31,33 @@ fn parse_per_attacker_cant_tax_lexed(input: &mut LexStream<'_>) -> WResult<PerAt
         primitives::kw("cannot"),
     ))
     .parse_next(input)?;
-    primitives::phrase(&["attack", "you", "unless", "their", "controller", "pays"])
-        .parse_next(input)?;
+    alt((
+        primitives::phrase(&[
+            "attack",
+            "you",
+            "or",
+            "planeswalkers",
+            "you",
+            "control",
+            "unless",
+            "their",
+            "controller",
+            "pays",
+        ]),
+        primitives::phrase(&["attack", "you", "unless", "their", "controller", "pays"]),
+    ))
+    .parse_next(input)?;
     let amount = parse_generic_mana_amount.parse_next(input)?;
-    primitives::phrase(&["for", "each", "creature", "they", "control"]).parse_next(input)?;
-    alt((primitives::kw("that's"), primitives::kw("thats"))).parse_next(input)?;
-    primitives::phrase(&["attacking", "you"]).parse_next(input)?;
+    alt((
+        primitives::phrase(&["for", "each", "of", "those", "creatures"]).void(),
+        (
+            primitives::phrase(&["for", "each", "creature", "they", "control"]),
+            alt((primitives::kw("that's"), primitives::kw("thats"))),
+            primitives::phrase(&["attacking", "you"]),
+        )
+            .void(),
+    ))
+    .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     Ok(PerAttackerCantTaxFact { amount })
 }
@@ -79,6 +100,10 @@ mod tests {
             (
                 "Creatures cannot attack you unless their controller pays 1 for each creature they control thats attacking you",
                 1,
+            ),
+            (
+                "Creatures can't attack you or planeswalkers you control unless their controller pays {2} for each of those creatures.",
+                2,
             ),
         ] {
             let tokens = lex_line(raw, 0).unwrap();

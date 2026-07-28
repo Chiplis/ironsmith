@@ -49,6 +49,35 @@ fn apply_trailing_counter_constraint_to_destroy_all(
     }
 }
 
+fn is_loss_become_base_pt_coordinated_chain(effects: &[EffectAst]) -> bool {
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            ..
+        },
+    ] = effects
+    else {
+        return false;
+    };
+    matches!(
+        coordinated.as_slice(),
+        [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::RemoveAbilitiesAll { .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::AddSubtypes { .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::SetBasePowerToughness { .. },
+                ..
+            }),
+        ]
+    )
+}
+
 fn parse_target_deals_power_damage_to_other_and_self_where_x(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -199,6 +228,23 @@ pub(crate) fn lower_where_x_shape(
                 Value::ManaValueOf(Box::new(crate::target::ChooseSpec::Tagged(tag))),
             )
         }
+        sentence_shapes::WhereXValueShape::ChosenObjectsPowerDifference { object_kind } => {
+            let object_tokens =
+                crate::runtime_backend::lexer::synthetic_word_tokens(&[object_kind.as_str()]);
+            let mut filter = parse_object_filter(&object_tokens, false).ok()?;
+            filter = filter.match_tagged(
+                TagKey::from(CHOSEN_OBJECTS_TAG),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+            (
+                None,
+                Value::absolute_difference(
+                    Value::GreatestPower(filter.clone()),
+                    Value::LeastPower(filter),
+                )
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+            )
+        }
         sentence_shapes::WhereXValueShape::ReferenceMetric { reference, metric } => {
             let choose = match reference {
                 Reference::Source => crate::target::ChooseSpec::Source,
@@ -220,7 +266,13 @@ pub(crate) fn lower_where_x_shape(
             None,
             Value::PowerOf(Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(
                 "tap_cost_0",
-            )))),
+            ))))
+            .with_surface_hint(
+                ironsmith_core::ValueSurfaceHint::CharacteristicOfObjectThisWay {
+                    card_type: crate::types::CardType::Creature,
+                    action: ironsmith_core::PriorEffectAction::Tapped,
+                },
+            ),
         ),
         sentence_shapes::WhereXValueShape::CommanderCastCount => {
             (None, Value::CommanderCastCount(PlayerFilter::You))
@@ -691,8 +743,10 @@ fn parse_set_quantifier_surface(
     };
     if subject.contains(&"all") {
         Some(ironsmith_core::SetQuantifierSurface::All)
-    } else if subject.contains(&"each") || subject.contains(&"those") {
+    } else if subject.contains(&"each") {
         Some(ironsmith_core::SetQuantifierSurface::Each)
+    } else if subject.contains(&"those") {
+        Some(ironsmith_core::SetQuantifierSurface::Those)
     } else {
         None
     }
@@ -806,11 +860,56 @@ fn set_first_return_set_reference_surface(effects: &mut [EffectAst], surface: &s
     false
 }
 
+fn parse_bounded_x_mana_payment_sentence(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let may_shape = effect_grammar::clause_dispatch_shapes::parse_leading_may_clause_shape(tokens)?;
+    let payment_shape = effect_grammar::misc_action_shapes::parse_bounded_x_payment_tokens(
+        may_shape.effect_tokens,
+    )?;
+    let maximum = match payment_shape.maximum {
+        effect_grammar::misc_action_shapes::BoundedXMaximumShape::TriggeringLifeGained => {
+            Value::EventValue(EventValueSpec::LifeAmount)
+        }
+    };
+
+    Some(vec![match may_shape.actor {
+        effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Player(player) => {
+            EffectAst::MayByPlayer {
+                player,
+                effects: vec![EffectAst::subject_verb_pay_mana_up_to(
+                    player,
+                    payment_shape.cost,
+                    maximum,
+                )],
+            }
+        }
+        effect_grammar::clause_dispatch_shapes::LeadingMayActorShape::Implicit => EffectAst::May {
+            effects: vec![EffectAst::subject_verb_pay_mana_up_to(
+                PlayerAst::You,
+                payment_shape.cost,
+                maximum,
+            )],
+        },
+    }])
+}
+
+fn parse_gain_ability_before_effect_chain(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    if let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)? {
+        return Ok(effects);
+    }
+    super::parse_effect_chain_lexed(tokens)
+}
+
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let mut effects = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        parse_effect_sentence_lexed_inner(tokens)
+        if let Some(effects) = parse_bounded_x_mana_payment_sentence(tokens) {
+            Ok(effects)
+        } else {
+            parse_effect_sentence_lexed_inner(tokens)
+        }
     })?;
     if let Some(surface) = parse_set_quantifier_surface(tokens) {
         set_first_continuous_set_quantifier(&mut effects, surface);
@@ -878,9 +977,83 @@ fn parse_effect_sentence_lexed_inner(
     })
 }
 
+fn parse_attacking_doesnt_tap_if_source_untapped(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let action_tokens =
+        crate::runtime_backend::token_primitives::strip_leading_if_you_do_lexed(tokens);
+    let wrapped_if_result = action_tokens.len() < tokens.len();
+    let action_tokens = trim_commas(action_tokens);
+    let Some(shape) =
+        sentence_shapes::parse_attacking_doesnt_tap_if_source_untapped_tokens(&action_tokens)
+    else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(shape.affected_tokens, false)?;
+    let effects = vec![
+        EffectAst::subject_verb_grant_abilities_all_dynamically_with_condition(
+            filter,
+            vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(
+                crate::static_abilities::StaticAbility::vigilance(),
+            )],
+            Until::EndOfCombat,
+            crate::ConditionExpr::SourceIsUntapped,
+        ),
+    ];
+    if wrapped_if_result {
+        return Ok(Some(vec![EffectAst::IfResult {
+            predicate: crate::cards::builders::IfResultPredicate::Did,
+            effects,
+        }]));
+    }
+    Ok(Some(effects))
+}
+
+fn bind_numeric_result_counter_amounts(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutCounters { count, .. },
+            ..
+        }) = effect
+            && matches!(
+                count,
+                Value::EventValue(crate::effect::EventValueSpec::Amount)
+            )
+        {
+            *count = Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            };
+        }
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            bind_numeric_result_counter_amounts,
+        );
+    }
+}
+
 fn parse_effect_sentence_lexed_inner_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Delayed payment clauses can name any supported next step. Route the
+    // complete sentence before broad subject/verb parsing splits at `unless`;
+    // otherwise an action-first draw-step clause is reduced to a life-loss
+    // action with an unsupported timing tail. Parsing the action prefix
+    // recurses with the timing marker removed, so this route terminates.
+    if let Some(effects) =
+        parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) = parse_attacking_doesnt_tap_if_source_untapped(tokens)? {
+        return Ok(effects);
+    }
+    if let Some(effects) =
+        super::player_subject_sequences::parse_each_player_exile_sacrifice_return_exiled(tokens)?
+    {
+        return Ok(effects);
+    }
     if let Some(effect) =
         super::chain_carry::parse_may_have_any_number_tagged_phase_out_lexed(tokens)
     {
@@ -894,6 +1067,49 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     }
     if let Some(diag) = super::sentence_unsupported::diagnose_known_partial_parse_lexed(tokens) {
         return Err(diag);
+    }
+
+    // A causative `unless its controller has <source> deal ...` clause is one
+    // action choice. The broad subject/verb recognizer can otherwise claim
+    // only the embedded damage phrase and discard both the primary action
+    // and the `unless` relationship.
+    if let Some(effects) = super::subject_verb_primitives::
+        parse_sentence_damage_unless_controller_has_source_deal_damage(
+            SubjectVerbPrimitiveClause::new(tokens),
+        )?
+    {
+        return Ok(effects);
+    }
+    // Shared-characteristic fanouts are one linked target set. In particular,
+    // a broad destroy parser must not reduce `target enchantment and each
+    // other enchantment that shares a color with it` to two unrelated
+    // targets before the typed relation is recorded.
+    if let Some(effects) = super::fanout_family::parse_shared_color_target_fanout_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+
+    // A genuine top-level conjunction with a leading duration needs chain
+    // carry before broad gain/subject recognizers see an isolated arm. The
+    // grammar predicate rejects quoted/list conjunctions and `then` chains.
+    if effect_grammar::chain_carry::coordinated_effect_chain_leading_duration(tokens) == Some(true)
+    {
+        return super::parse_effect_chain_lexed(tokens);
+    }
+
+    // Pure coordinated restrictions are already fully understood by the
+    // cant grammar. Route them before a broad subject parser can claim the
+    // object of the first restriction (for example, `life`) as a new subject.
+    // Requiring negation in every top-level arm leaves mixed `can't ... and
+    // gain ...` clauses to the coordinated chain route.
+    let cant_segments = split_lexed_slices_on_and(tokens);
+    if !cant_segments.is_empty()
+        && cant_segments.iter().all(|segment| {
+            super::super::activation_and_restrictions::find_negation_span(segment).is_some()
+        })
+        && let Some(effects) = parse_cant_effect_sentence_lexed(tokens)?
+    {
+        return Ok(effects);
     }
 
     // These shapes must be recognized before the broad sentence-shape
@@ -917,7 +1133,13 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     }
 
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
-        let trailing_effects = super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        let mut trailing_effects = super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        if matches!(
+            &prefix.predicate,
+            crate::cards::builders::IfResultPredicate::Value(_)
+        ) {
+            bind_numeric_result_counter_amounts(&mut trailing_effects);
+        }
         let mut result = vec![match prefix.kind {
             LeadingResultPrefixKind::If => EffectAst::IfResult {
                 predicate: prefix.predicate,
@@ -1009,7 +1231,8 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     if let Some(effects) = super::bundle_rules::parse_consult_disposition_bundle(tokens) {
         return Ok(effects);
     }
-    if let Some(effect) = super::dispatch_entry::future_zone_replacement_from_sentence_tokens(tokens)
+    if let Some(effect) =
+        super::dispatch_entry::future_zone_replacement_from_sentence_tokens(tokens)
     {
         return Ok(vec![effect]);
     }
@@ -1023,6 +1246,12 @@ fn parse_effect_sentence_lexed_inner_unstacked(
             ));
         }
         let delayed = match schedule.step {
+            effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::UntapStep => {
+                EffectAst::DelayedUntilNextUntapStep {
+                    player: schedule.player,
+                    effects,
+                }
+            }
             effect_grammar::delayed_sentence_shapes::DelayedScheduleStep::Upkeep => {
                 EffectAst::DelayedUntilNextUpkeep {
                     player: schedule.player,
@@ -1070,8 +1299,8 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         };
         return Ok(vec![delayed]);
     }
-    if let Some(effects) = super::subject_verb_primitives::
-        parse_sentence_you_and_attacking_player_each_draw_and_lose(
+    if let Some(effects) =
+        super::subject_verb_primitives::parse_sentence_you_and_attacking_player_each_draw_and_lose(
             SubjectVerbPrimitiveClause::new(tokens),
         )?
     {
@@ -1085,10 +1314,13 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     {
         return Ok(effects);
     }
-    if conditional_tokens.first().is_some_and(|token| token.is_word("if"))
-        && let Some(effects) = super::subject_verb_primitives::parse_if_enters_with_additional_counter_sentence(
-            SubjectVerbPrimitiveClause::new(conditional_tokens),
-        )?
+    if conditional_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+        && let Some(effects) =
+            super::subject_verb_primitives::parse_if_enters_with_additional_counter_sentence(
+                SubjectVerbPrimitiveClause::new(conditional_tokens),
+            )?
     {
         return Ok(effects);
     }
@@ -1099,11 +1331,11 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     if let Some(effect) = parse_generic_damage_replacement_counters_subject_verb(tokens)? {
         return Ok(vec![effect]);
     }
-    if conditional_tokens.first().is_some_and(|token| token.is_word("if"))
-        && let Some(effects) = parse_conditional_sentence_family_lexed(
-            conditional_tokens,
-            parse_effect_chain_lexed,
-        )?
+    if conditional_tokens
+        .first()
+        .is_some_and(|token| token.is_word("if"))
+        && let Some(effects) =
+            parse_conditional_sentence_family_lexed(conditional_tokens, parse_effect_chain_lexed)?
     {
         return Ok(effects);
     }
@@ -1112,14 +1344,14 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     // normal subject/verb pair (`All damage ... is dealt ...`). Dispatch the
     // typed redirect grammar before the generic extension parser reports a
     // missing verb.
-    if let Some(effects) = super::clause_pattern_helpers::parse_redirect_next_damage_sentence(
-        tokens,
-    )? {
+    if let Some(effects) =
+        super::clause_pattern_helpers::parse_redirect_next_damage_sentence(tokens)?
+    {
         return Ok(effects);
     }
-    if let Some(effects) = super::clause_pattern_helpers::parse_prevent_next_time_damage_sentence(
-        tokens,
-    )? {
+    if let Some(effects) =
+        super::clause_pattern_helpers::parse_prevent_next_time_damage_sentence(tokens)?
+    {
         return Ok(effects);
     }
     // Choice-complement sentences also look like ordinary subject/verb
@@ -1132,7 +1364,9 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(vec![effect]);
     }
 
-    if let Some(effect) = crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause(tokens)? {
+    if let Some(effect) =
+        crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause(tokens)?
+    {
         return Ok(vec![effect]);
     }
 
@@ -1142,7 +1376,8 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
 
-    if let Some(effects) = super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
+    if let Some(effects) =
+        super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
     {
         return Ok(effects);
     }
@@ -1293,6 +1528,11 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
     if let Some(effects) =
+        super::search_library::parse_for_each_sacrificed_this_way_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    if let Some(effects) =
         super::search_library::parse_for_each_put_into_graveyard_this_way_sentence(tokens)?
     {
         return Ok(effects);
@@ -1309,13 +1549,48 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
     if let Some(shape) =
+        effect_grammar::for_each_shapes::parse_for_each_mana_symbol_spent_effect_shape(tokens)
+    {
+        let base = Value::ManaSymbolSpentToCastThisSpell {
+            symbol: shape.symbol,
+            reference: shape.reference,
+        };
+        let count = if shape.group_size == 1 {
+            base
+        } else {
+            Value::DividedRoundedDown(Box::new(base), shape.group_size as i32)
+        }
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+        let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(
+                "for-each mana-symbol clause has no effect payload".to_string(),
+            ));
+        }
+        return Ok(vec![EffectAst::RepeatEffects { count, effects }]);
+    }
+    if let Some(shape) =
         effect_grammar::for_each_shapes::parse_for_each_spent_mana_effect_shape(tokens)
     {
-        return Err(CardTextError::ParseError(format!(
-            "for-each spent-mana clauses are not yet supported (mana source: '{}'; effect: '{}')",
-            render_token_slice(shape.source_tokens).trim(),
-            render_token_slice(shape.effect_tokens).trim()
-        )));
+        let source_words = crate::runtime_backend::token_word_refs(shape.source_tokens);
+        let count = crate::runtime_backend::front_end::grammar::shared_util::count_shapes::mana_from_source_spent_to_cast_value(
+            &source_words,
+        )
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "unsupported for-each spent-mana source (source: '{}')",
+                render_token_slice(shape.source_tokens).trim()
+            ))
+        })?
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach);
+        let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
+        if effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "for-each spent-mana clause has no effect payload (effect: '{}')",
+                render_token_slice(shape.effect_tokens).trim()
+            )));
+        }
+        return Ok(vec![EffectAst::RepeatEffects { count, effects }]);
     }
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
@@ -1365,7 +1640,7 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     }
     if let Some(shape) = effect_grammar::for_each_shapes::parse_for_each_object_effect_shape(tokens)
     {
-        let filter = parse_object_filter_lexed(shape.filter_tokens, false)?;
+        let filter = super::for_each_helpers::parse_for_each_object_filter(shape.filter_tokens)?;
         let effects = parse_effect_sentence_lexed(shape.effect_tokens)?;
         if effects.is_empty() {
             return Err(CardTextError::ParseError(
@@ -1382,11 +1657,6 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         delayed_shape,
         Some(sentence_shapes::DelayedSentenceShape::NextEndStep)
     ) {
-        if let Some(effects) =
-            parse_sentence_delayed_next_step_unless_pays(SubjectVerbPrimitiveClause::new(tokens))?
-        {
-            return Ok(effects);
-        }
         if let Some(effects) = parse_delayed_until_next_end_step_sentence(tokens)? {
             return Ok(effects);
         }
@@ -1408,7 +1678,21 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     {
         return Ok(effects);
     }
+    // Preserve the chooser on optional quoted restrictions. The broad quoted
+    // grant parser can otherwise consume the whole sentence before the chain
+    // parser turns the leading "you may have" into a MayByPlayer node.
+    if quoted_ability_shape.is_some() && super::parse_leading_player_may_lexed(tokens).is_some() {
+        return super::parse_effect_chain_lexed(tokens);
+    }
+    // A leading conditional owns the whole sentence. Do not let a quoted
+    // ability's inner verbs make the broad gain parser consume the unsplit
+    // condition and body; the conditional route below parses the body with
+    // this same gain parser after removing the predicate.
     if quoted_ability_shape.is_some()
+        && !matches!(
+            sentence_shapes::parse_leading_if_sentence_tokens(tokens),
+            Some(sentence_shapes::LeadingIfSentenceShape { replacement: false })
+        )
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
     {
         return Ok(effects);
@@ -1456,7 +1740,16 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         leading_if_shape,
         Some(sentence_shapes::LeadingIfSentenceShape { replacement: false })
     ) {
-        let conditional = if effect_grammar::control_copy_attach_shapes::contains_source_exiled_owner_library_bottom_shape(tokens)
+        // A quoted ability can contain its own verbs. Parse the conditional
+        // body as an outer gain grant first so a nested trigger such as
+        // `"At the beginning of the end step, sacrifice this permanent."`
+        // cannot steal dispatch from `the copy gains ...`.
+        let conditional = if quoted_ability_shape.is_some() {
+            parse_conditional_sentence_family_lexed(
+                tokens,
+                parse_gain_ability_before_effect_chain,
+            )
+        } else if effect_grammar::control_copy_attach_shapes::contains_source_exiled_owner_library_bottom_shape(tokens)
         {
             parse_conditional_sentence_family_lexed(
                 tokens,
@@ -1502,6 +1795,53 @@ fn parse_effect_sentence_lexed_inner_unstacked(
             "effect-route: subject-verb verb=Reveal subject=each-player recognizer=top-count-permanents-rest-graveyard",
         );
         return Ok(effects);
+    }
+
+    // Preserve an inline continuation after a reveal-until traversal before
+    // the broad subject/verb recognizer claims only the leading reveal.
+    if let Some(effects) =
+        super::consult_family::parse_consult_traversal_with_inline_followup(tokens)?
+    {
+        return Ok(effects);
+    }
+
+    // A three-arm continuous clause has one grammatical subject even though
+    // its comma before `becomes` also looks like an ordinary effect-chain
+    // boundary. Preserve the grammar-confirmed coordinated model before the
+    // fallback chain splitter expands the middle arm and treats its subtype
+    // payload as a new object-filter subject.
+    if let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
+        && is_loss_become_base_pt_coordinated_chain(&effects)
+    {
+        return Ok(effects);
+    }
+
+    // Once the specialist whole-sentence shapes above have had a chance to
+    // claim the clause, an authored `, then` boundary must be parsed as an
+    // executable chain before the broad subject/verb recognizer runs.  Broad
+    // action parsers deliberately accept descriptive suffixes, so asking one
+    // of them to parse the whole clause can otherwise keep only the leading
+    // action (for example, `create a token, then copy that spell`) and silently
+    // discard the follow-up.
+    if super::lex_chain_helpers::has_explicit_comma_then_boundary_lexed(tokens) {
+        // A where-X binding scopes the complete ordered program. Strip and
+        // parse that binding before handing the action body to the chain
+        // parser; otherwise both actions survive but the later X remains
+        // unbound because the generic chain route never sees the value tail.
+        if has_where_x_value_binding(tokens) {
+            let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
+            apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+            return Ok(effects);
+        }
+        return super::parse_effect_chain_lexed(tokens);
+    }
+
+    // An explicit top-level action choice must be split before the broad
+    // subject/verb recognizer. Otherwise a later gain/lose verb can accept
+    // the complete leading action as an object-filter subject and silently
+    // retain only the final ability-grant branch.
+    if let Some(unless_action) = super::parse_or_action_clause_lexed(tokens)? {
+        return Ok(vec![unless_action]);
     }
 
     if let Some((route, mut effects)) = parse_top_level_subject_verb_recognition(tokens)? {
@@ -1568,6 +1908,51 @@ fn parse_put_cards_from_single_graveyard_on_bottom_owner_library_sentence(
         false,
         None,
     ))
+}
+
+fn rebind_plural_create_followup_damage_source(effects: &mut [EffectAst]) {
+    for index in 1..effects.len() {
+        let previous_creates_more_than_one = matches!(
+            &effects[index - 1],
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+                ..
+            }) if !matches!(count.unhinted(), Value::Fixed(1))
+        );
+        if !previous_creates_more_than_one {
+            continue;
+        }
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DealDamageEqualToPower {
+                    source,
+                    ..
+                },
+            ..
+        }) = &mut effects[index]
+        else {
+            continue;
+        };
+        let TargetAst::Tagged(tag, span) = source else {
+            continue;
+        };
+        if tag.as_str() == crate::cards::builders::IT_TAG {
+            // A singular `it` cannot denote a plural token result. Preserve
+            // the authored pronoun span while binding the damage producer to
+            // the ability's source instead of the last created token.
+            *source = TargetAst::Source(*span);
+        }
+    }
+
+    for effect in effects {
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| {
+                rebind_plural_create_followup_damage_source(nested);
+            },
+        );
+    }
 }
 
 fn parse_effect_sentence_with_where_x_lexed(
@@ -1728,9 +2113,25 @@ fn parse_effect_sentence_with_where_x_lexed(
             | SubjectVerbActionAst::Untap { target } => {
                 bind_dynamic_target_count(target, replacement)
             }
-            SubjectVerbActionAst::Destroy { target, .. }
-            | SubjectVerbActionAst::PutCounters { target, .. } => {
+            SubjectVerbActionAst::Destroy { target, .. } => {
                 bind_dynamic_target_count(target, replacement)
+            }
+            SubjectVerbActionAst::PutCounters {
+                target,
+                target_count,
+                ..
+            } => {
+                bind_dynamic_target_count(target, replacement);
+                if let Some(count) = target_count
+                    .as_ref()
+                    .copied()
+                    .filter(|count| count.is_dynamic_x())
+                    && !matches!(target, TargetAst::WithCountValue(_, _, _))
+                {
+                    let inner = std::mem::replace(target, TargetAst::Source(None));
+                    *target =
+                        TargetAst::WithCountValue(Box::new(inner), count, replacement.clone());
+                }
             }
             SubjectVerbActionAst::RedirectNextDamageFromSourceToTarget {
                 protected_target,
@@ -1776,11 +2177,21 @@ fn parse_effect_sentence_with_where_x_lexed(
     let Some(where_shape) = sentence_shapes::parse_where_x_sentence_tokens(tokens) else {
         return parse_effect_sentence_inner_lexed(tokens);
     };
-    let turn_history_where = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
-        where_shape.where_tokens,
-    );
+    let aggregate_where =
+        crate::runtime_backend::families::keyword_static::parse_where_x_is_aggregate_filter_value(
+            where_shape.where_tokens,
+        );
+    let turn_history_where = aggregate_where.is_none().then(|| {
+        crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(
+            where_shape.where_tokens,
+        )
+    }).flatten();
     let full_where_is_count_value = !where_shape.comma_tail_has_effect_clause
         && (turn_history_where.is_some()
+            || crate::runtime_backend::families::keyword_static::parse_where_x_is_sum_of_number_of_filter_values(
+                where_shape.where_tokens,
+            )
+            .is_some()
             || crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
                 where_shape.where_tokens,
             )
@@ -1807,7 +2218,32 @@ fn parse_effect_sentence_with_where_x_lexed(
     let typed_where_references_target = where_shape.stripped_references_target
         && !where_shape.comma_tail_has_effect_clause
         && !sentence_shapes::starts_with_source_deals_x_tokens(&stripped);
-    let typed_where_value = if turn_history_where.is_none() {
+    // Prefer the complete number-of family before the generic typed value
+    // shape. The latter can correctly find the trailing object scope while
+    // still losing the aggregate being measured, as in "the number of
+    // abilities from among ... found among creatures you control."
+    // A player-comparison value ends in an object noun ("more lands than
+    // you"), but its cardinality is the number of qualifying players. Parse
+    // that participant domain before the generic number-of-filter family can
+    // collapse it to a battlefield-object count.
+    let participant_comparison_where = turn_history_where
+        .is_none()
+        .then(|| {
+            crate::runtime_backend::front_end::grammar::values::
+                parse_players_who_control_more_than_you_value_lexed(primary_where_tokens)
+        })
+        .flatten();
+    let complete_number_where =
+        (turn_history_where.is_none() && participant_comparison_where.is_none())
+            .then(|| {
+                crate::runtime_backend::families::keyword_static::
+                    parse_where_x_is_number_of_filter_value(primary_where_tokens)
+            })
+            .flatten();
+    let typed_where_value = if turn_history_where.is_none()
+        && participant_comparison_where.is_none()
+        && complete_number_where.is_none()
+    {
         sentence_shapes::parse_where_x_value_shape_tokens(
             primary_where_tokens,
             typed_where_references_target,
@@ -1816,7 +2252,13 @@ fn parse_effect_sentence_with_where_x_lexed(
     } else {
         None
     };
-    let where_value = if let Some(value) = turn_history_where {
+    let where_value = if let Some(value) = aggregate_where {
+        value
+    } else if let Some(value) = turn_history_where {
+        value
+    } else if let Some(value) = participant_comparison_where {
+        value
+    } else if let Some(value) = complete_number_where {
         value
     } else if let Some((prelude, value)) = typed_where_value {
         if let Some(prelude) = prelude {
@@ -1828,9 +2270,17 @@ fn parse_effect_sentence_with_where_x_lexed(
             sentence_shapes::parse_before_activation_time_tokens(primary_where_tokens)
                 .map(trim_edge_punctuation);
         let specific_where_value =
-            crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+            super::dispatch_entry::parse_exact_where_x_value_expression(primary_where_tokens)
+            .or_else(|| {
+                crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
                 primary_where_tokens,
             )
+            })
+            .or_else(|| {
+                crate::runtime_backend::families::keyword_static::parse_where_x_is_sum_of_number_of_filter_values(
+                    primary_where_tokens,
+                )
+            })
             .or_else(|| {
                 crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_plus_or_minus_fixed_value(
                     primary_where_tokens,
@@ -1897,6 +2347,7 @@ fn parse_effect_sentence_with_where_x_lexed(
         }
         parsed
     };
+    rebind_plural_create_followup_damage_source(&mut effects);
     replace_unbound_x_in_effects_anywhere(&mut effects, &where_value, &clause_display)?;
     for effect in &mut effects {
         replace_search_filter_x(effect, &where_value);
@@ -1907,4 +2358,94 @@ fn parse_effect_sentence_with_where_x_lexed(
         return Ok(prelude_effects);
     }
     Ok(effects)
+}
+
+#[cfg(test)]
+mod spent_mana_repeat_tests {
+    use super::*;
+
+    #[test]
+    fn for_each_mana_from_source_repeats_the_typed_effect() {
+        let tokens = crate::runtime_backend::lex_line(
+            "For each mana from a Desert spent to cast this spell, create a tapped Treasure token.",
+            0,
+        )
+        .expect("spent-mana sentence should lex");
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("spent-mana sentence should parse");
+        let [EffectAst::RepeatEffects { count, effects }] = effects.as_slice() else {
+            panic!("expected one typed repeat effect, got {effects:#?}");
+        };
+        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        let Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+        } = count.unhinted()
+        else {
+            panic!("expected a mana-source repeat count, got {count:#?}");
+        };
+        assert!(!include_source_noun);
+        assert_eq!(source_filter.subtypes, [crate::types::Subtype::Desert]);
+        assert!(
+            format!("{effects:#?}").contains("CreateToken"),
+            "{effects:#?}"
+        );
+    }
+
+    #[test]
+    fn for_each_repeated_mana_symbol_uses_a_divided_typed_count() {
+        let tokens =
+            crate::runtime_backend::lex_line("For each {U}{U} spent to cast it, draw a card.", 0)
+                .expect("mana-symbol sentence should lex");
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("mana-symbol sentence should parse");
+        let [EffectAst::RepeatEffects { count, effects }] = effects.as_slice() else {
+            panic!("expected one typed repeat effect, got {effects:#?}");
+        };
+        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach));
+        assert!(matches!(
+            count.unhinted(),
+            Value::DividedRoundedDown(inner, 2)
+                if matches!(
+                    inner.as_ref(),
+                    Value::ManaSymbolSpentToCastThisSpell {
+                        symbol: crate::mana::ManaSymbol::Blue,
+                        reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
+                    }
+                )
+        ));
+        assert!(format!("{effects:#?}").contains("Draw"), "{effects:#?}");
+    }
+
+    #[test]
+    fn conditional_quoted_grant_keeps_the_outer_gain_semantics() {
+        let body_tokens = crate::runtime_backend::lex_line(
+            "The copy gains haste and \"At the beginning of the end step, sacrifice this permanent.\"",
+            0,
+        )
+        .expect("quoted gain body should lex");
+        let direct_gain = super::super::gain_ability::parse_gain_ability_sentence(&body_tokens)
+            .expect("quoted gain body should parse without falling back")
+            .expect("quoted gain body should be recognized as a gain");
+        assert!(
+            format!("{direct_gain:#?}").contains("GrantAbilitiesToTarget"),
+            "{direct_gain:#?}"
+        );
+
+        let tokens = crate::runtime_backend::lex_line(
+            "If it's a permanent spell, the copy gains haste and \"At the beginning of the end step, sacrifice this permanent.\"",
+            0,
+        )
+        .expect("conditional quoted grant should lex");
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("conditional quoted grant should parse");
+        let [EffectAst::Conditional { if_true, .. }] = effects.as_slice() else {
+            panic!("expected one typed conditional, got {effects:#?}");
+        };
+        let debug = format!("{if_true:#?}");
+        assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+        assert!(debug.contains("Haste"), "{debug}");
+        assert!(debug.contains("BeginningOfEndStep"), "{debug}");
+        assert!(debug.contains("Sacrifice"), "{debug}");
+    }
 }

@@ -329,7 +329,15 @@ fn parse_attached_granted_activated_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<ParsedAbility>, CardTextError> {
     let trimmed = trim_edge_punctuation(tokens);
-    parse_activated_line(&trimmed)
+    let Some(source_name) =
+        crate::runtime_backend::front_end::shared::util::current_source_reference_name()
+    else {
+        return parse_activated_line(&trimmed);
+    };
+    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        &source_name,
+        || parse_activated_line(&trimmed),
+    )
 }
 
 pub(crate) fn parse_attached_land_ability_reset_line(
@@ -589,6 +597,177 @@ pub(crate) fn parse_enchanted_creature_has_line(
         return Ok(None);
     }
     Ok(Some(out))
+}
+
+/// Keep both halves of an attached-object keyword-plus-goaded clause as
+/// continuous attachment semantics.
+///
+/// Without this rule, the generic effect parser folds the granted keywords
+/// into the object filter of a one-shot goad effect. That changes
+/// "has indestructible and is goaded" into "goad each creature that already
+/// has indestructible."
+pub(crate) fn parse_attached_has_keywords_and_is_goaded_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
+    let Some(has) = attached_grammar::parse_attached_has_tokens(tokens) else {
+        return Ok(None);
+    };
+    let Some(and_index) = has.ability_tokens.windows(3).position(|window| {
+        window[0].is_word("and")
+            && matches!(window[1].parser_text.as_str(), "is" | "are")
+            && window[2].is_word("goaded")
+    }) else {
+        return Ok(None);
+    };
+    if !trim_edge_punctuation(&has.ability_tokens[and_index + 3..]).is_empty() {
+        return Ok(None);
+    }
+
+    let granted_tokens = trim_edge_punctuation(&has.ability_tokens[..and_index]);
+    if granted_tokens.is_empty() {
+        return Ok(None);
+    }
+    let subject = has.subject.display();
+    let clause_text = crate::runtime_backend::lexer::render_token_slice(tokens);
+    let Some(mut grants) = parse_attached_keyword_action_grants(
+        subject,
+        &granted_tokens,
+        None,
+        &clause_text,
+        has.subject.is_equipped(),
+    )?
+    else {
+        return Ok(None);
+    };
+    grants.push(
+        crate::static_abilities::StaticAbility::attached_goaded_by_source_controller(format!(
+            "{} is goaded",
+            capitalize_display_subject(subject)
+        ))
+        .into(),
+    );
+    Ok(Some(grants))
+}
+
+/// Parse the old-frame attached-object restriction whose controller may take a
+/// special action to ignore that restriction for the turn.
+///
+/// This is deliberately one typed rule for the complete two-sentence shape.
+/// Parsing the second sentence as a spell-resolution `MayEffect` would make
+/// the sacrifice happen when the Aura resolves and would lose the
+/// "ignore ... until end of turn" semantics entirely.
+pub(crate) fn parse_attached_restrictions_with_ignore_special_action_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
+    let sentences = crate::runtime_backend::lexer::split_lexed_sentences(tokens);
+    let [restrictions, special_action] = sentences.as_slice() else {
+        return Ok(None);
+    };
+
+    let restriction_words = crate::runtime_backend::lexer::parser_token_word_refs(restrictions);
+    let attached_noun = match restriction_words.as_slice() {
+        [
+            "enchanted",
+            "creature",
+            "cant",
+            "attack",
+            "or",
+            "block",
+            "and",
+            "its",
+            "activated",
+            "abilities",
+            "cant",
+            "be",
+            "activated",
+        ] => "creature",
+        [
+            "enchanted",
+            "permanent",
+            "cant",
+            "attack",
+            "or",
+            "block",
+            "and",
+            "its",
+            "activated",
+            "abilities",
+            "cant",
+            "be",
+            "activated",
+        ] => "permanent",
+        _ => return Ok(None),
+    };
+
+    let special_action_words =
+        crate::runtime_backend::lexer::parser_token_word_refs(special_action);
+    let expected_special_action = [
+        "that",
+        match attached_noun {
+            "creature" => "creatures",
+            "permanent" => "permanents",
+            _ => unreachable!("the complete grammar above owns the attached noun"),
+        },
+        "controller",
+        "may",
+        "sacrifice",
+        "a",
+        "permanent",
+        "of",
+        "their",
+        "choice",
+        "for",
+        "that",
+        "player",
+        "to",
+        "ignore",
+        "this",
+        "effect",
+        "until",
+        "end",
+        "of",
+        "turn",
+    ];
+    if special_action_words.as_slice() != expected_special_action {
+        return Ok(None);
+    }
+
+    let subject = format!("enchanted {attached_noun}");
+    let attached_filter = match attached_noun {
+        "creature" => ObjectFilter::creature(),
+        "permanent" => ObjectFilter::permanent_card().in_zone(Zone::Battlefield),
+        _ => unreachable!("the complete grammar above owns the attached noun"),
+    }
+    .match_tagged(
+        crate::tag::TagKey::from("enchanted"),
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    let combat_display = format!("{subject} can't attack or block");
+    let combat_restriction = StaticAbilityAst::Static(StaticAbility::restriction(
+        crate::effect::Restriction::attack_or_block(attached_filter.clone()),
+        combat_display,
+    ));
+    let activation_display = format!("{subject} activated abilities can't be activated");
+    let activation_restriction = StaticAbilityAst::Static(StaticAbility::restriction(
+        crate::effect::Restriction::activate_abilities_of(attached_filter),
+        activation_display,
+    ));
+    let special_action_display = format!(
+        "That {attached_noun}'s controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn"
+    );
+    let ignore_special_action =
+        StaticAbility::attached_controller_may_sacrifice_permanent_to_ignore_source_effect_until_end_of_turn(
+            special_action_display,
+        )
+        .into();
+
+    Ok(Some(vec![
+        combat_restriction,
+        activation_restriction,
+        ignore_special_action,
+    ]))
 }
 
 pub(crate) fn parse_attached_has_and_loses_keywords_line(
@@ -1502,6 +1681,20 @@ pub(crate) fn parse_enchanted_has_activated_ability_line(
     }
     let ability_tokens_raw = shape.ability_tokens;
     let ability_tokens = trim_edge_punctuation(ability_tokens_raw);
+
+    // A mixed `has vigilance and "{W}, {T}: ..."` clause is not one
+    // activated ability.  The permissive activated-line parser can recover the
+    // quoted colon tail from that larger slice, so prove that no leading
+    // keyword grant would be discarded before letting this early rule claim
+    // the line.  The later attached-object rule lowers both halves.
+    for split in attached_grammar::parse_attached_ability_splits_tokens(&ability_tokens) {
+        if parse_ability_line(split.keyword_tokens).is_some()
+            && parse_attached_granted_activated_line(split.granted_tokens)?.is_some()
+        {
+            return Ok(None);
+        }
+    }
+
     let Some(parsed) = parse_attached_granted_activated_line(ability_tokens_raw)? else {
         return Ok(None);
     };

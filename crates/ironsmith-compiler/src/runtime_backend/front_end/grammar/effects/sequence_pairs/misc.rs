@@ -27,6 +27,7 @@ pub(crate) struct SameControllerSacrificeShape {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GraveyardCastReplacementShape {
+    pub(crate) until_end_of_turn: bool,
     pub(crate) without_paying_mana_cost: bool,
     pub(crate) includes_artifact: bool,
     pub(crate) artifact_first: bool,
@@ -253,9 +254,10 @@ pub(crate) fn is_return_other_to_owner_hand_shape(tokens: &[OwnedLexToken]) -> b
 }
 
 const CAST_PREFIX: &[&[&str]] = &[&["you", "may", "cast", "target"]];
-const CAST_FROM_GRAVEYARD: &[&[&str]] = &[&["from", "your", "graveyard"]];
+const CAST_FROM_GRAVEYARD: &[&[&str]] =
+    &[&["from", "your", "graveyard"], &["from", "a", "graveyard"]];
 const WITHOUT_MANA: &[&[&str]] = &[&["without", "paying", "its", "mana", "cost"]];
-const THAT_SPELL_REPLACEMENT: &[&str] = &[
+const THAT_SPELL_YOUR_GRAVEYARD_REPLACEMENT: &[&str] = &[
     "if",
     "that",
     "spell",
@@ -269,7 +271,21 @@ const THAT_SPELL_REPLACEMENT: &[&str] = &[
     "it",
     "instead",
 ];
-const CAST_THIS_WAY_REPLACEMENT: &[&str] = &[
+const THAT_SPELL_A_GRAVEYARD_REPLACEMENT: &[&str] = &[
+    "if",
+    "that",
+    "spell",
+    "would",
+    "be",
+    "put",
+    "into",
+    "a",
+    "graveyard",
+    "exile",
+    "it",
+    "instead",
+];
+const CAST_THIS_WAY_YOUR_GRAVEYARD_REPLACEMENT: &[&str] = &[
     "if",
     "an",
     "instant",
@@ -284,6 +300,26 @@ const CAST_THIS_WAY_REPLACEMENT: &[&str] = &[
     "put",
     "into",
     "your",
+    "graveyard",
+    "exile",
+    "it",
+    "instead",
+];
+const CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT: &[&str] = &[
+    "if",
+    "an",
+    "instant",
+    "or",
+    "sorcery",
+    "spell",
+    "cast",
+    "this",
+    "way",
+    "would",
+    "be",
+    "put",
+    "into",
+    "a",
     "graveyard",
     "exile",
     "it",
@@ -412,19 +448,35 @@ pub(crate) fn parse_graveyard_cast_replacement_shape(
     cast: &[OwnedLexToken],
     replacement: &[OwnedLexToken],
 ) -> Option<GraveyardCastReplacementShape> {
+    let (cast, until_end_of_turn) = if let Some(rest) =
+        primitives::strip_lexed_prefix_phrase(cast, &["until", "end", "of", "turn"])
+    {
+        (rest, true)
+    } else if let Some(rest) =
+        primitives::strip_lexed_prefix_phrase(cast, &["until", "the", "end", "of", "turn"])
+    {
+        (rest, true)
+    } else {
+        (cast, false)
+    };
     if !starts_sequence(cast, CAST_PREFIX)
         || !contains_sequence_phrase(cast, CAST_FROM_GRAVEYARD)
-        || !contains_sequence_word(cast, "instant")
-        || !contains_sequence_word(cast, "sorcery")
+        || !(contains_sequence_word(cast, "instant") || contains_sequence_word(cast, "sorcery"))
         || !contains_sequence_word(cast, "card")
         || !matches_complete_sequence(
             replacement,
-            &[THAT_SPELL_REPLACEMENT, CAST_THIS_WAY_REPLACEMENT],
+            &[
+                THAT_SPELL_YOUR_GRAVEYARD_REPLACEMENT,
+                THAT_SPELL_A_GRAVEYARD_REPLACEMENT,
+                CAST_THIS_WAY_YOUR_GRAVEYARD_REPLACEMENT,
+                CAST_THIS_WAY_A_GRAVEYARD_REPLACEMENT,
+            ],
         )
     {
         return None;
     }
     Some(GraveyardCastReplacementShape {
+        until_end_of_turn,
         without_paying_mana_cost: contains_sequence_phrase(cast, WITHOUT_MANA),
         includes_artifact: contains_sequence_word(cast, "artifact"),
         artifact_first: cast
@@ -597,6 +649,33 @@ mod tests {
         assert!(shape.includes_artifact);
         assert!(shape.artifact_first);
         assert!(shape.without_paying_mana_cost);
+        assert!(!shape.until_end_of_turn);
+        let duration = parse_graveyard_cast_replacement_shape(
+            &lex(
+                "Until end of turn, you may cast target instant or sorcery card from your graveyard without paying its mana cost",
+            ),
+            &lex("If that spell would be put into your graveyard, exile it instead"),
+        )
+        .unwrap();
+        assert!(duration.until_end_of_turn);
+        assert!(
+            parse_graveyard_cast_replacement_shape(
+                &lex(
+                    "You may cast target instant card from your graveyard without paying its mana cost"
+                ),
+                &lex("If that spell would be put into a graveyard, exile it instead"),
+            )
+            .is_some()
+        );
+        assert!(
+            parse_graveyard_cast_replacement_shape(
+                &lex(
+                    "You may cast target instant or sorcery card from a graveyard without paying its mana cost"
+                ),
+                &lex("If that spell would be put into a graveyard, exile it instead"),
+            )
+            .is_some()
+        );
         assert_eq!(
             parse_return_tagged_battlefield_shape(&lex(
                 "Return those cards to the battlefield tapped"

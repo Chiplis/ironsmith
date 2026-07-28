@@ -61,6 +61,7 @@ pub(crate) enum CreateCountHead {
     Default,
     EventAmount,
     EqualToDynamic,
+    Dynamic(Value),
     X,
     Fixed(u32),
 }
@@ -281,6 +282,11 @@ pub(crate) fn parse_create_head_tokens(tokens: &[OwnedLexToken]) -> Option<Creat
         (CreateCountHead::EqualToDynamic, 3)
     } else if words.first().copied() == Some("x") {
         (CreateCountHead::X, 1)
+    } else if let Some((value, used)) =
+        super::super::super::shared_util::value_expr::parse_value_expr_words(&words)
+            .filter(|(value, _)| !matches!(value, Value::Fixed(_)))
+    {
+        (CreateCountHead::Dynamic(value), used)
     } else if let Some(prefix) = leaf::parse_leaf_number_prefix_words(&words) {
         let (count, used) = prefix.into_fixed()?;
         (CreateCountHead::Fixed(count), used)
@@ -505,6 +511,7 @@ pub(crate) fn create_count_head_value(head: &CreateCountHead) -> Value {
         CreateCountHead::Default => Value::Fixed(1),
         CreateCountHead::EventAmount => Value::EventValue(EventValueSpec::Amount),
         CreateCountHead::EqualToDynamic => Value::Fixed(1),
+        CreateCountHead::Dynamic(value) => value.clone(),
         CreateCountHead::X => Value::X,
         CreateCountHead::Fixed(count) => Value::Fixed(*count as i32),
     }

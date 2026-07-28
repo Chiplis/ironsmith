@@ -149,7 +149,7 @@ impl TriggerMatcher for KeywordActionTrigger {
         let Some(e) = event.downcast::<KeywordActionEvent>() else {
             return false;
         };
-        if e.action != self.action {
+        if !self.action.matches_performed_action(e.action) {
             return false;
         }
         if self.during_your_main_phase
@@ -214,6 +214,20 @@ impl TriggerMatcher for KeywordActionTrigger {
     }
 
     fn display(&self) -> String {
+        if self.source_must_match && self.action == KeywordActionKind::CumulativeUpkeepNotPaid {
+            return match &self.player {
+                PlayerFilter::You => {
+                    "When you don't pay this permanent's cumulative upkeep".to_string()
+                }
+                PlayerFilter::Opponent => {
+                    "When an opponent doesn't pay this permanent's cumulative upkeep".to_string()
+                }
+                PlayerFilter::Any => {
+                    "When a player doesn't pay this permanent's cumulative upkeep".to_string()
+                }
+                _ => "When a player doesn't pay this permanent's cumulative upkeep".to_string(),
+            };
+        }
         if self.source_must_match && self.action == KeywordActionKind::Cycle {
             return match &self.player {
                 PlayerFilter::You => "Whenever you cycle this card".to_string(),
@@ -267,13 +281,33 @@ impl TriggerMatcher for KeywordActionTrigger {
                 _ => "Whenever a player fully unlocks a Room".to_string(),
             };
         }
-        if self.action == KeywordActionKind::NameSticker {
+        if matches!(
+            self.action,
+            KeywordActionKind::Sticker
+                | KeywordActionKind::NameSticker
+                | KeywordActionKind::ArtSticker
+                | KeywordActionKind::AbilitySticker
+                | KeywordActionKind::PowerToughnessSticker
+        ) {
+            let sticker = match self.action {
+                KeywordActionKind::Sticker => "a sticker",
+                KeywordActionKind::NameSticker => "a name sticker",
+                KeywordActionKind::ArtSticker => "an art sticker",
+                KeywordActionKind::AbilitySticker => "an ability sticker",
+                KeywordActionKind::PowerToughnessSticker => "a power and toughness sticker",
+                _ => unreachable!("guarded by sticker-action match"),
+            };
+            let object = self
+                .source_filter
+                .as_ref()
+                .map(|filter| ensure_singular_noun_phrase_article(filter.description()))
+                .unwrap_or_else(|| "a creature".to_string());
             return match &self.player {
-                PlayerFilter::You => "Whenever you put a name sticker on a creature".to_string(),
+                PlayerFilter::You => format!("Whenever you put {sticker} on {object}"),
                 PlayerFilter::Opponent => {
-                    "Whenever an opponent puts a name sticker on a creature".to_string()
+                    format!("Whenever an opponent puts {sticker} on {object}")
                 }
-                _ => "Whenever a player puts a name sticker on a creature".to_string(),
+                _ => format!("Whenever a player puts {sticker} on {object}"),
             };
         }
         if self.action == KeywordActionKind::RingTemptsYou {
@@ -411,10 +445,12 @@ impl TriggerMatcher for KeywordActionTrigger {
     }
 
     fn looks_back_for_source(&self, event: &TriggerEvent) -> bool {
-        self.action == KeywordActionKind::Planeswalk
-            && event
-                .downcast::<KeywordActionEvent>()
-                .is_some_and(|event| event.action == KeywordActionKind::Planeswalk)
+        matches!(
+            self.action,
+            KeywordActionKind::Planeswalk | KeywordActionKind::CumulativeUpkeepNotPaid
+        ) && event
+            .downcast::<KeywordActionEvent>()
+            .is_some_and(|event| event.action == self.action)
     }
 }
 
@@ -595,6 +631,29 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever you put a name sticker on a creature"
+        );
+    }
+
+    #[test]
+    fn keyword_action_sticker_display_preserves_action_and_recipient() {
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Sticker,
+            PlayerFilter::You,
+            ObjectFilter::source().with_type(crate::types::CardType::Enchantment),
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever you put a sticker on this enchantment"
+        );
+
+        let typed = KeywordActionTrigger::matching_object(
+            KeywordActionKind::AbilitySticker,
+            PlayerFilter::Opponent,
+            ObjectFilter::creature(),
+        );
+        assert_eq!(
+            typed.display(),
+            "Whenever an opponent puts an ability sticker on a creature"
         );
     }
 
@@ -950,5 +1009,42 @@ mod tests {
             trigger.matches(&event, &ctx),
             "explore triggers should use the event snapshot when the exploring permanent has left"
         );
+    }
+
+    #[test]
+    fn generic_sticker_trigger_matches_each_sticker_subtype() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source_card =
+            crate::card::CardBuilder::new(crate::ids::CardId::from_raw(4), "Sticker Source")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .build();
+        let source_id =
+            game.create_object_from_card(&source_card, alice, crate::zone::Zone::Battlefield);
+        let snapshot = ObjectSnapshot::from_object(game.object(source_id).expect("source"), &game);
+        let trigger = KeywordActionTrigger::matching_object(
+            KeywordActionKind::Sticker,
+            PlayerFilter::You,
+            ObjectFilter::source(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+
+        for action in [
+            KeywordActionKind::Sticker,
+            KeywordActionKind::NameSticker,
+            KeywordActionKind::ArtSticker,
+            KeywordActionKind::AbilitySticker,
+            KeywordActionKind::PowerToughnessSticker,
+        ] {
+            let event = TriggerEvent::new_with_provenance(
+                KeywordActionEvent::new(action, alice, source_id, 1)
+                    .with_snapshot(Some(snapshot.clone())),
+                crate::provenance::ProvNodeId::default(),
+            );
+            assert!(
+                trigger.matches(&event, &ctx),
+                "generic sticker trigger should match {action:?}"
+            );
+        }
     }
 }

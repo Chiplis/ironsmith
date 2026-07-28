@@ -2717,6 +2717,9 @@ pub(crate) fn format_action_short(game: &GameState, action: &LegalAction) -> Str
                     .unwrap_or("companion");
                 format!("{{3}}: Put {name} into your hand")
             }
+            crate::special_actions::SpecialAction::IgnoreAttachedRestriction { .. } => {
+                "Sacrifice a permanent: Ignore this effect until end of turn".to_string()
+            }
         },
     }
 }

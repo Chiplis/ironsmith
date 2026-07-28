@@ -20,6 +20,7 @@ pub(crate) enum DivvyRestDestinationShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DivvySequenceShape {
     SearchFourCreatureCards,
+    SearchLibraryGraveyardExileRemainderToTop,
     ExchangeCreatureControl,
     DestroyChosenCreaturePile,
     GraveyardCreaturePiles,
@@ -108,6 +109,33 @@ pub(crate) fn parse_divvy_sequence_shape(
         .map(|tokens| TokenWordView::new(tokens).to_word_refs())
         .collect::<Vec<_>>();
     let first = sentence_words.first().map(Vec::as_slice).unwrap_or(&[]);
+
+    if exact_sequence(
+        &sentence_words,
+        &[
+            &[
+                "search",
+                "your",
+                "library",
+                "and",
+                "graveyard",
+                "for",
+                "five",
+                "cards",
+                "and",
+                "exile",
+                "the",
+                "rest",
+            ],
+            &[
+                "put", "the", "chosen", "cards", "on", "top", "of", "your", "library", "in", "any",
+                "order",
+            ],
+            &["you", "lose", "half", "your", "life", "rounded", "up"],
+        ],
+    ) {
+        return Some(DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop);
+    }
 
     if sentences.len() == 1
         && prefix(
@@ -662,6 +690,28 @@ mod tests {
         assert_eq!(
             parse_divvy_sequence_shape(&slices),
             Some(DivvySequenceShape::ExchangeCreatureControl)
+        );
+    }
+
+    #[test]
+    fn classifies_multi_zone_search_exile_remainder_to_ordered_top() {
+        let lines = [
+            lex_line(
+                "Search your library and graveyard for five cards and exile the rest.",
+                0,
+            )
+            .unwrap(),
+            lex_line(
+                "Put the chosen cards on top of your library in any order.",
+                1,
+            )
+            .unwrap(),
+            lex_line("You lose half your life, rounded up.", 2).unwrap(),
+        ];
+        let slices = lines.iter().map(Vec::as_slice).collect::<Vec<_>>();
+        assert_eq!(
+            parse_divvy_sequence_shape(&slices),
+            Some(DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop)
         );
     }
 }

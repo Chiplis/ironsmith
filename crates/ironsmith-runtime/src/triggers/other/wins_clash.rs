@@ -10,11 +10,22 @@ use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 #[derive(Debug, Clone, PartialEq)]
 pub struct WinsClashTrigger {
     pub player: PlayerFilter,
+    pub surface: ironsmith_core::ClashWinTriggerSurface,
 }
 
 impl WinsClashTrigger {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            surface: ironsmith_core::ClashWinTriggerSurface::WinAClash,
+        }
+    }
+
+    pub fn with_surface(
+        player: PlayerFilter,
+        surface: ironsmith_core::ClashWinTriggerSurface,
+    ) -> Self {
+        Self { player, surface }
     }
 }
 
@@ -50,10 +61,19 @@ impl TriggerMatcher for WinsClashTrigger {
     }
 
     fn display(&self) -> String {
-        match &self.player {
-            PlayerFilter::You => "Whenever you win a clash".to_string(),
-            PlayerFilter::Opponent => "Whenever an opponent wins a clash".to_string(),
-            PlayerFilter::Any => "Whenever a player wins a clash".to_string(),
+        match (&self.player, self.surface) {
+            (PlayerFilter::You, ironsmith_core::ClashWinTriggerSurface::ClashAndWin) => {
+                "Whenever you clash and win".to_string()
+            }
+            (PlayerFilter::Opponent, ironsmith_core::ClashWinTriggerSurface::ClashAndWin) => {
+                "Whenever an opponent clashes and wins".to_string()
+            }
+            (PlayerFilter::Any, ironsmith_core::ClashWinTriggerSurface::ClashAndWin) => {
+                "Whenever a player clashes and wins".to_string()
+            }
+            (PlayerFilter::You, _) => "Whenever you win a clash".to_string(),
+            (PlayerFilter::Opponent, _) => "Whenever an opponent wins a clash".to_string(),
+            (PlayerFilter::Any, _) => "Whenever a player wins a clash".to_string(),
             _ => "Whenever a player wins a clash".to_string(),
         }
     }

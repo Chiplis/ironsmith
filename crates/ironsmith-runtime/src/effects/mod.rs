@@ -73,7 +73,7 @@ pub mod zones;
 /// Reserved tag used to carry public reveal visibility across stack lifetime.
 pub const PUBLIC_REVEALED_TAG: &str = "__public_revealed";
 /// Cards revealed by an earlier effect in the same execution ("revealed this way").
-pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
+pub const REVEALED_THIS_WAY_TAG: &str = crate::tag::REVEALED_THIS_WAY_TAG;
 
 // Re-export the traits, modal spec, and cost validation error
 pub use context::{ExecutionError, ResolvedTarget, TargetError, rebase_target_scope};
@@ -113,16 +113,17 @@ pub use composition::{
     ChooseSpellCastHistoryEffect, CipherEffect, ConditionalEffect, CounterAbilityEffect,
     CumulativeUpkeepEffect, DevourEffect, EmitGiftGivenEffect, EmitKeywordActionEffect,
     ExecuteWithSourceEffect, ExploreEffect, ForEachControllerOfTaggedEffect, ForEachObject,
-    ForEachTaggedEffect, ForEachTaggedPlayerEffect, ForPlayersEffect, IfEffect, LifeBidStart,
-    LocalRewriteEffect, ManaRestrictedEffect, ManaRetainedEffect, ManifestCardFromHandEffect,
-    ManifestDreadEffect, ManifestObjectsEffect, ManifestTopCardOfLibraryEffect, MayEffect,
-    OpenAttractionEffect, PopulateEffect, ReflexiveTriggerEffect, RepeatEffectsEffect,
-    RepeatProcessEffect, RepeatProcessPromptEffect, SecretChoiceEffect, SecretChoiceResult,
-    SequenceEffect, SupportEffect, TagAllEffect, TagAttachedToSourceEffect,
-    TagMatchingObjectsEffect, TagTriggeringBlockersEffect, TagTriggeringDamageTargetEffect,
-    TagTriggeringObjectEffect, TagTriggeringSourceEffect, TaggedEffect, TargetOnlyEffect,
-    UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG, VOTED_OBJECTS_TAG,
-    VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult, WithIdEffect,
+    ForEachObjectCorrelatedResultEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,
+    ForPlayersEffect, IfEffect, LifeBidStart, LocalRewriteEffect, ManaRestrictedEffect,
+    ManaRetainedEffect, ManifestCardFromHandEffect, ManifestDreadEffect, ManifestObjectsEffect,
+    ManifestTopCardOfLibraryEffect, MayEffect, OpenAttractionEffect, PopulateEffect,
+    ReflexiveTriggerEffect, RepeatEffectsEffect, RepeatProcessEffect, RepeatProcessPromptEffect,
+    SecretChoiceEffect, SecretChoiceResult, SequenceEffect, SupportEffect, TagAllEffect,
+    TagAttachedToSourceEffect, TagMatchingObjectsEffect, TagTriggeringBlockersEffect,
+    TagTriggeringDamageTargetEffect, TagTriggeringObjectEffect, TagTriggeringSourceEffect,
+    TaggedEffect, TargetOnlyEffect, UnlessActionEffect, UnlessPaysEffect, VOTE_WINNERS_TAG,
+    VOTED_OBJECTS_TAG, VillainousChoiceEffect, VoteChoice, VoteEffect, VoteOption, VoteResult,
+    WithIdEffect,
 };
 pub use continuous::{ApplyContinuousEffect, ExchangeTextBoxesEffect, RuntimeModification};
 pub use control::{
@@ -156,9 +157,9 @@ pub use life::{
 pub use mana::{
     AddColorlessManaEffect, AddManaEffect, AddManaFromCommanderColorIdentityEffect,
     AddManaOfAnyColorEffect, AddManaOfAnyOneColorEffect, AddManaOfChosenColorEffect,
-    AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect, AddScaledManaEffect,
-    DoubleManaPoolEffect, EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect, ManaTypeSource,
-    PayManaEffect, RetainManaUntilEndOfTurnEffect,
+    AddManaOfColorsAmongEffect, AddManaOfLandProducedTypesEffect, AddOneManaOfAnyColorAmongEffect,
+    AddScaledManaEffect, DoubleManaPoolEffect, EmptyManaPoolEffect, GrantManaAbilityUntilEotEffect,
+    ManaTypeSource, PayManaEffect, RetainManaUntilEndOfTurnEffect,
 };
 pub use permanents::{
     AttachObjectsEffect, AttachToEffect, BecomeBasicLandTypeChoiceEffect, BecomeColorChoiceEffect,
@@ -206,7 +207,7 @@ pub use stack::{
 };
 pub use tokens::{
     AmassEffect, CopyAttackTargetMode, CreateTokenCopyEffect, CreateTokenEffect, IncubateEffect,
-    InvestigateEffect,
+    InvestigateEffect, TokenCopyReferenceSurface,
 };
 pub use zones::{
     BattlefieldController, DestroyEffect, DestroyNoRegenerationEffect, EachPlayerSacrificesEffect,

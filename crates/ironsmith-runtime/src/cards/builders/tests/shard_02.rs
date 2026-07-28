@@ -357,6 +357,63 @@ pub(super) fn targeted_graveyard_cast_replacement_is_gated_on_successful_cast() 
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn helmut_zemo_keeps_dynamic_cast_limit_exact_replacement_and_spell_followup() {
+    let oracle = "Whenever Helmut Zemo attacks, you may cast target instant or sorcery card with mana value less than or equal to his power from your graveyard. If that spell would be put into your graveyard, exile it instead. If you cast a spell this way, put a +1/+1 counter on Helmut Zemo.";
+    let def = parse_oracle_card_definition("Helmut Zemo, Mastermind");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()],
+        "Helmut's linked cast procedure should round-trip exactly"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("LessThanOrEqualExpr")
+            && debug.contains("SourcePower")
+            && debug.contains("MasculineSourcePossessive"),
+        "expected mana value constrained by Helmut's live power: {debug}"
+    );
+    assert!(
+        debug.contains("RegisterFutureZoneReplacementEffect")
+            && debug.contains("__sentence_helper_cast_spell")
+            && debug.contains("IsTaggedObject"),
+        "expected replacement linked to the exact cast spell: {debug}"
+    );
+    assert!(
+        debug.contains("PriorEffectResultSurface")
+            && debug.contains("action: Cast")
+            && debug.contains("stack_kind: Some(\n")
+            && debug.contains("Spell"),
+        "expected the counter follow-up to inspect a spell cast this way: {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn calix_destinys_hand_keeps_distinct_exile_and_leave_watcher_targets() {
+    let def = parse_oracle_card_definition("Calix, Destiny's Hand");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "+1: Look at the top four cards of your library. You may reveal an enchantment card from among them and put that card into your hand. Put the rest on the bottom of your library in a random order.".to_string(),
+            "−3: Exile target creature or enchantment you don't control until target enchantment you control leaves the battlefield.".to_string(),
+            "−7: Return all enchantment cards from your graveyard to the battlefield.".to_string(),
+        ],
+        "Calix should round-trip with both targets in declaration order"
+    );
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExileUntilEffect")
+            && debug.contains("leave_watcher: Some")
+            && debug.contains("SourceLeavesBattlefield"),
+        "expected Calix's exile duration to retain its separately targeted watcher: {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn pantlaza_keeps_do_this_only_once_each_turn_condition() {
     let oracle = "Whenever Pantlaza or another Dinosaur you control enters, you may discover X, where X is that creature's toughness. Do this only once each turn.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Pantlaza, Sun-Favored")
@@ -3183,9 +3240,10 @@ pub(super) fn test_parse_destination_first_return_all_to_hand_clause() {
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
-    assert!(
-        rendered.contains("in your graveyard") && rendered.contains("to your hand"),
-        "expected destination-first return-to-hand text, got {rendered}"
+    assert_eq!(
+        rendered,
+        "return to your hand all creature cards in your graveyard that were put there from the battlefield this turn.",
+        "expected destination-first return-to-hand text"
     );
 }
 
@@ -3205,15 +3263,10 @@ pub(super) fn test_parse_split_the_party_chooses_target_player_and_half_their_cr
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
-    assert!(
-        rendered.contains("choose target player")
-            && (rendered.contains(
-                "return half the creatures they control to their owner's hand, rounded up"
-            ) || rendered.contains(
-                "return half the creatures that player controls to their owner's hand, rounded up"
-            ) || rendered.contains("that player chooses x creatures target player controls"))
-            && rendered.contains("hand"),
-        "expected choose-player plus half-creature return text, got {rendered}"
+    assert_eq!(
+        rendered,
+        "choose target player. return half the creatures that player controls to their owner's hand, rounded up.",
+        "expected the linked choose/return structure to recover the authored target declaration"
     );
 
     let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
@@ -3223,6 +3276,63 @@ pub(super) fn test_parse_split_the_party_chooses_target_player_and_half_their_cr
             && debug.contains("ReturnToHandEffect")
             && debug.contains("HalfRoundedDown"),
         "expected Split the Party to lower to target-player, choose-objects, and return-to-hand effects, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn nesting_dragon_keeps_nested_token_abilities_at_their_own_depth() {
+    let def = parse_oracle_card_definition("Nesting Dragon");
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        "Flying\nLandfall — Whenever a land you control enters, create a 0/2 red Dragon Egg creature token with defender and \"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\""
+    );
+
+    let landfall = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("Nesting Dragon should have a landfall trigger");
+    let landfall_effects = landfall.effects.flattened_default_effects();
+    let egg = landfall_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+        .expect("landfall should create a Dragon Egg");
+    assert_eq!(egg.token.card.subtypes, vec![Subtype::Dragon, Subtype::Egg]);
+    assert!(
+        !egg.token
+            .abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "the inner Dragon's firebreathing activation must not attach to the Egg: {:#?}",
+        egg.token.abilities
+    );
+
+    let egg_dies = egg
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("the Egg should keep its dies trigger");
+    let egg_dies_effects = egg_dies.effects.flattened_default_effects();
+    let dragon = egg_dies_effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+        .expect("the Egg's dies trigger should create a Dragon");
+    assert!(
+        dragon
+            .token
+            .abilities
+            .iter()
+            .any(|ability| matches!(ability.kind, AbilityKind::Activated(_))),
+        "the created Dragon should keep firebreathing: {:#?}",
+        dragon.token.abilities
     );
 }
 
@@ -3707,6 +3817,13 @@ pub(super) fn split_destination_land_searches_keep_one_search_and_partition_the_
         assert!(
             rendered.iter().any(|line| line.contains(expected)),
             "expected {card_name} to preserve its split search, got {rendered:#?}"
+        );
+        assert!(
+            rendered.iter().all(|line| {
+                !line.contains("For each of those objects")
+                    && !line.contains("Unless it's a permanent")
+            }),
+            "expected {card_name} not to fall through to generic tagged-loop rendering, got {rendered:#?}"
         );
     }
 }

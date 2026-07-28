@@ -1797,6 +1797,13 @@ fn parse_choose_card_type_then_reveal_and_put_matching_cards() {
             && debug.contains("RevealTaggedEffect"),
         "expected choose-mode reveal/put lowering for chosen card type, got {debug}"
     );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "At the beginning of your end step, choose a card type, then reveal the top three cards of your library. Put all cards of the chosen type revealed this way into your hand and the rest on the bottom of your library in any order."
+                .to_string(),
+        ],
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1821,6 +1828,57 @@ fn parse_activated_ability_cost_reduction_static_line() {
         static_ids
             .contains(&crate::static_abilities::StaticAbilityId::ActivatedAbilityCostReduction),
         "expected activated-ability cost reduction static ability, got {static_ids:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_labeled_conditional_activated_ability_reduction_with_explicit_minimum() {
+    let oracle = "Dynastic Command Node — As long as you control your commander, activated abilities of cards in your graveyard cost {2} less to activate. This effect can't reduce the mana in that ability's activation cost to less than one mana.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Command Node Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle)
+        .expect("labeled conditional activated-ability reduction should parse");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("minimum_total_mana: Some(1)")
+            && debug.contains("you control your commander"),
+        "expected the minimum and typed commander condition, got {debug}"
+    );
+    assert_eq!(
+        crate::compiled_text::unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn targeted_turn_face_up_preserves_target_surface() {
+    let oracle = "Turn target face-down creature an opponent controls face up.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Turn Face Up Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("targeted turn-face-up effect should parse");
+
+    assert_eq!(
+        crate::compiled_text::unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn plural_pronoun_untap_rejoins_across_sentence_segments() {
+    let oracle = "Put a +1/+1 counter on each of up to three target creatures. Untap them.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Counter and Untap Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("counter placement followed by plural-pronoun untap should parse");
+
+    assert_eq!(
+        crate::compiled_text::unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()]
     );
 }
 
@@ -2531,6 +2589,11 @@ fn parse_amass_clause_parses_structurally() {
     assert!(
         spell_debug.contains("amassed_0") && spell_debug.contains("iterated"),
         "expected follow-up to route through the amassed Army tag and per-creature iteration, got {spell_debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert_eq!(
+        rendered,
+        "Amass zombies 2, then the Army you amassed deals damage equal to its power to each non-Army creature"
     );
 }
 

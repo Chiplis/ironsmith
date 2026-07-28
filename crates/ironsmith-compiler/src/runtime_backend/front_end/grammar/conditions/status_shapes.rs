@@ -102,6 +102,9 @@ pub(super) fn parse_player_achievement_tail(
     if parse_complete(tokens, parse_full_party) {
         return Some(PlayerAchievementAst::FullParty);
     }
+    if parse_complete(tokens, parse_visited_attraction_this_turn) {
+        return Some(PlayerAchievementAst::VisitedAttractionThisTurn);
+    }
 
     let (_, dungeon_tokens) = primitives::parse_prefix(tokens, |input: &mut LexStream<'_>| {
         opt(parse_article).parse_next(input)?;
@@ -279,6 +282,15 @@ fn parse_full_party(input: &mut LexStream<'_>) -> WResult<()> {
     primitives::phrase(&["full", "party"]).parse_next(input)
 }
 
+fn parse_visited_attraction_this_turn(input: &mut LexStream<'_>) -> WResult<()> {
+    primitives::kw("visited").parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    primitives::kw("attraction").parse_next(input)?;
+    primitives::phrase(&["this", "turn"])
+        .void()
+        .parse_next(input)
+}
+
 fn parse_completed_dungeon(tokens: &[OwnedLexToken]) -> Option<PlayerAchievementAst> {
     let tokens = trim_clause(tokens);
     if primitives::parse_all(
@@ -380,6 +392,23 @@ mod tests {
                 achievement: PlayerAchievementAst::CompletedDungeon { dungeon_name: None },
                 negated: true,
             })
+        );
+
+        let attraction = lex("You've visited an Attraction this turn.");
+        assert_eq!(
+            parse_player_achievement(&attraction),
+            Some(PlayerAchievementConditionAst {
+                player: PlayerFilter::You,
+                achievement: PlayerAchievementAst::VisitedAttractionThisTurn,
+                negated: false,
+            })
+        );
+
+        let opening = lex("You've opened an Attraction this turn.");
+        assert_eq!(
+            parse_player_achievement(&opening),
+            None,
+            "opening an Attraction is not the same history event as visiting one"
         );
     }
 }

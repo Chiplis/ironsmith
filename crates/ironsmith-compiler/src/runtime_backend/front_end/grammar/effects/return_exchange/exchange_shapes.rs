@@ -296,7 +296,17 @@ fn source_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueKindShap
             return Some(ExchangeValueKindShape::Toughness);
         }
     }
-    None
+
+    let words = parser_token_word_refs(tokens);
+    let (source_words, kind) = match words.split_last()? {
+        (&"power", source_words) => (source_words, ExchangeValueKindShape::Power),
+        (&"toughness", source_words) => (source_words, ExchangeValueKindShape::Toughness),
+        _ => return None,
+    };
+    crate::runtime_backend::front_end::shared::util::source_reference_surface_for_possessive_words(
+        source_words,
+    )
+    .map(|_| kind)
 }
 
 fn target_stat_operand(tokens: &[OwnedLexToken]) -> Option<ExchangeValueOperandShape<'_>> {

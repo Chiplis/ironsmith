@@ -82,7 +82,17 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
     while idx < words.len() {
         if matches!(
             words[idx],
-            "with" | "when" | "whenever" | "has" | "have" | "gains" | "gain" | "gets" | "get"
+            "token"
+                | "tokens"
+                | "with"
+                | "when"
+                | "whenever"
+                | "has"
+                | "have"
+                | "gains"
+                | "gain"
+                | "gets"
+                | "get"
         ) {
             scan_end = idx;
             break;
@@ -95,7 +105,9 @@ fn creature_subtypes(words: &[&str]) -> Vec<Subtype> {
         if leaf::parse_leaf_card_type_complete(word).is_ok() {
             continue;
         }
-        if let Ok(subtype) = leaf::parse_leaf_subtype_flexible_complete(word)
+        if let Some(subtype) = leaf::parse_leaf_subtype_flexible_complete(word)
+            .ok()
+            .or_else(|| leaf::classify_token_definition_subtype(word))
             && !subtypes.iter().any(|candidate| *candidate == subtype)
         {
             subtypes.push(subtype);
@@ -118,6 +130,33 @@ fn token_colors(words: &[&str]) -> ColorSet {
         }
     }
     colors
+}
+
+/// Parse the postnominal color surface used after a token noun, as in
+/// "Sand Warrior creature tokens that are red, green, and white." Token
+/// identity normally appears before `token(s)`, so this suffix is not part of
+/// the definition slice passed to the ordinary token-shape parser.
+pub(crate) fn parse_postnominal_token_colors_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ColorSet> {
+    let words = parser_token_word_refs(tokens);
+    if !words.starts_with(&["that", "are"]) && !words.starts_with(&["that", "is"]) {
+        return None;
+    }
+    let mut colors = ColorSet::new();
+    for word in &words[2..] {
+        let color = match *word {
+            "white" => ColorSet::WHITE,
+            "blue" => ColorSet::BLUE,
+            "black" => ColorSet::BLACK,
+            "red" => ColorSet::RED,
+            "green" => ColorSet::GREEN,
+            "and" | "or" => continue,
+            _ => break,
+        };
+        colors = colors.union(color);
+    }
+    (!colors.is_empty()).then_some(colors)
 }
 
 pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
@@ -152,6 +191,13 @@ pub(super) fn token_keywords(words: &[&str]) -> Vec<TokenKeywordShape> {
     }
     if common::phrase_present(words, &["double", "strike"]) {
         keywords.push(TokenKeywordShape::DoubleStrike);
+    }
+    if let Some(amount) = words.windows(2).find_map(|pair| {
+        (pair[0] == "ward")
+            .then(|| pair[1].parse::<u32>().ok())
+            .flatten()
+    }) {
+        keywords.push(TokenKeywordShape::WardGeneric(amount));
     }
     keywords
 }
@@ -515,6 +561,8 @@ pub(crate) fn parse_token_definition_shape_tokens(
     let leading_name =
         names::leading_name_phrase(&words).or_else(|| names::leading_explicit_name(&words));
     let declared_name = named_card.as_deref().or(leading_name.as_deref());
+    let (use_source_chosen_color, use_source_chosen_creature_type) =
+        source_chosen_token_characteristics(&words);
     Some(TokenDefinitionSpec::Creature(CreatureTokenShape {
         name: names::creature_surface_name(&words, declared_name, subtype_fallback.as_deref()),
         card_types: creature_card_types(&words),
@@ -522,9 +570,31 @@ pub(crate) fn parse_token_definition_shape_tokens(
         power_toughness: pt.unwrap_or((0, 0)),
         legendary: has("legendary"),
         colors: token_colors(&words),
+        use_source_chosen_color,
+        use_source_chosen_creature_type,
         keywords: token_keywords(&words),
         rules: creature_rules(tokens, &words, declared_name),
     }))
+}
+
+pub(crate) fn source_chosen_token_characteristics(words: &[&str]) -> (bool, bool) {
+    let use_source_chosen_color = [
+        &["token", "of", "the", "chosen", "color"][..],
+        &["token", "of", "that", "color"][..],
+    ]
+    .into_iter()
+    .any(|phrase| common::phrase_present(words, phrase));
+    let use_source_chosen_creature_type = [
+        &["chosen", "color", "and", "type"][..],
+        &["that", "color", "and", "type"][..],
+        &["chosen", "color", "and", "creature", "type"][..],
+        &["that", "color", "and", "creature", "type"][..],
+        &["token", "of", "the", "chosen", "type"][..],
+        &["token", "of", "that", "type"][..],
+    ]
+    .into_iter()
+    .any(|phrase| common::phrase_present(words, phrase));
+    (use_source_chosen_color, use_source_chosen_creature_type)
 }
 
 #[cfg(test)]
@@ -559,6 +629,24 @@ mod tests {
     }
 
     #[test]
+    fn token_shape_preserves_source_chosen_color_and_creature_type_references() {
+        for text in [
+            "2/2 creature token of the chosen color and type",
+            "2/2 creature token of that color and type",
+        ] {
+            let shape = parse_token_definition_shape_text(text).unwrap();
+            let TokenDefinitionSpec::Creature(creature) = shape else {
+                panic!("expected creature token for {text}");
+            };
+            assert!(creature.use_source_chosen_color, "{text}: {creature:#?}");
+            assert!(
+                creature.use_source_chosen_creature_type,
+                "{text}: {creature:#?}"
+            );
+        }
+    }
+
+    #[test]
     fn token_shape_preserves_multitype_creature_metadata() {
         let shape = parse_token_definition_shape_text(
             "2/2 black Zombie Employee artifact creature token with flying",
@@ -574,6 +662,17 @@ mod tests {
         assert_eq!(creature.subtypes, vec![Subtype::Zombie, Subtype::Employee]);
         assert_eq!(creature.colors, ColorSet::BLACK);
         assert_eq!(creature.keywords, vec![TokenKeywordShape::Flying]);
+    }
+
+    #[test]
+    fn creature_token_shape_preserves_generic_ward_cost() {
+        let shape =
+            parse_token_definition_shape_text("1/1 white Human creature token with ward {2}")
+                .expect("ward token should parse");
+        let TokenDefinitionSpec::Creature(creature) = shape else {
+            panic!("expected creature token shape");
+        };
+        assert_eq!(creature.keywords, vec![TokenKeywordShape::WardGeneric(2)]);
     }
 
     #[test]

@@ -5,10 +5,14 @@ use crate::cards::builders::EffectAst;
 macro_rules! nested_effects_variants {
     ($effects:ident) => {
         EffectAst::Sequence { effects: $effects }
+            | EffectAst::CommaThen { effects: $effects }
             | EffectAst::PlaySubgame {
                 nonwinner_effects: $effects,
             }
-            | EffectAst::SourceSentence { effects: $effects }
+            | EffectAst::SourceSentence {
+                effects: $effects,
+                ..
+            }
             | EffectAst::Coordinated {
                 effects: $effects,
                 ..
@@ -104,6 +108,14 @@ macro_rules! nested_effects_variants {
                 effects: $effects,
                 ..
             }
+            | EffectAst::DelayedUntilNextCleanupStep {
+                effects: $effects,
+                ..
+            }
+            | EffectAst::DelayedUntilNextUntapStep {
+                effects: $effects,
+                ..
+            }
             | EffectAst::DelayedUntilNextUpkeep {
                 effects: $effects,
                 ..
@@ -155,11 +167,14 @@ pub(crate) fn assert_effect_ast_variant_coverage(effect: &EffectAst) {
         EffectAst::RestartGame { .. } => {}
         EffectAst::PlaySubgame { .. } => {}
         EffectAst::Sequence { .. } => {}
+        EffectAst::CommaThen { .. } => {}
         EffectAst::SourceSentence { .. } => {}
         EffectAst::Coordinated { .. } => {}
         EffectAst::UnlessPays { .. } => {}
         EffectAst::UnlessAction { .. } => {}
         EffectAst::DelayedUntilNextEndStep { .. } => {}
+        EffectAst::DelayedUntilNextCleanupStep { .. } => {}
+        EffectAst::DelayedUntilNextUntapStep { .. } => {}
         EffectAst::DelayedUntilNextUpkeep { .. } => {}
         EffectAst::DelayedUntilNextDrawStep { .. } => {}
         EffectAst::DelayedUntilNextMainPhase { .. } => {}
@@ -310,6 +325,73 @@ pub(crate) fn for_each_nested_effects_mut(
         }
         _ => {}
     }
+}
+
+/// Visit each directly owned child vector while transparently descending
+/// through boxed single-child wrappers.
+///
+/// Most traversal only needs slices. Presentation provenance occasionally
+/// needs to replace a whole child program with one typed wrapper, which
+/// requires access to the owning `Vec`.
+pub(crate) fn for_each_nested_effect_vec_mut(
+    effect: &mut EffectAst,
+    include_unless_action_alternative: bool,
+    mut visit: impl FnMut(&mut Vec<EffectAst>),
+) {
+    fn walk(
+        effect: &mut EffectAst,
+        include_unless_action_alternative: bool,
+        visit: &mut impl FnMut(&mut Vec<EffectAst>),
+    ) {
+        assert_effect_ast_variant_coverage(effect);
+        match effect {
+            EffectAst::Conditional {
+                if_true, if_false, ..
+            }
+            | EffectAst::SelfReplacement {
+                if_true, if_false, ..
+            } => {
+                visit(if_true);
+                visit(if_false);
+            }
+            EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+                for mode in modes {
+                    visit(&mut mode.effects);
+                }
+            }
+            EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
+                walk(
+                    effect.as_mut(),
+                    include_unless_action_alternative,
+                    visit,
+                );
+                visit(otherwise);
+            }
+            EffectAst::TagAffected { effect, .. } => {
+                walk(
+                    effect.as_mut(),
+                    include_unless_action_alternative,
+                    visit,
+                );
+            }
+            nested_effects_variants!(effects) => {
+                visit(effects);
+            }
+            EffectAst::UnlessAction {
+                effects,
+                alternative,
+                ..
+            } => {
+                visit(effects);
+                if include_unless_action_alternative {
+                    visit(alternative);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    walk(effect, include_unless_action_alternative, &mut visit);
 }
 
 pub(crate) fn try_for_each_nested_effects_mut<E>(

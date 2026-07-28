@@ -733,7 +733,8 @@ pub(super) fn looked_battlefield_cards_compact_optional_selection_wrappers() {
             && aethermage_debug.contains("min: 0")
             && aethermage_debug.contains("ForEachTaggedEffect")
             && aethermage_debug.contains("ApplyContinuousEffect")
-            && aethermage_debug.contains("PutTaggedRemainderOnLibraryBottomEffect"),
+            && aethermage_debug.contains("PutTaggedRemainderOnLibraryBottomEffect")
+            && aethermage_debug.contains("RestOfCardsRevealedThisWay"),
         "expected Aethermage's Touch to retain its segmented reveal, optional tagged move, grant, and exact complement, got {aethermage_debug}"
     );
     assert!(
@@ -743,8 +744,9 @@ pub(super) fn looked_battlefield_cards_compact_optional_selection_wrappers() {
             && aethermage_rendered.contains(
                 "it gains \"at the beginning of your end step, return this creature to its owner's hand.\""
             )
-            && aethermage_rendered
-                .contains("put the rest on the bottom of your library in any order")
+            && aethermage_rendered.contains(
+                "then put the rest of the cards revealed this way on the bottom of your library in any order"
+            )
             && !aethermage_rendered.contains("you may choose a creature card")
             && !aethermage_rendered.contains("for each card chosen this way"),
         "expected Aethermage's Touch to compact its optional battlefield partition, got {aethermage_rendered}"
@@ -885,22 +887,25 @@ pub(super) fn parse_oracle_turnabout_card_type_mass_tap_choice_regression() {
 pub(super) fn parse_oracle_teferis_realm_type_choice_phase_out_regression() {
     let def = parse_oracle_card_definition("Teferi's Realm");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
-    let rendered_lower = rendered.to_ascii_lowercase();
-
-    assert!(
-        rendered_lower.contains("phase out all nontoken")
-            && (rendered_lower.contains("of the chosen type")
-                || rendered_lower.contains("of that type")),
-        "expected the phase-out line to stay present, got {rendered}"
+    assert_eq!(
+        rendered,
+        "At the beginning of each player's upkeep, that player chooses artifact, creature, land, or non-Aura enchantment. All nontoken permanents of that type phase out."
     );
 
     let debug = format!("{:#?}", def);
     assert!(
-        debug.contains("ChooseObjectsEffect")
+        debug.contains("ChooseCardTypeEffect")
+            && debug.contains("chooser: IteratedPlayer")
             && debug.contains("PhaseOutEffect")
-            && (debug.contains("SharesCardType") || debug.contains("SharesPermanentType"))
+            && debug.contains("chosen_card_type: true")
             && debug.contains("Aura"),
-        "expected Teferi's Realm to keep a type-linked choose/phase-out bundle, got {debug}"
+        "expected a typed per-player card-type choice and linked phase-out filter, got {debug}"
+    );
+    assert!(
+        !debug.contains("ChooseObjectsEffect")
+            && !debug.contains("SharesCardType")
+            && !debug.contains("SharesPermanentType"),
+        "the type menu must not be approximated as an object choice, got {debug}"
     );
 }
 
@@ -3293,6 +3298,25 @@ pub(super) fn chaos_lord_parses_even_permanent_control_trigger_and_haste_as_thou
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn past_control_death_history_keeps_authored_controller_order() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Past-Control Death Count Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flash\nWhen this creature dies, for each nontoken creature you controlled that died this turn, create a 2/2 black Zombie creature token.",
+        )
+        .expect("past-control death-history count should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "for each nontoken creature you controlled that died this turn, create a 2/2 black Zombie creature token"
+        ),
+        "expected typed past-control ordering to survive rendering, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_lulu_loyal_hollyphant_keeps_revolt_gate_and_untap_followup() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lulu, Loyal Hollyphant")
         .card_types(vec![CardType::Creature])
@@ -3916,4 +3940,90 @@ pub(super) fn descend_end_step_cards_keep_intervening_if_gate_and_surface() {
             "expected {name} to render the descend intervening-if clause, got {rendered}"
         );
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn namor_relative_life_attack_trigger_keeps_defender_and_attack_group() {
+    let oracle = "Flying\nWhenever you cast a noncreature spell, create a 1/1 blue Merfolk creature token.\nWhenever Namor attacks a player who has more life than you, other creatures you control attacking that player get +2/+0 until end of turn.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Namor, Atlantean King")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Namor's relative-life attack trigger should parse");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("AttacksTrigger")
+            && debug.contains("source: true")
+            && debug.contains("ShortName(\"Namor\")")
+            && debug.contains("HasMoreLifeThanYou")
+            && debug.contains("targets_only_player: Some")
+            && debug.contains("attacking_player_or_planeswalker_controlled_by: Some(Defending)")
+            && debug.contains("ModifyPowerToughness")
+            && debug.contains("power: Fixed(2)"),
+        "expected a player-only relative-life attack trigger and a defending-player-bound attacking-creature pump, got {debug}"
+    );
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        oracle,
+        "Namor's named source, relative-life defender, and 'that player' antecedent should round-trip"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn teferis_protection_keeps_life_lock_protection_phasing_and_self_exile() {
+    let oracle = "Until your next turn, your life total can't change and you gain protection from everything. All permanents you control phase out. (While they're phased out, they're treated as though they don't exist. They phase in before you untap during your untap step.)\nExile Teferi's Protection.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Teferi's Protection")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Teferi's Protection should parse as a complete document");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("ChangeLifeTotal")
+            && debug.contains("BeTargetedPlayer")
+            && debug.contains("PreventAllDamageToTargetEffect")
+            && debug.contains("PhaseOutEffect")
+            && debug.contains("ExileEffect")
+            && debug.contains("YourNextTurn"),
+        "expected the temporary player lock, phasing, and source exile, got {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Until your next turn, your life total can't change and you gain protection from everything"
+        ) && rendered.contains("All permanents you control phase out")
+            && rendered.contains("Exile Teferi's Protection"),
+        "expected every non-reminder Oracle clause to survive the full document, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn hold_for_ransom_keeps_the_aura_as_the_granted_ability_source() {
+    let oracle = "Enchant creature\nEnchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Hold for Ransom")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(oracle)
+        .expect("Hold for Ransom should parse as a complete Aura document");
+
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("AttachedAbilityGrant")
+            && debug.contains("ExecuteWithSourceEffect")
+            && debug.contains("FullName(\"Hold for Ransom\")")
+            && debug.contains("SacrificeTargetEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("SorcerySpeed"),
+        "the quoted proper name must bind sacrifice and draw to the granting Aura, got {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def).join("\n"),
+        oracle,
+        "the combat restriction and quoted Aura-source ability should round-trip"
+    );
 }

@@ -1,8 +1,131 @@
 use super::*;
 use crate::effect::ValueComparisonOperator;
+use crate::filter::StackObjectKind;
 
 #[path = "advanced/phase_step_gates.rs"]
 mod phase_step_gates;
+
+fn turn_history_player_subject(clause: LexedClause<'_>) -> Option<PlayerAst> {
+    if surface::exact_any(clause, &[&["you've"], &["youve"]]) {
+        return Some(PlayerAst::You);
+    }
+    let words = clause.word_refs();
+    let subject_end = words
+        .last()
+        .is_some_and(|word| matches!(*word, "has" | "have"))
+        .then_some(words.len().saturating_sub(1))
+        .unwrap_or(words.len());
+    comparison_player_subject_clause(clause.between_words_trimmed(0, subject_end))
+}
+
+fn turn_history_zone_clause(clause: LexedClause<'_>) -> Option<Zone> {
+    let words = clause.word_refs();
+    let (zone_word, prefix) = words.split_last()?;
+    if !prefix.is_empty()
+        && !prefix
+            .iter()
+            .all(|word| matches!(*word, "a" | "an" | "the" | "your" | "their" | "its"))
+    {
+        return None;
+    }
+    parse_zone_word(zone_word)
+}
+
+fn without_this_turn(clause: LexedClause<'_>) -> Option<LexedClause<'_>> {
+    let words = clause.word_refs();
+    words
+        .ends_with(&["this", "turn"])
+        .then(|| clause.between_words_trimmed(0, words.len().saturating_sub(2)))
+}
+
+fn parse_player_cast_spell_from_zone_body(clause: LexedClause<'_>) -> Option<(PlayerAst, Zone)> {
+    let words = clause.word_refs();
+    let cast = words.iter().position(|word| *word == "cast")?;
+    let player = turn_history_player_subject(clause.between_words_trimmed(0, cast))?;
+    let tail = &words[cast + 1..];
+    let from = tail.iter().position(|word| *word == "from")?;
+    if !matches!(&tail[..from], ["spell"] | ["a", "spell"]) {
+        return None;
+    }
+    let zone_start = cast + 1 + from + 1;
+    let zone_clause = clause.between_words_trimmed(zone_start, words.len());
+    if zone_clause
+        .first_word()
+        .is_some_and(|word| matches!(word, "your" | "their" | "its"))
+    {
+        // The existing filtered-spell history path retains possessive zone
+        // surfaces such as "your hand". Keep those clauses on that path.
+        return None;
+    }
+    let zone = turn_history_zone_clause(zone_clause)?;
+    Some((player, zone))
+}
+
+fn parse_activated_ability_of_card_in_zone_tail(clause: LexedClause<'_>) -> Option<Zone> {
+    let words = clause.word_refs();
+    let prefix_len = [
+        &["activated", "an", "ability", "of", "a", "card", "in"][..],
+        &["activated", "an", "ability", "of", "card", "in"][..],
+    ]
+    .into_iter()
+    .find_map(|prefix| words.starts_with(prefix).then_some(prefix.len()))?;
+    turn_history_zone_clause(clause.between_words_trimmed(prefix_len, words.len()))
+}
+
+fn parse_player_activated_ability_of_card_in_zone_body(
+    clause: LexedClause<'_>,
+) -> Option<(PlayerAst, Zone)> {
+    let words = clause.word_refs();
+    let activated = words.iter().position(|word| *word == "activated")?;
+    let player = turn_history_player_subject(clause.between_words_trimmed(0, activated))?;
+    let zone = parse_activated_ability_of_card_in_zone_tail(
+        clause.between_words_trimmed(activated, words.len()),
+    )?;
+    Some((player, zone))
+}
+
+/// Parse the shared-subject/shared-window history shape
+/// "<player> cast a spell from <zone> or activated an ability of a card in
+/// <zone> this turn".
+fn parse_cast_or_activated_from_zone_this_turn_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let clause = without_this_turn(LexedClause::new(tokens))?;
+    let words = clause.word_refs();
+    let or = words.iter().rposition(|word| *word == OR_WORD)?;
+    let (player, cast_zone) =
+        parse_player_cast_spell_from_zone_body(clause.between_words_trimmed(0, or))?;
+    let activated_zone = parse_activated_ability_of_card_in_zone_tail(
+        clause.between_words_trimmed(or + 1, words.len()),
+    )?;
+    Some(PredicateAst::Or(
+        Box::new(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::PlayerCastSpellFromZoneThisTurn {
+                player,
+                zone: cast_zone,
+            },
+        )),
+        Box::new(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::PlayerActivatedAbilityOfCardInZoneThisTurn {
+                player,
+                zone: activated_zone,
+            },
+        )),
+    ))
+}
+
+fn parse_single_zone_action_this_turn_predicate(tokens: &[OwnedLexToken]) -> Option<PredicateAst> {
+    let clause = without_this_turn(LexedClause::new(tokens))?;
+    if let Some((player, zone)) = parse_player_cast_spell_from_zone_body(clause) {
+        return Some(PredicateAst::TurnHistory(
+            TurnHistoryPredicateAst::PlayerCastSpellFromZoneThisTurn { player, zone },
+        ));
+    }
+    let (player, zone) = parse_player_activated_ability_of_card_in_zone_body(clause)?;
+    Some(PredicateAst::TurnHistory(
+        TurnHistoryPredicateAst::PlayerActivatedAbilityOfCardInZoneThisTurn { player, zone },
+    ))
+}
 
 fn intervening_source_surface(clause: LexedClause<'_>) -> Option<SourceReferenceSurface> {
     let words = clause.word_refs();
@@ -22,6 +145,12 @@ fn parse_turn_history_intervening_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
     let clause = LexedClause::new(tokens);
+
+    if let Some(predicate) = parse_cast_or_activated_from_zone_this_turn_predicate(tokens)
+        .or_else(|| parse_single_zone_action_this_turn_predicate(tokens))
+    {
+        return Ok(Some(predicate));
+    }
 
     if surface::exact_words(
         &clause.word_refs(),
@@ -402,7 +531,7 @@ pub(super) fn parse_implicit_subject_and_predicate(
         return Ok(None);
     }
 
-    let left = parse_predicate(left_clause.tokens())?;
+    let left = parse_implicit_subject_conjunct(left_clause.tokens())?;
     let right_tokens = if right_starts_with_have {
         let mut tokens = vec![OwnedLexToken::word(
             YOU_WORD.to_string(),
@@ -413,8 +542,36 @@ pub(super) fn parse_implicit_subject_and_predicate(
     } else {
         right_clause.tokens().to_vec()
     };
-    let right = parse_predicate(&right_tokens)?;
+    let right = parse_implicit_subject_conjunct(&right_tokens)?;
     Ok(Some(PredicateAst::And(Box::new(left), Box::new(right))))
+}
+
+fn parse_implicit_subject_conjunct(
+    tokens: &[OwnedLexToken],
+) -> Result<PredicateAst, CardTextError> {
+    // These independently articulated conjunctions most often coordinate a
+    // control condition with a hand condition. Parse those leaf families
+    // directly so the very large general predicate dispatcher does not need
+    // to recurse while its own stack frame is live.
+    if let Some(predicate) = parse_player_controls_no_predicate(tokens)? {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_player_cards_in_hand_predicate(tokens) {
+        return Ok(predicate);
+    }
+    if non_article_token_words_starts_with_any(tokens, YOU_CONTROL_PREFIXES)
+        && let Some(predicate) = parse_player_controls_predicate(
+            tokens,
+            PlayerAst::You,
+            Some(PlayerFilter::You),
+            2,
+            true,
+            true,
+        )?
+    {
+        return Ok(predicate);
+    }
+    parse_predicate(tokens)
 }
 
 pub(super) fn parse_while_conjoined_predicate(
@@ -473,6 +630,8 @@ pub(super) fn player_filter_for_turn_value(player: PlayerAst) -> Option<PlayerFi
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
+        PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
         PlayerAst::ThatPlayerOrTargetController => {
@@ -725,6 +884,11 @@ pub(super) fn parse_player_achievement_predicate(tokens: &[OwnedLexToken]) -> Op
                 None
             }
         }
+        crate::runtime_backend::grammar::conditions::PlayerAchievementAst::VisitedAttractionThisTurn => {
+            Some(PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerVisitedAttractionThisTurn(player),
+            ))
+        }
     }?;
     if achievement.negated {
         Some(PredicateAst::Not(Box::new(predicate)))
@@ -958,7 +1122,7 @@ pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Opt
     let condition =
         crate::runtime_backend::grammar::conditions::parse_player_turn_event_condition(tokens)?;
     let (operator, count) = comparison_to_value_comparison_operator(condition.comparison)?;
-    let left = match condition.event {
+    let mut left = match condition.event {
         crate::runtime_backend::grammar::conditions::PlayerTurnEventAst::CardsDrawn => {
             Value::MaxCardsDrawnThisTurn(condition.player)
         }
@@ -978,6 +1142,11 @@ pub(super) fn parse_player_turn_event_predicate(tokens: &[OwnedLexToken]) -> Opt
             Value::LandsEnteredBattlefieldThisTurn(condition.player)
         }
     };
+    if matches!(left.unhinted(), Value::LandsEnteredBattlefieldThisTurn(_))
+        && tokens.iter().any(|token| token.is_word("another"))
+    {
+        left = left.with_surface_hint(ironsmith_core::ValueSurfaceHint::AnotherLandEnteredThisTurn);
+    }
 
     Some(PredicateAst::ValueComparison {
         left,
@@ -1510,6 +1679,8 @@ pub(super) fn parse_player_descended_this_turn_predicate(
 pub(super) fn parse_object_death_this_turn_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<PredicateAst> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let explicit_one_or_more = words.starts_with(&["one", "or", "more"]);
     let condition =
         crate::runtime_backend::grammar::conditions::parse_object_death_this_turn_condition(
             tokens,
@@ -1531,7 +1702,7 @@ pub(super) fn parse_object_death_this_turn_predicate(
                     right: Value::Fixed(count as i32),
                 });
             }
-            if count <= 1 {
+            if count <= 1 && !explicit_one_or_more {
                 Some(PredicateAst::CreatureDiedThisTurn)
             } else {
                 Some(PredicateAst::CreatureDiedThisTurnOrMore(count))
@@ -1619,8 +1790,12 @@ pub(super) fn parse_battlefield_change_this_turn_predicate(
                 Box::new(PredicateAst::SpellWasWarpedThisTurn),
             ))
         }
-        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl => {
-            Some(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn)
+        crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl {
+            surface,
+        } => {
+            Some(PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                surface,
+            })
         }
         crate::runtime_backend::grammar::conditions::BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
             filter,
@@ -2848,10 +3023,15 @@ pub(super) fn parse_tagged_controlled_permanent_shape(
     if !is_that_permanent_clause(relation.tail_clause) {
         return None;
     }
+    let mut filter = ObjectFilter::default();
+    filter.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Permanent,
+    ));
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::You,
         tag: TagKey::from(IT_TAG),
-        filter: ObjectFilter::default(),
+        filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
     })
 }
 
@@ -2994,10 +3174,16 @@ pub(super) fn parse_implicit_object_present_state_shape(
     {
         return None;
     }
-    let filter = parse_object_filter(descriptor_clause.tokens(), false)
+    let descriptor_starts_with_other = descriptor_clause
+        .token(0)
+        .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
+    let mut filter = parse_object_filter(descriptor_clause.tokens(), descriptor_starts_with_other)
         .ok()
         .or_else(|| parse_color_only_object_filter_word_refs(descriptor_clause))
         .or_else(|| parse_identity_descriptor_filter_tokens(descriptor_clause.tokens()))?;
+    if let Some(surface) = demonstrative_antecedent_surface(subject_clause.tokens()) {
+        filter.set_demonstrative_antecedent_surface(Some(surface));
+    }
     if subject_is_bare_pronoun && !object_filter_has_state(&filter) {
         return None;
     }
@@ -3275,6 +3461,45 @@ pub(super) fn parse_player_controls_more_than_you_predicate(
     }
 
     Some(PredicateAst::PlayerControlsMoreThanYou { player, filter })
+}
+
+pub(super) fn parse_player_controls_fewer_than_you_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let atoms = [
+        WinnowSequence::amount("comparison", WinnowCaptureKind::OneOf(&["fewer"])),
+        WinnowSequence::object("object", WinnowCaptureKind::UntilPhrase(&["than"])),
+        WinnowSequence::word("than"),
+        WinnowSequence::modifier("comparison_player", WinnowCaptureKind::Rest),
+    ];
+    let relation = parse_control_relation_clauses(tokens, false)?;
+    let player = comparison_player_subject_clause(relation.subject_clause)?;
+    let matched = WinnowSequence::new(&atoms).parse_full(relation.tail_clause)?;
+    let comparison_player = matched.capture_clause("comparison_player", relation.tail_clause)?;
+    if !is_you_comparison_tail_clause(comparison_player) {
+        return None;
+    }
+    let object = matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
+    if object.tokens().is_empty() {
+        return None;
+    }
+    let other = object
+        .tokens()
+        .first()
+        .is_some_and(|token| token_word_is_any(token, OTHER_OR_ANOTHER_WORDS));
+    let mut controlled_filter = parse_object_filter(object.tokens(), other).ok()?;
+    if controlled_filter == ObjectFilter::default() {
+        return None;
+    }
+    controlled_filter.controller = Some(player_filter_for_turn_value(player)?);
+    let mut your_filter = controlled_filter.clone();
+    your_filter.controller = Some(PlayerFilter::You);
+
+    Some(PredicateAst::ValueComparison {
+        left: Value::Count(controlled_filter),
+        operator: ValueComparisonOperator::LessThan,
+        right: Value::Count(your_filter),
+    })
 }
 
 pub(super) fn parse_player_controls_more_than_each_other_player_predicate(
@@ -4413,6 +4638,44 @@ fn parse_each_global_greatest_power_predicate(tokens: &[OwnedLexToken]) -> Optio
     })
 }
 
+fn parse_a_global_greatest_power_control_predicate(
+    tokens: &[OwnedLexToken],
+) -> Option<PredicateAst> {
+    let words = LexedClause::new(tokens).word_refs();
+    if !surface::exact_words(
+        &words,
+        &[
+            "you",
+            "control",
+            "a",
+            "creature",
+            "with",
+            "the",
+            "greatest",
+            "power",
+            "among",
+            "creatures",
+            "on",
+            "the",
+            "battlefield",
+        ],
+    ) {
+        return None;
+    }
+
+    let global_creatures = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    let mut controlled_greatest_creature =
+        global_creatures.clone().controlled_by(PlayerFilter::You);
+    controlled_greatest_creature.power = Some(crate::filter::Comparison::EqualExpr(Box::new(
+        Value::GreatestPower(global_creatures),
+    )));
+
+    Some(PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter: controlled_greatest_creature,
+    })
+}
+
 pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, CardTextError> {
     let predicate_tokens = if token_slice_first_is(tokens, "if") {
         &tokens[1..]
@@ -4438,6 +4701,14 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     {
         return Ok(predicate);
     }
+    // Split independently articulated player predicates before the broad
+    // control-object conjunction parser. The latter is intentionally for
+    // phrases such as "you control an artifact and a creature"; if it sees
+    // "you control no permanents ... and have no cards in hand" first, it
+    // treats both authored negatives as object-filter text and inverts them.
+    if let Some(predicate) = parse_implicit_subject_and_predicate(predicate_tokens)? {
+        return Ok(predicate);
+    }
     if non_article_token_words_starts_with_any(predicate_tokens, YOU_CONTROL_PREFIXES)
         && let Some(predicate) =
             parse_you_control_conjoined_predicate(predicate_tokens).transpose()?
@@ -4445,6 +4716,9 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
     if let Some(predicate) = parse_each_global_greatest_power_predicate(predicate_tokens) {
+        return Ok(predicate);
+    }
+    if let Some(predicate) = parse_a_global_greatest_power_control_predicate(predicate_tokens) {
         return Ok(predicate);
     }
 
@@ -4593,6 +4867,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
 
+    if let Some(predicate) = parse_player_controls_fewer_than_you_predicate(tokens) {
+        return Ok(predicate);
+    }
+
     if let Some(predicate) = parse_player_controls_more_than_you_predicate(tokens) {
         return Ok(predicate);
     }
@@ -4642,10 +4920,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_you_both_own_and_control_predicate(predicate_tokens)? {
-        return Ok(predicate);
-    }
-
-    if let Some(predicate) = parse_implicit_subject_and_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 
@@ -4738,6 +5012,10 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         return Ok(predicate);
     }
     if let Some(predicate) = parse_player_controls_more_than_each_other_player_predicate(tokens) {
+        return Ok(predicate);
+    }
+
+    if let Some(predicate) = parse_player_controls_fewer_than_you_predicate(tokens) {
         return Ok(predicate);
     }
 
@@ -4889,6 +5167,7 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             mut match_time,
         )) = demonstrative_descriptor_filter_tokens(predicate_tokens)
         {
+            let antecedent_surface = demonstrative_antecedent_surface(predicate_tokens);
             // "was blocked this turn" is a passive historical-event predicate,
             // not a copular last-known-characteristics predicate. It already
             // has dedicated turn-history semantics and surface rendering.
@@ -4896,8 +5175,27 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
             if surface::exact(descriptor_clause, &["blocked", "this", "turn"]) {
                 match_time = DemonstrativeMatchTime::Current;
             }
-            if let Some(filter) = parse_single_card_type_card_descriptor_tokens(&descriptor_tokens)
+            if surface::exact(descriptor_clause, &["permanent", "spell"]) {
+                let mut filter =
+                    crate::runtime_backend::front_end::grammar::permission_facts::subject_filters::permanent_spell_filter();
+                filter.zone = Some(Zone::Stack);
+                filter.stack_kind = Some(StackObjectKind::Spell);
+                if antecedent_surface.is_some() {
+                    filter.set_demonstrative_antecedent_surface(antecedent_surface);
+                }
+                let predicate = demonstrative_match_predicate(filter, match_time);
+                return Ok(if negative {
+                    PredicateAst::Not(Box::new(predicate))
+                } else {
+                    predicate
+                });
+            }
+            if let Some(mut filter) =
+                parse_single_card_type_card_descriptor_tokens(&descriptor_tokens)
             {
+                if antecedent_surface.is_some() {
+                    filter.set_demonstrative_antecedent_surface(antecedent_surface);
+                }
                 let predicate = if filter.card_types.len() == 1
                     && filter.card_types[0] == CardType::Land
                     && filter.subtypes.is_empty()
@@ -4918,9 +5216,12 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
                     predicate
                 });
             }
-            if let Ok(filter) = parse_object_filter_lexed(&descriptor_tokens, false)
+            if let Ok(mut filter) = parse_object_filter_lexed(&descriptor_tokens, false)
                 && filter != ObjectFilter::default()
             {
+                if antecedent_surface.is_some() {
+                    filter.set_demonstrative_antecedent_surface(antecedent_surface);
+                }
                 if has_card
                     && filter.card_types.len() == 1
                     && filter.card_types[0] == CardType::Land

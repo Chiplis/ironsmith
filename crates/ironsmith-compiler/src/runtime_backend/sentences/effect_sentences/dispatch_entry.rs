@@ -235,6 +235,55 @@ pub(crate) fn apply_leading_duration_to_become_effect(
     }
 }
 
+fn apply_leading_duration_to_entire_effect(effect: &mut EffectAst, duration: &Until) -> bool {
+    match effect {
+        EffectAst::Sequence { effects } | EffectAst::Coordinated { effects, .. } => {
+            !effects.is_empty()
+                && effects
+                    .iter_mut()
+                    .all(|effect| apply_leading_duration_to_entire_effect(effect, duration))
+        }
+        EffectAst::Conditional {
+            if_true, if_false, ..
+        } => {
+            let branch_count = if_true.len() + if_false.len();
+            branch_count > 0
+                && if_true
+                    .iter_mut()
+                    .chain(if_false.iter_mut())
+                    .all(|effect| apply_leading_duration_to_entire_effect(effect, duration))
+        }
+        _ => apply_leading_duration_to_become_effect(effect, duration),
+    }
+}
+
+fn preserve_fully_scoped_leading_duration_coordination(effects: Vec<EffectAst>) -> Vec<EffectAst> {
+    let mut flattened = Vec::new();
+    let mut had_coordination = false;
+    for effect in effects {
+        match effect {
+            EffectAst::Coordinated {
+                effects,
+                result_conjunction: false,
+                ..
+            } => {
+                had_coordination = true;
+                flattened.extend(effects);
+            }
+            other => flattened.push(other),
+        }
+    }
+    if flattened.len() > 1 || had_coordination {
+        vec![EffectAst::Coordinated {
+            effects: flattened,
+            leading_duration: true,
+            result_conjunction: false,
+        }]
+    } else {
+        flattened
+    }
+}
+
 fn should_apply_leading_duration_become_shortcut(tokens: &[OwnedLexToken]) -> bool {
     let words = crate::runtime_backend::token_word_refs(tokens);
     if words
@@ -479,6 +528,7 @@ pub(super) struct ConsultCastClause {
     pub(super) timing: ConsultCastTiming,
     pub(super) cost: ConsultCastCost,
     pub(super) mana_value_condition: Option<ConsultCastManaValueCondition>,
+    pub(super) surface: ironsmith_core::GrantPlayTaggedSurface,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1390,7 +1440,24 @@ pub(crate) fn with_where_x_surface_hints(
                 | Value::PendingEffectMetric { .. }
                 | Value::PendingEffectMetricOffset { .. }
         ));
+    let counts_objects_with_an_ability = match value.unhinted() {
+        Value::Count(filter) | Value::CountScaled(filter, _) => {
+            !filter.ability_markers.is_empty() || !filter.static_abilities.is_empty()
+        }
+        _ => false,
+    };
+    let aggregates_objects = matches!(
+        value.unhinted(),
+        Value::TotalPower(_) | Value::TotalToughness(_) | Value::TotalManaValue(_)
+    );
     value = value.with_surface_hint(ValueSurfaceHint::WhereXIs);
+    if counts_objects_with_an_ability
+        && words
+            .iter()
+            .any(|word| matches!(*word, "ability" | "abilities"))
+    {
+        value = value.with_surface_hint(ValueSurfaceHint::ExplicitAbilityNoun);
+    }
     let mentions_energy = binding_tokens.iter().any(|token| {
         token.as_word() == Some("e")
             || (token.kind == TokenKind::ManaGroup && token.mana_group_inner() == Some("e"))
@@ -1416,7 +1483,10 @@ pub(crate) fn with_where_x_surface_hints(
         value = value.with_surface_hint(ValueSurfaceHint::CardsExiledThisWay);
     } else if counts_objects && words.contains(&"discarded") && words.contains(&"way") {
         value = value.with_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay);
-    } else if counts_objects && words.contains(&"sacrificed") && words.contains(&"way") {
+    } else if (counts_objects || aggregates_objects)
+        && words.contains(&"sacrificed")
+        && words.contains(&"way")
+    {
         value = value.with_surface_hint(ValueSurfaceHint::PermanentsSacrificedThisWay);
     } else if counts_objects
         && words.contains(&"counters")
@@ -1608,8 +1678,34 @@ fn parse_effect_sentences_from_sentence_inputs(
                     effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
                         .map(|shape| shape.where_tokens)
                 })?;
+        let binding_tokens =
+            crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
+                binding_tokens,
+            );
+        if let Some(value) =
+            crate::runtime_backend::families::keyword_static::parse_where_x_is_aggregate_filter_value(
+                binding_tokens,
+            )
+        {
+            return Some(with_where_x_surface_hints(value, tokens));
+        }
         if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(binding_tokens)
         {
+            return Some(with_where_x_surface_hints(value, tokens));
+        }
+        // Preserve typed `number of ...` aggregates before the generic exact
+        // value shape can reduce their trailing scope to a plain object count.
+        // For example, the count in "number of abilities from among ...
+        // found among creatures you control" is the distinct ability set,
+        // not the creatures that carry those abilities.
+        if let Some(value) =
+            crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
+                binding_tokens,
+            )
+        {
+            return Some(with_where_x_surface_hints(value, tokens));
+        }
+        if let Some(value) = parse_exact_where_x_value_expression(binding_tokens) {
             return Some(with_where_x_surface_hints(value, tokens));
         }
         if let Some((_, value)) =
@@ -1814,6 +1910,18 @@ fn parse_effect_sentences_from_sentence_inputs(
             && should_apply_leading_duration_become_shortcut(&duration_shape.remainder)
         {
             let mut inner_effects = parse_effect_sentences_lexed(&duration_shape.remainder)?;
+            let fully_scoped = !inner_effects.is_empty()
+                && inner_effects.iter_mut().all(|effect| {
+                    apply_leading_duration_to_entire_effect(effect, &duration_shape.duration)
+                });
+            if fully_scoped {
+                effects.extend(preserve_fully_scoped_leading_duration_coordination(
+                    inner_effects,
+                ));
+                carried_context = None;
+                sentence_idx += 1;
+                continue;
+            }
             let mut applied = false;
             for effect in &mut inner_effects {
                 applied |=
@@ -2070,7 +2178,11 @@ fn parse_effect_sentences_from_sentence_inputs(
                 &mut sentence_effects,
                 ValueSurfaceHint::CounterFollowupThen,
             );
-        } else if sentence_idx > 0 && sentence_words.first().copied() == Some("put") {
+        } else if sentence_idx > 0 {
+            // The parser already knows this effect came from a later authored
+            // sentence. Preserve that boundary for every counter-producing
+            // verb ("put", "distribute", and future equivalents); the
+            // annotation helper is a no-op for non-counter effects.
             annotate_counter_followup_surface(
                 &mut sentence_effects,
                 ValueSurfaceHint::CounterFollowupSeparateSentence,
@@ -2157,7 +2269,14 @@ fn parse_effect_sentences_from_sentence_inputs(
                 effects: if_result_effects,
             } = effect
         {
-            if matches!(previous_effect, EffectAst::UnlessPays { .. }) {
+            if matches!(
+                previous_effect,
+                EffectAst::UnlessPays { .. }
+                    | EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::CounterUnlessPays { .. },
+                        ..
+                    })
+            ) {
                 *predicate = match &*predicate {
                     // An UnlessPays effect happens when the payer declines and
                     // its consequence is carried out.  Modal result wording
@@ -2290,6 +2409,37 @@ pub(crate) fn parse_effect_sentences_lexed(
             }
             return Ok(effects);
         }
+        // A quoted restriction grant is a complete typed effect shape, but
+        // its whole-sentence recognizer must not absorb a leading player
+        // choice. Preserve that choice before bundle dispatch, then parse the
+        // remaining sentences normally so an authored "If you do" stays
+        // correlated with the MayByPlayer antecedent.
+        if let Some(first_sentence) = sentence_parts.first().copied()
+            && super::super::front_end::grammar::effects::sentence_predicate_shapes::
+                parse_quoted_ability_sentence_tokens(first_sentence)
+                .is_some()
+            && let Some(player) = super::parse_leading_player_may_lexed(first_sentence)
+        {
+            let mut stripped = super::chain_carry::remove_through_first_word(first_sentence);
+            if let Some(rest) =
+                super::super::front_end::grammar::effects::chain_carry::
+                    strip_leading_have_tokens(&stripped)
+            {
+                stripped = rest.to_vec();
+            }
+            let mut optional_effects = parse_effect_sentences_lexed_inner(&stripped)?;
+            for effect in &mut optional_effects {
+                super::chain_carry::bind_implicit_player_context(effect, player);
+            }
+            let mut effects = vec![EffectAst::MayByPlayer {
+                player,
+                effects: optional_effects,
+            }];
+            for sentence in sentence_parts.iter().skip(1) {
+                effects.extend(parse_effect_sentences_lexed_inner(sentence)?);
+            }
+            return Ok(effects);
+        }
         let mut effects = parse_effect_sentences_lexed_inner(tokens)?;
         transport_optional_search_partition_followup(&mut effects);
         transport_coin_flip_outcomes_into_owner(&mut effects);
@@ -2416,6 +2566,8 @@ fn coin_flip_owner_body_mut(effect: &mut EffectAst) -> Option<&mut Vec<EffectAst
         | EffectAst::AnyPlayerMay { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
+        | EffectAst::DelayedUntilNextUntapStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
@@ -2827,6 +2979,7 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
                 | SubjectVerbActionAst::AddManaColorsAmong { .. }
+                | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
                 | SubjectVerbActionAst::AddManaImprintedColors
         ),
@@ -2883,6 +3036,27 @@ fn parse_effect_sentences_lexed_inner(
         && let Some(effect) = super::zone_handlers::parse_emblem_action(tokens, None)
     {
         return Ok(vec![effect]);
+    }
+
+    // A genuine coordinated clause with one leading duration must reach the
+    // chain parser before the duration-gain fast path below. That fast path is
+    // intentionally tolerant of surrounding text and can otherwise retain
+    // only a later `it gains ...` arm while dropping an earlier action.
+    if effect_grammar::chain_carry::coordinated_effect_chain_leading_duration(tokens) == Some(true)
+    {
+        return parse_effect_sentence_lexed(tokens);
+    }
+
+    let sentence_words =
+        crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
+    if effect_grammar::gain_ability_shapes::parse_leading_gain_duration_shape(&sentence_words)
+        .is_some()
+        && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
+    {
+        // Activated-line preprocessing can remove quote delimiters around a
+        // nested granted rule. Preserve the outer leading-duration gain
+        // before a `can't` inside the rule is claimed as the top-level effect.
+        return Ok(effects);
     }
 
     if let Some(mut effects) = parse_typed_effect_bundle_lexed(tokens) {
@@ -3341,7 +3515,7 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::find_verb;
+    use crate::cards::builders::{EffectAst, PlayerAst, SubjectVerbActionAst, find_verb};
     use crate::effect::{Value, ValueComparisonOperator};
     use crate::filter::TaggedOpbjectRelation;
     use crate::target::PlayerFilter;
@@ -3362,6 +3536,234 @@ mod tests {
         parse_reveal_top_count_put_all_matching_into_hand_rest_graveyard,
         parse_top_cards_view_sentence, parse_typed_effect_bundle_lexed,
     };
+
+    fn empty_mana_pool_player(effect: &EffectAst) -> Option<PlayerAst> {
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && matches!(subject_verb.action, SubjectVerbActionAst::EmptyManaPool)
+        {
+            return Some(subject_verb.subject.player);
+        }
+        let mut found = None;
+        crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effects(
+            effect,
+            true,
+            |nested| {
+                if found.is_none() {
+                    found = nested.iter().find_map(empty_mana_pool_player);
+                }
+            },
+        );
+        found
+    }
+
+    #[test]
+    fn where_x_ability_count_preserves_authored_ability_noun() {
+        let value = Value::Count(
+            crate::filter::ObjectFilter::default()
+                .in_zone(crate::zone::Zone::Graveyard)
+                .owned_by(PlayerFilter::You)
+                .with_ability_marker("cycling"),
+        );
+        let explicit_tokens = lex_line(
+            "where X is the number of cards with a cycling ability in your graveyard",
+            0,
+        )
+        .expect("lex explicit ability noun");
+        let compact_tokens = lex_line(
+            "where X is the number of cards with cycling in your graveyard",
+            0,
+        )
+        .expect("lex compact ability marker");
+
+        let explicit = super::with_where_x_surface_hints(value.clone(), &explicit_tokens);
+        let compact = super::with_where_x_surface_hints(value, &compact_tokens);
+        assert!(explicit.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitAbilityNoun));
+        assert!(!compact.has_surface_hint(ironsmith_core::ValueSurfaceHint::ExplicitAbilityNoun));
+    }
+
+    #[test]
+    fn leading_duration_coordinated_chain_bypasses_gain_fast_path() {
+        let tokens = lex_line(
+            "Until end of turn, double target creature's power and it gains first strike.",
+            0,
+        )
+        .expect("coordinated duration sentence should lex");
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("coordinated duration sentence should parse");
+        let [
+            EffectAst::Coordinated {
+                effects: coordinated,
+                leading_duration: true,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one coordinated program, got {effects:#?}");
+        };
+        assert!(
+            matches!(
+                coordinated.as_slice(),
+                [
+                    EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::Pump { .. },
+                        ..
+                    }),
+                    EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::GrantAbilitiesToTarget { .. },
+                        ..
+                    }),
+                ]
+            ),
+            "{coordinated:#?}"
+        );
+    }
+
+    #[test]
+    fn inline_search_where_x_keeps_the_local_count_filter_surface() {
+        let tokens = lex_line(
+            "Search your library for up to X basic land cards, where X is the number of tapped creatures you control, put those cards onto the battlefield tapped, then shuffle.",
+            0,
+        )
+        .expect("dynamic search should lex");
+        let effects =
+            super::parse_effect_sentences_lexed(&tokens).expect("dynamic search should parse");
+        let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::SearchLibrary {
+                        count_value: Some(count_value),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one typed search effect, got {effects:#?}");
+        };
+        let Value::Count(filter) = count_value.unhinted() else {
+            panic!("expected a filtered search count, got {count_value:#?}");
+        };
+
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(filter.zone, Some(crate::zone::Zone::Battlefield));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(filter.tapped);
+        assert!(!filter.has_explicit_card_noun(), "{filter:#?}");
+        assert!(count_value.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs));
+    }
+
+    #[test]
+    fn inline_mana_symbol_where_x_binds_through_comma_then() {
+        let tokens = lex_line(
+            "Scry X, where X is the amount of {S} spent to cast this spell, then draw three cards.",
+            0,
+        )
+        .expect("mana-symbol where-X sentence should lex");
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("mana-symbol where-X sentence should parse");
+        let [EffectAst::CommaThen { effects }] = effects.as_slice() else {
+            panic!("expected a comma-then sequence, got {effects:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Scry { count },
+                ..
+            }),
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { count: draw_count },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected typed scry-then-draw effects, got {effects:#?}");
+        };
+
+        assert!(count.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs));
+        assert!(matches!(
+            count.unhinted(),
+            Value::ManaSymbolSpentToCastThisSpell {
+                symbol: crate::mana::ManaSymbol::Snow,
+                reference: ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+            }
+        ));
+        assert_eq!(draw_count, &Value::Fixed(3));
+    }
+
+    #[test]
+    fn create_x_keeps_the_static_abilities_among_aggregate() {
+        let tokens = lex_line(
+            "Create X Blood tokens, where X is the number of abilities from among flying, first strike, double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, reach, trample, and vigilance found among creatures you control.",
+            0,
+        )
+        .expect("ability aggregate creation should lex");
+        let binding = crate::runtime_backend::front_end::grammar::effects::dispatch_entry_shapes::
+            parse_where_x_usage_shape_tokens(&tokens)
+            .expect("create count should expose its where-X binding");
+        let direct = crate::runtime_backend::families::keyword_static::
+            parse_where_x_is_number_of_filter_value(
+                crate::runtime_backend::front_end::shared::util::
+                    trim_edge_punctuation_tokens(binding.binding_tokens),
+            )
+            .expect("typed number-of binding should parse");
+        assert!(
+            matches!(direct.unhinted(), Value::StaticAbilitiesAmong { .. }),
+            "typed binding was reduced before effect parsing: {direct:#?}; tokens: {:?}",
+            crate::runtime_backend::token_word_refs(binding.binding_tokens)
+        );
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("ability aggregate creation should parse");
+        let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one typed token creation, got {effects:#?}");
+        };
+        let Value::StaticAbilitiesAmong { filter, abilities } = count.unhinted() else {
+            panic!("expected the static-ability aggregate, got {count:#?}");
+        };
+
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(abilities.len(), 12);
+        assert!(abilities.contains(&crate::static_abilities::StaticAbilityId::Flying));
+        assert!(abilities.contains(&crate::static_abilities::StaticAbilityId::Vigilance));
+    }
+
+    #[test]
+    fn counter_unless_payment_decline_binds_nonpayment_branch_and_player() {
+        let tokens = lex_line(
+            "Counter target spell unless its controller pays {X}. If that player doesn't, they tap all lands with mana abilities they control and lose all unspent mana.",
+            0,
+        )
+        .expect("lex counter-unless nonpayment followup");
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("parse counter-unless nonpayment followup");
+        let debug = format!("{effects:#?}");
+
+        let [
+            _,
+            EffectAst::IfResult {
+                predicate,
+                effects: followups,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected counter producer followed by a result branch\n{debug}");
+        };
+        assert_eq!(
+            *predicate,
+            crate::cards::builders::IfResultPredicate::Did,
+            "declining an unless payment makes its consequence happen"
+        );
+        assert_eq!(
+            followups.iter().find_map(empty_mana_pool_player),
+            Some(PlayerAst::That),
+            "the coordinated implicit life-resource action must retain the payer"
+        );
+    }
 
     #[test]
     fn delayed_coin_flip_keeps_its_outcome_inside_the_delayed_scope() {
@@ -3719,6 +4121,32 @@ mod tests {
     }
 
     #[test]
+    fn full_dispatch_keeps_leading_become_lose_gain_as_one_coordination() {
+        let tokens = lex_line(
+            "Until end of turn, target creature you control becomes a blue Dragon Illusion with base power and toughness 4/4, loses all abilities, and gains flying.",
+            0,
+        )
+        .expect("coordinated animation should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("coordinated animation should parse through full dispatch");
+        let [
+            crate::cards::builders::EffectAst::Coordinated {
+                effects,
+                leading_duration: true,
+                result_conjunction: false,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected one leading-duration coordination, got {parsed:#?}");
+        };
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("BecomeBasePtCreature"), "{debug}");
+        assert!(debug.contains("RemoveAbilitiesFromTarget"), "{debug}");
+        assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+    }
+
+    #[test]
     fn consult_mana_value_condition_normalizes_spell_apostrophe_prefix() {
         let tokens = lex_line("if that spell's mana value is 3 or less", 0)
             .expect("rewrite lexer should classify consult mana-value condition");
@@ -3946,6 +4374,19 @@ mod tests {
         let exile_tokens = trim_commas(&first[verb_idx + 1..]);
         let exile_effect = parse_exile_top_library_clause(&exile_tokens, Some(subject));
         assert!(exile_effect.is_some(), "expected exile clause to parse");
+        assert!(
+            format!("{exile_effect:#?}").contains("LibraryOwnerAsActor"),
+            "an authored library-owner subject must retain its actor placement"
+        );
+
+        let imperative_tokens =
+            lex_line("the top two cards of target opponent's library", 0).unwrap();
+        let imperative =
+            parse_exile_top_library_clause(&imperative_tokens, None).expect("imperative parses");
+        assert!(
+            !format!("{imperative:#?}").contains("LibraryOwnerAsActor"),
+            "an imperative exile instruction must not acquire an owner-actor surface"
+        );
 
         let permission_effect = parse_until_end_of_turn_may_play_tagged_clause(second)
             .expect("permission clause should not error");
@@ -4238,6 +4679,74 @@ mod tests {
                 && lowered_debug.contains("Trample"),
             "lowered branch must retain the clash condition and both rewards: {lowered_debug}"
         );
+    }
+
+    #[test]
+    fn optional_quoted_source_restriction_keeps_vigilance_result_semantics() {
+        let tokens = lex_line(
+            "You may have this creature gain \"this can't attack\" until end of combat. If you do, attacking doesn't cause creatures you control to tap this combat if this is untapped.",
+            0,
+        )
+        .expect("Johan-style combat choice should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("Johan-style combat choice should parse");
+        let [
+            EffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                effects: optional,
+            },
+            EffectAst::IfResult {
+                predicate: crate::cards::builders::IfResultPredicate::Did,
+                effects: result,
+            },
+        ] = parsed.as_slice()
+        else {
+            panic!("expected an optional restriction and gated result: {parsed:#?}");
+        };
+
+        let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Cant {
+                        restriction: crate::effect::Restriction::Attack(source),
+                        duration: crate::effect::Until::EndOfCombat,
+                        ..
+                    },
+                ..
+            }),
+        ] = optional.as_slice()
+        else {
+            panic!("expected a source attack restriction: {optional:#?}");
+        };
+        assert!(
+            source.source,
+            "restriction should retain source identity: {source:#?}"
+        );
+
+        let [
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesAll {
+                        filter,
+                        abilities,
+                        duration: crate::effect::Until::EndOfCombat,
+                        condition: Some(crate::ConditionExpr::SourceIsUntapped),
+                        lock_filter_at_resolution: false,
+                        ..
+                    },
+                ..
+            }),
+        ] = result.as_slice()
+        else {
+            panic!("expected a source-conditioned vigilance grant: {result:#?}");
+        };
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(abilities.iter().any(|ability| matches!(
+            ability,
+            crate::cards::builders::GrantedAbilityAst::StaticAbility(ability)
+                if ability.id() == crate::static_abilities::StaticAbilityId::Vigilance
+        )));
     }
 
     #[test]
@@ -4551,6 +5060,43 @@ mod tests {
         };
 
         assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+    }
+
+    #[test]
+    fn unapplied_plural_token_haste_followup_keeps_they_surface() {
+        let surface = |text: &str| {
+            let lexed = lex_line(text, 0).expect("follow-up should lex");
+            let sentences = split_lexed_sentences(&lexed);
+            let tokens = sentences
+                .first()
+                .copied()
+                .expect("follow-up should contain one sentence");
+            let followup = super::parse_token_copy_followup_sentence_lexed(tokens)
+                .expect("token haste follow-up should be recognized");
+            let effects =
+                super::apply_unapplied_token_copy_followup(tokens, tokens, followup, false)
+                    .expect("token haste follow-up should lower");
+            let [
+                EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::GrantAbilitiesToTarget {
+                            set_quantifier_surface,
+                            ..
+                        },
+                    ..
+                }),
+            ] = effects.as_slice()
+            else {
+                panic!("expected one targeted haste grant, got {effects:#?}");
+            };
+            *set_quantifier_surface
+        };
+
+        assert_eq!(
+            surface("They gain haste until end of turn."),
+            Some(ironsmith_core::SetQuantifierSurface::They)
+        );
+        assert_eq!(surface("It gains haste until end of turn."), None);
     }
 }
 
@@ -4884,7 +5430,15 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             && replacement.has_surface_hint(ValueSurfaceHint::WhereXIs)
             && !value.has_surface_hint(ValueSurfaceHint::WhereXIs)
         {
-            *value = replacement.clone();
+            // The effect-local parser may have retained a more precise object
+            // surface than the sentence-wide where-X scan.  The latter can
+            // include later prose (for example, "put those cards") and must
+            // not turn "tapped creatures you control" into "tapped creature
+            // cards you control".  Equal unhinted values need only inherit
+            // the authored value-level hints.
+            *value = value
+                .clone()
+                .with_surface_hints(replacement.surface_hints().iter().copied());
         }
         Ok(())
     }
@@ -4940,6 +5494,84 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                     replace_values_in_total_cost(branch, replacement, clause)?;
                 }
                 *cost = crate::cost::TotalCost::one_of(branches);
+            }
+        }
+        Ok(())
+    }
+
+    fn replace_values_in_granted_abilities(
+        abilities: &mut [GrantedAbilityAst],
+        replacement: &Value,
+        clause: &str,
+        rebase_it_to_ability_source: bool,
+    ) -> Result<(), CardTextError> {
+        fn rebase_it_reference(value: &mut Value) {
+            match value {
+                Value::SurfaceHinted { value, .. }
+                | Value::Scaled(value, _)
+                | Value::DividedRoundedDown(value, _)
+                | Value::HalfRoundedDown(value) => rebase_it_reference(value),
+                Value::Add(left, right) | Value::Min(left, right) => {
+                    rebase_it_reference(left);
+                    rebase_it_reference(right);
+                }
+                Value::PowerOf(spec)
+                | Value::ToughnessOf(spec)
+                | Value::ManaValueOf(spec)
+                | Value::CountersOn(spec, _) => {
+                    if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) {
+                        *spec = Box::new(ChooseSpec::Source.with_surface_hint(
+                            ironsmith_core::ChooseSpecSurfaceHint::SourceReference(
+                                SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                            ),
+                        ));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        fn replace_static_ability_value(
+            ability: &mut crate::static_abilities::StaticAbility,
+            replacement: &Value,
+            clause: &str,
+            rebase_it_to_ability_source: bool,
+        ) -> Result<(), CardTextError> {
+            if let crate::static_abilities::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+                count,
+                ..
+            } = &mut ability.payload
+            {
+                replace_value(count, replacement, clause)?;
+                if rebase_it_to_ability_source {
+                    rebase_it_reference(count);
+                }
+            }
+            Ok(())
+        }
+
+        for ability in abilities {
+            match ability {
+                GrantedAbilityAst::StaticAbility(ability) => {
+                    replace_static_ability_value(
+                        ability,
+                        replacement,
+                        clause,
+                        rebase_it_to_ability_source,
+                    )?;
+                }
+                GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
+                    if let crate::ability::AbilityKind::Static(static_ability) = ability.kind_mut()
+                    {
+                        replace_static_ability_value(
+                            static_ability,
+                            replacement,
+                            clause,
+                            rebase_it_to_ability_source,
+                        )?;
+                    }
+                }
+                _ => {}
             }
         }
         Ok(())
@@ -5047,11 +5679,20 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             SubjectVerbActionAst::CounterUnlessPays { cost, .. } => {
                 replace_values_in_total_cost(cost, replacement, clause)?;
             }
-            SubjectVerbActionAst::PayMana { cost, x_value } => {
-                if cost.has_x() && x_value.is_none() {
+            SubjectVerbActionAst::PayMana {
+                cost,
+                x_value,
+                x_maximum,
+            } => {
+                if cost.has_x() && x_value.is_none() && x_maximum.is_none() {
                     *x_value = Some(replacement.clone());
-                } else if let Some(x_value) = x_value.as_mut() {
-                    replace_value(x_value, replacement, clause)?;
+                } else {
+                    if let Some(x_value) = x_value.as_mut() {
+                        replace_value(x_value, replacement, clause)?;
+                    }
+                    if let Some(x_maximum) = x_maximum.as_mut() {
+                        replace_value(x_maximum, replacement, clause)?;
+                    }
                 }
             }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
@@ -5163,7 +5804,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
-            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
             | SubjectVerbActionAst::ChooseCardType { .. }
@@ -5184,6 +5825,7 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::ControlCombatChoicesThisTurn { .. }
             | SubjectVerbActionAst::GainControl { .. }
             | SubjectVerbActionAst::AddManaColorsAmong { .. }
+            | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -5198,7 +5840,6 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::PlayFromGraveyardUntilEot
             | SubjectVerbActionAst::ControlPlayer { .. }
             | SubjectVerbActionAst::ReduceNextSpellCostThisTurn { .. }
-            | SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { .. }
             | SubjectVerbActionAst::RingTemptsYou
             | SubjectVerbActionAst::VentureIntoDungeon { .. }
             | SubjectVerbActionAst::BecomeMonarch
@@ -5304,22 +5945,16 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
             | SubjectVerbActionAst::AddColors { .. }
             | SubjectVerbActionAst::AddAllSubtypesOfFamily { .. }
             | SubjectVerbActionAst::RemoveAllSubtypesOfFamily { .. }
-            | SubjectVerbActionAst::BecomeAuraEnchantment { .. }
             | SubjectVerbActionAst::BecomeBasicLandType { .. }
             | SubjectVerbActionAst::SetColors { .. }
             | SubjectVerbActionAst::MakeColorless { .. }
             | SubjectVerbActionAst::BecomeBasicLandTypeChoice { .. }
             | SubjectVerbActionAst::BecomeCreatureTypeChoice { .. }
             | SubjectVerbActionAst::BecomeColorChoice { .. }
-            | SubjectVerbActionAst::BecomeCopy { .. }
-            | SubjectVerbActionAst::GrantAbilitiesAll { .. }
             | SubjectVerbActionAst::RemoveAbilitiesAll { .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceAll { .. }
-            | SubjectVerbActionAst::GrantAbilitiesToTarget { .. }
             | SubjectVerbActionAst::GrantToTarget { .. }
             | SubjectVerbActionAst::GrantBySpec { .. }
             | SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. }
-            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget { .. }
             | SubjectVerbActionAst::AdditionalPhases { .. }
             | SubjectVerbActionAst::TurnFaceUp { .. }
             | SubjectVerbActionAst::ShuffleLibrary => {}
@@ -5366,6 +6001,41 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
                     replace_value(toughness, replacement, clause)?;
                 }
             }
+            SubjectVerbActionAst::BecomeAuraEnchantment {
+                granted_abilities: abilities,
+                ..
+            }
+            | SubjectVerbActionAst::BecomeCopy {
+                granted_abilities: abilities,
+                ..
+            }
+            | SubjectVerbActionAst::GrantAbilitiesAll { abilities, .. }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceAll { abilities, .. } => {
+                replace_values_in_granted_abilities(abilities, replacement, clause, false)?;
+            }
+            SubjectVerbActionAst::GrantAbilitiesToTarget {
+                target, abilities, ..
+            }
+            | SubjectVerbActionAst::GrantAbilitiesChoiceToTarget {
+                target, abilities, ..
+            } => {
+                let rebase_it_to_ability_source =
+                    matches!(target, TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG);
+                replace_values_in_granted_abilities(
+                    abilities,
+                    replacement,
+                    clause,
+                    rebase_it_to_ability_source,
+                )?;
+            }
+            SubjectVerbActionAst::GrantNextSpellAbilityThisTurn { ability, .. } => {
+                replace_values_in_granted_abilities(
+                    std::slice::from_mut(ability),
+                    replacement,
+                    clause,
+                    false,
+                )?;
+            }
             SubjectVerbActionAst::Learn
             | SubjectVerbActionAst::DoubleCountersOnTarget { .. }
             | SubjectVerbActionAst::RegisterEnterUnderControlReplacement { .. } => {}
@@ -5379,6 +6049,24 @@ pub(crate) fn replace_unbound_x_in_effect_anywhere(
     Ok(())
 }
 
+pub(crate) fn parse_exact_where_x_value_expression(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trim_edge_punctuation(tokens);
+    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::
+        parse_mana_symbol_spent_to_cast_value(&tokens)
+    {
+        return Some(value);
+    }
+    let word_view =
+        crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens.as_slice());
+    let words = word_view.word_refs();
+    let body = words.strip_prefix(&["where", "x", "is"])?;
+    let (value, used) =
+        crate::runtime_backend::front_end::grammar::shared_util::value_expr::parse_value_expr_words(
+            body,
+        )?;
+    (used == body.len()).then_some(value)
+}
+
 pub(crate) fn apply_where_x_to_damage_amounts(
     tokens: &[OwnedLexToken],
     effects: &mut [EffectAst],
@@ -5388,8 +6076,15 @@ pub(crate) fn apply_where_x_to_damage_amounts(
     else {
         return Ok(());
     };
-    let Some(where_value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(shape.binding_tokens)
-        .or_else(|| parse_value_binding_clause(shape.binding_tokens))
+    let binding_tokens =
+        crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens(
+            shape.binding_tokens,
+        );
+    let Some(where_value) = crate::runtime_backend::families::keyword_static::parse_where_x_is_aggregate_filter_value(binding_tokens)
+        .or_else(|| crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(binding_tokens))
+        .or_else(|| crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(binding_tokens))
+        .or_else(|| parse_exact_where_x_value_expression(binding_tokens))
+        .or_else(|| parse_value_binding_clause(binding_tokens))
         .map(|value| with_where_x_surface_hints(value, tokens))
     else {
         return Ok(());
@@ -5834,7 +6529,8 @@ fn token_copy_followup_container_effects_mut(
     effect: &mut EffectAst,
 ) -> Option<&mut Vec<EffectAst>> {
     match effect {
-        EffectAst::May { effects }
+        EffectAst::SourceSentence { effects, .. }
+        | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
         | EffectAst::IfResult { effects, .. }
         | EffectAst::WhenResult { effects, .. }
@@ -5853,6 +6549,8 @@ fn token_copy_followup_container_effects_mut(
         | EffectAst::ForEachTaggedPlayer { effects, .. }
         | EffectAst::RepeatProcess { effects, .. }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
+        | EffectAst::DelayedUntilNextUntapStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
@@ -5904,7 +6602,9 @@ pub(crate) fn parse_token_copy_followup_sentence(
             "step"
         ]
     ) {
-        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
+        return Some(TokenCopyFollowup::SacrificeAtNextEndStep(
+            super::token_copy_action_reference_surface(tokens, "sacrifice")?,
+        ));
     }
     if matches!(
         filtered.as_slice(),
@@ -5934,7 +6634,9 @@ pub(crate) fn parse_token_copy_followup_sentence(
     parse_token_copy_modifier_sentence(tokens)
         .or_else(|| {
             is_exile_that_token_at_end_of_combat(tokens)
-                .then_some(TokenCopyFollowup::ExileAtEndOfCombat)
+                .then(|| super::token_copy_action_reference_surface(tokens, "exile"))
+                .flatten()
+                .map(TokenCopyFollowup::ExileAtEndOfCombat)
         })
         .or_else(|| {
             is_sacrifice_that_token_at_end_of_combat(tokens)
@@ -5979,7 +6681,9 @@ pub(crate) fn parse_token_copy_followup_sentence_lexed(
             "step"
         ]
     ) {
-        return Some(TokenCopyFollowup::SacrificeAtNextEndStep);
+        return Some(TokenCopyFollowup::SacrificeAtNextEndStep(
+            super::token_copy_action_reference_surface(tokens, "sacrifice")?,
+        ));
     }
     if matches!(
         filtered.as_slice(),
@@ -6009,7 +6713,9 @@ pub(crate) fn parse_token_copy_followup_sentence_lexed(
     super::parse_token_copy_modifier_sentence_lexed(tokens)
         .or_else(|| {
             super::is_exile_that_token_at_end_of_combat_lexed(tokens)
-                .then_some(TokenCopyFollowup::ExileAtEndOfCombat)
+                .then(|| super::token_copy_action_reference_surface(tokens, "exile"))
+                .flatten()
+                .map(TokenCopyFollowup::ExileAtEndOfCombat)
         })
         .or_else(|| {
             super::is_sacrifice_that_token_at_end_of_combat_lexed(tokens)
@@ -6068,32 +6774,49 @@ fn apply_unapplied_token_copy_followup(
         TargetAst::Tagged(TagKey::from(IT_TAG), span)
     };
     let effects = match followup {
-        TokenCopyFollowup::HasHaste => vec![EffectAst::subject_verb_grant_abilities_to_target(
-            fallback_target(),
-            vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
-            Until::Forever,
-        )],
-        TokenCopyFollowup::GainHasteUntilEndOfTurn => {
-            vec![EffectAst::subject_verb_grant_abilities_to_target(
-                fallback_target(),
-                vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
-                Until::EndOfTurn,
-            )]
+        TokenCopyFollowup::HasHaste(surface) => {
+            vec![
+                EffectAst::subject_verb_grant_abilities_to_target(
+                    fallback_target(),
+                    vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
+                    Until::Forever,
+                )
+                .with_set_quantifier_surface(
+                    (surface == crate::effect::TokenCopyReferenceSurface::They)
+                        .then_some(ironsmith_core::SetQuantifierSurface::They),
+                ),
+            ]
         }
-        TokenCopyFollowup::EnterTappedAndAttacking => {
+        TokenCopyFollowup::GainHasteUntilEndOfTurn(surface) => {
+            vec![
+                EffectAst::subject_verb_grant_abilities_to_target(
+                    fallback_target(),
+                    vec![GrantedAbilityAst::KeywordAction(KeywordAction::Haste)],
+                    Until::EndOfTurn,
+                )
+                .with_set_quantifier_surface(
+                    (surface == crate::effect::TokenCopyReferenceSurface::They)
+                        .then_some(ironsmith_core::SetQuantifierSurface::They),
+                ),
+            ]
+        }
+        TokenCopyFollowup::EnterTappedAndAttacking
+        | TokenCopyFollowup::EnterTappedAndAttackingThatPlayer => {
             return Err(CardTextError::ParseError(
                 "standalone 'enters tapped and attacking' follow-up requires a preceding token-copy, populate, or meld effect".to_string(),
             ));
         }
-        TokenCopyFollowup::SacrificeAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
-            player: PlayerFilter::Any,
-            effects: vec![EffectAst::subject_verb_sacrifice(
-                PlayerAst::Implicit,
-                ObjectFilter::tagged(TagKey::from(IT_TAG)),
-                1,
-                None,
-            )],
-        }],
+        TokenCopyFollowup::SacrificeAtNextEndStep(_) => {
+            vec![EffectAst::DelayedUntilNextEndStep {
+                player: PlayerFilter::Any,
+                effects: vec![EffectAst::subject_verb_sacrifice(
+                    PlayerAst::Implicit,
+                    ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                    1,
+                    None,
+                )],
+            }]
+        }
         TokenCopyFollowup::SacrificeAtNextUpkeep => vec![EffectAst::DelayedUntilNextUpkeep {
             player: PlayerAst::Any,
             effects: vec![EffectAst::subject_verb_sacrifice(
@@ -6103,14 +6826,14 @@ fn apply_unapplied_token_copy_followup(
                 None,
             )],
         }],
-        TokenCopyFollowup::ExileAtNextEndStep => vec![EffectAst::DelayedUntilNextEndStep {
+        TokenCopyFollowup::ExileAtNextEndStep(_) => vec![EffectAst::DelayedUntilNextEndStep {
             player: PlayerFilter::Any,
             effects: vec![EffectAst::subject_verb_exile(
                 TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
                 false,
             )],
         }],
-        TokenCopyFollowup::ExileAtEndOfCombat => vec![EffectAst::DelayedUntilEndOfCombat {
+        TokenCopyFollowup::ExileAtEndOfCombat(_) => vec![EffectAst::DelayedUntilEndOfCombat {
             effects: vec![EffectAst::subject_verb_exile(
                 TargetAst::Object(ObjectFilter::tagged(TagKey::from(IT_TAG)), span, None),
                 false,
@@ -6131,6 +6854,7 @@ fn apply_unapplied_token_copy_followup(
 pub(crate) fn try_apply_token_granted_ability_followup(
     effects: &mut [EffectAst],
     abilities: &[GrantedAbilityAst],
+    presentation: ironsmith_core::TokenAbilityPresentation,
 ) -> Result<bool, CardTextError> {
     let Some(last) = effects.last_mut() else {
         return Ok(false);
@@ -6140,15 +6864,21 @@ pub(crate) fn try_apply_token_granted_ability_followup(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::CreateTokenWithMods {
+                    definition,
                     granted_abilities,
                     ability_presentation,
                     ..
                 },
             ..
         }) => {
+            let combine_separate_sentence =
+                !definition.has_intrinsic_abilities() && granted_abilities.is_empty();
             granted_abilities.extend(abilities.iter().cloned());
-            *ability_presentation =
-                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence);
+            *ability_presentation = Some(if combine_separate_sentence {
+                presentation.combined_separate_sentence()
+            } else {
+                presentation
+            });
             Ok(true)
         }
         EffectAst::Conditional {
@@ -6157,14 +6887,27 @@ pub(crate) fn try_apply_token_granted_ability_followup(
         | EffectAst::SelfReplacement {
             if_true, if_false, ..
         } => {
-            if try_apply_token_granted_ability_followup(if_true.as_mut_slice(), abilities)? {
+            if try_apply_token_granted_ability_followup(
+                if_true.as_mut_slice(),
+                abilities,
+                presentation,
+            )? {
                 return Ok(true);
             }
-            if try_apply_token_granted_ability_followup(if_false.as_mut_slice(), abilities)? {
+            if try_apply_token_granted_ability_followup(
+                if_false.as_mut_slice(),
+                abilities,
+                presentation,
+            )? {
                 return Ok(true);
             }
             Ok(false)
         }
+        EffectAst::TagAffected { effect, .. } => try_apply_token_granted_ability_followup(
+            std::slice::from_mut(effect.as_mut()),
+            abilities,
+            presentation,
+        ),
         _ => {
             let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
                 return Ok(false);
@@ -6172,7 +6915,11 @@ pub(crate) fn try_apply_token_granted_ability_followup(
             if nested_effects.is_empty() {
                 return Ok(false);
             }
-            try_apply_token_granted_ability_followup(nested_effects.as_mut_slice(), abilities)
+            try_apply_token_granted_ability_followup(
+                nested_effects.as_mut_slice(),
+                abilities,
+                presentation,
+            )
         }
     }
 }
@@ -6181,122 +6928,163 @@ pub(crate) fn try_apply_token_copy_followup(
     effects: &mut [EffectAst],
     followup: TokenCopyFollowup,
 ) -> Result<bool, CardTextError> {
-    let Some(last) = effects.last_mut() else {
-        return Ok(false);
-    };
-
-    match last {
-        EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
-            SubjectVerbActionAst::Populate {
-                has_haste,
-                enters_tapped,
-                enters_attacking,
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                ..
-            } => {
-                match followup {
-                    TokenCopyFollowup::HasHaste => *has_haste = true,
+    // Lowering a source sentence or loop may append bookkeeping effects after
+    // the authored token creation. Search backward so a follow-up still binds
+    // to the most recent structurally reachable token action instead of
+    // requiring that action to be the wrapper's literal final child.
+    for effect in effects.iter_mut().rev() {
+        let applied = match effect {
+            EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
+                SubjectVerbActionAst::Populate {
+                    has_haste,
+                    enters_tapped,
+                    enters_attacking,
+                    exile_at_end_of_combat,
+                    sacrifice_at_next_end_step,
+                    exile_at_next_end_step,
+                    ..
+                } => match followup {
+                    TokenCopyFollowup::HasHaste(_) => {
+                        *has_haste = true;
+                        true
+                    }
                     TokenCopyFollowup::EnterTappedAndAttacking => {
                         *enters_tapped = true;
                         *enters_attacking = true;
+                        true
                     }
-                    TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
-                    TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
-                    TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
-                    TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    TokenCopyFollowup::SacrificeAtNextEndStep(_) => {
+                        *sacrifice_at_next_end_step = true;
+                        true
+                    }
+                    TokenCopyFollowup::ExileAtNextEndStep(_) => {
+                        *exile_at_next_end_step = true;
+                        true
+                    }
+                    TokenCopyFollowup::ExileAtEndOfCombat(_) => {
+                        *exile_at_end_of_combat = true;
+                        true
+                    }
+                    TokenCopyFollowup::EnterTappedAndAttackingThatPlayer
+                    | TokenCopyFollowup::GainHasteUntilEndOfTurn(_)
                     | TokenCopyFollowup::SacrificeAtNextUpkeep
                     | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
-                }
-                Ok(true)
-            }
-            SubjectVerbActionAst::Meld {
-                enters_tapped,
-                enters_attacking,
-                ..
-            } => match followup {
-                TokenCopyFollowup::EnterTappedAndAttacking => {
-                    *enters_tapped = true;
-                    *enters_attacking = true;
-                    Ok(true)
-                }
-                _ => Ok(false),
-            },
-            SubjectVerbActionAst::CreateTokenCopy {
-                has_haste,
-                enters_tapped,
-                enters_attacking,
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                ..
-            }
-            | SubjectVerbActionAst::CreateTokenCopyFromSource {
-                has_haste,
-                enters_tapped,
-                enters_attacking,
-                exile_at_end_of_combat,
-                sacrifice_at_next_end_step,
-                exile_at_next_end_step,
-                ..
-            } => {
-                match followup {
-                    TokenCopyFollowup::HasHaste => *has_haste = true,
+                },
+                SubjectVerbActionAst::Meld {
+                    enters_tapped,
+                    enters_attacking,
+                    ..
+                } => match followup {
                     TokenCopyFollowup::EnterTappedAndAttacking => {
                         *enters_tapped = true;
                         *enters_attacking = true;
+                        true
                     }
-                    TokenCopyFollowup::SacrificeAtNextEndStep => *sacrifice_at_next_end_step = true,
-                    TokenCopyFollowup::ExileAtNextEndStep => *exile_at_next_end_step = true,
-                    TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
-                    TokenCopyFollowup::GainHasteUntilEndOfTurn
+                    _ => return Ok(false),
+                },
+                SubjectVerbActionAst::CreateTokenCopy {
+                    has_haste,
+                    enters_tapped,
+                    enters_attacking,
+                    attack_target_player_or_planeswalker_controlled_by,
+                    attack_target_player_only,
+                    exile_at_end_of_combat,
+                    exile_at_end_of_combat_reference_surface,
+                    sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface,
+                    exile_at_next_end_step,
+                    exile_at_next_end_step_reference_surface,
+                    haste_followup_reference_surface,
+                    ..
+                }
+                | SubjectVerbActionAst::CreateTokenCopyFromSource {
+                    has_haste,
+                    enters_tapped,
+                    enters_attacking,
+                    attack_target_player_or_planeswalker_controlled_by,
+                    attack_target_player_only,
+                    exile_at_end_of_combat,
+                    exile_at_end_of_combat_reference_surface,
+                    sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface,
+                    exile_at_next_end_step,
+                    exile_at_next_end_step_reference_surface,
+                    haste_followup_reference_surface,
+                    ..
+                } => match followup {
+                    TokenCopyFollowup::HasHaste(surface) => {
+                        *has_haste = true;
+                        *haste_followup_reference_surface = Some(surface);
+                        true
+                    }
+                    TokenCopyFollowup::EnterTappedAndAttacking => {
+                        *enters_tapped = true;
+                        *enters_attacking = true;
+                        true
+                    }
+                    TokenCopyFollowup::EnterTappedAndAttackingThatPlayer => {
+                        *enters_tapped = true;
+                        *enters_attacking = true;
+                        *attack_target_player_or_planeswalker_controlled_by = Some(PlayerAst::That);
+                        *attack_target_player_only = true;
+                        true
+                    }
+                    TokenCopyFollowup::SacrificeAtNextEndStep(surface) => {
+                        *sacrifice_at_next_end_step = true;
+                        *sacrifice_at_next_end_step_reference_surface = Some(surface);
+                        true
+                    }
+                    TokenCopyFollowup::ExileAtNextEndStep(surface) => {
+                        *exile_at_next_end_step = true;
+                        *exile_at_next_end_step_reference_surface = Some(surface);
+                        true
+                    }
+                    TokenCopyFollowup::ExileAtEndOfCombat(surface) => {
+                        *exile_at_end_of_combat = true;
+                        *exile_at_end_of_combat_reference_surface = Some(surface);
+                        true
+                    }
+                    TokenCopyFollowup::GainHasteUntilEndOfTurn(_)
                     | TokenCopyFollowup::SacrificeAtNextUpkeep
                     | TokenCopyFollowup::SacrificeAtEndOfCombat => return Ok(false),
-                }
-                Ok(true)
-            }
-            SubjectVerbActionAst::CreateTokenWithMods {
-                exile_at_end_of_combat,
-                sacrifice_at_end_of_combat,
-                ..
-            } => {
-                match followup {
-                    TokenCopyFollowup::ExileAtEndOfCombat => *exile_at_end_of_combat = true,
-                    TokenCopyFollowup::SacrificeAtEndOfCombat => *sacrifice_at_end_of_combat = true,
-                    TokenCopyFollowup::HasHaste
+                },
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    exile_at_end_of_combat,
+                    sacrifice_at_end_of_combat,
+                    ..
+                } => match followup {
+                    TokenCopyFollowup::ExileAtEndOfCombat(_) => {
+                        *exile_at_end_of_combat = true;
+                        true
+                    }
+                    TokenCopyFollowup::SacrificeAtEndOfCombat => {
+                        *sacrifice_at_end_of_combat = true;
+                        true
+                    }
+                    TokenCopyFollowup::HasHaste(_)
                     | TokenCopyFollowup::EnterTappedAndAttacking
-                    | TokenCopyFollowup::GainHasteUntilEndOfTurn
-                    | TokenCopyFollowup::SacrificeAtNextEndStep
+                    | TokenCopyFollowup::EnterTappedAndAttackingThatPlayer
+                    | TokenCopyFollowup::GainHasteUntilEndOfTurn(_)
+                    | TokenCopyFollowup::SacrificeAtNextEndStep(_)
                     | TokenCopyFollowup::SacrificeAtNextUpkeep
-                    | TokenCopyFollowup::ExileAtNextEndStep => return Ok(false),
-                }
-                Ok(true)
+                    | TokenCopyFollowup::ExileAtNextEndStep(_) => return Ok(false),
+                },
+                _ => false,
+            },
+            _ => {
+                let mut applied = false;
+                try_for_each_nested_effects_mut(effect, false, |nested_effects| {
+                    if !applied && !nested_effects.is_empty() {
+                        applied = try_apply_token_copy_followup(nested_effects, followup)?;
+                    }
+                    Ok::<(), CardTextError>(())
+                })?;
+                applied
             }
-            _ => Ok(false),
-        },
-        EffectAst::Conditional {
-            if_true, if_false, ..
-        }
-        | EffectAst::SelfReplacement {
-            if_true, if_false, ..
-        } => {
-            if try_apply_token_copy_followup(if_true.as_mut_slice(), followup)? {
-                return Ok(true);
-            }
-            if try_apply_token_copy_followup(if_false.as_mut_slice(), followup)? {
-                return Ok(true);
-            }
-            Ok(false)
-        }
-        _ => {
-            let Some(nested_effects) = token_copy_followup_container_effects_mut(last) else {
-                return Ok(false);
-            };
-            if nested_effects.is_empty() {
-                return Ok(false);
-            }
-            try_apply_token_copy_followup(nested_effects.as_mut_slice(), followup)
+        };
+        if applied {
+            return Ok(true);
         }
     }
+    Ok(false)
 }

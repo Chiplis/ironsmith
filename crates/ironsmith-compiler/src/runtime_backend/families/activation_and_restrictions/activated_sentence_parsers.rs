@@ -11,6 +11,7 @@ struct ActivateOnlySentenceDetails {
     timing: ActivationTiming,
     condition: Option<crate::ConditionExpr>,
     normalized_restriction: Option<String>,
+    once_per_turn_after_other_restrictions: bool,
 }
 
 enum ActivatedSentenceModifier {
@@ -45,10 +46,16 @@ fn parse_activate_only_sentence_details_lexed(
     let timing = parse_activate_only_timing_lexed(tokens).unwrap_or_else(|| current_timing.clone());
     let condition = parse_activation_condition_lexed(tokens)
         .and_then(|condition| strip_once_per_turn_condition_redundancy(condition, &timing));
+    let normalized_restriction = normalize_activate_only_restriction(tokens, &timing);
+    let once_per_turn_after_other_restrictions = timing == ActivationTiming::OncePerTurn
+        && tokens.windows(3).any(|window| {
+            window[0].is_word("and") && window[1].is_word("only") && window[2].is_word("once")
+        });
     Some(ActivateOnlySentenceDetails {
         timing: timing.clone(),
         condition,
-        normalized_restriction: normalize_activate_only_restriction(tokens, &timing),
+        normalized_restriction,
+        once_per_turn_after_other_restrictions,
     })
 }
 
@@ -165,6 +172,10 @@ pub(super) fn collect_activated_sentence_modifiers<'a>(
                 if let Some(restriction) = parsed.normalized_restriction {
                     additional_activation_restrictions.push(restriction);
                 }
+                if parsed.once_per_turn_after_other_restrictions {
+                    additional_activation_restrictions
+                        .push("__ironsmith_once_per_turn_after_other_restrictions".to_string());
+                }
             }
             ActivatedSentenceModifier::ManaUsageRestriction {
                 parsed,
@@ -276,6 +287,7 @@ mod tests {
 
         assert_eq!(details.timing, ActivationTiming::OncePerTurn);
         assert_eq!(details.condition, None);
+        assert!(!details.once_per_turn_after_other_restrictions);
     }
 
     #[test]
@@ -291,5 +303,41 @@ mod tests {
             details.condition,
             Some(crate::ConditionExpr::SourceAttackedThisTurn)
         );
+        assert!(!details.once_per_turn_after_other_restrictions);
+    }
+
+    #[test]
+    fn once_each_turn_keeps_an_independent_turn_timing() {
+        let sentence = lex("Activate only during your turn and only once each turn.");
+        let details =
+            parse_activate_only_sentence_details_lexed(&sentence, &ActivationTiming::AnyTime)
+                .expect("combined restriction should parse");
+
+        assert_eq!(details.timing, ActivationTiming::OncePerTurn);
+        assert_eq!(
+            details.condition,
+            Some(crate::ConditionExpr::ActivationTiming(
+                ActivationTiming::DuringYourTurn
+            ))
+        );
+        assert!(details.once_per_turn_after_other_restrictions);
+    }
+
+    #[test]
+    fn trailing_once_each_turn_order_is_kept_with_a_residual_condition() {
+        let sentence =
+            lex("Activate only if an opponent lost life this turn and only once each turn.");
+        let details =
+            parse_activate_only_sentence_details_lexed(&sentence, &ActivationTiming::AnyTime)
+                .expect("combined restriction should parse");
+
+        assert_eq!(details.timing, ActivationTiming::OncePerTurn);
+        assert!(
+            details
+                .normalized_restriction
+                .as_deref()
+                .is_some_and(|restriction| restriction.contains("opponent lost life this turn"))
+        );
+        assert!(details.once_per_turn_after_other_restrictions);
     }
 }

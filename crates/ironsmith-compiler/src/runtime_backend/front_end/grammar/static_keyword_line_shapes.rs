@@ -264,7 +264,7 @@ fn copy_exception_type_removal(input: &mut LexStream<'_>) -> WResult<usize> {
 }
 
 pub(crate) fn parse_animation_verbs(tokens: &[OwnedLexToken]) -> Option<AnimationVerbShape> {
-    let be = first_token_word(tokens, &["is", "are"])?;
+    let be = first_token_word(tokens, &["is", "are", "it's", "it’s", "its"])?;
     let tail = &tokens[be.token + 1..];
     let relative_has = first_token_word(tail, &["have", "has"])?;
     Some(AnimationVerbShape {
@@ -442,6 +442,30 @@ mod tests {
             Some(AnimationVerbShape {
                 be: TokenBoundary { token: 1 },
                 has: TokenBoundary { token: 4 },
+            })
+        );
+        let contracted = tokens(&[
+            "it's",
+            "a",
+            "0/0",
+            "creature",
+            "in",
+            "addition",
+            "to",
+            "its",
+            "other",
+            "types",
+            "and",
+            "it",
+            "has",
+            "annihilator",
+            "2",
+        ]);
+        assert_eq!(
+            parse_animation_verbs(&contracted),
+            Some(AnimationVerbShape {
+                be: TokenBoundary { token: 0 },
+                has: TokenBoundary { token: 12 },
             })
         );
     }

@@ -553,6 +553,7 @@ struct SharedDeclineFallback {
     fallback: String,
     battlefield_tag: Option<TagKey>,
     predicate: EffectPredicate,
+    declined_cast: Option<(TagKey, &'static str)>,
 }
 
 fn tagged_battlefield_move(may: &crate::effects::MayEffect) -> Option<&TagKey> {
@@ -607,11 +608,27 @@ fn describe_shared_decline_fallback(
     if decline != false_branch {
         return None;
     }
+    let declined_cast = may.effects.as_slice().first().and_then(|effect| {
+        (may.effects.len() == 1)
+            .then(|| {
+                structural_unwrap_render_wrappers(effect)
+                    .downcast_ref::<crate::effects::CastTaggedEffect>()
+            })
+            .flatten()
+            .filter(|cast| !cast.as_copy && cast.player == PlayerFilter::You)
+            .map(|cast| {
+                (
+                    cast.tag.clone(),
+                    if cast.allow_land { "play" } else { "cast" },
+                )
+            })
+    });
     Some(SharedDeclineFallback {
         primary: describe_branch(std::slice::from_ref(primary))?,
         fallback: false_branch,
         battlefield_tag,
         predicate: if_effect.predicate.clone(),
+        declined_cast,
     })
 }
 
@@ -673,6 +690,22 @@ fn describe_observed_conditional(
     let (true_branch, false_branch) = if let Some(shared) =
         describe_shared_decline_fallback(conditional)
     {
+        if matches!(
+            shared.predicate,
+            EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined
+        ) && let Some((tag, verb)) = shared.declined_cast.as_ref()
+            && tag == observed_tag
+        {
+            let condition_prefix = if optional_reveal {
+                format!("If {condition} is revealed this way")
+            } else {
+                format!("If it's {condition}")
+            };
+            return Some(format!(
+                "{condition_prefix}, {}. If you don't {verb} it, {}",
+                shared.primary, shared.fallback
+            ));
+        }
         if shared.predicate == EffectPredicate::WasDeclined
             && shared.battlefield_tag.as_ref() == Some(observed_tag)
         {
@@ -795,11 +828,15 @@ fn observed_not_in_zone(condition: &Condition, observed_tag: &TagKey) -> Option<
         player,
         tag,
         filter,
+        mode,
     } = inner.as_ref()
     else {
         return None;
     };
-    if *player != PlayerFilter::You || tag != observed_tag {
+    if *player != PlayerFilter::You
+        || *mode != crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown
+        || tag != observed_tag
+    {
         return None;
     }
     let mut remainder = filter.clone();
@@ -1164,6 +1201,7 @@ mod tests {
                     player: PlayerFilter::You,
                     tag: tag.clone(),
                     filter: ObjectFilter::default().in_zone(Zone::Battlefield),
+                    mode: crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown,
                 })),
                 vec![tagged_move(&tag, Zone::Hand)],
             ),
@@ -1201,6 +1239,7 @@ mod tests {
                     player: PlayerFilter::You,
                     tag: tag.clone(),
                     filter: ObjectFilter::default().in_zone(Zone::Hand),
+                    mode: crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown,
                 })),
                 vec![Effect::may_single(tagged_move(&tag, Zone::Graveyard))],
             ),

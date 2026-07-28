@@ -82,6 +82,7 @@ pub(crate) enum TokenCopyModifierKind {
     GainHasteUntilEndOfTurn,
     HasHaste,
     EnterTappedAndAttacking,
+    EnterTappedAndAttackingThatPlayer,
     SacrificeAtNextEndStep,
     SacrificeAtNextUpkeep,
     ExileAtNextEndStep,
@@ -103,6 +104,14 @@ pub(crate) fn parse_token_copy_modifier_kind(
         &[
             &["it", "gains", "haste", "until", "end", "of", "turn"],
             &["they", "gain", "haste", "until", "end", "of", "turn"],
+            &[
+                "that", "token", "gains", "haste", "until", "end", "of", "turn",
+            ],
+            &[
+                "those", "tokens", "gain", "haste", "until", "end", "of", "turn",
+            ],
+            &["token", "gains", "haste", "until", "end", "of", "turn"],
+            &["tokens", "gain", "haste", "until", "end", "of", "turn"],
         ],
     ) {
         return Some(TokenCopyModifierKind::GainHasteUntilEndOfTurn);
@@ -112,6 +121,10 @@ pub(crate) fn parse_token_copy_modifier_kind(
         &[
             &["it", "has", "haste"],
             &["they", "have", "haste"],
+            &["that", "token", "gains", "haste"],
+            &["those", "tokens", "gain", "haste"],
+            &["token", "gains", "haste"],
+            &["tokens", "gain", "haste"],
             &["token", "created", "this", "way", "has", "haste"],
             &["tokens", "created", "this", "way", "have", "haste"],
             &["token", "created", "this", "way", "gains", "haste"],
@@ -151,6 +164,40 @@ pub(crate) fn parse_token_copy_modifier_kind(
     ) {
         return Some(TokenCopyModifierKind::EnterTappedAndAttacking);
     }
+    if common::exact_any(
+        &words,
+        &[
+            &[
+                "it",
+                "enters",
+                "tapped",
+                "and",
+                "attacking",
+                "that",
+                "player",
+            ],
+            &[
+                "token",
+                "enters",
+                "tapped",
+                "and",
+                "attacking",
+                "that",
+                "player",
+            ],
+            &[
+                "tokens",
+                "enter",
+                "tapped",
+                "and",
+                "attacking",
+                "that",
+                "player",
+            ],
+        ],
+    ) {
+        return Some(TokenCopyModifierKind::EnterTappedAndAttackingThatPlayer);
+    }
 
     if common::prefix_any(&words, TOKEN_SACRIFICE_PREFIXES)
         && common::present(&words, &["at", "beginning", "of", "next", "end", "step"])
@@ -189,12 +236,31 @@ mod tests {
             parse_token_copy_modifier_kind(&haste),
             Some(TokenCopyModifierKind::GainHasteUntilEndOfTurn)
         );
+        let plural_haste =
+            lex_line("Those tokens gain haste.", 0).expect("plural token haste fixture");
+        assert_eq!(
+            parse_token_copy_modifier_kind(&plural_haste),
+            Some(TokenCopyModifierKind::HasHaste)
+        );
+        let temporary_plural_haste = lex_line("Those tokens gain haste until end of turn.", 0)
+            .expect("temporary plural token haste fixture");
+        assert_eq!(
+            parse_token_copy_modifier_kind(&temporary_plural_haste),
+            Some(TokenCopyModifierKind::GainHasteUntilEndOfTurn)
+        );
 
         let sacrifice = lex_line("Sacrifice it at the beginning of the next end step.", 0)
             .expect("lex fixture");
         assert_eq!(
             parse_token_copy_modifier_kind(&sacrifice),
             Some(TokenCopyModifierKind::SacrificeAtNextEndStep)
+        );
+
+        let attacking =
+            lex_line("The token enters tapped and attacking that player.", 0).expect("lex fixture");
+        assert_eq!(
+            parse_token_copy_modifier_kind(&attacking),
+            Some(TokenCopyModifierKind::EnterTappedAndAttackingThatPlayer)
         );
     }
 }

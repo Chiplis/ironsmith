@@ -63,6 +63,33 @@ fn describe_choice(spec: &ChooseSpec) -> String {
     }
 }
 
+fn resolve_reflexive_choice_spec(
+    game: &GameState,
+    ctx: &ExecutionContext,
+    spec: &ChooseSpec,
+) -> Option<ChooseSpec> {
+    let mut count = spec.count();
+    if !count.is_dynamic_x() {
+        return Some(spec.clone());
+    }
+    let resolved = if let Some(count_value) = spec.count_value() {
+        crate::effects::helpers::resolve_value(game, count_value, ctx)
+            .ok()?
+            .max(0) as usize
+    } else {
+        ctx.x_value? as usize
+    };
+    if count.is_up_to_dynamic_x() {
+        count.min = 0;
+    } else {
+        count.min = resolved;
+    }
+    count.max = Some(resolved);
+    count.dynamic_x = false;
+    count.up_to_x = false;
+    Some(spec.clone().with_count(count))
+}
+
 fn choose_reflexive_targets(
     game: &GameState,
     ctx: &mut ExecutionContext,
@@ -71,20 +98,21 @@ fn choose_reflexive_targets(
     let mut chosen_targets = Vec::new();
 
     for spec in choices {
-        let count = spec.count();
+        let resolved_spec = resolve_reflexive_choice_spec(game, ctx, spec)?;
+        let count = resolved_spec.count();
         let legal_targets = crate::targeting::compute_legal_targets_with_tagged_objects(
             game,
-            spec,
+            &resolved_spec,
             ctx.controller,
             Some(ctx.source),
             Some(&ctx.tagged_objects),
         );
 
         let legal_target_sets =
-            crate::targeting::legal_target_sets_for_spec(game, spec, &legal_targets);
+            crate::targeting::legal_target_sets_for_spec(game, &resolved_spec, &legal_targets);
         if !crate::targeting::has_enough_legal_targets_for_spec(
             game,
-            spec,
+            &resolved_spec,
             &legal_targets,
             count.min,
         ) {
@@ -229,7 +257,8 @@ mod tests {
     use crate::decision::DecisionMaker;
     use crate::decisions::context::TargetsContext;
     use crate::effect::{
-        ChoiceCount, Effect, EffectId, EffectOutcome, EffectPredicate, OutcomeObjectMemory,
+        ChoiceCount, Effect, EffectId, EffectMetric, EffectMetricSource, EffectOutcome,
+        EffectPredicate, OutcomeObjectMemory, Value,
     };
     use crate::effects::{EffectExecutor, ExecutionContext};
     use crate::game_state::{GameState, Target};
@@ -247,6 +276,54 @@ mod tests {
         fn decide_targets(&mut self, _game: &GameState, _ctx: &TargetsContext) -> Vec<Target> {
             vec![self.target, self.target]
         }
+    }
+
+    #[derive(Default)]
+    struct CaptureTargetBounds {
+        min: Option<usize>,
+        max: Option<Option<usize>>,
+    }
+
+    impl DecisionMaker for CaptureTargetBounds {
+        fn decide_targets(&mut self, _game: &GameState, ctx: &TargetsContext) -> Vec<Target> {
+            self.min = ctx
+                .requirements
+                .first()
+                .map(|requirement| requirement.min_targets);
+            self.max = ctx
+                .requirements
+                .first()
+                .map(|requirement| requirement.max_targets);
+            Vec::new()
+        }
+    }
+
+    #[test]
+    fn reflexive_dynamic_target_count_resolves_from_the_antecedent_outcome() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source =
+            game.create_object_from_definition(&lightning_bolt(), alice, Zone::Battlefield);
+        let condition = EffectId(77);
+        let mut dm = CaptureTargetBounds::default();
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.store_outcome(condition, EffectOutcome::count(2));
+        let choices = vec![ChooseSpec::target(ChooseSpec::creature()).with_count_value(
+            ChoiceCount::up_to_dynamic_x(),
+            Value::EffectMetric {
+                effect_id: condition,
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::Count,
+            },
+        )];
+
+        let selected =
+            choose_reflexive_targets(&game, &mut ctx, &choices).expect("up-to-zero is legal");
+
+        assert!(selected.is_empty());
+        drop(ctx);
+        assert_eq!(dm.min, Some(0));
+        assert_eq!(dm.max, Some(Some(2)));
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

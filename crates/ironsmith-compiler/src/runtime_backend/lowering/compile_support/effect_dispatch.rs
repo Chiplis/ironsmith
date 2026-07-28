@@ -22,6 +22,84 @@ struct EffectCompileHandlerDef {
     run: EffectCompileHandler,
 }
 
+fn with_target_count_preserving_value(spec: ChooseSpec, count: ChoiceCount) -> ChooseSpec {
+    if let Some(value) = spec.count_value().cloned() {
+        spec.with_count_value(count, value)
+    } else {
+        spec.with_count(count)
+    }
+}
+
+fn nested_create_token_affected_count_id(effect: &Effect) -> Option<EffectId> {
+    if let Some(with_id) = effect.as_with_id() {
+        return nested_create_token_affected_count_id(&with_id.effect);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return nested_create_token_affected_count_id(&tagged.effect);
+    }
+    let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
+    match create.count.unhinted() {
+        Value::EffectMetric {
+            effect_id,
+            source: ironsmith_core::EffectMetricSource::AffectedObjects,
+            metric:
+                ironsmith_core::EffectMetric::Count | ironsmith_core::EffectMetric::AffectedCount,
+        } => Some(*effect_id),
+        _ => None,
+    }
+}
+
+fn nested_effect_is_move_to_zone(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return nested_effect_is_move_to_zone(&with_id.effect);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return nested_effect_is_move_to_zone(&tagged.effect);
+    }
+    false
+}
+
+fn nested_effect_result_id(effect: &Effect) -> Option<EffectId> {
+    if let Some(with_id) = effect.as_with_id() {
+        return Some(with_id.id);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return nested_effect_result_id(&tagged.effect);
+    }
+    None
+}
+
+/// Reference annotation can resolve a pending affected-object metric before a
+/// typed sequence is lowered recursively. Preserve the producer wrapper when
+/// that happens so an adjacent "create ... for each card put ... this way"
+/// consumer can evaluate the exact move outcome at runtime.
+fn preserve_nested_move_affected_count_links(effects: &mut [Effect]) {
+    for consumer_index in 1..effects.len() {
+        let Some(effect_id) = nested_create_token_affected_count_id(&effects[consumer_index])
+        else {
+            continue;
+        };
+        let producer_index = consumer_index - 1;
+        if !nested_effect_is_move_to_zone(&effects[producer_index]) {
+            continue;
+        }
+        match nested_effect_result_id(&effects[producer_index]) {
+            Some(existing) if existing == effect_id => {}
+            Some(_) => {}
+            None => {
+                effects[producer_index] =
+                    Effect::with_id(effect_id.0, effects[producer_index].clone());
+            }
+        }
+    }
+}
+
 fn lower_source_top_only_choice(
     spec: &ChooseSpec,
     player: PlayerAst,
@@ -131,7 +209,7 @@ fn describe_value_for_mode(value: &Value) -> String {
     }
 }
 
-fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Value {
+pub(super) fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Value {
     match value {
         Value::SourcePower => Value::PowerOf(Box::new(source.clone())),
         Value::SourceToughness => Value::ToughnessOf(Box::new(source.clone())),
@@ -140,6 +218,12 @@ fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Val
         }
         Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
             Value::ToughnessOf(Box::new(source.clone()))
+        }
+        Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Source) => {
+            Value::ManaValueOf(Box::new(source.clone()))
+        }
+        Value::CountersOn(spec, counter_type) if matches!(spec.base(), ChooseSpec::Source) => {
+            Value::CountersOn(Box::new(source.clone()), *counter_type)
         }
         Value::ManaSymbolsInManaCostOf { spec, color }
             if matches!(spec.base(), ChooseSpec::Source) =>
@@ -156,6 +240,17 @@ fn bind_source_value_to_damage_source(value: &Value, source: &ChooseSpec) -> Val
         Value::Scaled(inner, multiplier) => Value::Scaled(
             Box::new(bind_source_value_to_damage_source(inner, source)),
             *multiplier,
+        ),
+        Value::DividedRoundedDown(inner, divisor) => Value::DividedRoundedDown(
+            Box::new(bind_source_value_to_damage_source(inner, source)),
+            *divisor,
+        ),
+        Value::HalfRoundedDown(inner) => {
+            Value::HalfRoundedDown(Box::new(bind_source_value_to_damage_source(inner, source)))
+        }
+        Value::Min(left, right) => Value::Min(
+            Box::new(bind_source_value_to_damage_source(left, source)),
+            Box::new(bind_source_value_to_damage_source(right, source)),
         ),
         Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
             value: Box::new(bind_source_value_to_damage_source(value, source)),
@@ -473,13 +568,27 @@ fn compile_effect_inner(
         ));
     }
     if let EffectAst::Sequence { effects } = effect {
-        return compile_effects(effects, ctx);
+        let (mut effects, choices) = compile_effects(effects, ctx)?;
+        preserve_nested_move_affected_count_links(&mut effects);
+        return Ok((effects, choices));
     }
-    if let EffectAst::SourceSentence { effects } = effect {
+    if let EffectAst::CommaThen { effects } = effect {
+        let (mut effects, choices) = compile_effects(effects, ctx)?;
+        preserve_nested_move_affected_count_links(&mut effects);
+        return Ok((
+            vec![Effect::new(crate::effects::SequenceEffect::comma_then(
+                effects,
+            ))],
+            choices,
+        ));
+    }
+    if let EffectAst::SourceSentence { effects, .. } = effect {
         // SourceSentence is compiler-only provenance used to keep one Oracle
         // sentence together while references are resolved. It has no
         // separate runtime effect; lower its typed children in order.
-        return compile_effects(effects, ctx);
+        let (mut effects, choices) = compile_effects(effects, ctx)?;
+        preserve_nested_move_affected_count_links(&mut effects);
+        return Ok((effects, choices));
     }
     if let EffectAst::Coordinated {
         effects,
@@ -497,7 +606,8 @@ fn compile_effect_inner(
         let compiled = compile_effects(effects, ctx);
         ctx.force_auto_tag_object_targets = saved_force_auto_tag_object_targets;
         ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
-        let (effects, choices) = compiled?;
+        let (mut effects, choices) = compiled?;
+        preserve_nested_move_affected_count_links(&mut effects);
         let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
         let sequence = if *result_conjunction {
             crate::effects::SequenceEffect::result_conjunction(effects, *leading_duration)
@@ -522,7 +632,15 @@ fn compile_effect_inner(
                 effects: mode_effects,
             });
         }
-        return Ok((vec![Effect::choose_one(lowered_modes)], choices));
+        // `EffectAst::ChooseOneOf` represents an instruction-level choice
+        // made while the effect resolves. Printed modal spell/ability blocks
+        // have their own document AST and deliberately lower without a
+        // chooser so their modes are announced before targets. Keeping the
+        // chooser explicit here prevents inline "A or B" instructions from
+        // being mistaken for casting-time modal choices.
+        let choose = crate::effects::ChooseModeEffect::choose_one(lowered_modes)
+            .with_chooser(crate::target::PlayerFilter::You);
+        return Ok((vec![Effect::new(choose)], choices));
     }
     if let EffectAst::VillainousChoice {
         player,
@@ -674,15 +792,18 @@ fn compile_effect_inner(
     if let EffectAst::SecretChoiceStart {
         options,
         participants,
+        object_choice,
     } = effect
     {
-        return Ok((
-            vec![Effect::new(crate::effects::SecretChoiceEffect::new(
-                options.clone(),
+        let secret_choice = if let Some(object_choice) = object_choice {
+            crate::effects::SecretChoiceEffect::new_objects(
                 participants.clone(),
-            ))],
-            Vec::new(),
-        ));
+                object_choice.clone(),
+            )
+        } else {
+            crate::effects::SecretChoiceEffect::new(options.clone(), participants.clone())
+        };
+        return Ok((vec![Effect::new(secret_choice)], Vec::new()));
     }
     if let EffectAst::SecretChoiceReveal = effect {
         return Ok((Vec::new(), Vec::new()));
@@ -937,6 +1058,7 @@ fn collect_value_player_target_choices(value: &Value, choices: &mut Vec<ChooseSp
         }
         Value::Devotion { player, .. }
         | Value::CountPlayers(player)
+        | Value::CountPlayersWithCardsInHandAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
@@ -1027,6 +1149,9 @@ fn collect_object_filter_player_target_choices(
     }
     if let Some(attached_to) = filter.attached_to_object.as_deref() {
         collect_object_filter_player_target_choices(attached_to, choices);
+    }
+    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_deref() {
+        collect_object_filter_player_target_choices(combat_partner, choices);
     }
     for option in &filter.any_of {
         collect_object_filter_player_target_choices(option, choices);
@@ -1137,6 +1262,9 @@ fn replace_iterated_player_with_target_player_in_object_filter(filter: &mut Obje
     }
     if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
         replace_iterated_player_with_target_player_in_object_filter(attached_to);
+    }
+    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_deref_mut() {
+        replace_iterated_player_with_target_player_in_object_filter(combat_partner);
     }
     for nested in &mut filter.any_of {
         replace_iterated_player_with_target_player_in_object_filter(nested);

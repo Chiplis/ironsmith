@@ -161,6 +161,7 @@ fn parse_negated_who_this_way_predicate(
         player: PlayerAst::That,
         tag: TagKey::from(IT_TAG),
         filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
 }
 

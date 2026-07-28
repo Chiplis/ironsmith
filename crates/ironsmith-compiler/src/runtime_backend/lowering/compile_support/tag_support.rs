@@ -23,6 +23,7 @@ fn tag_str_has_prefix(tag: &str, prefix: &str) -> bool {
 pub(crate) fn is_revealed_collection_tag(tag: &str) -> bool {
     tag_str_has_prefix(tag, REVEALED_COLLECTION_TAG_PREFIX)
         || tag_str_has_prefix(tag, SENTENCE_HELPER_REVEALED_TAG_PREFIX)
+        || tag == crate::tag::REVEALED_THIS_WAY_TAG
 }
 
 pub(crate) fn is_searched_collection_tag(tag: &str) -> bool {
@@ -125,6 +126,11 @@ fn collect_effect_produced_tags(effect: &EffectAst, tags: &mut Vec<TagKey>) {
                 push_unique_tag(tags, all_tag);
                 push_unique_tag(tags, match_tag);
             }
+            SubjectVerbActionAst::CopySpell { .. }
+            | SubjectVerbActionAst::CopySpellForEachTarget { .. } => push_unique_tag(
+                tags,
+                &TagKey::from(crate::cards::builders::COPIED_STACK_OBJECT_TAG),
+            ),
             _ => {}
         },
         _ => {}
@@ -183,7 +189,6 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::PutOrRemoveCounters { target, .. }
             | SubjectVerbActionAst::CopySpell { target, .. }
             | SubjectVerbActionAst::CopySpellForEachTarget { target, .. }
-            | SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
             | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
             | SubjectVerbActionAst::FightIterated { creature2: target }
             | SubjectVerbActionAst::Detain { target }
@@ -230,6 +235,16 @@ fn with_direct_effect_targets(effect: &EffectAst, mut visit: impl FnMut(&TargetA
             | SubjectVerbActionAst::SwitchPowerToughness { target, .. }
             | SubjectVerbActionAst::GrantProtectionChoice { target, .. }
             | SubjectVerbActionAst::ReturnToHand { target, .. } => visit(target),
+            SubjectVerbActionAst::ExileUntilSourceLeaves {
+                target,
+                leave_watcher,
+                ..
+            } => {
+                visit(target);
+                if let Some(leave_watcher) = leave_watcher {
+                    visit(leave_watcher);
+                }
+            }
             SubjectVerbActionAst::PreventAllDamageToTarget {
                 target,
                 source_target,
@@ -479,6 +494,10 @@ pub(crate) fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
             .as_deref()
             .is_some_and(|attached_to| filter_references_tag(attached_to, tag))
         || filter
+            .blocked_or_was_blocked_by_this_turn
+            .as_deref()
+            .is_some_and(|combat_partner| filter_references_tag(combat_partner, tag))
+        || filter
             .any_of
             .iter()
             .any(|branch| filter_references_tag(branch, tag))
@@ -530,6 +549,19 @@ fn effect_tagged_filter(effect: &EffectAst) -> Option<&ObjectFilter> {
 pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     assert_effect_ast_variant_coverage(effect);
     if direct_effect_targets_reference_tag(effect, tag) {
+        return true;
+    }
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::GainControl {
+                controller_reference:
+                    Some(ObjectRef::Tagged(controller_reference_tag)),
+                ..
+            },
+        ..
+    }) = effect
+        && controller_reference_tag.as_str() == tag
+    {
         return true;
     }
     if let EffectAst::SubjectVerb(subject_verb) = effect
@@ -594,9 +626,25 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
             ObjectRefAst::Tagged(found) => found.as_str() == tag,
         },
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action: SubjectVerbActionAst::CreateTokenWithMods { count, .. },
+            action:
+                SubjectVerbActionAst::CreateTokenWithMods {
+                    count,
+                    dynamic_power_toughness,
+                    attached_to,
+                    ..
+                },
             ..
-        }) => value_references_tag(count, tag),
+        }) => {
+            value_references_tag(count, tag)
+                || dynamic_power_toughness
+                    .as_ref()
+                    .is_some_and(|(power, toughness)| {
+                        value_references_tag(power, tag) || value_references_tag(toughness, tag)
+                    })
+                || attached_to
+                    .as_ref()
+                    .is_some_and(|target| target_references_tag(target, tag))
+        }
         EffectAst::ForEachObject { filter, effects } => {
             filter
                 .tagged_constraints
@@ -875,6 +923,10 @@ fn filter_references_event_derived_amount(filter: &ObjectFilter) -> bool {
             .as_deref()
             .is_some_and(filter_references_event_derived_amount)
         || filter
+            .blocked_or_was_blocked_by_this_turn
+            .as_deref()
+            .is_some_and(filter_references_event_derived_amount)
+        || filter
             .any_of
             .iter()
             .any(filter_references_event_derived_amount)
@@ -949,9 +1001,8 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
             ..
         } => Some(amount),
         SubjectVerbActionAst::PayMana {
-            x_value: Some(value),
-            ..
-        } => Some(value),
+            x_value, x_maximum, ..
+        } => x_value.as_ref().or(x_maximum.as_ref()),
         SubjectVerbActionAst::SearchLibrary {
             count_value: Some(value),
             ..
@@ -987,7 +1038,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::RollDiceChooseResult { .. }
         | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
         | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
-        | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+        | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
         | SubjectVerbActionAst::ReorderGraveyard
         | SubjectVerbActionAst::ChooseColor
         | SubjectVerbActionAst::ChooseCardType { .. }
@@ -1012,6 +1063,7 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::ScalePowerToughnessAll { .. }
         | SubjectVerbActionAst::ScaleXValue { .. }
         | SubjectVerbActionAst::AddManaColorsAmong { .. }
+        | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
         | SubjectVerbActionAst::AddManaImprintedColors
         | SubjectVerbActionAst::DoubleManaPool
         | SubjectVerbActionAst::EmptyManaPool
@@ -1037,7 +1089,6 @@ fn subject_verb_action_value(action: &SubjectVerbActionAst) -> Option<&Value> {
         | SubjectVerbActionAst::WinGame
         | SubjectVerbActionAst::PayAnyEnergy { .. }
         | SubjectVerbActionAst::PayAnyLife { .. }
-        | SubjectVerbActionAst::PayMana { x_value: None, .. }
         | SubjectVerbActionAst::DiscardHand
         | SubjectVerbActionAst::Detain { .. }
         | SubjectVerbActionAst::Goad { .. }
@@ -1499,6 +1550,21 @@ pub(crate) fn effect_references_it_tag(effect: &EffectAst) -> bool {
             SubjectVerbActionAst::CreateTokenCopy { object, .. } => {
                 matches!(object, ObjectRefAst::Tagged(tag) if tag.as_str() == IT_TAG)
             }
+            SubjectVerbActionAst::CreateTokenWithMods {
+                count,
+                dynamic_power_toughness,
+                attached_to,
+                ..
+            } => {
+                value_references_tag(count, IT_TAG)
+                    || dynamic_power_toughness.as_ref().is_some_and(|(power, toughness)| {
+                        value_references_tag(power, IT_TAG)
+                            || value_references_tag(toughness, IT_TAG)
+                    })
+                    || attached_to
+                        .as_ref()
+                        .is_some_and(|target| target_references_tag(target, IT_TAG))
+            }
             action => subject_verb_action_value(action)
                 .is_some_and(|value| value_references_tag(value, IT_TAG)),
         },
@@ -1583,6 +1649,7 @@ pub(crate) fn restriction_references_tag(
         | Restriction::BeCountered(filter)
         | Restriction::Transform(filter)
         | Restriction::PhaseOut(filter)
+        | Restriction::PhaseIn(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)

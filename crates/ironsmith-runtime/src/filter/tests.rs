@@ -21,6 +21,168 @@ fn test_creature_filter() {
 }
 
 #[test]
+fn compound_subtype_filter_requires_every_authored_subtype() {
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let both = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_250), "Both")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Eldrazi, Subtype::Spawn])
+        .build();
+    let eldrazi_only =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_251), "Eldrazi")
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Eldrazi])
+            .build();
+    let both = game.create_object_from_card(&both, you, Zone::Battlefield);
+    let eldrazi_only = game.create_object_from_card(&eldrazi_only, you, Zone::Battlefield);
+    let context = FilterContext::new(you);
+    let filter = ObjectFilter::creature()
+        .with_all_subtype(Subtype::Eldrazi)
+        .with_all_subtype(Subtype::Spawn);
+
+    assert_eq!(filter.description(), "Eldrazi Spawn creature");
+    assert!(filter.matches(game.object(both).unwrap(), &context, &game));
+    assert!(
+        !filter.matches(game.object(eldrazi_only).unwrap(), &context, &game),
+        "a compound subtype phrase must not behave like an inclusive subtype list"
+    );
+}
+
+#[test]
+fn your_team_controller_filter_preserves_team_surface_and_membership() {
+    let you = PlayerId::from_index(0);
+    let teammate = PlayerId::from_index(1);
+    let opponent = PlayerId::from_index(2);
+    let mut context = FilterContext::new(you);
+    context.teammates = vec![teammate];
+    context.opponents = vec![opponent];
+
+    let your_team = PlayerFilter::your_team();
+    assert!(your_team.matches_player(you, &context));
+    assert!(your_team.matches_player(teammate, &context));
+    assert!(!your_team.matches_player(opponent, &context));
+
+    let warriors = ObjectFilter::default()
+        .with_subtype(Subtype::Warrior)
+        .controlled_by(your_team);
+    assert_eq!(warriors.description(), "a Warrior your team controls");
+}
+
+#[test]
+fn negative_attack_or_entry_history_filter_checks_both_turn_records() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let creature_card =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_190), "History Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+    let eligible = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let entered = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let attacked = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+    let entered_snapshot =
+        ObjectSnapshot::from_object(game.object(entered).expect("entered creature"), &game);
+    let entry_event = crate::triggers::TriggerEvent::new_with_provenance(
+        crate::events::zones::ZoneChangeEvent::with_cause(
+            entered,
+            Zone::Hand,
+            Zone::Battlefield,
+            crate::events::EventCause::effect(),
+            Some(entered_snapshot),
+        ),
+        crate::provenance::ProvNodeId::default(),
+    );
+    game.record_turn_history_event(&entry_event);
+    game.mark_creature_attacked_this_turn(attacked);
+
+    let filter = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        controller: Some(PlayerFilter::You),
+        card_types: vec![CardType::Creature],
+        didnt_attack_this_turn: true,
+        didnt_enter_battlefield_this_turn: true,
+        ..ObjectFilter::default()
+    };
+    let context = FilterContext::new(alice);
+
+    assert!(filter.matches(game.object(eligible).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(entered).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(attacked).unwrap(), &context, &game));
+}
+
+#[test]
+fn last_known_attachment_relation_ignores_later_current_attachment_state() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let bob = PlayerId::from_index(1);
+    let creature = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Attachment Host")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let equipment =
+        crate::card::CardBuilder::new(crate::ids::CardId::new(), "Provenance Equipment")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+    let former_host = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let later_host = game.create_object_from_card(&creature, bob, Zone::Battlefield);
+    let former_attachment = game.create_object_from_card(&equipment, bob, Zone::Battlefield);
+    let later_attachment = game.create_object_from_card(&equipment, bob, Zone::Battlefield);
+
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            former_attachment,
+            crate::object::AttachmentTarget::Object(former_host),
+        )
+    );
+    let former_host_snapshot =
+        ObjectSnapshot::from_object(game.object(former_host).expect("former host exists"), &game);
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            former_attachment,
+            crate::object::AttachmentTarget::Object(later_host),
+        )
+    );
+    assert!(
+        crate::effects::permanents::attach_battlefield_object_to_target(
+            &mut game,
+            later_attachment,
+            crate::object::AttachmentTarget::Object(former_host),
+        )
+    );
+
+    let tag = TagKey::from("former_host");
+    let context =
+        FilterContext::new(bob).with_tagged_objects(&std::collections::HashMap::from([(
+            tag.clone(),
+            vec![former_host_snapshot],
+        )]));
+    let filter = ObjectFilter::default()
+        .with_subtype(Subtype::Equipment)
+        .in_zone(Zone::Battlefield)
+        .match_tagged(tag, TaggedOpbjectRelation::WasAttachedToTaggedObject);
+
+    assert!(
+        filter.matches(
+            game.object(former_attachment)
+                .expect("former attachment exists"),
+            &context,
+            &game,
+        ),
+        "the snapshot's former attachment must match even after moving elsewhere"
+    );
+    assert!(
+        !filter.matches(
+            game.object(later_attachment)
+                .expect("later attachment exists"),
+            &context,
+            &game,
+        ),
+        "a host's later current attachment must not enter the LKI attachment set"
+    );
+}
+
+#[test]
 fn original_printing_set_filter_matches_card_metadata_and_snapshots() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -139,6 +301,69 @@ fn blocked_by_tagged_filter_matches_current_combat_relationship() {
     };
 
     assert!(filter.matches(game.object(attacker.id).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn historical_block_partner_filter_matches_both_roles_using_declaration_lki() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let creature_card =
+        crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_230), "Candidate")
+            .card_types(vec![CardType::Creature])
+            .build();
+    let zombie_card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(47_231), "Zombie")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Zombie])
+        .build();
+
+    let candidate_attacker = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let zombie_blocker = game.create_object_from_card(&zombie_card, bob, Zone::Battlefield);
+    let zombie_attacker = game.create_object_from_card(&zombie_card, bob, Zone::Battlefield);
+    let candidate_blocker = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let unrelated = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+
+    for (blocker, attacker) in [
+        (zombie_blocker, candidate_attacker),
+        (candidate_blocker, zombie_attacker),
+    ] {
+        let blocker_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(blocker).expect("blocker"),
+            &game,
+        );
+        let attacker_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(
+            game.object(attacker).expect("attacker"),
+            &game,
+        );
+        let event = crate::triggers::TriggerEvent::new(
+            crate::events::combat::CreatureBlockedEvent::with_snapshots(
+                blocker,
+                attacker,
+                blocker_snapshot,
+                attacker_snapshot,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&event);
+    }
+
+    // The partner permanents no longer exist under their declaration-time
+    // object IDs. Matching must use the snapshots captured by the block
+    // events rather than current battlefield characteristics.
+    game.move_object_by_effect(zombie_blocker, Zone::Graveyard)
+        .expect("move Zombie blocker");
+    game.move_object_by_effect(zombie_attacker, Zone::Graveyard)
+        .expect("move Zombie attacker");
+
+    let mut filter = ObjectFilter::creature();
+    filter.blocked_or_was_blocked_by_this_turn = Some(Box::new(
+        ObjectFilter::creature().with_subtype(Subtype::Zombie),
+    ));
+    let ctx = FilterContext::new(alice);
+
+    assert!(filter.matches(game.object(candidate_attacker).unwrap(), &ctx, &game));
+    assert!(filter.matches(game.object(candidate_blocker).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(unrelated).unwrap(), &ctx, &game));
 }
 
 #[test]
@@ -303,6 +528,66 @@ fn test_spell_zone_filter_matches_stack_spell_with_graveyard_alternative_cast() 
     assert!(
         filter.matches(object, &ctx, &game),
         "spell cast with a graveyard alternative method should satisfy graveyard origin filter"
+    );
+}
+
+#[test]
+fn excluded_cast_origin_zone_distinguishes_hand_and_nonhand_spells() {
+    use crate::alternative_cast::CastingMethod;
+    use crate::card::CardBuilder;
+    use crate::game_state::StackEntry;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let spell = CardBuilder::new(CardId::from_raw(47_260), "Cast Origin Probe")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Blue]]))
+        .build();
+
+    let hand_id = game.create_object_from_card(&spell, alice, Zone::Hand);
+    let hand_stack_id = game
+        .move_object_by_effect(hand_id, Zone::Stack)
+        .expect("move hand spell to stack");
+    game.push_to_stack(
+        StackEntry::new(hand_stack_id, alice).with_casting_method(CastingMethod::Normal),
+    );
+
+    let graveyard_id = game.create_object_from_card(&spell, alice, Zone::Graveyard);
+    let graveyard_stack_id = game
+        .move_object_by_effect(graveyard_id, Zone::Stack)
+        .expect("move graveyard spell to stack");
+    game.push_to_stack(
+        StackEntry::new(graveyard_stack_id, alice).with_casting_method(CastingMethod::PlayFrom {
+            source: graveyard_stack_id,
+            zone: Zone::Graveyard,
+            use_alternative: None,
+        }),
+    );
+
+    let filter = ObjectFilter::spell().not_cast_from_zone(Zone::Hand);
+    let context = FilterContext::new(alice);
+    assert_eq!(
+        filter.description(),
+        "spell that wasn't cast from its owner's hand"
+    );
+    assert!(
+        !filter.matches(
+            game.object(hand_stack_id).expect("hand spell on stack"),
+            &context,
+            &game,
+        ),
+        "a spell cast from hand must not satisfy the negative hand-origin filter"
+    );
+    assert!(
+        filter.matches(
+            game.object(graveyard_stack_id)
+                .expect("graveyard spell on stack"),
+            &context,
+            &game,
+        ),
+        "a spell cast from a graveyard should satisfy the negative hand-origin filter"
     );
 }
 
@@ -558,6 +843,35 @@ fn test_filter_matches_face_down_state() {
 }
 
 #[test]
+fn foretold_filter_does_not_match_arbitrary_face_down_exile_cards() {
+    use crate::card::CardBuilder;
+    use crate::game_state::GameState;
+    use crate::ids::CardId;
+
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let owner = PlayerId::from_index(0);
+    let card = CardBuilder::new(CardId::from_raw(2), "Foretell State Probe").build();
+    let object_id = game.create_object_from_card(&card, owner, Zone::Exile);
+    game.set_face_down(object_id);
+
+    let filter = ObjectFilter {
+        zone: Some(Zone::Exile),
+        owner: Some(PlayerFilter::You),
+        foretold: true,
+        ..ObjectFilter::default()
+    };
+    let ctx = FilterContext::new(owner);
+    assert_eq!(filter.description(), "foretold card you own in exile");
+    assert!(
+        !filter.matches(game.object(object_id).unwrap(), &ctx, &game),
+        "face-down exile alone must not satisfy the foretold predicate"
+    );
+
+    game.set_foretold(object_id);
+    assert!(filter.matches(game.object(object_id).unwrap(), &ctx, &game));
+}
+
+#[test]
 fn test_filter_description_includes_all_card_types() {
     let filter = ObjectFilter::default()
         .with_all_type(CardType::Artifact)
@@ -574,6 +888,199 @@ fn test_filter_description_includes_excluded_subtypes() {
     assert_eq!(
         filter.description(),
         "non-vampire non-werewolf non-zombie creature"
+    );
+}
+
+#[test]
+fn filter_description_preserves_relative_and_independently_negated_unions() {
+    let mut relative = ObjectFilter::creature()
+        .you_control()
+        .with_subtype(crate::types::Subtype::Fungus)
+        .with_subtype(crate::types::Subtype::Saproling)
+        .with_union_connective(ironsmith_core::ObjectFilterUnionConnective::AndOr);
+    relative.set_relative_characteristic_list_surface(true);
+    assert_eq!(
+        ObjectFilterExt::description(&relative),
+        "a creature you control that's a Fungus and/or Saproling"
+    );
+
+    let mut controller_qualified = ObjectFilter::creature()
+        .you_control()
+        .with_subtype(crate::types::Subtype::Vehicle)
+        .with_union_connective(ironsmith_core::ObjectFilterUnionConnective::AndOr);
+    controller_qualified.type_or_subtype_union = true;
+    controller_qualified.set_subtype_before_card_type_union_surface(true);
+    assert_eq!(
+        ObjectFilterExt::description(&controller_qualified),
+        "a Vehicle and/or creature you control"
+    );
+
+    let mut independently_negated = ObjectFilter {
+        zone: Some(Zone::Graveyard),
+        owner: Some(PlayerFilter::You),
+        any_of: vec![
+            ObjectFilter::default().with_type(CardType::Artifact),
+            ObjectFilter {
+                card_types: vec![CardType::Enchantment],
+                excluded_subtypes: vec![crate::types::Subtype::Aura],
+                ..Default::default()
+            },
+        ],
+        ..Default::default()
+    };
+    independently_negated.set_explicit_card_noun(true);
+    assert_eq!(
+        ObjectFilterExt::description(&independently_negated),
+        "artifact or non-aura enchantment card in your graveyard"
+    );
+}
+
+#[test]
+fn filter_description_compacts_mirrored_owner_or_controller_branches() {
+    let permanent = ObjectFilter::permanent();
+    let union = ObjectFilter {
+        any_of: vec![
+            permanent.clone().owned_by(PlayerFilter::You),
+            permanent.controlled_by(PlayerFilter::You),
+        ],
+        ..Default::default()
+    };
+
+    assert_eq!(union.description(), "a permanent you own or control");
+}
+
+#[test]
+fn filter_description_keeps_distinct_owner_or_controller_branches_expanded() {
+    let distinct_selectors = ObjectFilter {
+        any_of: vec![
+            ObjectFilter::permanent().owned_by(PlayerFilter::You),
+            ObjectFilter::creature().controlled_by(PlayerFilter::You),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(
+        distinct_selectors.description(),
+        "a permanent you own or a creature you control"
+    );
+
+    let distinct_players = ObjectFilter {
+        any_of: vec![
+            ObjectFilter::permanent().owned_by(PlayerFilter::You),
+            ObjectFilter::permanent().controlled_by(PlayerFilter::Opponent),
+        ],
+        ..Default::default()
+    };
+    assert_eq!(
+        distinct_players.description(),
+        "a permanent you own or a permanent an opponent controls"
+    );
+}
+
+#[test]
+fn filter_description_compacts_the_complete_owned_nonbattlefield_zone_union() {
+    let branches = [
+        Zone::Hand,
+        Zone::Library,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Command,
+    ]
+    .into_iter()
+    .map(|zone| {
+        let mut branch = ObjectFilter {
+            zone: Some(zone),
+            owner: Some(PlayerFilter::You),
+            card_types: vec![CardType::Creature],
+            ..Default::default()
+        };
+        branch.set_explicit_card_noun(true);
+        branch
+    })
+    .collect();
+    let union = ObjectFilter {
+        any_of: branches,
+        ..Default::default()
+    };
+
+    assert_eq!(
+        union.description(),
+        "creature cards you own that aren't on the battlefield"
+    );
+}
+
+#[test]
+fn owned_nonbattlefield_union_compaction_rejects_an_extra_controller_constraint() {
+    let mut branches = [
+        Zone::Hand,
+        Zone::Library,
+        Zone::Graveyard,
+        Zone::Exile,
+        Zone::Command,
+    ]
+    .into_iter()
+    .map(|zone| {
+        let mut branch = ObjectFilter {
+            zone: Some(zone),
+            owner: Some(PlayerFilter::You),
+            card_types: vec![CardType::Creature],
+            ..Default::default()
+        };
+        branch.set_explicit_card_noun(true);
+        branch
+    })
+    .collect::<Vec<_>>();
+    branches[0].controller = Some(PlayerFilter::You);
+    let union = ObjectFilter {
+        any_of: branches,
+        ..Default::default()
+    };
+
+    assert_ne!(
+        union.description(),
+        "creature cards you own that aren't on the battlefield"
+    );
+}
+
+#[test]
+fn filter_description_compacts_controlled_and_owned_nonbattlefield_domains() {
+    let mut battlefield = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        controller: Some(PlayerFilter::You),
+        card_types: vec![CardType::Land],
+        ..Default::default()
+    };
+    battlefield.set_plural_object_noun_surface(true);
+    let mut branches = vec![battlefield];
+    branches.extend(
+        [
+            Zone::Hand,
+            Zone::Library,
+            Zone::Graveyard,
+            Zone::Exile,
+            Zone::Command,
+        ]
+        .into_iter()
+        .map(|zone| {
+            let mut branch = ObjectFilter {
+                zone: Some(zone),
+                owner: Some(PlayerFilter::You),
+                card_types: vec![CardType::Land],
+                ..Default::default()
+            };
+            branch.set_explicit_card_noun(true);
+            branch.set_plural_object_noun_surface(true);
+            branch
+        }),
+    );
+    let mut union = ObjectFilter {
+        any_of: branches,
+        ..Default::default()
+    };
+    union.set_conjunctive_set_surface(true);
+
+    assert_eq!(
+        union.description(),
+        "lands you control and land cards you own that aren't on the battlefield"
     );
 }
 
@@ -724,6 +1231,39 @@ fn test_filter_matches_modified_by_counter() {
         filter.matches(creature, &ctx, &game),
         "creature with a counter should match"
     );
+}
+
+#[test]
+fn counter_threshold_filter_matches_at_and_above_the_minimum() {
+    let mut game = setup_modified_filter_game();
+    let alice = PlayerId::from_index(0);
+    let creature_id = create_modified_test_creature(&mut game, alice);
+    let ctx = FilterContext::new(alice).with_source(creature_id);
+    let filter = ObjectFilter {
+        with_counter: Some(CounterConstraint::AtLeast {
+            counter_type: Some(CounterType::PlusOnePlusOne),
+            count: 3,
+        }),
+        ..ObjectFilter::creature().you_control()
+    };
+
+    for (counter_count, expected) in [(2, false), (3, true), (4, true)] {
+        game.object_mut(creature_id)
+            .expect("creature exists")
+            .counters
+            .insert(CounterType::PlusOnePlusOne, counter_count);
+        let creature = game.object(creature_id).expect("creature exists");
+        assert_eq!(
+            filter.matches(creature, &ctx, &game),
+            expected,
+            "{counter_count} counters should have threshold match {expected}"
+        );
+        assert_eq!(
+            filter.matches_snapshot(&ObjectSnapshot::from_object(creature, &game), &ctx, &game,),
+            expected,
+            "snapshot with {counter_count} counters should have threshold match {expected}"
+        );
+    }
 }
 
 #[test]
@@ -958,6 +1498,78 @@ fn test_attachment_filter_matches_outer_aura_not_its_permanent_host() {
     assert!(
         !filter.matches(game.object(host_id).expect("host exists"), &ctx, &game),
         "the host must not be substituted for the selected Aura"
+    );
+}
+
+#[test]
+fn with_attached_aura_filter_keeps_host_and_aura_controllers_independent() {
+    let mut game = setup_modified_filter_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let matching_host = create_modified_test_creature(&mut game, bob);
+    let wrong_host_controller = create_modified_test_creature(&mut game, alice);
+    let wrong_aura_controller = create_modified_test_creature(&mut game, bob);
+    let unattached_host = create_modified_test_creature(&mut game, bob);
+    let your_aura_on_opponent = create_modified_test_aura(&mut game, alice);
+    let your_aura_on_your_creature = create_modified_test_aura(&mut game, alice);
+    let opponent_aura = create_modified_test_aura(&mut game, bob);
+
+    game.object_mut(matching_host)
+        .expect("matching host exists")
+        .attachments
+        .push(your_aura_on_opponent);
+    game.object_mut(wrong_host_controller)
+        .expect("wrong-controller host exists")
+        .attachments
+        .push(your_aura_on_your_creature);
+    game.object_mut(wrong_aura_controller)
+        .expect("wrong-aura host exists")
+        .attachments
+        .push(opponent_aura);
+
+    let mut filter = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
+    filter.with_attached_object = Some(Box::new(
+        ObjectFilter::default()
+            .with_subtype(Subtype::Aura)
+            .controlled_by(PlayerFilter::You),
+    ));
+    let ctx = FilterContext::new(alice).with_opponents(vec![bob]);
+
+    assert!(
+        filter.matches(
+            game.object(matching_host).expect("matching host exists"),
+            &ctx,
+            &game
+        ),
+        "an opponent's creature enchanted by your Aura should match"
+    );
+    assert!(
+        !filter.matches(
+            game.object(wrong_host_controller)
+                .expect("wrong-controller host exists"),
+            &ctx,
+            &game
+        ),
+        "your own creature must fail the outer opponent-controller constraint"
+    );
+    assert!(
+        !filter.matches(
+            game.object(wrong_aura_controller)
+                .expect("wrong-aura host exists"),
+            &ctx,
+            &game
+        ),
+        "an opponent-controlled Aura must fail the nested Aura-controller constraint"
+    );
+    assert!(
+        !filter.matches(
+            game.object(unattached_host)
+                .expect("unattached opponent host exists"),
+            &ctx,
+            &game
+        ),
+        "an opponent's creature without an attached Aura must not match"
     );
 }
 
@@ -1484,6 +2096,140 @@ fn shares_subtype_with_each_tagged_requires_a_match_for_every_snapshot() {
 }
 
 #[test]
+fn characteristic_relations_compare_against_the_filtered_object_set() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let you = PlayerId::from_index(0);
+    let opponent = PlayerId::from_index(1);
+    let mut game = GameState::new(vec!["You".to_string(), "Opponent".to_string()], 20);
+    let your_human = CardBuilder::new(CardId::from_raw(40_200), "Your Human")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .build();
+    let opposing_elf = CardBuilder::new(CardId::from_raw(40_201), "Opposing Elf")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+    let human_candidate = CardBuilder::new(CardId::from_raw(40_202), "Human Candidate")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .build();
+    let elf_candidate = CardBuilder::new(CardId::from_raw(40_203), "Elf Candidate")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf])
+        .build();
+
+    game.create_object_from_card(&your_human, you, Zone::Battlefield);
+    game.create_object_from_card(&opposing_elf, opponent, Zone::Battlefield);
+    let human_candidate = game.create_object_from_card(&human_candidate, you, Zone::Hand);
+    let elf_candidate = game.create_object_from_card(&elf_candidate, you, Zone::Hand);
+    let ctx = FilterContext::new(you);
+    let characteristics = vec![ObjectCharacteristic::Subtype(SubtypeFamily::Creature)];
+    let comparison = ObjectFilter::creature().you_control();
+    let shares = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .with_type(CardType::Creature)
+        .sharing_characteristics_with(characteristics.clone(), comparison.clone());
+    let shares_none = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .with_type(CardType::Creature)
+        .sharing_no_characteristics_with(characteristics, comparison);
+
+    assert!(shares.matches(game.object(human_candidate).unwrap(), &ctx, &game));
+    assert!(
+        !shares.matches(game.object(elf_candidate).unwrap(), &ctx, &game),
+        "an Elf controlled by another player must not satisfy the nested you-control filter"
+    );
+    assert!(!shares_none.matches(game.object(human_candidate).unwrap(), &ctx, &game));
+    assert!(shares_none.matches(game.object(elf_candidate).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn negated_land_type_relation_uses_only_land_subtypes() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let forest = CardBuilder::new(CardId::from_raw(40_210), "Forest")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let forest_candidate = CardBuilder::new(CardId::from_raw(40_211), "Forest Candidate")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Forest])
+        .build();
+    let island_candidate = CardBuilder::new(CardId::from_raw(40_212), "Island Candidate")
+        .card_types(vec![CardType::Land])
+        .subtypes(vec![Subtype::Island])
+        .build();
+
+    game.create_object_from_card(&forest, you, Zone::Battlefield);
+    let forest_candidate = game.create_object_from_card(&forest_candidate, you, Zone::Library);
+    let island_candidate = game.create_object_from_card(&island_candidate, you, Zone::Library);
+    let ctx = FilterContext::new(you);
+    let filter = ObjectFilter::default()
+        .in_zone(Zone::Library)
+        .with_type(CardType::Land)
+        .sharing_no_characteristics_with(
+            vec![ObjectCharacteristic::Subtype(SubtypeFamily::Land)],
+            ObjectFilter::land().you_control(),
+        );
+
+    assert!(!filter.matches(game.object(forest_candidate).unwrap(), &ctx, &game));
+    assert!(filter.matches(game.object(island_candidate).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn characteristic_relation_treats_color_and_mana_value_as_alternatives() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    let you = PlayerId::from_index(0);
+    let mut game = GameState::new(vec!["You".to_string()], 20);
+    let comparison = CardBuilder::new(CardId::from_raw(40_220), "Red Three")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Red,
+        ]))
+        .build();
+    let blue_three = CardBuilder::new(CardId::from_raw(40_221), "Blue Three")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![
+            ManaSymbol::Generic(2),
+            ManaSymbol::Blue,
+        ]))
+        .build();
+    let red_one = CardBuilder::new(CardId::from_raw(40_222), "Red One")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+        .build();
+    let blue_one = CardBuilder::new(CardId::from_raw(40_223), "Blue One")
+        .card_types(vec![CardType::Creature])
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Blue]))
+        .build();
+
+    game.create_object_from_card(&comparison, you, Zone::Battlefield);
+    let blue_three = game.create_object_from_card(&blue_three, you, Zone::Hand);
+    let red_one = game.create_object_from_card(&red_one, you, Zone::Hand);
+    let blue_one = game.create_object_from_card(&blue_one, you, Zone::Hand);
+    let ctx = FilterContext::new(you);
+    let filter = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .sharing_characteristics_with(
+            vec![ObjectCharacteristic::Color, ObjectCharacteristic::ManaValue],
+            ObjectFilter::creature().you_control(),
+        );
+
+    assert!(filter.matches(game.object(blue_three).unwrap(), &ctx, &game));
+    assert!(filter.matches(game.object(red_one).unwrap(), &ctx, &game));
+    assert!(!filter.matches(game.object(blue_one).unwrap(), &ctx, &game));
+}
+
+#[test]
 fn test_base_power_builder_sets_reference() {
     let filter = ObjectFilter::creature().with_base_power(Comparison::LessThanOrEqual(2));
     assert_eq!(filter.power, Some(Comparison::LessThanOrEqual(2)));
@@ -1501,6 +2247,39 @@ fn test_filter_description_places_controller_before_power_toughness_relation() {
         filter.description(),
         "a creature you control with toughness greater than its power"
     );
+}
+
+#[test]
+fn test_filter_description_places_controller_before_static_ability_qualifier() {
+    let filter = ObjectFilter::creature()
+        .controlled_by(PlayerFilter::You)
+        .with_static_ability(StaticAbilityId::Deathtouch);
+
+    assert_eq!(
+        filter.description(),
+        "a creature you control with deathtouch"
+    );
+}
+
+#[test]
+fn test_filter_description_places_controller_before_mana_value_qualifier() {
+    let filter = ObjectFilter::spell()
+        .controlled_by(PlayerFilter::You)
+        .with_mana_value(Comparison::LessThanOrEqual(2));
+
+    assert_eq!(
+        filter.description(),
+        "a spell you control with mana value 2 or less"
+    );
+}
+
+#[test]
+fn test_filter_description_places_controller_before_name_qualifier() {
+    let filter = ObjectFilter::creature()
+        .controlled_by(PlayerFilter::You)
+        .named("Example");
+
+    assert_eq!(filter.description(), "a creature you control named Example");
 }
 
 #[test]
@@ -1711,6 +2490,27 @@ fn dynamic_comparison_resolves_surface_hinted_source_counter_count() {
 
     assert!(filter.matches(game.object(one_mana_id).unwrap(), &ctx, &game));
     assert!(!filter.matches(game.object(two_mana_id).unwrap(), &ctx, &game));
+}
+
+#[test]
+fn dynamic_comparison_describes_player_counter_count() {
+    let filter = ObjectFilter {
+        mana_value: Some(Comparison::GreaterThanExpr(Box::new(
+            crate::effect::Value::PlayerCounters(
+                PlayerFilter::You,
+                crate::CounterType::Experience,
+            ),
+        ))),
+        ..ObjectFilter::default()
+    };
+
+    assert!(
+        filter
+            .description()
+            .contains("mana value greater than the number of experience counters you have"),
+        "{}",
+        filter.description()
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

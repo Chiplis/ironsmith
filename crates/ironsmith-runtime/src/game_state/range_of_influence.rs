@@ -427,6 +427,28 @@ impl GameState {
             })
     }
 
+    /// The nearest player to the observer's physical right, skipping players
+    /// who have left the game while retaining the stable seat order.
+    pub fn closest_in_game_player_to_right_matching(
+        &self,
+        observer: PlayerId,
+        mut predicate: impl FnMut(PlayerId) -> bool,
+    ) -> Option<PlayerId> {
+        let seats = self
+            .range_of_influence
+            .as_ref()
+            .map(|state| state.seats.as_slice())
+            .unwrap_or(self.turn_store.turn_order.as_slice());
+        let start = seats.iter().position(|player| *player == observer)?;
+        (1..=seats.len())
+            .map(|offset| seats[(start + seats.len() - (offset % seats.len())) % seats.len()])
+            .find(|player| {
+                self.player(*player)
+                    .is_some_and(|player| player.is_in_game())
+                    && predicate(*player)
+            })
+    }
+
     /// Apply a draw to exactly these players. Under CR 104.5 each affected
     /// player leaves the game without losing it.
     pub fn draw_game_for_players(

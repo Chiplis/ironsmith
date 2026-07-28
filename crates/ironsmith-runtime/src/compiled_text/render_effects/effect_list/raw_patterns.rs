@@ -1,4 +1,8 @@
 {
+    if let Some(compact) = describe_target_player_draw_exile_then_copy_result(effects) {
+        return compact;
+    }
+
     if let Some(compact) = describe_face_down_pile_then_manifest(effects) {
         return compact;
     }
@@ -31,6 +35,9 @@
     if let Some(compact) =
         describe_consult_reveal_put_battlefield_then_shuffle_effects(effects)
     {
+        return compact;
+    }
+    if let Some(compact) = describe_pay_life_reveal_hand_choose_exile_effects(effects) {
         return compact;
     }
     if let Some(compact) = describe_pre_clause_structural_effect_list(effects) {
@@ -567,6 +574,11 @@
 
 
     if let Some(compact) = describe_tagged_counter_then_color_subtype_keyword(&raw_effects) {
+        return compact;
+    }
+    if let Some(compact) =
+        describe_return_with_inline_counter_and_static_followups(&raw_effects)
+    {
         return compact;
     }
     if let Some(compact) = describe_delayed_return_with_counter_and_static_followups(&raw_effects) {

@@ -38,7 +38,10 @@ use super::super::util::{
 use super::clause_pattern_helpers::extract_subject_player;
 use super::creation_handlers::{parse_create, parse_incubate, parse_investigate};
 use super::for_each_helpers::parse_who_did_this_way_predicate;
-use super::subject_verb_primitives::{SubjectVerbPrimitiveClause, try_build_unless};
+use super::subject_verb_primitives::{
+    SubjectVerbPrimitiveClause, try_build_unless,
+    wrap_parsed_effect_in_delayed_next_step_unless_pays,
+};
 use super::zone_counter_helpers::{parse_convert, parse_put_counters, parse_transform};
 use super::zone_handlers::{
     DelayedReturnTimingAst, parse_become, parse_delayed_return_timing_words, parse_destroy,

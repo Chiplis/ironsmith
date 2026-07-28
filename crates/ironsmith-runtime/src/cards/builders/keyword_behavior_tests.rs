@@ -131,6 +131,37 @@ fn persist_keyword_uses_trigger_intervening_if() {
     );
 }
 
+#[test]
+fn bare_vanishing_adds_decay_triggers_without_entry_counter_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Bare Vanishing Variant")
+        .card_types(vec![CardType::Creature])
+        .vanishing(0)
+        .build();
+
+    assert_eq!(
+        def.abilities
+            .iter()
+            .filter(|ability| matches!(&ability.kind, AbilityKind::Triggered(_)))
+            .count(),
+        2
+    );
+    assert!(
+        def.abilities.iter().all(|ability| {
+            !matches!(
+                &ability.kind,
+                AbilityKind::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::EnterWithCounters
+            )
+        }),
+        "bare Vanishing must not invent an entry counter count"
+    );
+    assert_eq!(
+        crate::compiled_text::unprocessed_compiled_lines(&def),
+        vec!["Vanishing".to_string()]
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_undying_oracle_text_with_snapshot_counter_predicate() {

@@ -13,12 +13,24 @@ pub struct LifeGainEvent {
     pub player: PlayerId,
     /// Amount of life to gain
     pub amount: u32,
+    /// The spell, ability source, or damage source that caused the life gain.
+    pub source: Option<ObjectId>,
 }
 
 impl LifeGainEvent {
     /// Create a new life gain event.
     pub fn new(player: PlayerId, amount: u32) -> Self {
-        Self { player, amount }
+        Self {
+            player,
+            amount,
+            source: None,
+        }
+    }
+
+    /// Retain the object whose effect or lifelink caused this life gain.
+    pub fn with_source(mut self, source: ObjectId) -> Self {
+        self.source = Some(source);
+        self
     }
 
     /// Return a new event with doubled life gain.
@@ -85,7 +97,7 @@ impl GameEventType for LifeGainEvent {
     }
 
     fn source_object(&self) -> Option<ObjectId> {
-        None
+        self.source
     }
 
     fn display(&self) -> String {

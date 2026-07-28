@@ -1,7 +1,7 @@
 use crate::ability::AbilityKind;
 use crate::cards::builders::{
-    CardDefinitionBuilder, EffectAst, PlayerAst, SubjectVerbActionAst, SubjectVerbEffectAst,
-    SubjectVerbSubjectAst,
+    CardDefinitionBuilder, CarryContext, ChooseOneModeAst, EffectAst, PlayerAst, PredicateAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst,
 };
 use crate::effect::Value;
 use crate::ids::CardId;
@@ -11,11 +11,573 @@ use crate::zone::Zone;
 use super::super::super::lexer::lex_line;
 use super::super::parse_effect_sentence_inner_lexed;
 use super::{
-    parse_effect_chain_lexed, parse_effect_chain_with_subject_verb_primitives_lexed,
+    maybe_apply_carried_player_with_clause_lexed, parse_effect_chain_lexed,
+    parse_effect_chain_with_subject_verb_primitives_lexed,
     parse_effect_clause_with_trailing_if_lexed, parse_effect_sentence_lexed,
-    parse_leading_player_may_lexed, starts_like_create_fragment_lexed,
+    parse_leading_player_may_lexed, preserve_coordinated_effect_chain_surface,
+    starts_like_create_fragment_lexed,
 };
 use crate::runtime_backend::front_end::shared::util::with_source_reference_context;
+
+#[test]
+fn leading_duration_scaled_target_then_pronoun_grant_keeps_both_actions() {
+    let tokens = lex_line(
+        "Until end of turn, double target creature's power and it gains first strike.",
+        0,
+    )
+    .expect("scaled target/grant chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("scaled target/grant chain should parse");
+    let [
+        EffectAst::Coordinated {
+            effects: coordinated,
+            leading_duration: true,
+            ..
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one leading-duration coordinated chain, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            coordinated.as_slice(),
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::Pump { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::GrantAbilitiesToTarget { .. },
+                    ..
+                }),
+            ]
+        ),
+        "{coordinated:#?}"
+    );
+}
+
+#[test]
+fn generic_comma_then_chain_keeps_a_distinct_typed_boundary() {
+    let comma_then = lex_line(
+        "Target player draws cards equal to the number of cards in their hand, then discards that many cards.",
+        0,
+    )
+    .expect("comma-then chain should lex");
+    let effects =
+        parse_effect_chain_lexed(&comma_then).expect("comma-then chain should parse completely");
+    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
+        panic!("expected typed comma-then wrapper, got {effects:#?}");
+    };
+    let debug = format!("{nested:#?}");
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(debug.contains("Discard"), "{debug}");
+    assert!(
+        matches!(
+            preserve_coordinated_effect_chain_surface(&comma_then, nested.clone()).as_slice(),
+            [EffectAst::CommaThen { .. }]
+        ),
+        "whole-line surface preservation should retain the same typed comma-then boundary"
+    );
+
+    let coordinated = lex_line(
+        "Target player draws cards equal to the number of cards in their hand and discards that many cards.",
+        0,
+    )
+    .expect("coordinated chain should lex");
+    let effects =
+        parse_effect_chain_lexed(&coordinated).expect("coordinated chain should still parse");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::CommaThen { .. })),
+        "{effects:#?}"
+    );
+}
+
+#[test]
+fn sentence_dispatch_keeps_create_then_copy_as_two_typed_actions() {
+    let tokens = lex_line(
+        "Create a 1/1 red Soldier creature token with haste, then copy that spell.",
+        0,
+    )
+    .expect("create/copy chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("sentence dispatch should keep both actions");
+    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
+        panic!("expected typed comma-then create/copy chain, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            nested.as_slice(),
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::CopySpell { .. },
+                    ..
+                }),
+            ]
+        ),
+        "both authored actions must survive sentence dispatch: {nested:#?}"
+    );
+}
+
+#[test]
+fn specialist_pronoun_chain_keeps_its_authored_comma_then_surface() {
+    let tokens =
+        lex_line("It explores, then it explores again.", 0).expect("explore chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("explore chain should parse completely");
+    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
+        panic!("expected a typed comma-then explore chain, got {effects:#?}");
+    };
+    assert_eq!(nested.len(), 2, "{nested:#?}");
+
+    let coordinated =
+        lex_line("It explores and it explores again.", 0).expect("coordinated chain should lex");
+    let effects = parse_effect_sentence_lexed(&coordinated)
+        .expect("coordinated explore chain should parse completely");
+    assert!(
+        effects
+            .iter()
+            .all(|effect| !matches!(effect, EffectAst::CommaThen { .. })),
+        "{effects:#?}"
+    );
+}
+
+#[test]
+fn leading_may_chain_keeps_nested_comma_then_surface() {
+    let tokens = lex_line(
+        "You may exile this creature, then return it to the battlefield transformed under its owner's control.",
+        0,
+    )
+    .expect("leading-may chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("leading-may chain should parse completely");
+    let debug = format!("{effects:#?}");
+    assert!(
+        debug.contains("CommaThen"),
+        "the authored boundary must survive inside the optional program: {debug}"
+    );
+}
+
+#[test]
+fn triggered_optional_chain_resurfaces_nested_comma_then_after_trigger_parsing() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Ajani, Nacatl Pariah")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever one or more other Cats you control die, you may exile Ajani, then return him to the battlefield transformed under his owner's control.",
+        )
+        .expect("triggered optional sequence should compile");
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("surface: CommaThen"),
+        "trigger parsing must retain nested optional sequence provenance: {debug}"
+    );
+}
+
+#[test]
+fn conditional_instead_chain_keeps_every_replacement_action() {
+    let branch_tokens = lex_line(
+        "exile it, then return that card to its owner's hand.",
+        0,
+    )
+    .expect("replacement action chain should lex");
+    let branch_effects =
+        parse_effect_chain_lexed(&branch_tokens).expect("replacement action chain should parse");
+    assert!(
+        matches!(
+            branch_effects.as_slice(),
+            [EffectAst::CommaThen { effects }] if effects.len() == 2
+        ),
+        "the standalone replacement chain must retain both actions: {branch_effects:#?}"
+    );
+
+    let tokens = lex_line(
+        "If it has unearth, instead exile it, then return that card to its owner's hand.",
+        0,
+    )
+    .expect("conditional replacement sequence should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("conditional replacement sequence should parse");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::Conditional {
+                if_true,
+                ..
+            }] if matches!(
+                if_true.as_slice(),
+                [EffectAst::CommaThen { effects }] if matches!(
+                    effects.as_slice(),
+                    [
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::Exile { .. },
+                            ..
+                        }),
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::ReturnToHand { .. },
+                            ..
+                        }),
+                    ]
+                )
+            )
+        ),
+        "the replacement branch must retain both ordered actions: {effects:#?}"
+    );
+}
+
+#[test]
+fn activated_conditional_instead_chain_lowers_every_replacement_action() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Meticulous Excavation")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{2}{W}: Return target permanent you control to its owner's hand. If it has unearth, instead exile it, then return that card to its owner's hand. Activate only during your turn.",
+        )
+        .expect("conditional activated replacement should compile");
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("ability_markers: [\n")
+            && debug.contains("\"unearth\"")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Exile")
+            && debug.contains("ReturnToHandEffect")
+            && debug.contains("condition: TargetMatches")
+            && !debug.contains("condition: SourceMatches"),
+        "lowering must retain both actions from the replacement branch: {debug}"
+    );
+}
+
+#[test]
+fn comma_then_optional_energy_payment_keeps_gain_and_payment() {
+    let gain = lex_line("you get {e}{e}{e}{e}.", 0).expect("energy gain should lex");
+    parse_effect_sentence_lexed(&gain).expect("fixed energy gain should parse independently");
+    let payment = lex_line(
+        "you may pay an amount of {e} equal to that permanent's mana value.",
+        0,
+    )
+    .expect("optional energy payment should lex");
+    parse_effect_sentence_lexed(&payment)
+        .expect("optional dynamic energy payment should parse independently");
+
+    let tokens = lex_line(
+        "you get {e}{e}{e}{e}, then you may pay an amount of {e} equal to that permanent's mana value.",
+        0,
+    )
+    .expect("energy chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("energy gain/payment chain should parse");
+    let debug = format!("{effects:#?}");
+    assert!(
+        debug.contains("EnergyCounters") && debug.contains("PayEnergy"),
+        "the fixed energy gain and optional dynamic payment must both survive: {debug}"
+    );
+}
+
+#[test]
+fn draw_then_optional_free_cast_keeps_both_actions() {
+    let tokens = lex_line(
+        "draw a card, then you may cast a spell from your hand with mana value less than or equal to that damage without paying its mana cost.",
+        0,
+    )
+    .expect("draw/free-cast chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("draw/free-cast chain should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("Draw"), "{debug}");
+    assert!(
+        debug.contains("MayCastMatchingSpellWithoutPayingManaCost")
+            || debug.contains("GrantPlayTagged"),
+        "the optional free-cast action must survive after the draw: {debug}"
+    );
+}
+
+#[test]
+fn optional_payment_any_number_of_times_lowers_to_counted_repeat() {
+    let tokens = lex_line("You may pay {1}{U} any number of times.", 0)
+        .expect("repeated payment should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("repeated payment should parse completely");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("RepeatProcess"), "{debug}");
+    assert!(debug.contains("PayMana"), "{debug}");
+    assert!(debug.contains("continue_effect_index: 0"), "{debug}");
+}
+
+#[test]
+fn paid_cost_count_reflexive_keeps_counter_and_dynamic_targets() {
+    let tokens = lex_line(
+        "When you pay this cost one or more times, put that many +1/+1 counters on this creature, then up to that many other target artifacts, creatures, and/or enchantments phase out.",
+        0,
+    )
+    .expect("paid-cost reflexive should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("paid-cost reflexive should parse completely");
+    let debug = format!("{effects:#?}");
+
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::WhenResult {
+                predicate: crate::cards::builders::IfResultPredicate::Value(
+                    crate::effect::Comparison::GreaterThan(0)
+                ),
+                ..
+            }]
+        ),
+        "{debug}"
+    );
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(debug.contains("PhaseOut"), "{debug}");
+    assert!(debug.contains("WithCountValue"), "{debug}");
+    assert_eq!(
+        debug.matches("PendingEffectMetric").count(),
+        2,
+        "both `that many` values must bind to the repeated-payment outcome: {debug}"
+    );
+}
+
+#[test]
+fn created_tokens_then_source_deals_where_x_keeps_both_actions() {
+    let stripped_tokens = lex_line(
+        "create three 1/1 red Hamster creature tokens, then it deals X damage to any target.",
+        0,
+    )
+    .expect("token/damage chain without binding should lex");
+    let stripped_effects = parse_effect_chain_lexed(&stripped_tokens)
+        .expect("token/damage chain without binding should parse");
+    let stripped_debug = format!("{stripped_effects:#?}");
+    assert!(stripped_debug.contains("CreateToken"), "{stripped_debug}");
+    assert!(stripped_debug.contains("DealDamage"), "{stripped_debug}");
+
+    let tokens = lex_line(
+        "create three 1/1 red Hamster creature tokens, then it deals X damage to any target, where X is the number of Hamsters you control.",
+        0,
+    )
+    .expect("token/damage chain should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("token/damage chain should parse as one ordered program");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("CreateToken"), "{debug}");
+    assert!(debug.contains("DealDamage"), "{debug}");
+    assert!(
+        debug.contains("subtypes: [\n") && debug.contains("Hamster"),
+        "the damage amount must retain its Hamster count basis: {debug}"
+    );
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::CommaThen { effects }] if matches!(
+                effects.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::CreateTokenWithMods { .. },
+                        ..
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::DealDamageEqualToPower {
+                            source: crate::cards::builders::TargetAst::Source(_),
+                            ..
+                        },
+                        ..
+                    }),
+                ]
+            )
+        ),
+        "the singular damage pronoun after a plural token result must bind to the source: {debug}"
+    );
+}
+
+#[test]
+fn comma_then_choose_player_keeps_both_ordered_actions() {
+    let tokens = lex_line(
+        "Return target card from your graveyard to your hand, then choose an opponent.",
+        0,
+    )
+    .expect("return/choice chain should lex");
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("return/choice chain should parse");
+    let debug = format!("{effects:#?}");
+    assert!(
+        debug.contains("Return") && debug.contains("ChoosePlayer"),
+        "the ordered opponent choice must not be swallowed by the return parser: {debug}"
+    );
+}
+
+#[test]
+fn unique_nested_program_keeps_its_authored_comma_then_surface() {
+    let tokens = lex_line("You may solve this case, then solve this case.", 0)
+        .expect("nested comma-then surface should lex");
+    let effects = preserve_coordinated_effect_chain_surface(
+        &tokens,
+        vec![EffectAst::May {
+            effects: vec![EffectAst::SolveCase, EffectAst::SolveCase],
+        }],
+    );
+    let [
+        EffectAst::May {
+            effects: nested,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one optional nested program, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            nested.as_slice(),
+            [EffectAst::CommaThen { effects }] if effects.len() == 2
+        ),
+        "the unique nested program should own the typed comma-then surface: {nested:#?}"
+    );
+}
+
+#[test]
+fn ambiguous_conditional_branches_do_not_guess_a_comma_then_owner() {
+    let tokens = lex_line("If it is night, solve this case, then solve this case.", 0)
+        .expect("ambiguous conditional surface should lex");
+    let effects = preserve_coordinated_effect_chain_surface(
+        &tokens,
+        vec![EffectAst::Conditional {
+            predicate: PredicateAst::ItIsNight,
+            if_true: vec![EffectAst::SolveCase, EffectAst::SolveCase],
+            if_false: vec![EffectAst::SolveCase, EffectAst::SolveCase],
+        }],
+    );
+    let debug = format!("{effects:#?}");
+    assert!(
+        !debug.contains("CommaThen"),
+        "two eligible branches are ambiguous and must remain unmarked: {debug}"
+    );
+}
+
+#[test]
+fn multi_mode_choice_does_not_guess_a_comma_then_owner() {
+    let tokens = lex_line("Choose one, solve this case, then solve this case.", 0)
+        .expect("multi-mode surface should lex");
+    let effects = preserve_coordinated_effect_chain_surface(
+        &tokens,
+        vec![EffectAst::ChooseOneOf {
+            modes: vec![
+                ChooseOneModeAst {
+                    description: "First".to_string(),
+                    effects: vec![EffectAst::SolveCase, EffectAst::SolveCase],
+                },
+                ChooseOneModeAst {
+                    description: "Second".to_string(),
+                    effects: vec![EffectAst::SolveCase, EffectAst::SolveCase],
+                },
+            ],
+        }],
+    );
+    let debug = format!("{effects:#?}");
+    assert!(
+        !debug.contains("CommaThen"),
+        "multiple eligible modes are ambiguous and must remain unmarked: {debug}"
+    );
+}
+
+#[test]
+fn for_each_opponent_imperative_create_keeps_controller_as_actor() {
+    let tokens = lex_line(
+        "For each opponent, create two 3/3 blue and red Elemental creature tokens with flying.",
+        0,
+    )
+    .expect("quantified imperative create should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("quantified imperative create should parse completely");
+    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+        panic!("expected one quantified opponent loop, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            nested.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenWithMods {
+                    player: PlayerAst::You,
+                    ..
+                },
+                ..
+            })]
+        ),
+        "the loop count must not make each opponent the token controller: {nested:#?}"
+    );
+
+    let explicit = lex_line(
+        "For each opponent, that player creates a 1/1 red Goblin creature token.",
+        0,
+    )
+    .expect("explicit participant create should lex");
+    let effects = parse_effect_sentence_lexed(&explicit)
+        .expect("explicit participant create should parse completely");
+    let [EffectAst::ForEachOpponent { effects: nested }] = effects.as_slice() else {
+        panic!("expected one explicit opponent loop, got {effects:#?}");
+    };
+    assert!(
+        matches!(
+            nested.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::CreateTokenWithMods {
+                    player: PlayerAst::That,
+                    ..
+                },
+                ..
+            })]
+        ),
+        "an explicitly authored participant actor must remain iterated: {nested:#?}"
+    );
+}
+
+#[test]
+fn repeated_explicit_may_clauses_keep_independent_choice_scopes() {
+    let tokens = lex_line(
+        "You may have Allies you control gain lifelink until end of turn, and you may put a +1/+1 counter on this creature.",
+        0,
+    )
+    .expect("independent optional clauses should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("independent optional clauses should parse");
+    let [
+        EffectAst::Coordinated {
+            effects,
+            leading_duration: false,
+            result_conjunction: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one typed coordinated choice bundle: {effects:#?}");
+    };
+    let [first, second] = effects.as_slice() else {
+        panic!("expected two independent choices: {effects:#?}");
+    };
+    assert!(
+        matches!(
+            first,
+            EffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                ..
+            }
+        ),
+        "{first:#?}"
+    );
+    assert!(
+        matches!(
+            second,
+            EffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                ..
+            }
+        ),
+        "{second:#?}"
+    );
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains("GrantAbilitiesAll"), "{debug}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+}
 
 #[test]
 fn convert_then_adapt_keeps_both_executable_keyword_actions() {
@@ -636,6 +1198,31 @@ fn implicit_draw_then_discard_keeps_discard_on_ability_controller() {
 }
 
 #[test]
+fn imperative_then_draw_does_not_inherit_a_quantified_player_subject() {
+    let tokens = lex_line("Then draw a card.", 0).expect("imperative draw should lex");
+    let [mut effect] = parse_effect_chain_lexed(&tokens)
+        .expect("imperative draw should parse")
+        .try_into()
+        .expect("imperative draw should be one effect");
+
+    maybe_apply_carried_player_with_clause_lexed(&mut effect, CarryContext::ForEachPlayer, &tokens);
+
+    assert!(
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject: SubjectVerbSubjectAst {
+                    player: PlayerAst::Implicit,
+                    ..
+                },
+                action: SubjectVerbActionAst::Draw { .. },
+            })
+        ),
+        "an imperative draw remains the ability controller's action: {effect:#?}"
+    );
+}
+
+#[test]
 fn source_damage_then_keyword_grant_keeps_coordinated_surface() {
     let tokens = lex_line(
         "This creature deals 2 damage to target player and gains indestructible until end of turn.",
@@ -731,6 +1318,46 @@ fn trailing_duration_applies_to_both_gain_and_loss_arms() {
     };
     assert_eq!(first_duration, &crate::effect::Until::EndOfTurn);
     assert_eq!(second_duration, &crate::effect::Until::EndOfTurn);
+}
+
+#[test]
+fn next_turn_duration_scopes_life_lock_and_player_protection() {
+    let tokens = lex_line(
+        "Until your next turn, your life total can't change and you gain protection from everything.",
+        0,
+    )
+    .expect("Teferi's Protection opening sentence should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("the sentence entrypoint should retain the shared duration");
+    let debug = format!("{effects:#?}");
+
+    assert!(
+        debug.contains("ChangeLifeTotal")
+            && debug.contains("BeTargetedPlayer")
+            && debug.contains("PreventAllDamageToTarget")
+            && debug.matches("YourNextTurn").count() >= 3,
+        "expected one life-total lock and the two protection components through your next turn, got {debug}"
+    );
+}
+
+#[test]
+fn coordinated_player_restrictions_route_before_broad_subject_parsing() {
+    let tokens = lex_line(
+        "Players can't lose life this turn and players can't lose the game or win the game this turn.",
+        0,
+    )
+    .expect("Everybody Lives restriction sentence should lex");
+    let effects = parse_effect_sentence_lexed(&tokens)
+        .expect("the sentence entrypoint should route the complete restriction conjunction");
+    let debug = format!("{effects:#?}");
+
+    assert!(
+        debug.contains("LoseLife")
+            && debug.contains("LoseGame")
+            && debug.contains("WinGame")
+            && debug.matches("EndOfTurn").count() >= 3,
+        "expected all three player restrictions through end of turn, got {debug}"
+    );
 }
 
 #[test]
@@ -1243,6 +1870,68 @@ fn copy_then_gain_clause_keeps_the_explicit_gain_duration() {
 }
 
 #[test]
+fn leading_action_keeps_following_get_and_gain_on_one_shared_object_set() {
+    let tokens = lex_line(
+        "You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn, where X is the difference between the chosen creatures' powers.",
+        0,
+    )
+    .expect("draw followed by shared-subject pump and grant should lex");
+
+    let effects = parse_effect_chain_lexed(&tokens)
+        .expect("draw followed by shared-subject pump and grant should parse");
+    let [
+        EffectAst::Coordinated {
+            effects: shared_effects,
+            leading_duration: false,
+            result_conjunction: false,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected one coordinated draw/pump/grant clause, got {effects:#?}");
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { .. },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PumpAll {
+                    filter: pump_filter,
+                    ..
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::GrantAbilitiesAll {
+                    filter: grant_filter,
+                    abilities,
+                    ..
+                },
+            ..
+        }),
+    ] = shared_effects.as_slice()
+    else {
+        panic!("expected one shared-subject pump and ability grant, got {shared_effects:#?}");
+    };
+
+    assert_eq!(pump_filter, grant_filter);
+    assert!(pump_filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }));
+    assert!(abilities.iter().any(|ability| match ability {
+        crate::cards::builders::GrantedAbilityAst::KeywordAction(
+            crate::cards::builders::KeywordAction::Trample,
+        ) => true,
+        crate::cards::builders::GrantedAbilityAst::StaticAbility(ability) => {
+            ability.id() == crate::static_abilities::StaticAbilityId::Trample
+        }
+        _ => false,
+    }));
+}
+
+#[test]
 fn trailing_if_keeps_relative_target_spell_controller_predicate() {
     let tokens = lex_line(
         "Counter target spell if you control more creatures than that spell's controller.",
@@ -1262,6 +1951,133 @@ fn trailing_if_keeps_relative_target_spell_controller_predicate() {
         ),
         "{effect:#?}"
     );
+}
+
+#[test]
+fn trailing_if_binds_its_mana_value_to_the_declared_object_target() {
+    let tokens = lex_line(
+        "Return target artifact card from your graveyard to the battlefield if its mana value is less than or equal to their total power.",
+        0,
+    )
+    .expect("targeted conditional return should lex");
+
+    let effect = parse_effect_clause_with_trailing_if_lexed(&tokens)
+        .expect("targeted conditional return should parse");
+    let EffectAst::TrailingIf {
+        predicate:
+            crate::cards::builders::PredicateAst::ValueComparison {
+                left: crate::effect::Value::ManaValueOf(spec),
+                ..
+            },
+        ..
+    } = effect
+    else {
+        panic!("expected a mana-value-gated return, got {effect:#?}");
+    };
+    assert!(
+        matches!(
+            spec.unhinted(),
+            crate::target::ChooseSpec::Target(inner)
+                if matches!(inner.base(), crate::target::ChooseSpec::Object(filter)
+                    if filter.card_types.contains(&CardType::Artifact))
+        ),
+        "the condition must inspect the declared artifact target, got {spec:#?}"
+    );
+    assert_eq!(
+        spec.source_reference_surface(),
+        Some(&crate::target::SourceReferenceSurface::ThisPermanentType(
+            "it".to_string(),
+        ),),
+        "binding the semantic target must retain the authored possessive pronoun"
+    );
+}
+
+#[test]
+fn trailing_if_dispatch_preserves_face_down_return_then_turn_procedure() {
+    let tokens = lex_line(
+        "Return it to the battlefield face down under its owner's control if it's a permanent card, then turn it face up.",
+        0,
+    )
+    .expect("face-down return procedure should lex");
+
+    let effect = parse_effect_clause_with_trailing_if_lexed(&tokens)
+        .expect("face-down return procedure should parse");
+    let EffectAst::TrailingIf { predicate, effects } = effect else {
+        panic!("expected a resolution-time condition, got {effect:#?}");
+    };
+    assert_eq!(effects.len(), 2, "{effects:#?}");
+    assert!(matches!(
+        &effects[0],
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::MoveToZone {
+                zone: Zone::Battlefield,
+                battlefield_face_down: true,
+                ..
+            },
+            ..
+        })
+    ));
+    assert!(matches!(
+        &effects[1],
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::TurnFaceUp { .. },
+            ..
+        })
+    ));
+    assert!(
+        !format!("{predicate:#?}").contains("face_down: Some(false)"),
+        "the turn-face-up followup must remain outside the permanent-card predicate"
+    );
+}
+
+#[test]
+fn conditional_transform_keeps_the_control_threshold_as_a_resolution_gate() {
+    let tokens = lex_line(
+        "Transform this artifact if you control four or more artifacts.",
+        0,
+    )
+    .expect("conditional transform should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("conditional transform should parse as a chain");
+    let [
+        EffectAst::TrailingIf {
+            predicate:
+                crate::cards::builders::PredicateAst::PlayerHasAtLeast {
+                    player,
+                    filter,
+                    count,
+                },
+            effects: gated_effects,
+        },
+    ] = effects.as_slice()
+    else {
+        panic!("expected a threshold-gated transform effect, got {effects:#?}");
+    };
+
+    assert_eq!(*player, PlayerAst::You);
+    assert_eq!(*count, 4);
+    assert!(filter.card_types.contains(&CardType::Artifact));
+    assert!(
+        matches!(
+            gated_effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Transform { .. },
+                ..
+            })]
+        ),
+        "{gated_effects:#?}"
+    );
+}
+
+#[test]
+fn untap_then_transform_keeps_both_executable_actions() {
+    let tokens = lex_line("Untap this creature, then transform it.", 0)
+        .expect("untap-transform sequence should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("untap-transform sequence should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("Untap"), "{debug}");
+    assert!(debug.contains("Transform"), "{debug}");
 }
 
 #[test]
@@ -1318,6 +2134,12 @@ fn source_linked_exile_reveal_keeps_nonpermanents_face_up_and_moves_only_permane
         assert_eq!(
             candidate.owner,
             Some(crate::target::PlayerFilter::IteratedPlayer)
+        );
+        assert_eq!(
+            candidate.source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this artifact".to_string()
+            ))
         );
         assert!(
             candidate
@@ -1496,7 +2318,7 @@ fn exile_then_shuffle_graveyard_chain_keeps_both_effects() {
             matches!(
                 effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary,
+                    action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. },
                     ..
                 })
             )
@@ -1537,6 +2359,114 @@ fn or_action_clause_preserves_secondary_or_inside_sacrifice_filter() {
 }
 
 #[test]
+fn or_action_clause_accepts_an_explicit_source_gain_choice_branch() {
+    let tokens = lex_line(
+        "Put a +1/+1 counter on this creature or this creature gains flying, first strike, or trample.",
+        0,
+    )
+    .expect("counter-or-ability-choice text should lex");
+    let action_splits = super::chain_grammar::parse_or_action_splits_tokens(&tokens);
+    let action_split = action_splits
+        .iter()
+        .find(|split| {
+            crate::runtime_backend::token_word_refs(split.second_tokens)
+                .starts_with(&["this", "creature", "gains"])
+        })
+        .expect("outer action `or` should remain distinct from the nested ability choices");
+    assert!(
+        !super::parse_effect_chain_with_subject_verb_primitives_lexed(action_split.first_tokens)
+            .expect("counter branch should parse")
+            .is_empty()
+    );
+    let branch_tokens = lex_line("this creature gains flying, first strike, or trample.", 0)
+        .expect("ability-choice branch should lex");
+    let branch = super::parse_simple_gain_ability_clause_lexed(&branch_tokens)
+        .expect("ability-choice branch parse should succeed")
+        .expect("ability-choice branch should be recognized");
+    assert!(
+        format!("{branch:#?}").contains("GrantAbilitiesChoiceToTarget"),
+        "{branch:#?}"
+    );
+    assert!(
+        format!("{branch:#?}").contains("source: true"),
+        "the explicit `this creature` subject must remain source-relative: {branch:#?}"
+    );
+
+    let parsed = super::parse_or_action_clause_lexed(&tokens)
+        .expect("or-action parse should succeed")
+        .expect("the explicit source gain branch should be recognized");
+    let debug = format!("{parsed:#?}");
+
+    assert!(debug.contains("UnlessAction"), "{debug}");
+    assert!(debug.contains("PutCounters"), "{debug}");
+    assert!(
+        debug.contains("GrantAbilitiesChoiceToTarget")
+            && debug.contains("Flying")
+            && debug.contains("FirstStrike")
+            && debug.contains("Trample"),
+        "the second branch must retain all three mutually exclusive abilities: {debug}"
+    );
+
+    let routed = parse_effect_sentence_lexed(&tokens)
+        .expect("whole-sentence dispatch should preserve both choice branches");
+    assert!(
+        matches!(routed.as_slice(), [EffectAst::UnlessAction { .. }]),
+        "the broad gain parser must not consume the leading counter action: {routed:#?}"
+    );
+
+    let near_miss = lex_line(
+        "Put a +1/+1 counter on this creature or flying, first strike, or trample.",
+        0,
+    )
+    .expect("near-miss text should lex");
+    assert!(
+        super::parse_or_action_clause_lexed(&near_miss)
+            .expect("near miss must not error")
+            .is_none(),
+        "an orphaned ability list must not be promoted into an action branch"
+    );
+}
+
+#[test]
+fn or_action_clause_reuses_the_primary_explicit_target_for_a_demonstrative_branch() {
+    let tokens = lex_line(
+        "Put a +1/+1 counter on target creature or that creature gains banding, first strike, or trample.",
+        0,
+    )
+    .expect("shared-target action choice should lex");
+
+    let parsed = super::parse_or_action_clause_lexed(&tokens)
+        .expect("shared-target action choice should parse")
+        .expect("outer action choice should be recognized");
+    let EffectAst::UnlessAction {
+        effects,
+        alternative,
+        ..
+    } = parsed
+    else {
+        panic!("expected a typed outer action choice");
+    };
+
+    let primary_target = effects
+        .iter()
+        .find_map(super::super::primary_target_from_effect)
+        .expect("counter branch should declare the target");
+    let alternative_target = alternative
+        .iter()
+        .find_map(super::super::primary_target_from_effect)
+        .expect("keyword branch should reuse the declared target");
+    assert_eq!(
+        alternative_target, primary_target,
+        "both alternatives must share one legal target slot"
+    );
+    let alternative_debug = format!("{alternative:#?}");
+    assert!(
+        !alternative_debug.contains("__it__") && !alternative_debug.contains("discarded_cost"),
+        "the demonstrative must not remain ambient or bind to a cost object: {alternative_debug}"
+    );
+}
+
+#[test]
 fn quantified_opponent_subject_uses_typed_fanout() {
     let tokens = lex_line("Each opponent draws a card.", 0).expect("fanout should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("fanout should parse");
@@ -1566,6 +2496,104 @@ fn quantified_player_subject_uses_typed_fanout() {
             ..
         })]
     ));
+}
+
+#[test]
+fn qualified_player_search_binds_both_library_owner_and_chooser() {
+    let tokens = lex_line(
+        "Each player who controls fewer lands than the player who controls the most lands searches their library for a number of basic land cards less than or equal to the difference, puts those cards onto the battlefield tapped, then shuffles.",
+        0,
+    )
+    .expect("qualified player search should lex");
+    let mut effects =
+        parse_effect_chain_lexed(&tokens).expect("qualified player search should parse");
+    let [effect] = effects.as_mut_slice() else {
+        panic!("expected one typed search action, got {effects:#?}");
+    };
+    super::bind_implicit_player_context(effect, PlayerAst::That);
+    let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::SearchLibrary {
+            chooser, player, ..
+        },
+        ..
+    }) = effect
+    else {
+        panic!("expected typed search action, got {effect:#?}");
+    };
+
+    assert_eq!((*chooser, *player), (PlayerAst::That, PlayerAst::That));
+}
+
+#[test]
+fn coordinated_that_player_search_carries_the_player_into_the_search() {
+    let tokens = lex_line(
+        "That player loses 3 life, searches their library for a card, puts it into their hand, then shuffles.",
+        0,
+    )
+    .expect("coordinated player search should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("coordinated player search should parse");
+    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
+        panic!("expected one typed comma-then sequence, got {effects:#?}");
+    };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                SubjectVerbSubjectAst {
+                    player: life_player,
+                    ..
+                },
+            action: SubjectVerbActionAst::LoseLife { .. },
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    chooser,
+                    player: library_player,
+                    ..
+                },
+            ..
+        }),
+    ] = nested.as_slice()
+    else {
+        panic!("expected life loss followed by one search procedure, got {nested:#?}");
+    };
+
+    assert_eq!(
+        (*life_player, *chooser, *library_player),
+        (PlayerAst::That, PlayerAst::That, PlayerAst::That)
+    );
+}
+
+#[test]
+fn imperative_search_does_not_inherit_a_leading_player() {
+    let tokens = lex_line(
+        "That player loses 3 life, then search your library for a card, put it into your hand, then shuffle.",
+        0,
+    )
+    .expect("imperative search should lex");
+    let effects = parse_effect_chain_lexed(&tokens).expect("imperative search should parse");
+    let [EffectAst::CommaThen { effects: nested }] = effects.as_slice() else {
+        panic!("expected one typed comma-then sequence, got {effects:#?}");
+    };
+    let Some(EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::SearchLibrary {
+                chooser,
+                player: library_player,
+                ..
+            },
+        ..
+    })) = nested.last()
+    else {
+        panic!("expected a terminal search procedure, got {nested:#?}");
+    };
+
+    assert_eq!(
+        (*chooser, *library_player),
+        (PlayerAst::Implicit, PlayerAst::Implicit),
+        "an imperative search remains an action by the ability controller"
+    );
 }
 
 #[test]
@@ -1882,5 +2910,80 @@ fn base_pt_where_x_full_cards_compile_candlekeep_and_jolrael() {
             && jolrael_debug.contains("Hand")
             && jolrael_debug.contains("WhereXIs"),
         "Jolrael should keep its typed cards-in-hand where-X value: {jolrael_debug}"
+    );
+}
+
+#[test]
+fn sacrifice_source_then_source_deals_damage_keeps_both_actions() {
+    let tokens = lex_line(
+        "Sacrifice this creature and it deals damage equal to the number of +1/+1 counters on it to each creature without flying and each player.",
+        0,
+    )
+    .expect("source sacrifice and damage chain should lex");
+    let segments = super::split_effect_chain_on_and_lexed(&tokens);
+    assert_eq!(
+        segments.len(),
+        3,
+        "the top-level action and paired damage operands should remain distinct: {segments:#?}"
+    );
+    assert!(
+        segments[..2]
+            .iter()
+            .all(|segment| super::segment_has_effect_head_lexed(segment)),
+        "the sacrifice and damage arms must be recognized as executable effects: {segments:#?}"
+    );
+    let sacrifice_arm =
+        parse_effect_chain_lexed(segments[0]).expect("standalone sacrifice arm should parse");
+    assert!(
+        format!("{sacrifice_arm:#?}").contains("Sacrifice"),
+        "the standalone first arm must remain a sacrifice: {sacrifice_arm:#?}"
+    );
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("source sacrifice and damage chain should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(
+        debug.contains("Sacrifice") && debug.contains("DealDamage"),
+        "both coordinated actions must survive chain parsing: {debug}"
+    );
+}
+
+#[test]
+fn exile_source_and_anaphoric_objects_keeps_both_operands() {
+    let tokens = lex_line("Exile this artifact and those creature cards.", 0)
+        .expect("shared-verb exile operands should lex");
+    let effects =
+        parse_effect_chain_lexed(&tokens).expect("shared-verb exile operands should parse");
+    let debug = format!("{effects:#?}");
+    assert_eq!(
+        debug.matches("Exile").count(),
+        2,
+        "both coordinated exile operands must survive chain parsing: {debug}"
+    );
+}
+
+#[test]
+fn comma_then_exile_source_and_anaphoric_objects_keeps_both_operands() {
+    let tokens = lex_line(
+        "This artifact deals 1 damage to any target, then exile this artifact and those creature cards.",
+        0,
+    )
+    .expect("comma-then shared-verb exile operands should lex");
+    let effects = parse_effect_chain_lexed(&tokens)
+        .expect("comma-then shared-verb exile operands should parse");
+    let debug = format!("{effects:#?}");
+
+    assert!(
+        debug.contains("CommaThen"),
+        "the printed comma-then boundary must survive parsing: {debug}"
+    );
+    assert_eq!(
+        debug.matches("Exile").count(),
+        2,
+        "both coordinated exile operands must survive the comma-then chain: {debug}"
+    );
+    assert!(
+        debug.contains("plural_object_noun: true"),
+        "the authored `those creature cards` result set must remain plural: {debug}"
     );
 }

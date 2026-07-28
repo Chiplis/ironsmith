@@ -8,6 +8,9 @@
     {
         return compact;
     }
+    if let Some(compact) = describe_life_lock_and_protection_from_everything(&filtered) {
+        return compact;
+    }
     if let Some(compact) = describe_player_protection_from_everything_pair(&filtered) {
         return compact;
     }
@@ -241,7 +244,7 @@
         return compact;
     }
     if filtered.len() == 2
-        && let Some(choose) = filtered[0].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(choose) = filtered[0].downcast_ref::<crate::effects::ChooseCardTypeEffect>()
         && let Some(phase_out) = filtered[1].downcast_ref::<crate::effects::PhaseOutEffect>()
         && let Some(compact) = describe_choose_type_then_phase_out(choose, phase_out)
     {

@@ -1496,7 +1496,9 @@ impl StaticAbility {
 
     /// Check if this ability is currently active.
     pub fn is_active(&self, game: &GameState, source: ObjectId) -> bool {
-        self.0.is_active(game, source)
+        !(self.id() == StaticAbilityId::RuleRestriction
+            && game.attached_static_restrictions_are_ignored_this_turn(source))
+            && self.0.is_active(game, source)
     }
 
     pub fn skips_upkeep_for_player(
@@ -2377,6 +2379,10 @@ impl StaticAbility {
         Self::new(CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes::new(
             card_types,
         ))
+    }
+
+    pub fn cant_be_blocked_while_defending_player_controls_most_creatures() -> Self {
+        Self::new(CantBeBlockedWhileDefendingPlayerControlsMostCreatures)
     }
 
     pub fn bloodthirst(amount: u32) -> Self {
@@ -3369,6 +3375,10 @@ impl StaticAbility {
         Self::new(LegendRuleDoesntApplyToController)
     }
 
+    pub fn legend_rule_doesnt_apply_to_tokens_you_control() -> Self {
+        Self::new(LegendRuleDoesntApplyToControllerTokens)
+    }
+
     pub fn additional_land_plays(count: u32) -> Self {
         let display = match count {
             1 => "You may play an additional land on each of your turns.".to_string(),
@@ -3913,6 +3923,14 @@ impl StaticAbility {
 
     pub fn keyword_marker(marker: impl Into<String>) -> Self {
         Self::new(KeywordMarker::new(marker))
+    }
+
+    pub fn source_line_keyword_group(keyword_count: usize) -> Self {
+        Self::new(SourceLineKeywordGroup::new(keyword_count))
+    }
+
+    pub fn source_line_static_group(member_count: usize) -> Self {
+        Self::new(SourceLineStaticGroup::new(member_count))
     }
 
     pub fn look_at_top_card_of_library() -> Self {

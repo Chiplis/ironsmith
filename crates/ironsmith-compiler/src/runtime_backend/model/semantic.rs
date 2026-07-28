@@ -214,6 +214,9 @@ pub(crate) struct ParsedActivationRestriction {
     pub(crate) text_only_condition: Option<ConditionExpr>,
     pub(crate) normalization: ActivationRestrictionNormalizationFact,
     pub(crate) mana_usage_restriction: Option<ManaUsageRestriction>,
+    /// Oracle placed the once-per-turn clause after another activation
+    /// restriction (for example, "... only if ... and only once each turn").
+    pub(crate) once_per_turn_after_other_restrictions: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -283,6 +286,7 @@ pub(crate) struct ParsedModalModeAst {
 pub(crate) struct ParsedModalGate {
     pub(crate) predicate: EffectPredicate,
     pub(crate) remove_mode_only: bool,
+    pub(crate) reflexive: bool,
 }
 
 #[derive(Debug, Clone)]

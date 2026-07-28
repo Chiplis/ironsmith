@@ -168,12 +168,17 @@ mod tests {
     use super::generate_replacement_effects_from_abilities;
     use crate::cards::CardDefinitionBuilder;
     use crate::cards::basic_island;
+    use crate::continuous::Modification;
+    use crate::effect::{Until, Value};
+    use crate::effects::{ApplyContinuousEffect, EffectExecutor, ExecutionContext};
     use crate::game_state::GameState;
     use crate::ids::CardId;
     use crate::ids::{ObjectId, PlayerId};
+    use crate::mana::{ManaCost, ManaSymbol};
     use crate::object::CounterType;
     use crate::replacement::ReplacementAction;
     use crate::static_abilities::StaticAbility;
+    use crate::target::{ChooseSpec, ObjectFilter};
     use crate::types::CardType;
     use crate::zone::Zone;
 
@@ -270,6 +275,169 @@ mod tests {
             effect.replacement,
             ReplacementAction::ChangeDestination(Zone::Library)
         ));
+    }
+
+    fn grant_dynamic_entry_counters(
+        game: &mut GameState,
+        source: ObjectId,
+        controller: PlayerId,
+        target: ObjectId,
+        count: Value,
+    ) {
+        let model: crate::static_abilities::CompiledStaticAbility =
+            ironsmith_core::StaticAbility::enters_with_counters_and_subtypes_for_filter(
+                ObjectFilter::creature(),
+                CounterType::PlusOnePlusOne,
+                count,
+                Vec::new(),
+            );
+        let granted = StaticAbility::from_model(model);
+        let apply = ApplyContinuousEffect::with_spec(
+            ChooseSpec::SpecificObject(target),
+            Modification::AddAbility(granted),
+            Until::Forever,
+        );
+        let mut decision_maker = crate::decision::SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, controller, &mut decision_maker);
+        apply
+            .execute(game, &mut ctx)
+            .expect("the entry-counter ability grant should resolve");
+    }
+
+    #[test]
+    fn resolution_granted_entry_counter_ability_uses_two_dynamic_mana_values() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let source = CardDefinitionBuilder::new(CardId::new(), "Entry Counter Grant Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+        for (mana_value, expected_counters) in [(6_u8, 2_u32), (9_u8, 5_u32)] {
+            let creature = CardDefinitionBuilder::new(
+                CardId::new(),
+                format!("Dynamic Entry Creature {mana_value}"),
+            )
+            .card_types(vec![CardType::Creature])
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(
+                mana_value,
+            )]]))
+            .build();
+            let creature_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+
+            let count = Value::Add(
+                Box::new(Value::ManaValueOf(Box::new(
+                    ChooseSpec::Source.with_surface_hint(
+                        ironsmith_core::ChooseSpecSurfaceHint::SourceReference(
+                            ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                                "it".to_string(),
+                            ),
+                        ),
+                    ),
+                ))),
+                Box::new(Value::Fixed(-4)),
+            );
+            grant_dynamic_entry_counters(&mut game, source_id, alice, creature_id, count);
+
+            let entered = game
+                .move_object_with_etb_processing(creature_id, Zone::Battlefield)
+                .expect("creature with a resolution-granted ETB ability should enter")
+                .new_id;
+            assert_eq!(
+                game.counter_count(entered, CounterType::PlusOnePlusOne),
+                expected_counters,
+                "mana value {mana_value} should produce X = {expected_counters}, not a fixed one"
+            );
+        }
+    }
+
+    #[test]
+    fn resolution_granted_entry_counter_ability_reads_outer_source_counters_at_two_values() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let source = CardDefinitionBuilder::new(CardId::new(), "Ingredient Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+        let ingredient = CounterType::Named("ingredient");
+
+        for (additional_source_counters, expected_counters) in [(2_u32, 2_u32), (3_u32, 5_u32)] {
+            game.add_counters(source_id, ingredient, additional_source_counters);
+            let creature = CardDefinitionBuilder::new(
+                CardId::new(),
+                format!("Ingredient Entry Creature {expected_counters}"),
+            )
+            .card_types(vec![CardType::Creature])
+            .build();
+            let creature_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+            grant_dynamic_entry_counters(
+                &mut game,
+                source_id,
+                alice,
+                creature_id,
+                Value::CountersOnSource(ingredient),
+            );
+
+            let entered = game
+                .move_object_with_etb_processing(creature_id, Zone::Battlefield)
+                .expect("creature with a source-counter-based ETB ability should enter")
+                .new_id;
+            assert_eq!(
+                game.counter_count(entered, CounterType::PlusOnePlusOne),
+                expected_counters,
+                "the granted ability should read {expected_counters} counters from its outer source"
+            );
+        }
+    }
+
+    #[test]
+    fn resolution_granted_entry_counter_ability_counts_two_distinct_color_totals() {
+        let alice = PlayerId::from_index(0);
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let source = CardDefinitionBuilder::new(CardId::new(), "Color Entry Grant Source")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+
+        for colors in [2_u32, 4_u32] {
+            let creature =
+                CardDefinitionBuilder::new(CardId::new(), format!("Color Entry Creature {colors}"))
+                    .card_types(vec![CardType::Creature])
+                    .build();
+            let creature_id = game.create_object_from_definition(&creature, alice, Zone::Stack);
+            let mut spent = crate::player::ManaPool::new();
+            for symbol in [
+                ManaSymbol::White,
+                ManaSymbol::Blue,
+                ManaSymbol::Black,
+                ManaSymbol::Red,
+            ]
+            .into_iter()
+            .take(colors as usize)
+            {
+                spent.add(symbol, 1);
+            }
+            game.object_mut(creature_id)
+                .expect("creature spell should exist")
+                .mana_spent_to_cast = spent;
+            grant_dynamic_entry_counters(
+                &mut game,
+                source_id,
+                alice,
+                creature_id,
+                Value::ColorsOfManaSpentToCastThisSpell,
+            );
+
+            let entered = game
+                .move_object_with_etb_processing(creature_id, Zone::Battlefield)
+                .expect("creature with a color-count-based ETB ability should enter")
+                .new_id;
+            assert_eq!(
+                game.counter_count(entered, CounterType::PlusOnePlusOne),
+                colors,
+                "{colors} colors of spent mana should produce {colors} counters"
+            );
+        }
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

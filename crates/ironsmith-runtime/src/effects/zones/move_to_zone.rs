@@ -744,7 +744,7 @@ mod tests {
     use crate::events::zones::matchers::WouldGoToGraveyardMatcher;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
-    use crate::object::Object;
+    use crate::object::{CounterType, Object};
     use crate::replacement::{ReplacementAction, ReplacementEffect};
     use crate::types::CardType;
 
@@ -965,6 +965,91 @@ mod tests {
             &filter_ctx,
             &game,
         ));
+    }
+
+    #[test]
+    fn batch_move_applies_each_conditional_entry_counter_to_matching_objects() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source =
+            create_named_creature_in_zone(&mut game, alice, "Semester Source", Zone::Battlefield);
+        let _creature =
+            create_named_creature_in_zone(&mut game, alice, "Returning Creature", Zone::Exile);
+
+        let planeswalker = game.new_object_id();
+        let planeswalker_card = CardBuilder::new(
+            CardId::from_raw(planeswalker.0 as u32),
+            "Returning Planeswalker",
+        )
+        .card_types(vec![CardType::Planeswalker])
+        .build();
+        game.add_object(Object::from_card(
+            planeswalker,
+            &planeswalker_card,
+            alice,
+            Zone::Exile,
+        ));
+
+        let creature_counter = ironsmith_core::BattlefieldEntryCounterSpec::new(
+            CounterType::PlusOnePlusOne,
+            crate::effect::Value::Fixed(1),
+            ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters,
+        )
+        .for_matching_object(ObjectFilter::default().with_type(CardType::Creature));
+        let loyalty_counter = ironsmith_core::BattlefieldEntryCounterSpec::new(
+            CounterType::Loyalty,
+            crate::effect::Value::Fixed(1),
+            ironsmith_core::BattlefieldEntryCounterSurface::EachOfThemEnters,
+        )
+        .for_matching_object(ObjectFilter::default().with_type(CardType::Planeswalker));
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        MoveToZoneEffect::new(
+            ChooseSpec::All(ObjectFilter::default().in_zone(Zone::Exile)),
+            Zone::Battlefield,
+            false,
+        )
+        .under_owner_control()
+        .with_entry_counter(creature_counter)
+        .with_entry_counter(loyalty_counter)
+        .execute(&mut game, &mut ctx)
+        .expect("aggregate return should resolve");
+
+        let returned_creature = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.name == "Returning Creature")
+            })
+            .expect("creature should return");
+        let returned_planeswalker = game
+            .battlefield
+            .iter()
+            .copied()
+            .find(|id| {
+                game.object(*id)
+                    .is_some_and(|object| object.name == "Returning Planeswalker")
+            })
+            .expect("planeswalker should return");
+
+        assert_eq!(
+            game.counter_count(returned_creature, CounterType::PlusOnePlusOne),
+            1
+        );
+        assert_eq!(
+            game.counter_count(returned_creature, CounterType::Loyalty),
+            0
+        );
+        assert_eq!(
+            game.counter_count(returned_planeswalker, CounterType::PlusOnePlusOne),
+            0
+        );
+        assert_eq!(
+            game.counter_count(returned_planeswalker, CounterType::Loyalty),
+            1
+        );
     }
 
     #[test]

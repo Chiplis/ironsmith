@@ -4,6 +4,34 @@ use crate::ids::CardId;
 use crate::types::CardType;
 
 #[test]
+fn name_sticker_character_count_is_case_insensitive_and_additive() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let card = crate::card::CardBuilder::new(CardId::from_raw(70_001), "Sticker Host")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let host = game.create_object_from_card(&card, alice, Zone::Battlefield);
+
+    game.put_name_sticker_on_object(host, "Cool");
+    game.put_name_sticker_on_object(host, "ROBOT");
+    game.put_sticker_on_object(host, KeywordActionKind::ArtSticker);
+
+    assert_eq!(game.name_sticker_character_count_on_object(host, 'o'), 4);
+    assert_eq!(game.name_sticker_character_count_on_object(host, 'O'), 4);
+    assert_eq!(
+        game.sticker_count_on_object(host, KeywordActionKind::Sticker, None),
+        3
+    );
+
+    let ctx = crate::effects::ExecutionContext::new_default(host, alice);
+    let value = crate::effect::Value::NameStickerCharacterCountOnSource {
+        character: 'o',
+        surface: None,
+    };
+    assert_eq!(crate::effects::resolve_value(&game, &value, &ctx), Ok(4));
+}
+
+#[test]
 fn shuffle_slice_marks_irreversible_random_usage() {
     let game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let before = game.irreversible_random_count();

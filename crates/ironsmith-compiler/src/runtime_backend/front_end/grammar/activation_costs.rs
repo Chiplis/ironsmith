@@ -135,7 +135,6 @@ pub(crate) enum ActivationCostSegmentCst {
         counter_type: CounterType,
         count: u32,
         filter: ObjectFilter,
-        source_equivalent: bool,
     },
     Blight {
         count: u32,
@@ -150,6 +149,7 @@ pub(crate) enum ActivationCostSegmentCst {
         filter: ObjectFilter,
         display_x: bool,
         dynamic: bool,
+        single_object: bool,
     },
     RemoveCountersDynamic {
         counter_type: Option<CounterType>,

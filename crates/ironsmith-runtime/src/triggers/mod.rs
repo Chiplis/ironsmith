@@ -98,6 +98,8 @@ pub(crate) fn describe_player_filter_subject(filter: &PlayerFilter) -> String {
         PlayerFilter::Opponent => "an opponent".to_string(),
         PlayerFilter::Any => "a player".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::Active => "the active player".to_string(),
         PlayerFilter::Defending => "the defending player".to_string(),
         PlayerFilter::Attacking => "the attacking player".to_string(),
@@ -139,6 +141,8 @@ pub(crate) fn describe_player_filter_possessive(filter: &PlayerFilter) -> String
         PlayerFilter::Opponent => "each opponent's".to_string(),
         PlayerFilter::Any => "each player's".to_string(),
         PlayerFilter::Teammate => "a teammate's".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left's".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
         PlayerFilter::Attacking => "the attacking player's".to_string(),
@@ -354,6 +358,22 @@ impl Trigger {
         Self::new(OrTrigger::new(vec![dies, exiled]))
     }
 
+    /// Create a source-bound dies-or-exile trigger while preserving the
+    /// source noun or name authored in Oracle text.
+    pub fn this_dies_or_is_exiled_with_surface(
+        surface: crate::target::SourceReferenceSurface,
+    ) -> Self {
+        let dies = Trigger::new(ZoneChangeTrigger::this_dies().this_surface(surface.clone()));
+        let exiled = Trigger::new(
+            ZoneChangeTrigger::new()
+                .from(Zone::Battlefield)
+                .to(Zone::Exile)
+                .this()
+                .this_surface(surface),
+        );
+        Self::new(OrTrigger::new(vec![dies, exiled]))
+    }
+
     /// Create a "when [filter] dies" trigger.
     pub fn dies(filter: ObjectFilter) -> Self {
         Self::new(ZoneChangeTrigger::dies(filter))
@@ -425,6 +445,14 @@ impl Trigger {
 
     // === Phase/Step Triggers ===
 
+    /// Create delayed "as [player] untaps their permanents" timing.
+    pub fn as_permanents_untap(player: PlayerFilter, source_must_be_controlled: bool) -> Self {
+        Self::new(AsPermanentsUntapTrigger::new(
+            player,
+            source_must_be_controlled,
+        ))
+    }
+
     /// Create a "at the beginning of [player]'s upkeep" trigger.
     pub fn beginning_of_upkeep(player: PlayerFilter) -> Self {
         Self::new(BeginningOfUpkeepTrigger::new(player))
@@ -438,6 +466,17 @@ impl Trigger {
     /// Create a "at the beginning of [player]'s end step" trigger.
     pub fn beginning_of_end_step(player: PlayerFilter) -> Self {
         Self::new(BeginningOfEndStepTrigger::new(player))
+    }
+
+    /// Create an "at the beginning of [player]'s cleanup step" trigger.
+    pub fn beginning_of_cleanup_step(player: PlayerFilter) -> Self {
+        Self::new(BeginningOfCleanupStepTrigger::new(player))
+    }
+
+    /// Create the one-shot "at the beginning of the next cleanup step"
+    /// timing used by delayed cleanup instructions.
+    pub fn beginning_of_next_cleanup_step(player: PlayerFilter) -> Self {
+        Self::new(BeginningOfCleanupStepTrigger::next(player))
     }
 
     /// Create the Any-player end-step trigger with Oracle's definite
@@ -619,6 +658,17 @@ impl Trigger {
         Self::new(ThisBlocksObjectTrigger::new(filter))
     }
 
+    /// Create a grouped "when this creature blocks N or more [filter]" trigger.
+    pub fn this_blocks_objects_with_minimum(
+        filter: ObjectFilter,
+        min_blocked_objects: usize,
+    ) -> Self {
+        Self::new(ThisBlocksObjectTrigger::with_minimum(
+            filter,
+            min_blocked_objects,
+        ))
+    }
+
     /// Create a "when [filter] blocks" trigger.
     pub fn blocks(filter: ObjectFilter) -> Self {
         Self::new(BlocksTrigger::new(filter))
@@ -629,6 +679,11 @@ impl Trigger {
         Self::new(BlocksTrigger::one_or_more(filter))
     }
 
+    /// Create a per-pair "when [blocker] blocks [object] with lesser power" trigger.
+    pub fn blocks_object_with_lesser_power(blocker: ObjectFilter, blocked: ObjectFilter) -> Self {
+        Self::new(BlocksObjectWithLesserPowerTrigger::new(blocker, blocked))
+    }
+
     /// Create a "when this creature becomes blocked" trigger.
     pub fn this_becomes_blocked() -> Self {
         Self::new(ThisBecomesBlockedTrigger)
@@ -637,6 +692,16 @@ impl Trigger {
     /// Create a "when this creature becomes blocked by [filter]" trigger.
     pub fn this_becomes_blocked_by_object(filter: ObjectFilter) -> Self {
         Self::new(ThisBecomesBlockedByObjectTrigger::new(filter))
+    }
+
+    /// Create a per-pair "when [object] becomes blocked by [blocker] with lesser power" trigger.
+    pub fn becomes_blocked_by_object_with_lesser_power(
+        blocked: ObjectFilter,
+        blocker: ObjectFilter,
+    ) -> Self {
+        Self::new(BecomesBlockedByObjectWithLesserPowerTrigger::new(
+            blocked, blocker,
+        ))
     }
 
     /// Create a "when [filter] becomes blocked" trigger.
@@ -824,6 +889,11 @@ impl Trigger {
         Self::new(YouGainLifeTrigger::new())
     }
 
+    /// Create a "whenever [filter] causes you to gain life" trigger.
+    pub fn you_gain_life_caused_by(source: ObjectFilter) -> Self {
+        Self::new(YouGainLifeTrigger::caused_by(source))
+    }
+
     /// Create a "whenever you gain life during [player]'s turn" trigger.
     pub fn you_gain_life_during_turn(during_turn: PlayerFilter) -> Self {
         Self::new(YouGainLifeTrigger::during_turn(during_turn))
@@ -892,15 +962,41 @@ impl Trigger {
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
     ) -> Self {
-        Self::new(SpellCastTrigger::qualified(
+        Self::spell_cast_qualified_with_mana_source(
             filter,
+            None,
             caster,
             timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
             from_not_hand,
-        ))
+        )
+    }
+
+    /// Create a qualified spell-cast trigger with cast-payment provenance.
+    pub fn spell_cast_qualified_with_mana_source(
+        filter: Option<ObjectFilter>,
+        mana_source_filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        timing: Option<ironsmith_core::TriggerTimingRestriction>,
+        during_turn: Option<PlayerFilter>,
+        min_spells_this_turn: Option<u32>,
+        exact_spells_this_turn: Option<u32>,
+        from_not_hand: bool,
+    ) -> Self {
+        Self::new(
+            SpellCastTrigger::qualified(
+                filter,
+                caster,
+                timing,
+                during_turn,
+                min_spells_this_turn,
+                exact_spells_this_turn,
+                from_not_hand,
+            )
+            .with_mana_source_filter(mana_source_filter),
+        )
     }
 
     /// Create a "when [player] copies a spell" trigger.
@@ -1399,6 +1495,13 @@ impl Trigger {
     /// Create a "whenever [player] win a clash" trigger.
     pub fn wins_clash(player: PlayerFilter) -> Self {
         Self::new(WinsClashTrigger::new(player))
+    }
+
+    pub fn wins_clash_with_surface(
+        player: PlayerFilter,
+        surface: ironsmith_core::ClashWinTriggerSurface,
+    ) -> Self {
+        Self::new(WinsClashTrigger::with_surface(player, surface))
     }
 
     // === Special Triggers ===

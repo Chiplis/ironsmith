@@ -158,6 +158,7 @@ fn absorb_predicate_into_trigger(
             match trigger {
                 TriggerSpec::SpellCast {
                     filter: trigger_filter,
+                    mana_source_filter,
                     caster,
                     timing,
                     during_turn,
@@ -170,6 +171,7 @@ fn absorb_predicate_into_trigger(
                     (
                         TriggerSpec::SpellCast {
                             filter: Some(merged_filter),
+                            mana_source_filter,
                             caster,
                             timing,
                             during_turn,
@@ -320,6 +322,7 @@ fn filter_references_tag(filter: &ObjectFilter, tag: &str) -> bool {
         || filter.targets_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
         || filter.targets_only_object.as_deref().is_some_and(|targets| filter_references_tag(targets, tag))
         || filter.attached_to_object.as_deref().is_some_and(|attached_to| filter_references_tag(attached_to, tag))
+        || filter.blocked_or_was_blocked_by_this_turn.as_deref().is_some_and(|combat_partner| filter_references_tag(combat_partner, tag))
         || filter.any_of.iter().any(|branch| filter_references_tag(branch, tag))
 }
 

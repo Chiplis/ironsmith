@@ -859,6 +859,21 @@ pub(crate) fn effect_predicate_from_if_result(predicate: IfResultPredicate) -> E
         IfResultPredicate::AffectedObjectMatchesCardType { card_type, negated } => {
             EffectPredicate::AffectedObjectMatchesCardType { card_type, negated }
         }
+        IfResultPredicate::PriorEffectResult(surface)
+            if surface.action == ironsmith_core::PriorEffectAction::Searched
+                && surface.actor == ironsmith_core::PriorEffectResultActor::You
+                && surface.quantifier
+                    == ironsmith_core::PriorEffectResultQuantifier::ActionOnly
+                && surface.filter == ObjectFilter::default()
+                && surface.required_count.is_none()
+                && surface.shared_characteristic.is_none() =>
+        {
+            // The dedicated predicate evaluates the chosen object's origin
+            // zone, which is the runtime distinction needed by
+            // "If you searched your library this way" after a library and/or
+            // graveyard search.
+            EffectPredicate::SearchedLibrary
+        }
         IfResultPredicate::PriorEffectResult(surface) => {
             EffectPredicate::PriorEffectResult(surface)
         }
@@ -872,13 +887,69 @@ pub(crate) fn compile_repeat_process_body(
     continue_effect_index: usize,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>, EffectId), CardTextError> {
+    fn defines_effect_result_id(effect: &Effect, id: EffectId) -> bool {
+        if effect
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .is_some_and(|with_id| with_id.id == id)
+        {
+            return true;
+        }
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| {
+            if !found && defines_effect_result_id(child, id) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    // When the continuation gate is the final AST effect, lower the body as
+    // one annotated sequence before attaching the repeat-result ID. This
+    // preserves ordinary result links inside the process (for example, a coin
+    // flip followed by its win and loss branches) while still letting the
+    // final branch outcome decide whether another iteration begins.
+    if continue_effect_index == effects.len().saturating_sub(1)
+        && effects
+            .get(continue_effect_index)
+            .and_then(starting_with_controller_each_player_effects)
+            .is_none()
+    {
+        let (mut compiled, choices) = compile_effects(effects, ctx)?;
+        if compiled.is_empty() {
+            return Err(CardTextError::ParseError(
+                "repeat process condition compiled to no effects".to_string(),
+            ));
+        }
+        // Sequence annotation may assign result IDs before lowering consumes
+        // the context's generator (notably for multiple branches referring to
+        // one coin flip). Reserve past every ID already materialized in this
+        // body so the continuation wrapper cannot overwrite an antecedent.
+        let condition = loop {
+            let candidate = ctx.next_effect_id();
+            let already_used = compiled
+                .iter()
+                .any(|effect| defines_effect_result_id(effect, candidate));
+            if !already_used {
+                break candidate;
+            }
+        };
+        assign_effect_result_id(
+            &mut compiled,
+            condition,
+            "repeat process condition is missing a final effect",
+        )?;
+        ctx.last_effect_id = Some(condition);
+        return Ok((compiled, choices, condition));
+    }
+
     let mut compiled = Vec::new();
     let mut choices = Vec::new();
     let mut condition: Option<EffectId> = None;
 
     for (idx, effect) in effects.iter().enumerate() {
         let (mut effect_list, effect_choices) = if idx == continue_effect_index {
-            if let Some(compiled) = compile_starting_with_controller_pay_life_process(effect, ctx)?
+            if let Some(compiled) =
+                compile_starting_with_controller_each_player_process(effect, ctx)?
             {
                 compiled
             } else {
@@ -914,22 +985,28 @@ pub(crate) fn compile_repeat_process_body(
     Ok((compiled, choices, condition))
 }
 
-fn compile_starting_with_controller_pay_life_process(
+fn starting_with_controller_each_player_effects(effect: &EffectAst) -> Option<&[EffectAst]> {
+    let EffectAst::SourceSentence {
+        effects,
+        starting_with_controller: true,
+        ..
+    } = effect
+    else {
+        return None;
+    };
+    let [EffectAst::ForEachPlayer { effects }] = effects.as_slice() else {
+        return None;
+    };
+    Some(effects)
+}
+
+fn compile_starting_with_controller_each_player_process(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
-    let EffectAst::ForEachPlayer { effects } = effect else {
+    let Some(effects) = starting_with_controller_each_player_effects(effect) else {
         return Ok(None);
     };
-    let [EffectAst::SubjectVerb(subject_verb)] = effects.as_slice() else {
-        return Ok(None);
-    };
-    if subject_verb.subject.role != SubjectVerbRoleAst::AffectedPlayer
-        || subject_verb.subject.player != PlayerAst::That
-        || !matches!(subject_verb.action, SubjectVerbActionAst::PayAnyLife { .. })
-    {
-        return Ok(None);
-    }
 
     let (inner_effects, inner_choices) =
         compile_effects_in_iterated_player_context(effects, ctx, None)?;
@@ -1220,6 +1297,7 @@ pub(crate) fn compile_vote_sequence(
     if let EffectAst::SecretChoiceStart {
         options,
         participants,
+        object_choice,
     } = &first.effect
     {
         let consumed = effects
@@ -1237,10 +1315,15 @@ pub(crate) fn compile_vote_sequence(
             .last()
             .unwrap_or(1);
 
-        let mut compiled = vec![Effect::new(crate::effects::SecretChoiceEffect::new(
-            options.clone(),
-            participants.clone(),
-        ))];
+        let secret_choice = if let Some(object_choice) = object_choice {
+            crate::effects::SecretChoiceEffect::new_objects(
+                participants.clone(),
+                object_choice.clone(),
+            )
+        } else {
+            crate::effects::SecretChoiceEffect::new(options.clone(), participants.clone())
+        };
+        let mut compiled = vec![Effect::new(secret_choice)];
         let mut choices = Vec::new();
         for annotated in effects.iter().take(consumed).skip(1) {
             apply_local_reference_env(ctx, &annotated.in_env);
@@ -1523,4 +1606,24 @@ pub(crate) fn target_context_prelude_for_filter(
         .map(|spec| Effect::new(crate::effects::TargetOnlyEffect::new(spec)))
         .collect();
     (effects, choices)
+}
+
+#[cfg(test)]
+mod typed_search_predicate_tests {
+    use super::*;
+
+    #[test]
+    fn searched_action_only_surface_uses_zone_sensitive_search_predicate() {
+        let surface = ironsmith_core::PriorEffectResultSurface::new(
+            ironsmith_core::PriorEffectAction::Searched,
+            ObjectFilter::default(),
+            ironsmith_core::PriorEffectResultActor::You,
+            ironsmith_core::PriorEffectResultQuantifier::ActionOnly,
+        );
+
+        assert_eq!(
+            effect_predicate_from_if_result(IfResultPredicate::PriorEffectResult(surface)),
+            EffectPredicate::SearchedLibrary
+        );
+    }
 }

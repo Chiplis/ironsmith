@@ -13,6 +13,7 @@ use crate::triggers::Trigger;
 
 use super::trigger_queue::{
     DelayedTriggerTemplate, DelayedWatcherIdentity, queue_delayed_from_template,
+    tagged_collection_has_object_in_zone,
 };
 
 /// Effect that schedules a delayed trigger.
@@ -25,9 +26,11 @@ pub struct ScheduleDelayedTriggerEffect {
     pub duration: ironsmith_core::DelayedTriggerDuration,
     pub until_end_of_turn: bool,
     pub until_end_of_combat: bool,
+    pub leading_duration_surface: bool,
     pub watch_ability_source: bool,
     pub watch_all_object_targets: bool,
     pub either_of_watched_objects: bool,
+    pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
     pub target_objects: Vec<crate::ids::ObjectId>,
     pub target_tag: Option<TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -50,9 +53,11 @@ impl ScheduleDelayedTriggerEffect {
             duration: ironsmith_core::DelayedTriggerDuration::Forever,
             until_end_of_turn: false,
             until_end_of_combat: false,
+            leading_duration_surface: false,
             watch_ability_source: false,
             watch_all_object_targets: false,
             either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
             target_objects,
             target_tag: None,
             target_filter: None,
@@ -75,9 +80,11 @@ impl ScheduleDelayedTriggerEffect {
             duration: ironsmith_core::DelayedTriggerDuration::Forever,
             until_end_of_turn: false,
             until_end_of_combat: false,
+            leading_duration_surface: false,
             watch_ability_source: false,
             watch_all_object_targets: false,
             either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
             target_objects: Vec::new(),
             target_tag: Some(target_tag.into()),
             target_filter: None,
@@ -116,8 +123,22 @@ impl ScheduleDelayedTriggerEffect {
         self
     }
 
+    pub fn with_leading_duration_surface(mut self) -> Self {
+        self.leading_duration_surface = true;
+        self
+    }
+
     pub fn with_either_of_watched_objects_surface(mut self) -> Self {
         self.either_of_watched_objects = true;
+        self
+    }
+
+    pub fn while_any_tagged_object_in_zone(
+        mut self,
+        tag: impl Into<TagKey>,
+        zone: crate::zone::Zone,
+    ) -> Self {
+        self.while_any_tagged_object_in_zone = Some((tag.into(), zone));
         self
     }
 
@@ -174,6 +195,12 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
             }
         }
 
+        if let Some((tag, zone)) = &self.while_any_tagged_object_in_zone
+            && !tagged_collection_has_object_in_zone(game, &tagged_objects, tag, *zone)
+        {
+            return Ok(EffectOutcome::count(0));
+        }
+
         if let Some(tag) = &self.target_tag {
             let Some(tagged) = tagged_objects.get(tag) else {
                 return Ok(EffectOutcome::count(0));
@@ -213,6 +240,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                         .then_some(game.turn.turn_number),
                 )
                 .with_expires_at_end_of_combat(self.until_end_of_combat)
+                .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
                 .with_tagged_objects(delayed_tagged_objects);
                 queue_delayed_from_template(
                     game,
@@ -251,6 +279,7 @@ impl EffectExecutor for ScheduleDelayedTriggerEffect {
                 .then_some(game.turn.turn_number),
         )
         .with_expires_at_end_of_combat(self.until_end_of_combat)
+        .while_any_tagged_object_in_zone_opt(self.while_any_tagged_object_in_zone.clone())
         .with_tagged_objects(tagged_objects);
         let mut watched_targets = if self.watch_all_object_targets {
             ctx.targets
@@ -408,6 +437,150 @@ mod tests {
             triggers.len(),
             1,
             "draw-step trigger should fire on the next turn's draw step"
+        );
+    }
+
+    #[test]
+    fn scheduled_cleanup_trigger_waits_for_cleanup_step() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        let effect = ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_cleanup_step(PlayerFilter::Any),
+            vec![Effect::draw(1)],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("cleanup schedule should resolve");
+
+        let end_step = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfEndStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &end_step).is_empty(),
+            "cleanup action must not fire during the end step"
+        );
+
+        let cleanup = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfCleanupStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert_eq!(
+            crate::triggers::check_delayed_triggers(&mut game, &cleanup).len(),
+            1,
+            "cleanup action should fire when the cleanup step begins"
+        );
+    }
+
+    #[test]
+    fn next_cleanup_trigger_exiles_every_captured_tagged_object_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(997), "Delayed Cleanup Source")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let token_card = CardBuilder::new(CardId::from_raw(998), "Knight Token")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let token_ids = (0..3)
+            .map(|_| game.create_object_from_card(&token_card, alice, Zone::Battlefield))
+            .collect::<Vec<_>>();
+        let token_snapshots = token_ids
+            .iter()
+            .map(|object_id| {
+                ObjectSnapshot::from_object(
+                    game.object(*object_id)
+                        .expect("created token should be on the battlefield"),
+                    &game,
+                )
+            })
+            .collect::<Vec<_>>();
+        let token_stable_ids = token_snapshots
+            .iter()
+            .map(|snapshot| snapshot.stable_id)
+            .collect::<Vec<_>>();
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_objects("created_0", token_snapshots);
+        let exile_created = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged("created_0".into()),
+            Zone::Exile,
+            true,
+        )
+        .with_target_plural_surface();
+        let effect = ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_next_cleanup_step(PlayerFilter::Any),
+            vec![Effect::new(exile_created)],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        );
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("next-cleanup schedule should resolve");
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+        let end_step = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfEndStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &end_step).is_empty(),
+            "next-cleanup action must not fire during the end step"
+        );
+        assert_eq!(
+            game.effect_store.delayed_triggers.len(),
+            1,
+            "an unrelated event must leave the delayed action armed"
+        );
+
+        let cleanup = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfCleanupStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let entries = crate::triggers::check_delayed_triggers(&mut game, &cleanup);
+        assert_eq!(entries.len(), 1);
+        assert!(
+            game.effect_store.delayed_triggers.is_empty(),
+            "the next-cleanup registration must be consumed by its first match"
+        );
+
+        let mut trigger_queue = TriggerQueue::new();
+        for entry in entries {
+            trigger_queue.add(entry);
+        }
+        put_triggers_on_stack(&mut game, &mut trigger_queue)
+            .expect("next-cleanup action should go on the stack");
+        resolve_stack_entry(&mut game).expect("next-cleanup action should resolve");
+
+        for stable_id in token_stable_ids {
+            let current_id = game
+                .find_object_by_stable_id(stable_id)
+                .expect("each created object should still exist in exile");
+            assert_eq!(
+                game.object(current_id)
+                    .expect("exiled object should exist")
+                    .zone,
+                Zone::Exile
+            );
+        }
+
+        let second_cleanup = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfCleanupStepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &second_cleanup).is_empty(),
+            "a one-shot next-cleanup action must not fire again"
         );
     }
 
@@ -654,5 +827,112 @@ mod tests {
         assert_eq!(returned.zone, Zone::Battlefield);
         assert_eq!(returned.owner, alice);
         assert_eq!(game.controller_of(returned), alice);
+    }
+
+    #[test]
+    fn collection_scoped_upkeep_trigger_partitions_choices_by_active_owner_and_expires() {
+        fn resolve_upkeep(game: &mut GameState, player: PlayerId) {
+            game.turn.active_player = player;
+            let event = crate::triggers::TriggerEvent::new_with_provenance(
+                crate::events::phase::BeginningOfUpkeepEvent::new(player),
+                crate::provenance::ProvNodeId::default(),
+            );
+            let entries = crate::triggers::check_delayed_triggers(game, &event);
+            assert_eq!(entries.len(), 1, "one collection trigger should fire");
+            let mut queue = TriggerQueue::new();
+            for entry in entries {
+                queue.add(entry);
+            }
+            put_triggers_on_stack(game, &mut queue).expect("upkeep trigger should reach the stack");
+            resolve_stack_entry(game).expect("upkeep return should resolve");
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let card = |raw_id, name| {
+            CardBuilder::new(CardId::from_raw(raw_id), name)
+                .card_types(vec![CardType::Creature])
+                .power_toughness(PowerToughness::fixed(2, 2))
+                .build()
+        };
+        let alice_exiled =
+            game.create_object_from_card(&card(1101, "Alice Exiled"), alice, Zone::Exile);
+        let bob_exiled = game.create_object_from_card(&card(1102, "Bob Exiled"), bob, Zone::Exile);
+        let alice_stable = game.object(alice_exiled).expect("Alice's card").stable_id;
+        let bob_stable = game.object(bob_exiled).expect("Bob's card").stable_id;
+        let source =
+            game.create_object_from_card(&card(1103, "Schedule Source"), alice, Zone::Graveyard);
+
+        let collection_tag = TagKey::from(crate::tag::SOURCE_EXILED_TAG);
+        let choice_tag = TagKey::from("__collection_upkeep_choice");
+        let choice_filter = ObjectFilter::tagged(collection_tag.clone())
+            .in_zone(Zone::Exile)
+            .owned_by(PlayerFilter::Active);
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            choice_filter,
+            crate::effect::ChoiceCount::exactly(1),
+            PlayerFilter::Active,
+            choice_tag.clone(),
+        )
+        .in_zone(Zone::Exile);
+        let return_owned = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(choice_tag),
+            Zone::Battlefield,
+            false,
+        )
+        .with_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return)
+        .under_owner_control();
+        let schedule = ScheduleDelayedTriggerEffect::new(
+            Trigger::beginning_of_upkeep(PlayerFilter::Any),
+            vec![Effect::new(choose), Effect::new(return_owned)],
+            false,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .while_any_tagged_object_in_zone(collection_tag.clone(), Zone::Exile);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        for object_id in [alice_exiled, bob_exiled] {
+            ctx.tag_object(
+                collection_tag.clone(),
+                ObjectSnapshot::from_object(game.object(object_id).expect("exiled card"), &game),
+            );
+        }
+        schedule
+            .execute(&mut game, &mut ctx)
+            .expect("collection trigger should register");
+
+        resolve_upkeep(&mut game, alice);
+        assert_eq!(
+            game.find_object_by_stable_id(alice_stable)
+                .and_then(|id| game.object(id))
+                .map(|object| object.zone),
+            Some(Zone::Battlefield)
+        );
+        assert_eq!(
+            game.object(bob_exiled).map(|object| object.zone),
+            Some(Zone::Exile),
+            "Alice's upkeep must not return Bob's card"
+        );
+
+        resolve_upkeep(&mut game, bob);
+        assert_eq!(
+            game.find_object_by_stable_id(bob_stable)
+                .and_then(|id| game.object(id))
+                .map(|object| object.zone),
+            Some(Zone::Battlefield)
+        );
+
+        game.turn.active_player = alice;
+        let empty_event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::BeginningOfUpkeepEvent::new(alice),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(
+            crate::triggers::check_delayed_triggers(&mut game, &empty_event).is_empty(),
+            "the registration must not fire after the captured exile collection empties"
+        );
+        assert!(game.effect_store.delayed_triggers.is_empty());
     }
 }

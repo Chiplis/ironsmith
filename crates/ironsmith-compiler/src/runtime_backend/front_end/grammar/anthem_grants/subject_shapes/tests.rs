@@ -1,6 +1,98 @@
 use super::*;
+use crate::filter::StackObjectKind;
 use crate::runtime_backend::lexer::lex_line;
-use crate::{CardType, Subtype, Zone};
+use crate::{CardType, Color, Subtype, Supertype, Zone};
+
+#[test]
+fn distributive_compound_subtype_subject_preserves_every_subtype() {
+    let tokens = lex_line("Each Eldrazi Spawn creature you control", 0)
+        .expect("compound subtype anthem subject should lex");
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("compound subtype anthem subject should parse");
+    };
+
+    assert!(filter.subtypes.is_empty(), "{filter:#?}");
+    assert_eq!(filter.all_subtypes, vec![Subtype::Eldrazi, Subtype::Spawn]);
+}
+
+#[test]
+fn parses_colored_instant_and_sorcery_spell_subject_with_shared_controller() {
+    let tokens = lex_line("Red instant and sorcery spells you control", 0).unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected a typed colored instant-and-sorcery subject");
+    };
+
+    assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
+    assert_eq!(
+        filter.stack_kind,
+        Some(StackObjectKind::Spell),
+        "{filter:#?}"
+    );
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert!(
+        filter
+            .colors
+            .is_some_and(|colors| colors.contains(Color::Red)),
+        "{filter:#?}"
+    );
+    assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert_eq!(
+        filter
+            .any_of
+            .iter()
+            .flat_map(|branch| branch.card_types.iter().copied())
+            .collect::<Vec<_>>(),
+        vec![CardType::Instant, CardType::Sorcery]
+    );
+    assert_eq!(
+        filter.description(),
+        "red instant and sorcery spell you control"
+    );
+}
+
+#[test]
+fn parses_instant_and_sorcery_spell_subject_with_shared_caster_and_origin() {
+    for (text, expected_zone) in [
+        ("Instant and sorcery spells you cast", Zone::Stack),
+        (
+            "Instant and sorcery spells you cast from your hand",
+            Zone::Hand,
+        ),
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+            parse_exact_anthem_subject_grammar(&tokens)
+        else {
+            panic!("expected a typed instant-and-sorcery spell subject for {text}");
+        };
+
+        assert_eq!(filter.zone, Some(expected_zone), "{filter:#?}");
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.controller, None, "{filter:#?}");
+        assert!(filter.has_mana_cost, "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+        assert_eq!(
+            filter
+                .any_of
+                .iter()
+                .flat_map(|branch| branch.card_types.iter().copied())
+                .collect::<Vec<_>>(),
+            vec![CardType::Instant, CardType::Sorcery]
+        );
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .all(|branch| branch.cast_by.is_none() && branch.zone.is_none()),
+            "{filter:#?}"
+        );
+    }
+}
 
 #[test]
 fn parses_commander_controller_subject_to_typed_filter() {
@@ -57,6 +149,36 @@ fn parses_relative_attachment_state_as_an_intrinsic_filter_constraint() {
             "{filter:#?}"
         );
     }
+}
+
+#[test]
+fn parses_relative_enchanted_by_filter_as_a_matching_attachment() {
+    let tokens = lex_line(
+        "Other creatures you control that are enchanted by Auras you control",
+        0,
+    )
+    .unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected an attachment-qualified filter");
+    };
+
+    assert!(filter.other, "{filter:#?}");
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    let attachment = filter
+        .with_attached_object
+        .as_deref()
+        .expect("enchanted-by clause should produce an intrinsic attachment filter");
+    assert!(
+        attachment.subtypes.contains(&Subtype::Aura),
+        "{attachment:#?}"
+    );
+    assert_eq!(
+        attachment.controller,
+        Some(PlayerFilter::You),
+        "{attachment:#?}"
+    );
 }
 
 #[test]
@@ -174,4 +296,91 @@ fn parses_differently_qualified_type_branches_as_typed_disjunction() {
     assert!(!enchantment.excluded_subtypes.contains(&Subtype::Equipment));
     assert_eq!(enchantment.controller, Some(PlayerFilter::You));
     assert!(enchantment.mana_value.is_some());
+}
+
+#[test]
+fn factors_shared_controller_and_leading_other_from_conjunctive_subject() {
+    let tokens = lex_line("Other Plants and Treefolk you control", 0).unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected a typed conjunctive anthem subject");
+    };
+
+    assert_eq!(filter.zone, Some(Zone::Battlefield), "{filter:#?}");
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert!(filter.other, "{filter:#?}");
+    assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(
+        filter
+            .any_of
+            .iter()
+            .all(|branch| branch.zone.is_none() && branch.controller.is_none() && !branch.other),
+        "{filter:#?}"
+    );
+    assert_eq!(
+        filter.description(),
+        "another Plant and Treefolk you control"
+    );
+}
+
+#[test]
+fn factors_leading_other_across_mixed_type_and_subtype_subjects() {
+    let tokens = lex_line(
+        "Other nontoken artifact creatures and Vehicles you control",
+        0,
+    )
+    .unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected a typed mixed type-and-subtype anthem subject");
+    };
+
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert!(filter.other, "{filter:#?}");
+    assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(
+        filter.any_of.iter().all(|branch| !branch.other),
+        "{filter:#?}"
+    );
+}
+
+#[test]
+fn distributes_shared_creature_head_across_supertype_and_subtype_branches() {
+    let tokens = lex_line("Other snow and Zombie creatures you control", 0).unwrap();
+    let Some(AnthemSubjectGrammarMatch::Filter(filter)) =
+        parse_exact_anthem_subject_grammar(&tokens)
+    else {
+        panic!("expected a typed shared-head anthem subject");
+    };
+
+    assert_eq!(filter.zone, Some(Zone::Battlefield), "{filter:#?}");
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert_eq!(filter.card_types, [CardType::Creature], "{filter:#?}");
+    assert!(filter.other, "{filter:#?}");
+    assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+    assert!(filter.any_of.iter().all(|branch| {
+        branch.zone.is_none()
+            && branch.controller.is_none()
+            && branch.card_types.is_empty()
+            && !branch.other
+    }));
+    assert!(
+        filter
+            .any_of
+            .iter()
+            .any(|branch| branch.supertypes == [Supertype::Snow]),
+        "{filter:#?}"
+    );
+    assert!(
+        filter
+            .any_of
+            .iter()
+            .any(|branch| branch.subtypes == [Subtype::Zombie]),
+        "{filter:#?}"
+    );
 }

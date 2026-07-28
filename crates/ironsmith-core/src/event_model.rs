@@ -13,6 +13,7 @@ pub enum KeywordActionKind {
     Craft,
     Crew,
     Cycle,
+    CumulativeUpkeepNotPaid,
     Convoke,
     Discover,
     CompleteDungeon,
@@ -54,10 +55,29 @@ pub enum KeywordActionKind {
     Surveil,
     Train,
     UnlockDoor,
+    VisitAttraction,
     Vote,
 }
 
 impl KeywordActionKind {
+    pub fn is_sticker(self) -> bool {
+        matches!(
+            self,
+            Self::Sticker
+                | Self::ArtSticker
+                | Self::AbilitySticker
+                | Self::PowerToughnessSticker
+                | Self::NameSticker
+        )
+    }
+
+    /// Whether an authored action category matches the action that was
+    /// actually performed. `Sticker` is the umbrella action used by rules
+    /// text that triggers from any kind of sticker.
+    pub fn matches_performed_action(self, performed: Self) -> bool {
+        self == performed || (self == Self::Sticker && performed.is_sticker())
+    }
+
     pub fn from_trigger_word(word: &str) -> Option<Self> {
         match word {
             "sticker" | "stickers" | "stickered" => Some(Self::Sticker),
@@ -111,6 +131,7 @@ impl KeywordActionKind {
             "surveil" | "surveils" => Some(Self::Surveil),
             "train" | "trains" | "trained" | "training" => Some(Self::Train),
             "unlock" | "unlocks" | "unlocked" | "unlocking" => Some(Self::UnlockDoor),
+            "visit" | "visits" | "visited" | "visiting" => Some(Self::VisitAttraction),
             "vote" | "votes" | "voting" => Some(Self::Vote),
             _ => None,
         }
@@ -131,6 +152,7 @@ impl KeywordActionKind {
             Self::Craft => "craft",
             Self::Crew => "crew",
             Self::Cycle => "cycle",
+            Self::CumulativeUpkeepNotPaid => "not pay cumulative upkeep",
             Self::Convoke => "convoke",
             Self::Discover => "discover",
             Self::CompleteDungeon => "complete a dungeon",
@@ -172,6 +194,7 @@ impl KeywordActionKind {
             Self::Surveil => "surveil",
             Self::Train => "train",
             Self::UnlockDoor => "unlock this door",
+            Self::VisitAttraction => "visit an Attraction",
             Self::Vote => "vote",
         }
     }
@@ -191,6 +214,7 @@ impl KeywordActionKind {
             Self::Craft => "crafts",
             Self::Crew => "crews",
             Self::Cycle => "cycles",
+            Self::CumulativeUpkeepNotPaid => "doesn't pay cumulative upkeep",
             Self::Convoke => "convokes",
             Self::Discover => "discovers",
             Self::CompleteDungeon => "completes a dungeon",
@@ -232,6 +256,7 @@ impl KeywordActionKind {
             Self::Surveil => "surveils",
             Self::Train => "trains",
             Self::UnlockDoor => "unlocks this door",
+            Self::VisitAttraction => "visits an Attraction",
             Self::Vote => "votes",
         }
     }

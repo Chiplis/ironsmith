@@ -14,8 +14,9 @@ use super::super::lexer::{LexStream, LexedClause, OwnedLexToken};
 use super::super::util::{
     comparison_to_at_least_threshold, comparison_to_strict_at_least_threshold,
     comparison_to_strict_at_most_threshold, comparison_to_value_comparison_operator,
-    parse_card_type, parse_color, parse_quantity_comparison_prefix,
-    parse_quantity_comparison_prefix_words, parse_subtype_flexible, trim_edge_punctuation_tokens,
+    parse_card_type, parse_color, parse_greater_than_or_equal_quantity_prefix,
+    parse_quantity_comparison_prefix, parse_quantity_comparison_prefix_words,
+    parse_subtype_flexible, trim_edge_punctuation_tokens,
 };
 use super::filters::parse_object_filter_with_grammar_entrypoint;
 use super::leaf::{
@@ -191,6 +192,7 @@ pub(crate) enum PlayerAchievementAst {
     CitysBlessing,
     CompletedDungeon { dungeon_name: Option<String> },
     FullParty,
+    VisitedAttractionThisTurn,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -337,10 +339,16 @@ pub(crate) struct PlayerWouldActionConditionAst {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum BattlefieldChangeThisTurnConditionAst {
-    PermanentLeftBattlefield { negated: bool },
+    PermanentLeftBattlefield {
+        negated: bool,
+    },
     NonlandPermanentLeftBattlefieldOrSpellWarped,
-    PermanentLeftBattlefieldUnderYourControl,
-    ObjectPutIntoGraveyardFromBattlefield { filter: ObjectFilter },
+    PermanentLeftBattlefieldUnderYourControl {
+        surface: crate::PermanentLeftBattlefieldControlSurface,
+    },
+    ObjectPutIntoGraveyardFromBattlefield {
+        filter: ObjectFilter,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -519,6 +527,9 @@ impl PlayerAchievementConditionAst {
                 }
             }
             PlayerAchievementAst::FullParty => crate::ConditionExpr::YouHaveFullParty,
+            PlayerAchievementAst::VisitedAttractionThisTurn => crate::ConditionExpr::TurnHistory(
+                ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(self.player),
+            ),
         };
         if self.negated {
             crate::ConditionExpr::Not(Box::new(condition))
@@ -1409,6 +1420,23 @@ fn parse_player_spell_cast_this_turn_shape(
     {
         return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count: 2 });
     }
+    if !shape.negated
+        && let Some((count, used)) = parse_greater_than_or_equal_quantity_prefix(
+            shape.object_tokens,
+            false,
+            false,
+            "spell-cast condition",
+        )
+        .ok()
+        .flatten()
+        && shape
+            .object_tokens
+            .get(used)
+            .is_some_and(|token| token.is_word("spell") || token.is_word("spells"))
+        && used + 1 == shape.object_tokens.len()
+    {
+        return Some(PlayerSpellCastThisTurnConditionAst::CountAtLeast { player, count });
+    }
     let filters = parse_spell_cast_filter_tokens(shape.object_tokens)?;
     if filters.is_empty() {
         return None;
@@ -1487,8 +1515,12 @@ fn parse_battlefield_change_this_turn_shape(
         zone_change_shapes::BattlefieldChangeShape::PermanentLeft => {
             Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefield { negated: false })
         }
-        zone_change_shapes::BattlefieldChangeShape::PermanentLeftUnderYourControl => {
-            Some(BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl)
+        zone_change_shapes::BattlefieldChangeShape::PermanentLeftUnderYourControl { surface } => {
+            Some(
+                BattlefieldChangeThisTurnConditionAst::PermanentLeftBattlefieldUnderYourControl {
+                    surface,
+                },
+            )
         }
         zone_change_shapes::BattlefieldChangeShape::LandPutIntoGraveyardFromBattlefield => Some(
             BattlefieldChangeThisTurnConditionAst::ObjectPutIntoGraveyardFromBattlefield {
@@ -2127,8 +2159,11 @@ mod tests {
             0,
         )
         .expect("lex");
-        let BattlefieldEntryConditionAst::ObjectEntered { filter, window, min_count: _ } =
-            parse_battlefield_entry_condition(&entry).expect("entry condition")
+        let BattlefieldEntryConditionAst::ObjectEntered {
+            filter,
+            window,
+            min_count: _,
+        } = parse_battlefield_entry_condition(&entry).expect("entry condition")
         else {
             panic!("expected object entry condition");
         };

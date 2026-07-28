@@ -51,7 +51,8 @@ fn first_spell_each_turn_subject_tokens(
     };
 
     let mut filter = parse_object_filter_lexed(parsed.filter_tokens, false)?;
-    if filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
+    if !filter.has_mana_cost
+        && filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
         && filter.zone != Some(Zone::Stack)
     {
         return Ok(None);
@@ -77,6 +78,18 @@ fn parse_keywords_and_cant_be_blocked_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<anthem_grant_grammar::KeywordsAndCantBeBlockedClause<'_>> {
     anthem_grant_grammar::parse_keywords_and_cant_be_blocked_clause(tokens)
+}
+
+fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<anthem_grant_grammar::KeywordsAndCantBeBlockedByMoreThanClause<'_>> {
+    anthem_grant_grammar::parse_keywords_and_cant_be_blocked_by_more_than_clause(tokens)
+}
+
+fn parse_cant_be_blocked_and_has_keywords_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<anthem_grant_grammar::CantBeBlockedAndHasKeywordsClause<'_>> {
+    anthem_grant_grammar::parse_cant_be_blocked_and_has_keywords_clause(tokens)
 }
 
 fn parse_landwalk_block_override_clause(
@@ -248,6 +261,107 @@ pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_line(
     Ok(Some(granted))
 }
 
+pub(crate) fn parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(parsed) = parse_keywords_and_cant_be_blocked_by_more_than_clause(tokens) else {
+        return Ok(None);
+    };
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(actions) = parse_ability_line(parsed.keyword_tokens) else {
+        return Ok(None);
+    };
+    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+    let keyword_actions = actions
+        .into_iter()
+        .filter(|action| action.lowers_to_static_ability())
+        .collect::<Vec<_>>();
+    if keyword_actions.is_empty() {
+        return Ok(None);
+    }
+    let Some((minimum_blockers, used)) = parse_greater_than_or_equal_quantity_prefix(
+        parsed.blocker_threshold_tokens,
+        false,
+        false,
+        "cant-be-blocked blocker threshold",
+    )?
+    else {
+        return Ok(None);
+    };
+    if minimum_blockers == 0 || used != parsed.blocker_threshold_tokens.len() {
+        return Ok(None);
+    }
+    let maximum_blockers = usize::try_from(minimum_blockers - 1).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported cant-be-blocked blocker threshold (clause: '{}')",
+            clause_words.join(" ")
+        ))
+    })?;
+    let subject = match parse_anthem_subject(parsed.subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
+    };
+
+    let mut granted = keyword_actions
+        .into_iter()
+        .map(|action| match &subject {
+            AnthemSubjectAst::Source => StaticAbilityAst::KeywordAction(action),
+            AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
+                filter: filter.clone(),
+                action,
+                condition: None,
+            },
+        })
+        .collect::<Vec<_>>();
+    let restriction = StaticAbility::cant_be_blocked_by_more_than(maximum_blockers);
+    granted.push(match subject {
+        AnthemSubjectAst::Source => StaticAbilityAst::Static(restriction),
+        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(StaticAbilityAst::Static(restriction)),
+            condition: None,
+        },
+    });
+    Ok(Some(granted))
+}
+
+pub(crate) fn parse_subject_cant_be_blocked_and_has_keywords_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(parsed) = parse_cant_be_blocked_and_has_keywords_clause(tokens) else {
+        return Ok(None);
+    };
+    let clause_words = crate::runtime_backend::token_word_refs(tokens);
+    let Some(actions) = parse_ability_line(parsed.keyword_tokens) else {
+        return Ok(None);
+    };
+    reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+    let keyword_actions = actions
+        .into_iter()
+        .filter(|action| action.lowers_to_static_ability())
+        .collect::<Vec<_>>();
+    if keyword_actions.is_empty() {
+        return Ok(None);
+    }
+    let subject = match parse_anthem_subject(parsed.subject_tokens) {
+        Ok(subject) => subject,
+        Err(_) => return Ok(None),
+    };
+
+    let mut granted = Vec::new();
+    for action in std::iter::once(KeywordAction::Unblockable).chain(keyword_actions) {
+        granted.push(match &subject {
+            AnthemSubjectAst::Source => StaticAbilityAst::KeywordAction(action),
+            AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantKeywordAction {
+                filter: filter.clone(),
+                action,
+                condition: None,
+            },
+        });
+    }
+    Ok(Some(granted))
+}
+
 pub(crate) fn parse_landwalk_as_though_block_override_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbilityAst>, CardTextError> {
@@ -302,6 +416,34 @@ pub(crate) fn parse_subject_cant_be_blocked_as_long_as_condition_line(
         granted,
         &subject_tokens,
     )))
+}
+
+pub(crate) fn parse_subject_cant_be_blocked_while_defending_player_controls_most_creatures_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbilityAst>, CardTextError> {
+    let Some(parsed) = parse_cant_be_blocked_as_long_as_clause(tokens) else {
+        return Ok(None);
+    };
+    if !anthem_grant_grammar::parse_defending_player_controls_most_creatures_or_tied_condition(
+        parsed.condition_tokens,
+    ) {
+        return Ok(None);
+    }
+
+    let subject = first_spell_each_turn_subject(parsed.subject_tokens)
+        .map(Ok)
+        .unwrap_or_else(|| parse_anthem_subject(parsed.subject_tokens))?;
+    let unblockable =
+        StaticAbility::cant_be_blocked_while_defending_player_controls_most_creatures();
+    let ability = match subject {
+        AnthemSubjectAst::Source => StaticAbilityAst::Static(unblockable),
+        AnthemSubjectAst::Filter(filter) => StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability: Box::new(StaticAbilityAst::Static(unblockable)),
+            condition: None,
+        },
+    };
+    Ok(Some(ability))
 }
 
 fn simple_card_types_from_control_filter(mut filter: ObjectFilter) -> Option<Vec<CardType>> {
@@ -528,6 +670,34 @@ enum UnionGrantSubject {
 fn split_union_grant_subjects(
     subject_tokens: &[OwnedLexToken],
 ) -> Option<(UnionGrantSubject, UnionGrantSubject)> {
+    // A serial union can put the player before a comma and keep two or more
+    // object-filter arms in the remainder:
+    //
+    //   "You, planeswalkers you control, and other creatures you control"
+    //
+    // Treat the whole object remainder as one (possibly compound) filter.
+    // The ordinary anthem-subject parser already preserves its branch-local
+    // qualifiers; recognizing the leading player here prevents the generic
+    // suffix recovery from silently discarding that member.
+    if subject_tokens.first().and_then(OwnedLexToken::as_word) == Some("you")
+        && subject_tokens.get(1).is_some_and(OwnedLexToken::is_comma)
+    {
+        let right = trim_commas(&subject_tokens[2..]);
+        if right.iter().any(|token| token.as_word() == Some("and")) {
+            let (right_subject, losses) =
+                crate::parse_loss::capture(|| parse_anthem_subject(&right));
+            if let Ok(right_subject) = right_subject
+                && !losses.is_lossy()
+            {
+                let right_subject = match right_subject {
+                    AnthemSubjectAst::Source => UnionGrantSubject::Source,
+                    AnthemSubjectAst::Filter(filter) => UnionGrantSubject::Filter(filter),
+                };
+                return Some((UnionGrantSubject::PlayerYou, right_subject));
+            }
+        }
+    }
+
     for (idx, token) in subject_tokens.iter().enumerate() {
         if token.as_word() != Some("and") {
             continue;
@@ -1287,10 +1457,14 @@ pub(crate) fn parse_each_creature_can_block_additional_creature_each_combat_line
         ))
     })?;
     let granted = StaticAbility::can_block_additional_creature_each_combat(additional);
-    Ok(Some(StaticAbilityAst::GrantStaticAbility {
+    let ability = StaticAbilityAst::GrantStaticAbility {
         filter,
         ability: Box::new(StaticAbilityAst::Static(granted)),
         condition: None,
+    };
+    Ok(Some(StaticAbilityAst::WithSetQuantifierSurface {
+        ability: Box::new(ability),
+        surface: ironsmith_core::SetQuantifierSurface::Each,
     }))
 }
 
@@ -1455,6 +1629,61 @@ pub(crate) fn parse_lose_all_abilities_and_transform_base_pt_line(
     ));
 
     Ok(Some(abilities))
+}
+
+pub(crate) fn parse_lose_all_abilities_and_doesnt_untap_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let clauses = split_lexed_slices_on_and(tokens);
+    let [remove_clause, untap_clause] = clauses.as_slice() else {
+        return Ok(None);
+    };
+    let remove_clause = trim_edge_punctuation_tokens(remove_clause);
+    if !is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(untap_clause) {
+        return Ok(None);
+    }
+
+    let Some(shape) = anthem_grant_grammar::parse_lose_all_abilities_shape(remove_clause) else {
+        return Ok(None);
+    };
+    if shape.becomes || shape.except_mana_abilities || shape.base_power_toughness_word.is_some() {
+        return Ok(None);
+    }
+
+    let word_view = TokenWordView::new(remove_clause);
+    let subject_token_end = word_view
+        .token_index_after_words(shape.subject_word_end)
+        .ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "invalid subject span in lose-all-abilities and untap clause (clause: '{}')",
+                render_token_slice(tokens)
+            ))
+        })?;
+    let subject_tokens =
+        trim_edge_punctuation_tokens(remove_clause.get(..subject_token_end).ok_or_else(|| {
+            CardTextError::ParseError(format!(
+                "invalid subject token span in lose-all-abilities and untap clause (clause: '{}')",
+                render_token_slice(tokens)
+            ))
+        })?);
+    if subject_tokens.is_empty() {
+        return Ok(None);
+    }
+    let filter = parse_object_filter(subject_tokens, false).map_err(|_| {
+        CardTextError::ParseError(format!(
+            "unsupported subject in lose-all-abilities and untap clause (clause: '{}')",
+            render_token_slice(tokens)
+        ))
+    })?;
+    let subject = render_token_slice(subject_tokens);
+
+    Ok(Some(vec![
+        StaticAbility::remove_all_abilities(filter.clone()),
+        StaticAbility::restriction(
+            crate::effect::Restriction::untap(filter),
+            format!("{subject} doesn't untap during its controller's untap step"),
+        ),
+    ]))
 }
 
 pub(crate) fn parse_lose_all_abilities_and_base_pt_line(
@@ -1932,12 +2161,14 @@ pub(crate) fn parse_anthem_subject(
     if is_source_reference_words(&subject_words) {
         return Ok(AnthemSubjectAst::Source);
     }
-    if let Ok(filter) = parse_object_filter(tokens, false)
+    let generic_filter = parse_object_filter(tokens, false).ok();
+    if let Some(filter) = generic_filter.as_ref()
         && (filter.in_combat_with_source
             || filter.attached_to_object.is_some()
-            || filter.attached_to_player.is_some())
+            || filter.attached_to_player.is_some()
+            || !filter.characteristic_relations.is_empty())
     {
-        return Ok(AnthemSubjectAst::Filter(filter));
+        return Ok(AnthemSubjectAst::Filter(filter.clone()));
     }
     match anthem_grant_grammar::parse_exact_anthem_subject_grammar(tokens) {
         Some(anthem_grant_grammar::AnthemSubjectGrammarMatch::Filter(filter)) => {
@@ -1955,6 +2186,13 @@ pub(crate) fn parse_anthem_subject(
         return Ok(AnthemSubjectAst::Filter(filter));
     }
     if let Some(filter) = parse_enchanted_player_controls_subject(tokens)? {
+        return Ok(AnthemSubjectAst::Filter(filter));
+    }
+    // A complete typed parse is strictly more faithful than suffix recovery.
+    // Keep the specialized subject grammars above for their authored union and
+    // quantifier surfaces, then use the complete generic filter before trying
+    // lossy recovery from a trailing fragment.
+    if let Some(filter) = generic_filter {
         return Ok(AnthemSubjectAst::Filter(filter));
     }
     if let Some(filter) = parse_best_object_filter_suffix(tokens) {
@@ -2218,6 +2456,9 @@ pub(crate) fn parse_static_condition_clause(
         return match kind {
             FixedStaticConditionKind::SourceIsEquipped => {
                 Ok(crate::ConditionExpr::SourceIsEquipped)
+            }
+            FixedStaticConditionKind::SourceSpellWasKicked => {
+                Ok(crate::ConditionExpr::ThisSpellWasKicked)
             }
             FixedStaticConditionKind::OpponentLostLifeThisTurn => {
                 Ok(crate::ConditionExpr::OpponentLostLifeThisTurn)
@@ -2821,6 +3062,11 @@ pub(crate) fn parse_anthem_for_each_expression(
             anthem_grant_grammar::ForEachSpecialShape::ColorsOfAffected => {
                 return Ok(AnthemCountExpression::ColorsOfAffected);
             }
+            anthem_grant_grammar::ForEachSpecialShape::CreatureTypesOfAffected => {
+                return Ok(AnthemCountExpression::CreatureTypesAmong(
+                    ObjectFilter::source(),
+                ));
+            }
             anthem_grant_grammar::ForEachSpecialShape::BlockingSource => {
                 return Ok(AnthemCountExpression::BlockingSource);
             }
@@ -2902,8 +3148,36 @@ fn parse_compound_anthem_count_filter(tokens: &[OwnedLexToken]) -> Option<Object
         return None;
     }
 
+    // Repeated "each" clauses are additive authored count domains. Hoist a
+    // genuinely shared player scope so every branch keeps that constraint,
+    // while the branch-local zones and characteristics remain independently
+    // executable.
+    let shared_owner = branches.first()?.owner.clone().filter(|owner| {
+        branches
+            .iter()
+            .all(|branch| branch.owner.as_ref() == Some(owner))
+    });
+    if shared_owner.is_some() {
+        for branch in &mut branches {
+            branch.owner = None;
+        }
+    }
+    let shared_controller = branches.first()?.controller.clone().filter(|controller| {
+        branches
+            .iter()
+            .all(|branch| branch.controller.as_ref() == Some(controller))
+    });
+    if shared_controller.is_some() {
+        for branch in &mut branches {
+            branch.controller = None;
+        }
+    }
+
     let mut combined = ObjectFilter::default();
     combined.any_of = branches;
+    combined.owner = shared_owner;
+    combined.controller = shared_controller;
+    combined.set_conjunctive_set_surface(true);
     Some(combined)
 }
 
@@ -3053,10 +3327,12 @@ pub(crate) fn parse_anthem_clause(
         })?;
     let modifier_token = modifier_shape.modifier_word;
     let tail_tokens = trim_edge_punctuation(modifier_shape.tail_tokens);
-    let trailing_condition = anthem_grant_grammar::split_trailing_as_long_as_clause(&tail_tokens);
+    let (tail_tokens, maximum_modifier) =
+        anthem_grant_grammar::split_trailing_modifier_maximum(&tail_tokens);
+    let trailing_condition = anthem_grant_grammar::split_trailing_as_long_as_clause(tail_tokens);
     let anthem_tail_tokens = trailing_condition
         .map(|split| split.keyword_tokens)
-        .unwrap_or(&tail_tokens);
+        .unwrap_or(tail_tokens);
     let mut explicit_values = None;
     let (raw_power, raw_toughness) = match parse_pt_modifier_values(modifier_token) {
         Ok(values) => values,
@@ -3290,6 +3566,10 @@ pub(crate) fn parse_anthem_clause(
         promote_counters_on_affected(&mut power);
         promote_counters_on_affected(&mut toughness);
     }
+    if let Some(maximum) = maximum_modifier {
+        power = apply_anthem_modifier_maximum(power, maximum)?;
+        toughness = apply_anthem_modifier_maximum(toughness, maximum)?;
+    }
 
     parser_trace_stack("parse_static:anthem-clause:matched", tokens);
     Ok(ParsedAnthemClause {
@@ -3300,6 +3580,21 @@ pub(crate) fn parse_anthem_clause(
         set_quantifier_surface,
         count_uses_where_x,
     })
+}
+
+fn apply_anthem_modifier_maximum(
+    value: AnthemValue,
+    maximum: i32,
+) -> Result<AnthemValue, CardTextError> {
+    match value {
+        AnthemValue::Fixed(0) => Ok(AnthemValue::Fixed(0)),
+        AnthemValue::PerCount { multiplier, count } => {
+            Ok(AnthemValue::scaled_capped(multiplier, count, maximum))
+        }
+        other => Err(CardTextError::ParseError(format!(
+            "unsupported maximum on anthem value {other:?}"
+        ))),
+    }
 }
 
 fn parse_dynamic_xy_anthem_values(
@@ -3744,6 +4039,114 @@ mod dynamic_anthem_tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
 
+    #[test]
+    fn first_spell_cast_from_zone_grant_keeps_typed_turn_and_origin_filter() {
+        let tokens = lex_line(
+            "The first spell you cast from exile each turn has cascade.",
+            0,
+        )
+        .expect("first-from-exile grant should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("first-from-exile grant should parse")
+            .expect("granted-keyword parser should match");
+        let [
+            StaticAbilityAst::GrantKeywordAction {
+                filter,
+                action: KeywordAction::Cascade,
+                condition: None,
+            },
+        ] = abilities.as_slice()
+        else {
+            panic!("expected one typed cascade grant: {abilities:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Exile));
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You));
+        assert!(filter.has_mana_cost);
+        assert!(filter.first_spell_cast_each_turn);
+    }
+
+    #[test]
+    fn serial_player_and_object_union_keeps_every_hexproof_subject() {
+        let tokens = lex_line(
+            "You, planeswalkers you control, and other creatures you control have hexproof.",
+            0,
+        )
+        .expect("serial hexproof union should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("serial hexproof union should parse")
+            .expect("granted-keyword parser should match");
+
+        let [
+            StaticAbilityAst::Static(player_hexproof),
+            StaticAbilityAst::GrantKeywordAction {
+                filter,
+                action: KeywordAction::Hexproof,
+                condition: None,
+            },
+        ] = abilities.as_slice()
+        else {
+            panic!("expected player restriction plus one compound object grant: {abilities:#?}");
+        };
+
+        assert!(
+            format!("{player_hexproof:?}").contains("BeTargetedPlayerFrom(You"),
+            "the player member must compile as a typed targeting restriction: {player_hexproof:#?}"
+        );
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.any_of.len(), 2);
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| branch.card_types == [CardType::Planeswalker])
+        );
+        assert!(
+            filter
+                .any_of
+                .iter()
+                .any(|branch| branch.card_types == [CardType::Creature] && branch.other)
+        );
+    }
+
+    #[test]
+    fn ability_loss_and_untap_restriction_share_the_original_typed_subject() {
+        let tokens = lex_line(
+            "Enchanted permanent loses all abilities and doesn't untap during its controller's untap step.",
+            0,
+        )
+        .expect("compound attached restriction fixture should lex");
+        let abilities = parse_lose_all_abilities_and_doesnt_untap_line(&tokens)
+            .expect("compound attached restriction should parse")
+            .expect("compound parser should match");
+        let [remove, untap] = abilities.as_slice() else {
+            panic!("expected exactly two typed static abilities: {abilities:#?}");
+        };
+
+        let ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(remove_filter) =
+            &remove.payload
+        else {
+            panic!("expected typed ability removal: {remove:#?}");
+        };
+        let ironsmith_core::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::Untap(untap_filter),
+            additional_restrictions,
+            ..
+        } = &untap.payload
+        else {
+            panic!("expected typed untap restriction: {untap:#?}");
+        };
+        assert!(additional_restrictions.is_empty());
+        assert_eq!(remove_filter, untap_filter);
+        assert!(
+            remove_filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == "enchanted"),
+            "{remove_filter:#?}"
+        );
+    }
+
     fn parse_clause(text: &str) -> ParsedAnthemClause {
         let tokens = lex_line(text, 0).expect("anthem fixture should lex");
         let get_idx = tokens
@@ -3751,6 +4154,110 @@ mod dynamic_anthem_tests {
             .position(|token| token.is_word("gets") || token.is_word("get"))
             .expect("get/gets token");
         parse_anthem_clause(&tokens, get_idx, tokens.len()).expect("anthem fixture should parse")
+    }
+
+    #[test]
+    fn compound_subtype_anthem_subject_requires_every_subtype() {
+        let subject_tokens =
+            lex_line("Eldrazi Spawn creatures you control", 0).expect("subject should lex");
+        let AnthemSubjectAst::Filter(direct_filter) =
+            parse_anthem_subject(&subject_tokens).expect("subject should parse")
+        else {
+            panic!("compound subtype subject must be filtered");
+        };
+        assert!(direct_filter.subtypes.is_empty(), "{direct_filter:#?}");
+        assert_eq!(
+            direct_filter.all_subtypes,
+            vec![Subtype::Eldrazi, Subtype::Spawn]
+        );
+
+        let clause = parse_clause("Eldrazi Spawn creatures you control get +2/+1.");
+        let AnthemSubjectAst::Filter(filter) = clause.subject else {
+            panic!("compound subtype anthem must have a filtered subject");
+        };
+        assert!(filter.subtypes.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.all_subtypes,
+            vec![Subtype::Eldrazi, Subtype::Spawn]
+        );
+        assert_eq!(
+            filter.description(),
+            "an Eldrazi Spawn creature you control"
+        );
+    }
+
+    #[test]
+    fn additive_anthem_count_domains_keep_each_zone_and_shared_owner() {
+        let clause = parse_clause(
+            "This creature gets +1/+1 for each card in your hand and each foretold card you own in exile.",
+        );
+
+        for value in [&clause.power, &clause.toughness] {
+            let AnthemValue::PerCount {
+                multiplier,
+                count: AnthemCountExpression::MatchingFilter(filter),
+            } = value
+            else {
+                panic!("expected a typed additive count filter: {clause:#?}");
+            };
+            assert_eq!(*multiplier, 1);
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+            assert!(filter.has_conjunctive_set_surface());
+            assert_eq!(filter.any_of.len(), 2);
+            assert!(filter.any_of.iter().any(|branch| {
+                branch.zone == Some(Zone::Hand)
+                    && branch.owner.is_none()
+                    && !branch.foretold
+            }));
+            assert!(filter.any_of.iter().any(|branch| {
+                branch.zone == Some(Zone::Exile)
+                    && branch.owner.is_none()
+                    && branch.foretold
+            }));
+        }
+    }
+
+    #[test]
+    fn affected_creature_type_scaling_keeps_per_object_identity_and_maximum() {
+        let clause = parse_clause(
+            "Each non-Human creature you control gets +1/+1 for each of its creature types, to a maximum of 10.",
+        );
+        for value in [&clause.power, &clause.toughness] {
+            let AnthemValue::CappedPerCount {
+                multiplier,
+                count: AnthemCountExpression::CreatureTypesAmong(filter),
+                maximum,
+            } = value
+            else {
+                panic!("expected capped per-creature-type scaling: {clause:#?}");
+            };
+            assert_eq!(*multiplier, 1);
+            assert_eq!(*maximum, 10);
+            assert!(filter.source, "{filter:#?}");
+        }
+    }
+
+    #[test]
+    fn nested_this_token_anthem_subject_is_the_ability_source() {
+        let tokens = lex_line(
+            "This token gets +1/+1 for each card named Sound the Call in each graveyard.",
+            0,
+        )
+        .expect("nested token anthem should lex");
+        let get_idx = tokens
+            .iter()
+            .position(|token| token.is_word("gets"))
+            .expect("gets token");
+        let (clause, loss) =
+            crate::parse_loss::capture(|| parse_anthem_clause(&tokens, get_idx, tokens.len()));
+        let clause = clause.expect("nested token anthem should parse");
+
+        assert!(matches!(clause.subject, AnthemSubjectAst::Source));
+        assert!(
+            !loss.is_lossy(),
+            "source recognition must not require suffix recovery: {}",
+            loss.reasons_text()
+        );
     }
 
     #[test]
@@ -3781,20 +4288,26 @@ mod dynamic_anthem_tests {
             "Creatures you control get +1/+1 for each time you've cast your commander from the command zone this game.",
         );
 
-        assert!(matches!(
-            clause.power,
-            AnthemValue::PerCount {
-                multiplier: 1,
-                count: AnthemCountExpression::CommanderCastCount(PlayerFilter::You),
-            }
-        ), "{clause:#?}");
-        assert!(matches!(
-            clause.toughness,
-            AnthemValue::PerCount {
-                multiplier: 1,
-                count: AnthemCountExpression::CommanderCastCount(PlayerFilter::You),
-            }
-        ), "{clause:#?}");
+        assert!(
+            matches!(
+                clause.power,
+                AnthemValue::PerCount {
+                    multiplier: 1,
+                    count: AnthemCountExpression::CommanderCastCount(PlayerFilter::You),
+                }
+            ),
+            "{clause:#?}"
+        );
+        assert!(
+            matches!(
+                clause.toughness,
+                AnthemValue::PerCount {
+                    multiplier: 1,
+                    count: AnthemCountExpression::CommanderCastCount(PlayerFilter::You),
+                }
+            ),
+            "{clause:#?}"
+        );
     }
 
     #[test]

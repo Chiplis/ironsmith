@@ -11,18 +11,19 @@ use ironsmith_core::ValueSurfaceHint;
 use super::super::effect_ast_traversal::for_each_nested_effects_mut;
 use super::super::grammar::effects::for_each_shapes::{
     self, ForEachParticipantScope, ManaClauseShape, ModifierTailAction, OpponentSpecialShape,
-    WhoClauseShape,
+    RelativeControlClauseShape, WhoClauseShape,
 };
 use super::super::keyword_static::parse_value_binding_clause;
 use super::super::lexer::LexedClause;
 use super::super::object_filters::parse_object_filter;
 use super::super::util::{
-    parse_for_each_count_value_words, parse_target_phrase, replace_unbound_x_with_value,
-    value_contains_unbound_x,
+    comparison_to_value_comparison_operator, parse_for_each_count_value_words, parse_target_phrase,
+    replace_unbound_x_with_value, value_contains_unbound_x,
 };
 use super::chain_carry::bind_implicit_player_context;
 use super::chain_carry::{parse_effect_chain, parse_effect_chain_inner, remove_first_word};
 use super::conditionals::parse_for_each_doesnt_control_lose_game;
+use super::dispatch_entry::replace_unbound_x_in_effects_anywhere;
 
 fn prepend_that_player_life_total_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     if !for_each_shapes::starts_life_total_becomes(tokens) {
@@ -51,7 +52,20 @@ pub(crate) fn parse_for_each_object_subject(
     let Some(shape) = for_each_shapes::parse_for_each_object_subject_shape(subject_tokens) else {
         return Ok(None);
     };
-    Ok(Some(parse_object_filter(shape.filter_tokens, false)?))
+    Ok(Some(parse_for_each_object_filter(shape.filter_tokens)?))
+}
+
+pub(crate) fn parse_for_each_object_filter(
+    filter_tokens: &[OwnedLexToken],
+) -> Result<ObjectFilter, CardTextError> {
+    let mut filter = parse_object_filter(filter_tokens, false)?;
+    if filter_tokens
+        .first()
+        .is_some_and(|token| token.is_word("those"))
+    {
+        filter.set_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those));
+    }
+    Ok(filter)
 }
 
 pub(crate) fn parse_for_each_targeted_object_subject(
@@ -181,9 +195,9 @@ pub(crate) fn parse_has_base_power_toughness_clause(
 pub(crate) fn parse_get_for_each_count_value(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Value>, CardTextError> {
-    if for_each_shapes::parse_for_each_target_subject_shape(tokens).is_none() {
+    let Some(shape) = for_each_shapes::parse_for_each_target_subject_shape(tokens) else {
         return Ok(None);
-    }
+    };
     if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(tokens)
     {
         return Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)));
@@ -193,6 +207,31 @@ pub(crate) fn parse_get_for_each_count_value(
         return Err(CardTextError::ParseError(
             "missing filter after 'for each' in gets clause".to_string(),
         ));
+    };
+    // The word fallback intentionally handles the broad dynamic-value
+    // vocabulary, but it loses punctuation. When the result is an ordinary
+    // object count, reparse the exact token slice so serial subtype-list
+    // provenance (commas plus terminal "or") survives into rendering.
+    let exact_surface_filter = |original: ObjectFilter| {
+        let Ok(reparsed) = parse_object_filter(shape.target_tokens, false) else {
+            return original;
+        };
+        // Exact token reparsing is only a surface enrichment. Preserve a
+        // specialized semantic count (for example, the cast-time snapshot tag
+        // for "modified creatures you controlled as you cast this spell")
+        // whenever the ordinary object-filter parse denotes a different set.
+        if reparsed == original {
+            reparsed
+        } else {
+            original
+        }
+    };
+    let value = match value {
+        Value::Count(original) => Value::Count(exact_surface_filter(original)),
+        Value::CountScaled(original, multiplier) => {
+            Value::CountScaled(exact_surface_filter(original), multiplier)
+        }
+        other => other,
     };
     Ok(Some(value.with_surface_hint(ValueSurfaceHint::ForEach)))
 }
@@ -304,12 +343,51 @@ fn bind_implicit_choose_chooser(effects: &mut [EffectAst], chooser: PlayerAst) {
     }
 }
 
+/// Give a participant's standalone choice a stable aggregate tag.
+///
+/// An implicit `__it__` choice is normally iteration-local: the runtime
+/// replaces it for the next participant so an immediate nested consumer sees
+/// only that participant's choice. When the participant clause consists only
+/// of the choice, however, a later sentence can refer to the union ("chosen
+/// this way"). Use a source-anchored explicit tag so those selections
+/// accumulate across the participant loop without colliding with another
+/// standalone participant choice in the same ability.
+fn stabilize_standalone_participant_choice_tag(
+    effects: &mut [EffectAst],
+    source_tokens: &[OwnedLexToken],
+) {
+    let [effect] = effects else {
+        return;
+    };
+    let tag = match effect {
+        EffectAst::ChooseObjects { tag, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { tag, .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { tag, .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { tag, .. }
+        | EffectAst::ChooseObjectsAcrossZones { tag, .. }
+        | EffectAst::ChooseTaggedObjectsInZone { tag, .. } => tag,
+        _ => return,
+    };
+    if tag.as_str() != IT_TAG {
+        return;
+    }
+    let anchor = source_tokens
+        .first()
+        .map(|token| token.span)
+        .unwrap_or_else(TextSpan::synthetic);
+    *tag = TagKey::from(format!(
+        "participant_choice_l{}_s{}",
+        anchor.line, anchor.start
+    ));
+}
+
 fn tagged_predicate(filter_tokens: Option<&[OwnedLexToken]>) -> Option<PredicateAst> {
     let filter = parse_object_filter(filter_tokens?, false).ok()?;
     Some(PredicateAst::PlayerTaggedObjectMatches {
         player: PlayerAst::That,
         tag: TagKey::from(IT_TAG),
         filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     })
 }
 
@@ -335,6 +413,77 @@ fn parse_maybe_effects(
     };
     let effects = parse_effect_chain_inner(may_tokens)?;
     Ok(vec![EffectAst::May { effects }])
+}
+
+fn find_word_phrase(tokens: &[OwnedLexToken], phrase: &[&str]) -> Option<usize> {
+    tokens.windows(phrase.len()).position(|window| {
+        window
+            .iter()
+            .zip(phrase)
+            .all(|(token, word)| token.is_word(word))
+    })
+}
+
+/// Normalize Oracle's prose upper bound
+/// "a number of <objects> less than or equal to the difference" to the typed
+/// dynamic-choice surface understood by the ordinary search parser. The
+/// caller subsequently binds X to the actual count difference, so runtime
+/// semantics do not depend on the authored shorthand.
+fn rewrite_difference_bounded_search(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    const COUNT_PREFIX: &[&str] = &["a", "number", "of"];
+    const DIFFERENCE_SUFFIX: &[&str] = &["less", "than", "or", "equal", "to", "the", "difference"];
+
+    let prefix = find_word_phrase(tokens, COUNT_PREFIX)?;
+    let selector_start = prefix + COUNT_PREFIX.len();
+    let suffix_relative = find_word_phrase(tokens.get(selector_start..)?, DIFFERENCE_SUFFIX)?;
+    let suffix = selector_start + suffix_relative;
+    if suffix == selector_start {
+        return None;
+    }
+
+    let mut rewritten =
+        Vec::with_capacity(tokens.len() + 3 - COUNT_PREFIX.len() - DIFFERENCE_SUFFIX.len());
+    rewritten.extend_from_slice(&tokens[..prefix]);
+    for word in ["up", "to", "x"] {
+        rewritten.push(OwnedLexToken::word(word.to_string(), TextSpan::synthetic()));
+    }
+    rewritten.extend_from_slice(&tokens[selector_start..suffix]);
+    rewritten.extend_from_slice(&tokens[suffix + DIFFERENCE_SUFFIX.len()..]);
+    Some(rewritten)
+}
+
+/// Recover an authored where-X binding from the body of a participant-scoped
+/// clause. These clauses are lowered before the ordinary sentence-level
+/// where-X pass, so a binding that follows a complete search procedure (for
+/// example, after its battlefield destination) would otherwise leave the
+/// search's dynamic choice count unbound.
+fn parse_participant_body_where_x_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let where_idx = find_word_phrase(tokens, &["where", "x", "is"])?;
+    parse_value_binding_clause(&tokens[where_idx..])
+        .map(|value| value.with_surface_hint(ValueSurfaceHint::WhereXIs))
+}
+
+fn parse_participant_choice_complement_effects(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let mut full_clause = Vec::with_capacity(tokens.len() + 2);
+    full_clause.push(OwnedLexToken::word(
+        "each".to_string(),
+        TextSpan::synthetic(),
+    ));
+    full_clause.push(OwnedLexToken::word(
+        "player".to_string(),
+        TextSpan::synthetic(),
+    ));
+    full_clause.extend_from_slice(tokens);
+
+    let Some(effect) = super::parse_choice_complement_subject_verb(&full_clause)? else {
+        return Ok(None);
+    };
+    let EffectAst::ForEachPlayer { effects } = effect else {
+        return Ok(None);
+    };
+    Ok(Some(effects))
 }
 
 fn opponent_filter(scope: ForEachParticipantScope) -> Option<PlayerFilter> {
@@ -396,6 +545,112 @@ fn wrap_players(filter: &PlayerFilter, effects: Vec<EffectAst>) -> EffectAst {
     }
 }
 
+fn parse_relative_control_conditional(
+    relative: RelativeControlClauseShape<'_>,
+    participant_is_actor: bool,
+    clause_text: &str,
+) -> Result<EffectAst, CardTextError> {
+    let mut filter = parse_object_filter(relative.filter_tokens, false)?;
+    let mut branch_effects;
+    let participant_where_x = parse_participant_body_where_x_value(relative.effect_tokens);
+    let participant_choice_effects =
+        parse_participant_choice_complement_effects(relative.effect_tokens)?;
+    let predicate = if let Some(most_filter_tokens) = relative.fewer_than_most_filter_tokens {
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        let mut most_filter = parse_object_filter(most_filter_tokens, false)?;
+        most_filter.controller = Some(PlayerFilter::Any);
+        let difference = Value::Add(
+            Box::new(Value::GreatestCount(most_filter.clone())),
+            Box::new(Value::Scaled(Box::new(Value::Count(filter.clone())), -1)),
+        )
+        .with_surface_hint(ValueSurfaceHint::Difference);
+
+        let rewritten = rewrite_difference_bounded_search(relative.effect_tokens);
+        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
+            effects
+        } else {
+            parse_maybe_effects(
+                rewritten.as_deref().unwrap_or(relative.effect_tokens),
+                true,
+                false,
+            )?
+        };
+        if rewritten.is_some() {
+            replace_unbound_x_in_effects_anywhere(&mut branch_effects, &difference, clause_text)?;
+        }
+        PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::GreatestCount(most_filter),
+        }
+    } else if relative.fewer_than_you {
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        let mut your_filter = filter.clone();
+        your_filter.controller = Some(PlayerFilter::You);
+        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
+            effects
+        } else {
+            parse_maybe_effects(relative.effect_tokens, true, false)?
+        };
+        PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::Count(your_filter),
+        }
+    } else if let Some(comparison) = relative.count_comparison {
+        filter.controller = Some(PlayerFilter::IteratedPlayer);
+        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
+            effects
+        } else {
+            parse_maybe_effects(relative.effect_tokens, true, false)?
+        };
+        let (operator, count) =
+            comparison_to_value_comparison_operator(comparison).ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported for-each control count comparison (clause: '{clause_text}')"
+                ))
+            })?;
+        PredicateAst::ValueComparison {
+            left: Value::Count(filter),
+            operator,
+            right: Value::Fixed(count),
+        }
+    } else if relative.controls_most {
+        branch_effects = if let Some(effects) = participant_choice_effects.clone() {
+            effects
+        } else {
+            parse_maybe_effects(relative.effect_tokens, true, false)?
+        };
+        PredicateAst::PlayerControlsMost {
+            player: PlayerAst::That,
+            filter,
+        }
+    } else {
+        branch_effects = if let Some(effects) = participant_choice_effects {
+            effects
+        } else {
+            parse_maybe_effects(relative.effect_tokens, true, false)?
+        };
+        PredicateAst::PlayerControls {
+            player: PlayerAst::That,
+            filter,
+        }
+    };
+    if let Some(where_x) = participant_where_x {
+        replace_unbound_x_in_effects_anywhere(&mut branch_effects, &where_x, clause_text)?;
+    }
+    if participant_is_actor {
+        for effect in &mut branch_effects {
+            bind_implicit_player_context(effect, PlayerAst::That);
+        }
+    }
+    Ok(EffectAst::Conditional {
+        predicate,
+        if_true: branch_effects,
+        if_false: Vec::new(),
+    })
+}
+
 pub(crate) fn parse_for_each_opponent_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
@@ -433,6 +688,13 @@ pub(crate) fn parse_for_each_opponent_clause(
         && let Some(effect) = parse_for_each_doesnt_control_lose_game(tokens, true)?
     {
         return Ok(Some(effect));
+    }
+
+    if let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(outer.inner_tokens)
+    {
+        let conditional =
+            parse_relative_control_conditional(relative, outer.participant_is_actor, &clause_text)?;
+        return Ok(Some(wrap_opponents(&iteration_filter, vec![conditional])));
     }
 
     if let Some(special) = for_each_shapes::parse_opponent_special_shape(outer.inner_tokens)? {
@@ -600,6 +862,13 @@ pub(crate) fn parse_for_each_opponent_clause(
         prepend_that_player_life_total_subject(outer.inner_tokens)
     };
     let mut effects = parse_maybe_effects(&normalized, false, outer.participant_is_actor)?;
+    if !outer.participant_is_actor {
+        // The quantified participant is the iteration key, not the actor, in
+        // imperative clauses such as "For each opponent, create a token."
+        // Resolve the otherwise implicit token controller to the effect
+        // controller before lowering enters iterated-player context.
+        force_implicit_token_controller_you(&mut effects);
+    }
     if participant_chooses {
         bind_implicit_choose_chooser(
             &mut effects,
@@ -609,6 +878,7 @@ pub(crate) fn parse_for_each_opponent_clause(
                 PlayerAst::You
             },
         );
+        stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
     Ok(Some(wrap_opponents(&iteration_filter, effects)))
 }
@@ -652,7 +922,16 @@ pub(crate) fn parse_for_each_target_players_clause(
             )));
         }
     };
-    let effects = parse_maybe_effects(shape.effect_tokens, true, false)?;
+    // The participant after `each` is the actor of the trailing instruction.
+    // Supplying that subject before parsing also lets possessive dynamic
+    // values such as "half their library" bind to the iterated player rather
+    // than falling back to the spell's controller.
+    let effects = if for_each_shapes::contains_may(shape.effect_tokens) {
+        parse_maybe_effects(shape.effect_tokens, true, true)?
+    } else {
+        let normalized = prepend_that_player_subject(shape.effect_tokens);
+        parse_maybe_effects(&normalized, true, false)?
+    };
     Ok(Some(EffectAst::ForEachTargetPlayers {
         count: shape.count,
         filter,
@@ -696,27 +975,9 @@ pub(crate) fn parse_for_each_player_clause(
 
     if let Some(relative) = for_each_shapes::parse_relative_control_clause_shape(outer.inner_tokens)
     {
-        let filter = parse_object_filter(relative.filter_tokens, false)?;
-        let branch_effects = parse_maybe_effects(relative.effect_tokens, true, false)?;
-        let predicate = if relative.controls_most {
-            PredicateAst::PlayerControlsMost {
-                player: PlayerAst::That,
-                filter,
-            }
-        } else {
-            PredicateAst::PlayerControls {
-                player: PlayerAst::That,
-                filter,
-            }
-        };
-        return Ok(Some(wrap_players(
-            &iteration_filter,
-            vec![EffectAst::Conditional {
-                predicate,
-                if_true: branch_effects,
-                if_false: Vec::new(),
-            }],
-        )));
+        let conditional =
+            parse_relative_control_conditional(relative, outer.participant_is_actor, &clause_text)?;
+        return Ok(Some(wrap_players(&iteration_filter, vec![conditional])));
     }
 
     if let Some(who) = for_each_shapes::parse_who_clause_shape(outer.inner_tokens) {
@@ -811,6 +1072,9 @@ pub(crate) fn parse_for_each_player_clause(
         prepend_that_player_life_total_subject(outer.inner_tokens)
     };
     let mut effects = parse_maybe_effects(&normalized, false, outer.participant_is_actor)?;
+    if !outer.participant_is_actor {
+        force_implicit_token_controller_you(&mut effects);
+    }
     if participant_chooses {
         bind_implicit_choose_chooser(
             &mut effects,
@@ -820,6 +1084,7 @@ pub(crate) fn parse_for_each_player_clause(
                 PlayerAst::You
             },
         );
+        stabilize_standalone_participant_choice_tag(&mut effects, outer.inner_tokens);
     }
     Ok(Some(wrap_players(&iteration_filter, effects)))
 }
@@ -839,6 +1104,51 @@ mod dynamic_modifier_surface_tests {
 
         assert!(count.has_surface_hint(ValueSurfaceHint::ForEach));
         assert!(matches!(count.unhinted(), Value::Count(_)));
+    }
+
+    #[test]
+    fn resolving_gets_for_each_count_keeps_serial_relative_subtype_surface() {
+        let tokens = lex_line(
+            "for each creature you control that's an Insect, Rat, Spider, or Squirrel",
+            0,
+        )
+        .expect("serial for-each count should lex");
+        let count = parse_get_for_each_count_value(&tokens)
+            .expect("serial for-each count should parse")
+            .expect("serial for-each count should match");
+        let Value::Count(filter) = count.unhinted() else {
+            panic!("expected an object count, got {count:#?}");
+        };
+
+        assert!(filter.has_serial_or_list_surface(), "{filter:#?}");
+        assert_eq!(
+            filter.description(),
+            "a creature you control that's an Insect, Rat, Spider, or Squirrel"
+        );
+    }
+
+    #[test]
+    fn exact_surface_reparse_preserves_specialized_cast_time_count_tag() {
+        let tokens = lex_line(
+            "for each modified creature you controlled as you cast this spell",
+            0,
+        )
+        .expect("cast-time for-each count should lex");
+        let count = parse_get_for_each_count_value(&tokens)
+            .expect("cast-time for-each count should parse")
+            .expect("cast-time for-each count should match");
+        let Value::Count(filter) = count.unhinted() else {
+            panic!("expected an object count, got {count:#?}");
+        };
+
+        assert!(matches!(
+            filter.tagged_constraints.as_slice(),
+            [constraint]
+                if constraint.tag.as_str() == ironsmith_core::CAST_MODIFIED_CREATURES_TAG
+                    && constraint.relation
+                        == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        ));
+        assert!(filter.card_types.is_empty(), "{filter:#?}");
     }
 
     #[test]
@@ -1018,5 +1328,55 @@ mod participant_choice_ownership_tests {
 
         let controller = parsed_debug("For each opponent, choose a creature they control.");
         assert!(controller.contains("player: You"), "{controller}");
+    }
+
+    #[test]
+    fn standalone_participant_choices_use_an_aggregate_tag_but_nested_choices_remain_local() {
+        let standalone = parsed_debug("Each player chooses a creature they control.");
+        assert!(
+            standalone.contains("participant_choice_l0_s"),
+            "{standalone}"
+        );
+        assert!(!standalone.contains("\"__it__\""), "{standalone}");
+
+        let nested =
+            parsed_debug("Each opponent chooses a creature they control and sacrifices it.");
+        assert!(
+            !nested.contains("participant_choice_l0_s"),
+            "an immediate per-participant consumer must not share choices across iterations: \
+            {nested}"
+        );
+    }
+
+    #[test]
+    fn for_each_object_filter_preserves_typed_those_set_surface() {
+        let those_tokens = lex_line("those permanents", 0).expect("those filter should lex");
+        let those = parse_for_each_object_filter(&those_tokens).expect("those filter should parse");
+        assert_eq!(
+            those.set_quantifier_surface(),
+            Some(ironsmith_core::SetQuantifierSurface::Those)
+        );
+
+        let ordinary_tokens =
+            lex_line("permanent destroyed this way", 0).expect("ordinary filter should lex");
+        let ordinary =
+            parse_for_each_object_filter(&ordinary_tokens).expect("ordinary filter should parse");
+        assert_eq!(ordinary.set_quantifier_surface(), None);
+    }
+
+    #[test]
+    fn relative_participant_count_compares_the_same_set_for_them_and_you() {
+        let effect =
+            parsed_debug("Each opponent who controls fewer creatures than you draws a card.");
+        let compact: String = effect.chars().filter(|ch| !ch.is_whitespace()).collect();
+
+        assert!(effect.contains("ValueComparison"), "{effect}");
+        assert!(effect.contains("operator: LessThan"), "{effect}");
+        assert!(
+            compact.contains("controller:Some(IteratedPlayer,)"),
+            "{effect}"
+        );
+        assert!(compact.contains("controller:Some(You,)"), "{effect}");
+        assert!(!effect.contains("PlayerControls {"), "{effect}");
     }
 }

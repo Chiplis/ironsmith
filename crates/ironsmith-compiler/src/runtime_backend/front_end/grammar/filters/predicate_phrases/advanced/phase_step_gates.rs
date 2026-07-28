@@ -224,7 +224,7 @@ fn parse_turn_history_value_gate(tokens: &[OwnedLexToken]) -> Option<PredicateAs
             filter.controller = Some(PlayerFilter::You);
             filter.other = other;
             return Some(value_at_least(
-                Value::TurnHistoryCount(TurnHistoryCount::Died(filter)),
+                Value::TurnHistoryCount(TurnHistoryCount::died(filter)),
                 1,
             ));
         }

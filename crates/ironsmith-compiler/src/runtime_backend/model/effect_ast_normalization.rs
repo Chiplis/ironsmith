@@ -125,6 +125,7 @@ fn normalize_effects_vec(effects: &mut Vec<EffectAst>) {
     for effect in effects.iter_mut() {
         normalize_nested_effects(effect);
     }
+    bind_explicit_chosen_object_followups(effects);
     correlate_conditional_quantified_choice_followups(effects);
     correlate_split_for_each_player_choice_complements(effects);
     bind_quantified_choice_collections_to_destroy_followups(effects);
@@ -149,7 +150,7 @@ fn quantified_player_choice_effects_mut(effect: &mut EffectAst) -> Option<&mut V
         EffectAst::ForEachOpponent { effects }
         | EffectAst::ForEachPlayer { effects }
         | EffectAst::ForEachPlayersFiltered { effects, .. } => Some(effects),
-        EffectAst::SourceSentence { effects } => {
+        EffectAst::SourceSentence { effects, .. } => {
             let [effect] = effects.as_mut_slice() else {
                 return None;
             };
@@ -208,7 +209,8 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachObject { effects, .. } => sequence_kind(effects).map(|_| true),
         EffectAst::Sequence { effects }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => sequence_kind(effects),
@@ -237,7 +239,8 @@ fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool 
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::Sequence { effects }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => {
@@ -271,7 +274,8 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::Sequence { effects }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => {
@@ -283,6 +287,27 @@ fn retag_choice_collection_producer(effect: &mut EffectAst, durable_tag: &crate:
             retag_choice_collection_producer(effect, durable_tag)
         }
         _ => unreachable!("choice producer shape changed between inspection and retagging"),
+    }
+}
+
+/// Give an ordinary object choice the durable chosen-set tag when an
+/// immediately following effect explicitly refers to "the chosen objects".
+/// The parser uses `__it__` for standalone choices, while the consumer uses
+/// the reserved chosen-set alias; assigning the producer that same durable
+/// tag preserves both runtime collection identity and authored rendering.
+fn bind_explicit_chosen_object_followups(effects: &mut [EffectAst]) {
+    for consumer_index in 1..effects.len() {
+        if !super::compile_support::effect_references_tag(
+            &effects[consumer_index],
+            CHOSEN_OBJECTS_TAG,
+        ) || !choice_collection_producer_has_accumulating_tags(&effects[consumer_index - 1])
+        {
+            continue;
+        }
+        retag_choice_collection_producer(
+            &mut effects[consumer_index - 1],
+            &crate::tag::TagKey::from(CHOSEN_OBJECTS_TAG),
+        );
     }
 }
 
@@ -317,7 +342,8 @@ fn choice_collection_producer_matches_object_kind(
         | EffectAst::ForEachPlayersFiltered { effects, .. }
         | EffectAst::ForEachObject { effects, .. }
         | EffectAst::Sequence { effects }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. } => {
@@ -335,7 +361,7 @@ fn choice_collection_producer_matches_object_kind(
 
 fn direct_destroy_filter_mut(effect: &mut EffectAst) -> Option<&mut crate::filter::ObjectFilter> {
     match effect {
-        EffectAst::SourceSentence { effects } => {
+        EffectAst::SourceSentence { effects, .. } => {
             let [effect] = effects.as_mut_slice() else {
                 return None;
             };
@@ -356,7 +382,7 @@ fn direct_destroy_filter_mut(effect: &mut EffectAst) -> Option<&mut crate::filte
 
 fn direct_destroy_filter(effect: &EffectAst) -> Option<&crate::filter::ObjectFilter> {
     match effect {
-        EffectAst::SourceSentence { effects } => {
+        EffectAst::SourceSentence { effects, .. } => {
             let [effect] = effects.as_slice() else {
                 return None;
             };
@@ -463,7 +489,7 @@ fn bind_quantified_choice_collections_to_destroy_followups(effects: &mut [Effect
 
 fn direct_destroy_references_chosen_collection(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::SourceSentence { effects } => {
+        EffectAst::SourceSentence { effects, .. } => {
             let [effect] = effects.as_slice() else {
                 return false;
             };
@@ -528,7 +554,7 @@ fn source_sentence_for_each_player_effects_mut(
 ) -> Option<&mut Vec<EffectAst>> {
     match effect {
         EffectAst::ForEachPlayer { effects } => Some(effects),
-        EffectAst::SourceSentence { effects } => {
+        EffectAst::SourceSentence { effects, .. } => {
             let [EffectAst::ForEachPlayer { effects }] = effects.as_mut_slice() else {
                 return None;
             };
@@ -576,6 +602,16 @@ fn replace_correlated_filter_tag(
         }
         replaced |= comparison_replaced;
     }
+    for relation in &mut filter.characteristic_relations {
+        let comparison_replaced = replace_correlated_filter_tag(&mut relation.comparison, old, new);
+        if comparison_replaced && relation.comparison.controller.is_none() {
+            // The durable tag contains one choice set per player. Restrict a
+            // relational comparison to the choice made for the active player
+            // iteration instead of comparing against every player's choice.
+            relation.comparison.controller = Some(crate::filter::PlayerFilter::IteratedPlayer);
+        }
+        replaced |= comparison_replaced;
+    }
     if let Some(targets) = filter.targets_object.as_deref_mut() {
         replaced |= replace_correlated_filter_tag(targets, old, new);
     }
@@ -584,6 +620,9 @@ fn replace_correlated_filter_tag(
     }
     if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
         replaced |= replace_correlated_filter_tag(attached_to, old, new);
+    }
+    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_deref_mut() {
+        replaced |= replace_correlated_filter_tag(combat_partner, old, new);
     }
     for branch in &mut filter.any_of {
         replaced |= replace_correlated_filter_tag(branch, old, new);
@@ -700,7 +739,11 @@ fn bind_counted_set_followups(effects: &mut [EffectAst]) {
         };
         let SubjectVerbActionAst::GrantAbilitiesToTarget {
             target,
-            set_quantifier_surface: Some(ironsmith_core::SetQuantifierSurface::Each),
+            set_quantifier_surface:
+                Some(
+                    ironsmith_core::SetQuantifierSurface::Each
+                    | ironsmith_core::SetQuantifierSurface::Those,
+                ),
             ..
         } = &mut grant.action
         else {
@@ -729,10 +772,11 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             normalize_effects_vec(if_false);
         }
         EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
         | EffectAst::Coordinated { effects, .. }
         | EffectAst::TrailingIf { effects, .. }
         | EffectAst::TrailingUnless { effects, .. }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::UnlessPays { effects, .. }
         | EffectAst::May { effects }
         | EffectAst::MayByPlayer { effects, .. }
@@ -759,6 +803,8 @@ fn normalize_nested_effects(effect: &mut EffectAst) {
             ..
         }
         | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
+        | EffectAst::DelayedUntilNextUntapStep { effects, .. }
         | EffectAst::DelayedUntilNextUpkeep { effects, .. }
         | EffectAst::DelayedUntilNextDrawStep { effects, .. }
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
@@ -821,7 +867,28 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     if !marker_is_direct && !marker_is_coordinated {
         return None;
     }
-    let continue_effect_index = last_index.saturating_sub(1);
+    // In "<action> unless <player> pays ... and repeat this process", paying is
+    // the alternative action that both prevents the consequence and repeats
+    // the process. Track the complete final IfResult: it is declined only when
+    // this branch is selected and the UnlessPays payment succeeds.
+    let repeat_follows_unless_payment = matches!(
+        tail_effects.last(),
+        Some(EffectAst::Coordinated { effects, .. })
+            if matches!(
+                effects.as_slice(),
+                [EffectAst::UnlessPays { .. }, EffectAst::RepeatThisProcess]
+            )
+    );
+    let continue_effect_index = if repeat_follows_unless_payment {
+        last_index
+    } else {
+        last_index.saturating_sub(1)
+    };
+    let continue_predicate = if repeat_follows_unless_payment {
+        crate::cards::builders::IfResultPredicate::WasDeclined
+    } else {
+        predicate.clone()
+    };
     let mut body = effects.to_vec();
     let EffectAst::IfResult { effects, .. } = &mut body[last_index] else {
         return None;
@@ -838,7 +905,7 @@ fn rewrite_repeat_process(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
     Some(vec![EffectAst::RepeatProcess {
         effects: body,
         continue_effect_index,
-        continue_predicate: predicate.clone(),
+        continue_predicate,
     }])
 }
 
@@ -848,9 +915,11 @@ fn rewrite_repeat_process_once(effects: &[EffectAst]) -> Option<Vec<EffectAst>> 
     }
 
     let body = effects[..effects.len() - 1].to_vec();
-    let mut duplicated = body.clone();
-    duplicated.extend(body);
-    Some(duplicated)
+    Some(vec![EffectAst::RepeatEffects {
+        count: Value::Fixed(2)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::RepeatThisProcessOnce),
+        effects: body,
+    }])
 }
 
 fn rewrite_repeat_process_may(effects: &[EffectAst]) -> Option<Vec<EffectAst>> {
@@ -1026,6 +1095,37 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn normalize_binds_direct_choice_to_explicit_chosen_set_value() {
+        let choose = EffectAst::ChooseObjects {
+            filter: ObjectFilter::creature().controlled_by(PlayerFilter::You),
+            count: ChoiceCount::exactly(2),
+            count_value: None,
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+        };
+        let chosen_filter = ObjectFilter::creature().match_tagged(
+            TagKey::from(CHOSEN_OBJECTS_TAG),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let difference = Value::absolute_difference(
+            Value::GreatestPower(chosen_filter.clone()),
+            Value::LeastPower(chosen_filter),
+        )
+        .with_surface_hint(ValueSurfaceHint::Difference);
+        let draw = EffectAst::subject_verb(
+            crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw { count: difference },
+        );
+
+        let normalized = normalize_effects_ast(&[choose, draw]);
+        let [EffectAst::ChooseObjects { tag, .. }, _] = normalized.as_slice() else {
+            panic!("expected choice followed by draw: {normalized:#?}");
+        };
+        assert_eq!(tag.as_str(), CHOSEN_OBJECTS_TAG);
     }
 
     #[test]
@@ -1328,6 +1428,83 @@ mod tests {
     }
 
     #[test]
+    fn normalize_unless_payment_as_the_repeat_continuation_gate() {
+        let effects = vec![
+            EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::FlipCoin,
+            ),
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![EffectAst::subject_verb(
+                    crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::DidNot,
+                effects: vec![EffectAst::Coordinated {
+                    effects: vec![
+                        EffectAst::UnlessPays {
+                            effects: vec![EffectAst::subject_verb(
+                                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                                PlayerAst::You,
+                                SubjectVerbActionAst::LoseLife {
+                                    amount: Value::Fixed(1),
+                                },
+                            )],
+                            player: PlayerAst::You,
+                            cost: crate::cost::TotalCost::mana(
+                                crate::mana::ManaCost::from_symbols(vec![
+                                    crate::mana::ManaSymbol::Generic(3),
+                                ]),
+                            ),
+                        },
+                        EffectAst::RepeatThisProcess,
+                    ],
+                    leading_duration: false,
+                    result_conjunction: false,
+                }],
+            },
+        ];
+
+        let normalized = normalize_effects_ast(&effects);
+        let [
+            EffectAst::RepeatProcess {
+                effects,
+                continue_effect_index,
+                continue_predicate,
+            },
+        ] = normalized.as_slice()
+        else {
+            panic!("expected one typed repeat process: {normalized:#?}");
+        };
+        assert_eq!(*continue_effect_index, 2);
+        assert_eq!(*continue_predicate, IfResultPredicate::WasDeclined);
+        assert!(matches!(
+            effects.as_slice(),
+            [
+                EffectAst::SubjectVerb(_),
+                EffectAst::IfResult { .. },
+                EffectAst::IfResult {
+                    effects: loss_effects,
+                    ..
+                }
+            ] if matches!(
+                loss_effects.as_slice(),
+                [EffectAst::Coordinated {
+                    effects,
+                    ..
+                }] if matches!(effects.as_slice(), [EffectAst::UnlessPays { .. }])
+            )
+        ));
+    }
+
+    #[test]
     fn normalize_removes_empty_clash_result_marker_from_repeat_body() {
         let effects = vec![
             EffectAst::subject_verb_clash(crate::cards::builders::ClashOpponentAst::Opponent),
@@ -1376,6 +1553,29 @@ mod tests {
                 continue_predicate: IfResultPredicate::Did,
                 ..
             }]
+        ));
+    }
+
+    #[test]
+    fn normalize_preserves_repeat_this_process_once_as_a_typed_repeat() {
+        let effects = vec![
+            EffectAst::subject_verb(
+                crate::cards::builders::SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                crate::cards::builders::SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            ),
+            EffectAst::RepeatThisProcessOnce,
+        ];
+
+        let normalized = normalize_effects_ast(&effects);
+        assert!(matches!(
+            normalized.as_slice(),
+            [EffectAst::RepeatEffects { count, effects }]
+                if count.unhinted() == &Value::Fixed(2)
+                    && count.has_surface_hint(ValueSurfaceHint::RepeatThisProcessOnce)
+                    && effects.len() == 1
         ));
     }
 }

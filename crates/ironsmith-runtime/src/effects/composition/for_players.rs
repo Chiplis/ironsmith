@@ -204,6 +204,26 @@ fn effect_bound_tag(effect: &Effect) -> Option<crate::tag::TagKey> {
         .map(|tagged| tagged.tag.clone())
 }
 
+fn merge_tagged_object_sets(
+    aggregate: &mut std::collections::HashMap<
+        crate::tag::TagKey,
+        Vec<crate::snapshot::ObjectSnapshot>,
+    >,
+    current: &std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+) {
+    for (tag, snapshots) in current {
+        let collected = aggregate.entry(tag.clone()).or_default();
+        for snapshot in snapshots {
+            if !collected
+                .iter()
+                .any(|existing| existing.stable_id == snapshot.stable_id)
+            {
+                collected.push(snapshot.clone());
+            }
+        }
+    }
+}
+
 impl EffectExecutor for ForPlayersEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -332,6 +352,18 @@ impl EffectExecutor for ForPlayersEffect {
 
             for unit in units {
                 let mut prepared: Vec<(usize, Box<dyn SimultaneousEffectProposal>)> = Vec::new();
+                // Read-only choices bind tags in the shared execution context.
+                // Each player's proposal must see the same pre-unit context,
+                // not tags left behind by an earlier player's choice. The
+                // proposal owns the frozen result it needs; restore the base
+                // tags again before committing so commit-time result tags can
+                // accumulate normally across players.
+                let pre_unit_tagged_objects = ctx.tagged_objects.clone();
+                let unit_has_mutating_effect = unit.iter().any(|effect_index| {
+                    !self.effects[*effect_index]
+                        .0
+                        .is_read_only_simultaneous_player_action()
+                });
                 // A shared (once-per-team) effect prepares for its chosen
                 // acting players in team-first APNAP order instead of every
                 // seat; the whole unit follows that ordering so commit order
@@ -348,6 +380,9 @@ impl EffectExecutor for ForPlayersEffect {
                         .iter()
                         .position(|candidate| *candidate == player_id)
                         .expect("acting player is in the iteration set");
+                    if unit_has_mutating_effect {
+                        ctx.tagged_objects = pre_unit_tagged_objects.clone();
+                    }
                     ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                         for &effect_index in &unit {
                             let effect = &self.effects[effect_index];
@@ -369,18 +404,36 @@ impl EffectExecutor for ForPlayersEffect {
                         Ok::<(), ExecutionError>(())
                     })?;
                 }
+                if unit_has_mutating_effect {
+                    ctx.tagged_objects = pre_unit_tagged_objects.clone();
+                }
 
                 let game_checkpoint = game.clone();
                 let mut batch_outcomes = Vec::with_capacity(prepared.len());
+                let mut accumulated_unit_tags = pre_unit_tagged_objects.clone();
+                let mut active_commit_player = None;
                 for (player_index, proposal) in prepared {
+                    if active_commit_player != Some(player_index) {
+                        if active_commit_player.is_some() {
+                            merge_tagged_object_sets(
+                                &mut accumulated_unit_tags,
+                                &ctx.tagged_objects,
+                            );
+                        }
+                        ctx.tagged_objects = pre_unit_tagged_objects.clone();
+                        active_commit_player = Some(player_index);
+                    }
                     match proposal.commit(game, ctx) {
                         Ok(outcome) => batch_outcomes.push((player_index, outcome)),
                         Err(error) => {
                             *game = game_checkpoint;
+                            ctx.tagged_objects = pre_unit_tagged_objects;
                             return Err(error);
                         }
                     }
                 }
+                merge_tagged_object_sets(&mut accumulated_unit_tags, &ctx.tagged_objects);
+                ctx.tagged_objects = accumulated_unit_tags;
                 for (player_index, outcome) in batch_outcomes {
                     outcomes_by_player[player_index].push(outcome.clone());
                     outcomes.push(outcome);
@@ -396,7 +449,10 @@ impl EffectExecutor for ForPlayersEffect {
             }
             let iteration_outcome =
                 EffectOutcome::aggregate_summing_counts(player_outcomes.iter().cloned());
-            player_counts.push((player_id, iteration_outcome.as_count().unwrap_or(0)));
+            let count = iteration_outcome.as_count().unwrap_or_else(|| {
+                i32::from(iteration_outcome.something_happened())
+            });
+            player_counts.push((player_id, count));
             if let Some(memory) = iteration_outcome.affected_object_memory()
                 && !memory.is_empty()
             {
@@ -479,6 +535,22 @@ mod tests {
         ) -> bool {
             self.prompts.push((ctx.player, ctx.description.clone()));
             false
+        }
+    }
+
+    #[derive(Default)]
+    struct FirstPlayerPays {
+        prompted: Vec<PlayerId>,
+    }
+
+    impl crate::decision::DecisionMaker for FirstPlayerPays {
+        fn decide_boolean(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::BooleanContext,
+        ) -> bool {
+            self.prompted.push(ctx.player);
+            ctx.player == PlayerId::from_index(0)
         }
     }
 
@@ -738,6 +810,44 @@ mod tests {
     }
 
     #[test]
+    fn each_player_unless_pays_asks_and_resolves_for_each_iterated_player() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut decisions = FirstPlayerPays::default();
+        let effect = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::new(
+                crate::effects::UnlessPaysEffect::new_total_cost(
+                    vec![Effect::lose_life_player(5, PlayerFilter::IteratedPlayer)],
+                    PlayerFilter::IteratedPlayer,
+                    crate::cost::TotalCost::from_cost(crate::costs::Cost::life(1)),
+                ),
+            )],
+        );
+
+        {
+            let mut ctx = ExecutionContext::new(source, alice, &mut decisions);
+            effect
+                .execute(&mut game, &mut ctx)
+                .expect("each-player unless-payment should resolve");
+        }
+
+        assert_eq!(decisions.prompted, [alice, bob]);
+        assert_eq!(
+            game.player(alice).expect("alice").life,
+            19,
+            "Alice pays 1 life and prevents her consequence"
+        );
+        assert_eq!(
+            game.player(bob).expect("bob").life,
+            15,
+            "Bob declines and receives only his own consequence"
+        );
+    }
+
+    #[test]
     fn for_players_records_per_player_count_partitions() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -877,5 +987,152 @@ mod tests {
         assert_eq!(partitions[1].0, cara);
         assert_eq!(partitions[1].1.len(), 1);
         assert_eq!(partitions[1].1[0].object_id, cara_id);
+    }
+
+    #[test]
+    fn per_player_graveyard_choices_shuffle_only_each_players_chosen_set() {
+        fn create_graveyard_card(game: &mut GameState, owner: PlayerId, raw_id: u32, name: &str) {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(raw_id), name)
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, owner, crate::zone::Zone::Graveyard);
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for (raw_id, name) in [
+            (2001, "Alice One"),
+            (2002, "Alice Two"),
+            (2003, "Alice Three"),
+            (2004, "Alice Four"),
+        ] {
+            create_graveyard_card(&mut game, alice, raw_id, name);
+        }
+        for (raw_id, name) in [(3001, "Bob One"), (3002, "Bob Two")] {
+            create_graveyard_card(&mut game, bob, raw_id, name);
+        }
+
+        let chosen_tag = crate::tag::TagKey::from("__each_graveyard_chosen");
+        let mut graveyard_filter = crate::filter::ObjectFilter::default();
+        graveyard_filter.zone = Some(crate::zone::Zone::Graveyard);
+        graveyard_filter.owner = Some(PlayerFilter::IteratedPlayer);
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            graveyard_filter,
+            crate::effect::ChoiceCount::exactly(3),
+            PlayerFilter::You,
+            chosen_tag.clone(),
+        )
+        .in_zone(crate::zone::Zone::Graveyard);
+        let shuffle = crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+            crate::target::ChooseSpec::Tagged(chosen_tag.clone()),
+            PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(chosen_tag)),
+        );
+        let effect = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::new(choose), Effect::new(shuffle)],
+        );
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("each graveyard choice and owner shuffle should resolve");
+
+        assert_eq!(
+            game.player(alice).expect("Alice").graveyard.len(),
+            1,
+            "exactly three of Alice's four cards should move"
+        );
+        assert_eq!(
+            game.player(bob).expect("Bob").graveyard.len(),
+            0,
+            "an undersized graveyard should contribute every available card"
+        );
+        assert_eq!(game.player(alice).expect("Alice").library.len(), 3);
+        assert_eq!(game.player(bob).expect("Bob").library.len(), 2);
+
+        let shuffled_players = outcome
+            .events
+            .iter()
+            .filter_map(|event| {
+                event
+                    .downcast::<crate::events::ShuffleLibraryEvent>()
+                    .map(|shuffle| shuffle.player)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(shuffled_players.len(), 2);
+        assert!(shuffled_players.contains(&alice));
+        assert!(shuffled_players.contains(&bob));
+    }
+
+    #[test]
+    fn trailing_per_player_choices_still_accumulate_for_a_later_consumer() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for (owner, raw_id, name) in [(alice, 4001, "Alice Choice"), (bob, 4002, "Bob Choice")] {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(raw_id), name)
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, owner, crate::zone::Zone::Graveyard);
+        }
+
+        let chosen_tag = crate::tag::TagKey::from("__later_each_player_choice");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            crate::filter::ObjectFilter::default()
+                .in_zone(crate::zone::Zone::Graveyard)
+                .owned_by(PlayerFilter::IteratedPlayer),
+            crate::effect::ChoiceCount::exactly(1),
+            PlayerFilter::You,
+            chosen_tag.clone(),
+        )
+        .in_zone(crate::zone::Zone::Graveyard);
+        let effect = ForPlayersEffect::new(PlayerFilter::Any, vec![Effect::new(choose)]);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("each-player choices should resolve");
+
+        let chosen = ctx
+            .get_tagged_all(&chosen_tag)
+            .expect("the accumulated choices should remain available");
+        assert_eq!(chosen.len(), 2);
+        assert!(chosen.iter().any(|snapshot| snapshot.owner == alice));
+        assert!(chosen.iter().any(|snapshot| snapshot.owner == bob));
+    }
+
+    #[test]
+    fn tagged_mutating_results_accumulate_across_players_for_a_plural_followup() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let created_tag = crate::tag::TagKey::from("created_for_each_opponent");
+        let create = Effect::new(crate::effects::CreateTokenEffect::new(
+            crate::cards::tokens::treasure_token_definition(),
+            2,
+            PlayerFilter::You,
+        ))
+        .tag(created_tag.clone());
+        let effect = ForPlayersEffect::new(PlayerFilter::Opponent, vec![create]);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("per-opponent token creation should resolve");
+
+        let created = ctx
+            .get_tagged_all(&created_tag)
+            .expect("the complete created result set should remain tagged");
+        assert_eq!(
+            created.len(),
+            4,
+            "two tokens for each of two opponents must feed the plural follow-up"
+        );
     }
 }

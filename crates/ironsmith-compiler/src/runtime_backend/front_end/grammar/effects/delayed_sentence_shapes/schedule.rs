@@ -10,6 +10,7 @@ use super::{semantic_kw, semantic_phrase, trimmed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DelayedScheduleStep {
+    UntapStep,
     Upkeep,
     DrawStep,
     MainPhase,
@@ -53,6 +54,31 @@ fn delayed_schedule_step<'a>(input: &mut LexStream<'a>) -> WResult<DelayedSchedu
         (semantic_kw("upkeep"), opt(semantic_kw("step"))).value(DelayedScheduleStep::Upkeep),
     ))
     .parse_next(input)
+}
+
+fn delayed_untap_schedule_header<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(DelayedScheduleStep, PlayerAst, bool)> {
+    primitives::kw("during").parse_next(input)?;
+    let player = delayed_schedule_player.parse_next(input)?;
+    semantic_phrase(&["next", "untap", "step"]).parse_next(input)?;
+    primitives::comma().parse_next(input)?;
+    primitives::kw("as").parse_next(input)?;
+    match player {
+        PlayerAst::You => {
+            semantic_phrase(&["you", "untap", "your", "permanents"]).parse_next(input)?;
+        }
+        PlayerAst::That | PlayerAst::Target | PlayerAst::TargetOpponent => {
+            semantic_phrase(&["they", "untap", "their", "permanents"]).parse_next(input)?;
+        }
+        _ => {
+            return Err(primitives::backtrack_err(
+                "delayed untap-step player",
+                "delayed untap-step player",
+            ));
+        }
+    }
+    Ok((DelayedScheduleStep::UntapStep, player, true))
 }
 
 fn delayed_schedule_header<'a>(
@@ -111,7 +137,11 @@ pub(crate) fn parse_delayed_schedule_sentence_shape(
     let tokens = trimmed(tokens);
     let ((step, player, start_next_turn), after_comma) = primitives::parse_prefix(
         tokens,
-        (delayed_schedule_header, primitives::comma()).map(|(header, _)| header),
+        (
+            alt((delayed_untap_schedule_header, delayed_schedule_header)),
+            primitives::comma(),
+        )
+            .map(|(header, _)| header),
     )?;
     let effect_tokens = trimmed(after_comma);
     (!effect_tokens.is_empty()).then_some(DelayedScheduleSentenceShape {
@@ -133,6 +163,18 @@ mod tests {
 
     #[test]
     fn parses_leading_delayed_schedule_sentences() {
+        let untap = tokens(
+            "During your next untap step, as you untap your permanents, return this land to its owner's hand.",
+        );
+        let untap = parse_delayed_schedule_sentence_shape(&untap).unwrap();
+        assert_eq!(untap.step, DelayedScheduleStep::UntapStep);
+        assert_eq!(untap.player, PlayerAst::You);
+        assert!(untap.start_next_turn);
+        assert_eq!(
+            LexedClause::new(untap.effect_tokens).word_refs(),
+            ["return", "this", "land", "to", "its", "owners", "hand"]
+        );
+
         let upkeep = tokens("At the beginning of your next upkeep, draw a card.");
         let upkeep = parse_delayed_schedule_sentence_shape(&upkeep).unwrap();
         assert_eq!(upkeep.step, DelayedScheduleStep::Upkeep);

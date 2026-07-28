@@ -42,6 +42,45 @@ fn parses_remove_counter_and_combat_shapes() {
 }
 
 #[test]
+fn parses_counter_distribution_from_among_all_permanents() {
+    let tokens = lex_line("up to three stun counters from among all permanents", 0).unwrap();
+    let RemoveClauseShape::Counters {
+        amount,
+        up_to,
+        counter_descriptor,
+        destination,
+    } = parse_remove_clause_shape(&tokens).unwrap()
+    else {
+        panic!("expected counter removal");
+    };
+    assert_eq!(amount, Value::Fixed(3));
+    assert!(up_to);
+    assert_eq!(words(counter_descriptor), vec!["stun"]);
+    let RemoveCounterDestination::Among { filter_tokens } = destination else {
+        panic!("expected distributed among destination");
+    };
+    assert_eq!(words(filter_tokens), vec!["permanents"]);
+}
+
+#[test]
+fn parses_each_of_any_number_as_an_optional_unbounded_subset() {
+    let tokens = lex_line(
+        "a loyalty counter from each of any number of permanents you control",
+        0,
+    )
+    .unwrap();
+    let RemoveClauseShape::Counters { destination, .. } =
+        parse_remove_clause_shape(&tokens).unwrap()
+    else {
+        panic!("expected counter removal");
+    };
+    let RemoveCounterDestination::EachOfAnyNumber { filter_tokens } = destination else {
+        panic!("expected an any-number subset, not an all-permanents destination");
+    };
+    assert_eq!(words(filter_tokens), vec!["permanents", "you", "control"]);
+}
+
+#[test]
 fn parses_destroy_all_and_delayed_shapes() {
     let tokens = lex_line(
         "all creatures except for artifacts at the beginning of the next end step",
@@ -82,7 +121,7 @@ fn parses_combat_history_and_blocked_targets() {
     else {
         panic!("expected blocked target");
     };
-    assert_eq!(words(&target_tokens), vec!["target", "creature"]);
+    assert_eq!(words(&target_tokens), vec!["target", "blocked", "creature"]);
 }
 
 #[test]
@@ -137,4 +176,41 @@ fn parses_not_chosen_by_any_player_as_the_complement_set() {
 
     assert_eq!(words(filter_tokens), vec!["plains"]);
     assert_eq!(relation, TaggedDestroyRelation::ExceptMatching);
+}
+
+#[test]
+fn parses_target_and_demonstrative_attached_object_set_as_one_destroy_shape() {
+    let tokens = lex_line(
+        "target creature with flying and all Equipment attached to that creature",
+        0,
+    )
+    .unwrap();
+    let DestroyClauseKind::TargetAndAttached(shape) = parse_destroy_clause_shape(&tokens).kind
+    else {
+        panic!("expected a target plus its attached-object set");
+    };
+
+    assert_eq!(
+        words(shape.target_tokens),
+        vec!["target", "creature", "with", "flying"]
+    );
+    assert_eq!(words(shape.attachment_filter_tokens), vec!["equipment"]);
+    assert_eq!(
+        shape.demonstrative_antecedent,
+        Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
+    );
+}
+
+#[test]
+fn does_not_treat_unrelated_coordinated_destroy_subjects_as_attached_to_one_target() {
+    let tokens = lex_line(
+        "target creature and all Equipment attached to another creature",
+        0,
+    )
+    .unwrap();
+
+    assert!(!matches!(
+        parse_destroy_clause_shape(&tokens).kind,
+        DestroyClauseKind::TargetAndAttached(_)
+    ));
 }

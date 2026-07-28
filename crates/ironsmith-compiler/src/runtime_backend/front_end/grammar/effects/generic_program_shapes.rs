@@ -119,7 +119,7 @@ pub(crate) fn parse_source_damage_to_decider(
 }
 
 pub(crate) fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option<LexedClause<'_>> {
-    let atoms = [
+    let then_atoms = [
         PermissionSequence::phrase(&["each", "player"]),
         PermissionSequence::action(
             "choose",
@@ -134,7 +134,34 @@ pub(crate) fn parse_choice_complement_clause(tokens: &[OwnedLexToken]) -> Option
         PermissionSequence::phrase(&["the", "rest"]),
     ];
     let clause = LexedClause::new(tokens).trimmed();
-    let parsed = PermissionSequence::new(&atoms).parse_full(clause)?;
+    if let Some(parsed) = PermissionSequence::new(&then_atoms).parse_full(clause) {
+        return parsed
+            .capture_clause_by_role(PermissionCaptureRole::Object, clause)
+            .map(LexedClause::trimmed);
+    }
+
+    // Participant-scoped Oracle commonly coordinates the same operation with
+    // "and" ("chooses five lands they control and sacrifices the rest").
+    // Only try this surface when no `then` exists, so an `and` inside a
+    // multi-slot choice list is never mistaken for the action boundary.
+    if tokens.iter().any(|token| token.is_word("then")) {
+        return None;
+    }
+    let and_atoms = [
+        PermissionSequence::phrase(&["each", "player"]),
+        PermissionSequence::action(
+            "choose",
+            PermissionCaptureKind::OneOf(&["choose", "chooses"]),
+        ),
+        PermissionSequence::object("choice", PermissionCaptureKind::UntilPhrase(&["and"])),
+        PermissionSequence::word("and"),
+        PermissionSequence::action(
+            "sacrifice",
+            PermissionCaptureKind::OneOf(&["sacrifice", "sacrifices"]),
+        ),
+        PermissionSequence::phrase(&["the", "rest"]),
+    ];
+    let parsed = PermissionSequence::new(&and_atoms).parse_full(clause)?;
     parsed
         .capture_clause_by_role(PermissionCaptureRole::Object, clause)
         .map(LexedClause::trimmed)

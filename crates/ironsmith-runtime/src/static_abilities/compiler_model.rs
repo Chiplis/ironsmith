@@ -111,6 +111,9 @@ impl StaticAbility {
             Some(StaticAbilityId::CantBeBlockedByLowerPowerThanSource) => {
                 Self::cant_be_blocked_by_lower_power_than_source()
             }
+            Some(StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures) => {
+                Self::cant_be_blocked_while_defending_player_controls_most_creatures()
+            }
             Some(StaticAbilityId::CanAttackAsThoughNoDefender) => {
                 Self::can_attack_as_though_no_defender()
             }
@@ -246,6 +249,9 @@ impl StaticAbility {
             Some(StaticAbilityId::LegendRuleDoesntApply) => Self::legend_rule_doesnt_apply(),
             Some(StaticAbilityId::LegendRuleDoesntApplyToController) => {
                 Self::legend_rule_doesnt_apply_to_controller()
+            }
+            Some(StaticAbilityId::LegendRuleDoesntApplyToControllerTokens) => {
+                Self::legend_rule_doesnt_apply_to_tokens_you_control()
             }
             Some(StaticAbilityId::ShuffleIntoLibraryFromGraveyard) => {
                 Self::shuffle_into_library_from_graveyard()

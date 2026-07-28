@@ -73,6 +73,7 @@ pub fn is_implicit_reference_tag(tag: &str) -> bool {
             | crate::tag::SOURCE_EXILED_TAG
             | "other_attacker"
             | "blocking"
+            | "blocked"
             | "searched_face_down" // "<verbed>_this_way" helper tags back-reference an object the same
                                    // sentence just described; oracle refers to it with a plain pronoun.
     ) || tag.starts_with("__sentence_helper_")

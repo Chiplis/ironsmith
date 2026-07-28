@@ -107,6 +107,8 @@ const CARD_TYPE_LIST_NOUNS: &[&str] = &[
 const NONVERB_EFFECT_HEAD_WORDS: &[&str] = &[
     "double",
     "distribute",
+    "copy",
+    "copies",
     "support",
     "bolster",
     "adapt",
@@ -175,20 +177,25 @@ pub(super) struct ThenFollowupFacts {
     allow_that_many: bool,
     allow_life_equal: bool,
     allow_damage_equal: bool,
+    allow_that_much_damage: bool,
     allow_total_mana_value_damage: bool,
     allow_for_each_damage: bool,
+    allow_source_deals_x_damage: bool,
+    allow_dynamic_target_phase_out: bool,
     allow_target_pump: bool,
     allow_return_counter: bool,
     allow_return_attached: bool,
     allow_put_counter: bool,
     allow_put_hand: bool,
+    allow_put_battlefield: bool,
     allow_put_back: bool,
     allow_exile_graveyard: bool,
 }
 
 impl ThenFollowupFacts {
     pub(super) fn should_split(self, ability_head: bool) -> bool {
-        let has_effect_head = self.has_effect_head || ability_head;
+        let has_effect_head =
+            self.has_effect_head || ability_head || self.allow_dynamic_target_phase_out;
         if !has_effect_head {
             return false;
         }
@@ -198,13 +205,17 @@ impl ThenFollowupFacts {
             || self.allow_that_many
             || self.allow_life_equal
             || self.allow_damage_equal
+            || self.allow_that_much_damage
             || self.allow_total_mana_value_damage
             || self.allow_for_each_damage
+            || self.allow_source_deals_x_damage
+            || self.allow_dynamic_target_phase_out
             || self.allow_target_pump
             || self.allow_return_counter
             || self.allow_return_attached
             || self.allow_put_counter
             || self.allow_put_hand
+            || self.allow_put_battlefield
             || self.allow_put_back
             || self.allow_exile_graveyard
     }
@@ -251,6 +262,8 @@ pub(crate) fn has_basic_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
         ],
     ) || starts_with_nonverb_effect_head(tokens)
         || is_cant_restriction(tokens)
+        || is_life_total_change_restriction(tokens)
+        || super::super::parse_persistent_no_maximum_hand_size_player_lexed(tokens).is_some()
 }
 
 pub(crate) fn has_extended_effect_head_tokens(tokens: &[OwnedLexToken]) -> bool {
@@ -344,6 +357,13 @@ pub(super) fn preserve_and_reason(
     {
         return Some(AndPreservation::QuotedAbility);
     }
+    if remaining
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+        && contains_any(current, &["gain", "gains", "has", "have", "lose", "loses"])
+    {
+        return Some(AndPreservation::QuotedAbility);
+    }
     if extended
         && contains_any(current, &["get", "gets", "become", "becomes"])
         && first_word(remaining).is_some_and(|word| {
@@ -362,14 +382,31 @@ pub(super) fn then_followup_facts(
 ) -> ThenFollowupFacts {
     let has_back_reference = contains_any(after, &["that", "it", "them", "its"]);
     let has_effect_head = find_chain_verb_tokens(after).is_some()
-        || first_word(after).is_some_and(|word| {
-            NONVERB_EFFECT_HEAD_WORDS
-                .iter()
-                .any(|expected| word == *expected)
-        });
+        || starts_with_nonverb_effect_head(after)
+        || starts_with_player_may_tokens(after);
     let allow_back_reference = has_back_reference
-        && starts_any(after, &[&["put"], &["double"]])
-        && contains_any(after, &["counter", "counters"]);
+        && ((starts_any(after, &[&["put"], &["double"]])
+            && contains_any(after, &["counter", "counters"]))
+            || starts_any(after, &[&["copy"], &["copies"]])
+            || (starts_any(after, &[&["return"], &["returns"]])
+                && contains_any(
+                    after,
+                    &[
+                        "hand",
+                        "hands",
+                        "battlefield",
+                        "graveyard",
+                        "graveyards",
+                        "library",
+                        "libraries",
+                        "exile",
+                    ],
+                ))
+            || starts_with_player_may_tokens(after)
+            || starts_any(
+                after,
+                &[&["transform"], &["transforms"], &["convert"], &["converts"]],
+            ));
     let allow_clash = starts_any(before, &[&["clash"], &["clashes"]]);
     let allow_attach = starts_any(after, &[&["attach"], &["attaches"]]);
     let allow_that_many = !starts_with_for_each
@@ -389,6 +426,11 @@ pub(super) fn then_followup_facts(
         !starts_with_for_each && has_back_reference && life_equal_followup(after);
     let allow_damage_equal =
         !starts_with_for_each && has_back_reference && damage_equal_followup(after);
+    let allow_that_much_damage = !starts_with_for_each
+        && has_back_reference
+        && find_chain_verb_tokens(after)
+            .is_some_and(|found| found.kind == super::ChainVerbKind::Deal)
+        && primitives::has_phrase(after, &["that", "much", "damage"]);
     let allow_total_mana_value_damage = !starts_with_for_each
         && has_back_reference
         && contains_any(after, &["deal", "deals"])
@@ -397,6 +439,17 @@ pub(super) fn then_followup_facts(
         && starts_any(after, &[&["for", "each"], &["each"]])
         && contains_any(after, &["deal", "deals"])
         && primitives::contains_word(after, "damage");
+    // A singular source pronoun followed by a complete dynamic-damage
+    // clause is an executable follow-up, not inline rules text belonging to
+    // the preceding action. Keep this exact shape separable so the where-X
+    // binding pass can type the amount after both actions have been parsed.
+    let allow_source_deals_x_damage = !starts_with_for_each
+        && starts_any(after, &[&["it", "deals", "x"]])
+        && primitives::contains_word(after, "damage");
+    let allow_dynamic_target_phase_out = !starts_with_for_each
+        && starts_any(after, &[&["up", "to", "that", "many"], &["that", "many"]])
+        && primitives::contains_word(after, "target")
+        && primitives::has_phrase(after, &["phase", "out"]);
     let allow_target_pump = has_back_reference
         && !starts_with_for_each
         && starts_any(after, &[&["target"], &["up", "to"]])
@@ -435,6 +488,10 @@ pub(super) fn then_followup_facts(
     let allow_put_hand = has_back_reference
         && starts_any(after, &[&["put"], &["puts"]])
         && contains_all(after, &["into", "hand"]);
+    let allow_put_battlefield = has_back_reference
+        && starts_any(after, &[&["put"], &["puts"]])
+        && (primitives::has_phrase(after, &["onto", "the", "battlefield"])
+            || primitives::has_phrase(after, &["onto", "battlefield"]));
     let allow_put_back = has_back_reference
         && starts_any(
             after,
@@ -469,13 +526,17 @@ pub(super) fn then_followup_facts(
         allow_that_many,
         allow_life_equal,
         allow_damage_equal,
+        allow_that_much_damage,
         allow_total_mana_value_damage,
         allow_for_each_damage,
+        allow_source_deals_x_damage,
+        allow_dynamic_target_phase_out,
         allow_target_pump,
         allow_return_counter,
         allow_return_attached,
         allow_put_counter,
         allow_put_hand,
+        allow_put_battlefield,
         allow_put_back,
         allow_exile_graveyard,
     }
@@ -705,6 +766,13 @@ fn is_cant_restriction(tokens: &[OwnedLexToken]) -> bool {
     contains_any(tokens, &["cant", "can't", "cannot"])
         && (contains_any(tokens, &["attack", "attacks"])
             || contains_any(tokens, &["block", "blocks"]))
+}
+
+fn is_life_total_change_restriction(tokens: &[OwnedLexToken]) -> bool {
+    contains_any(tokens, &["cant", "can't", "cannot"])
+        && contains_any(tokens, &["total", "totals"])
+        && primitives::contains_word(tokens, "life")
+        && contains_any(tokens, &["change", "changed"])
 }
 
 fn has_inline_token_rules_context(tokens: &[OwnedLexToken]) -> bool {
@@ -974,6 +1042,20 @@ mod tests {
             preserve_and_reason(&tokens[..and_idx], &tokens[and_idx + 1..], true),
             Some(AndPreservation::QuotedAbility)
         );
+
+        let tokens = lex_line(
+            "Until end of turn, target creature gains trample and \"Whenever this creature attacks, draw a card.\"",
+            0,
+        )
+        .unwrap();
+        let and_idx = tokens
+            .iter()
+            .position(|token| token.is_word("and"))
+            .unwrap();
+        assert_eq!(
+            preserve_and_reason(&tokens[..and_idx], &tokens[and_idx + 1..], true),
+            Some(AndPreservation::QuotedAbility)
+        );
     }
 
     #[test]
@@ -981,6 +1063,26 @@ mod tests {
         let before = lex_line("Destroy target land", 0).unwrap();
         let after = lex_line(
             "Roiling Terrain deals damage to that land's controller equal to the number of land cards in that player's graveyard.",
+            0,
+        )
+        .unwrap();
+
+        assert!(then_followup_facts(&before, &after, false).should_split(false));
+    }
+
+    #[test]
+    fn transform_back_reference_is_an_executable_then_boundary() {
+        let before = lex_line("Untap it", 0).unwrap();
+        let after = lex_line("transform it", 0).unwrap();
+
+        assert!(then_followup_facts(&before, &after, false).should_split(false));
+    }
+
+    #[test]
+    fn result_amount_damage_is_an_executable_then_boundary() {
+        let before = lex_line("Put them into their owners' graveyards", 0).unwrap();
+        let after = lex_line(
+            "this enchantment deals that much damage to each opponent",
             0,
         )
         .unwrap();

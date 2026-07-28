@@ -512,6 +512,46 @@ pub fn is_no_priority_step(game: &GameState) -> bool {
     matches!(game.turn.step, Some(Step::Untap) | Some(Step::Cleanup))
 }
 
+fn execute_delayed_untap_step_actions(
+    game: &mut GameState,
+    active_players: &[PlayerId],
+    decision_maker: &mut impl DecisionMaker,
+) {
+    for &player in active_players {
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::phase::PermanentsUntapStepEvent::new(player),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let actions = crate::triggers::check::take_delayed_untap_step_actions(game, &event);
+        for action in actions {
+            let source = action
+                .ability_source_stable_id
+                .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+                .or(action.ability_source)
+                .or_else(|| action.target_objects.first().copied())
+                .unwrap_or_else(|| crate::ids::ObjectId::from_raw(0));
+            let mut ctx =
+                crate::effects::ExecutionContext::new(source, action.controller, decision_maker);
+            ctx.source_snapshot = action.ability_source_snapshot;
+            ctx.tagged_objects = action.tagged_objects;
+            if let Some(x_value) = action.x_value {
+                ctx = ctx.with_x(x_value);
+            }
+            if let Ok(events) = crate::game_loop::execute_resolution_program(
+                game,
+                &mut ctx,
+                action.controller,
+                source,
+                &action.effects,
+                None,
+                &[],
+            ) {
+                game.effect_store.pending_trigger_events.extend(events);
+            }
+        }
+    }
+}
+
 /// Executes the untap step for the active player.
 /// Untaps all permanents controlled by the active player (except those that don't untap).
 pub fn execute_untap_step(game: &mut GameState) {
@@ -536,8 +576,6 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     // characteristics check entirely.
     game.refresh_continuous_state();
     game.update_cant_effects();
-    let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
-    let has_cant_untap_restrictions = !game.effect_store.cant_effects.cant_untap.is_empty();
 
     // CR 702.26a performs one simultaneous phasing exchange before untapping:
     // visible permanents with phasing phase out, while permanents that phased
@@ -557,6 +595,7 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     let phase_in = active_players
         .iter()
         .flat_map(|player| game.directly_phased_out_under(*player))
+        .filter(|id| game.can_phase_in(*id))
         .collect::<Vec<_>>();
     for id in phase_out {
         game.phase_out(id);
@@ -564,6 +603,18 @@ pub fn execute_untap_step_with(game: &mut GameState, decision_maker: &mut impl D
     for id in phase_in {
         game.phase_in(id);
     }
+
+    // Delayed instructions with "as you untap your permanents" timing are
+    // turn-based actions, not triggered abilities. They resolve here without
+    // using the stack, before any permanent actually becomes untapped.
+    execute_delayed_untap_step_actions(game, &active_players, decision_maker);
+
+    // The delayed action can move a static-ability source away before the
+    // simultaneous untap, so rebuild the calculated state it may have changed.
+    game.refresh_continuous_state();
+    game.update_cant_effects();
+    let may_have_untap_static_abilities = game_may_have_untap_static_abilities(game);
+    let has_cant_untap_restrictions = !game.effect_store.cant_effects.cant_untap.is_empty();
 
     // Get all permanents controlled by active player, plus any permanents that
     // other players untap during this untap step (Seedborn Muse-style effects).
@@ -1578,6 +1629,84 @@ mod tests {
         assert!(
             !game.is_tapped(cant_untap_artifact),
             "controller-only cant-untap restriction should not block another player's untap step"
+        );
+    }
+
+    #[test]
+    fn delayed_as_untap_instruction_resolves_before_permanents_untap_without_using_stack() {
+        use crate::effects::EffectExecutor as _;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let land_card = CardBuilder::new(CardId::new(), "Delayed Paradise")
+            .card_types(vec![CardType::Land])
+            .build();
+        let land = game.create_object_from_card(&land_card, alice, Zone::Battlefield);
+        let stable_id = game.object(land).expect("land exists").stable_id;
+        let companion = create_artifact(&mut game, "Companion Relic", alice, vec![]);
+        game.tap(land);
+        game.tap(companion);
+
+        let schedule = crate::effects::ScheduleDelayedTriggerEffect::new(
+            crate::triggers::Trigger::as_permanents_untap(PlayerFilter::You, true),
+            vec![crate::Effect::new(
+                crate::effects::ReturnToHandEffect::with_spec(crate::target::ChooseSpec::Source),
+            )],
+            true,
+            Vec::new(),
+            PlayerFilter::You,
+        )
+        .watch_ability_source();
+        let mut ctx = crate::effects::ExecutionContext::new_default(land, alice);
+        schedule
+            .execute(&mut game, &mut ctx)
+            .expect("schedule the delayed untap instruction");
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+        let mut dm = AlwaysYesDecisionMaker;
+        game.turn.active_player = bob;
+        game.turn.phase = Phase::Beginning;
+        game.turn.step = Some(Step::Untap);
+        execute_untap_step_with(&mut game, &mut dm);
+        assert_eq!(
+            game.object(land).map(|object| object.zone),
+            Some(Zone::Battlefield),
+            "another player's untap step must not consume the instruction"
+        );
+        assert!(game.is_tapped(land));
+        assert_eq!(game.effect_store.delayed_triggers.len(), 1);
+
+        game.turn.active_player = alice;
+        execute_untap_step_with(&mut game, &mut dm);
+
+        let returned = game
+            .find_object_by_stable_id(stable_id)
+            .expect("the source should keep its stable identity in hand");
+        assert_eq!(
+            game.object(returned).map(|object| object.zone),
+            Some(Zone::Hand)
+        );
+        assert!(
+            game.effect_store
+                .pending_trigger_events
+                .iter()
+                .any(|event| {
+                    event.kind() == crate::events::EventKind::ZoneChange
+                        && event.snapshot().is_some_and(|snapshot| {
+                            snapshot.stable_id == stable_id && snapshot.tapped
+                        })
+                }),
+            "the land's leave-the-battlefield snapshot must still be tapped"
+        );
+        assert!(
+            !game.is_tapped(companion),
+            "the instruction must resolve before the remaining permanents untap"
+        );
+        assert!(game.effect_store.delayed_triggers.is_empty());
+        assert!(
+            game.stack.is_empty(),
+            "an as-you-untap instruction is a turn-based action, not a triggered ability"
         );
     }
 

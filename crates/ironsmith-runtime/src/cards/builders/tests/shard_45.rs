@@ -444,7 +444,9 @@ pub(super) fn grist_front_face_scopes_graveyard_origin_condition_on_the_trigger(
         "Grist should round-trip its origin clause: {rendered}"
     );
     assert!(
-        rendered.to_ascii_lowercase().contains("exile grist, then return it to the battlefield transformed"),
+        rendered
+            .to_ascii_lowercase()
+            .contains("exile grist, then return it to the battlefield transformed"),
         "Grist should keep its authored exile-return surface: {rendered}"
     );
 }
@@ -495,7 +497,9 @@ pub(super) fn gruul_spellbreaker_union_hexproof_covers_you_and_the_source_only()
         "Gruul Spellbreaker should round-trip its union subject line: {rendered}"
     );
     assert!(
-        !rendered.to_ascii_lowercase().contains("creatures have hexproof"),
+        !rendered
+            .to_ascii_lowercase()
+            .contains("creatures have hexproof"),
         "opponents' creatures must not gain hexproof: {rendered}"
     );
 }
@@ -736,6 +740,10 @@ pub(super) fn bonus_round_registers_a_temporary_copy_trigger_for_each_caster() {
         "the delayed trigger must expire at end of turn: {debug}"
     );
     assert!(
+        debug.contains("leading_duration_surface: true"),
+        "the authored leading duration must survive lowering: {debug}"
+    );
+    assert!(
         debug.contains("caster: Any"),
         "the trigger must watch every player's instant and sorcery spells: {debug}"
     );
@@ -751,7 +759,7 @@ pub(super) fn bonus_round_registers_a_temporary_copy_trigger_for_each_caster() {
     let rendered = crate::compiled_text::compiled_text_lines(&definition).join("\n");
     assert!(
         rendered.contains(
-            "Whenever a player casts an instant or sorcery spell this turn, that player copies it and may choose new targets for the copy."
+            "Until end of turn, whenever a player casts an instant or sorcery spell, that player copies it and may choose new targets for the copy."
         ),
         "the temporary trigger should render with the caster as the copying subject: {rendered}"
     );

@@ -20,6 +20,7 @@ pub(crate) fn parse_for_each_counter_removed_sentence(
         shape.toughness,
         TargetAst::Source(None),
         Until::EndOfTurn,
+        shape.includes_this_way,
     )))
 }
 
@@ -58,6 +59,25 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
     let Some(shape) = replacement_grammar::parse_split_all_shape(tokens) else {
         return Ok(None);
     };
+
+    // A coordinated all-object clause can carry independent scope on each
+    // authored branch, for example controller, owner, attachment, or combat
+    // state. The complete object-filter grammar preserves those branches and
+    // their authored connective as one typed union. Prefer that result before
+    // the legacy simple-list splitter parses each noun independently.
+    if let Ok(filter) = parse_object_filter(shape.body_tokens, false)
+        && filter.any_of.len() >= 2
+    {
+        let effect = match shape.verb {
+            replacement_grammar::SplitAllVerbShape::Destroy => {
+                EffectAst::subject_verb_destroy_all(filter)
+            }
+            replacement_grammar::SplitAllVerbShape::Exile => {
+                EffectAst::subject_verb_exile_all(filter, false)
+            }
+        };
+        return Ok(Some(vec![effect]));
+    }
 
     let mut filters = Vec::new();
     for filter_tokens in shape.filter_tokens {
@@ -168,6 +188,22 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
                 action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
                 ..
             }) if target_references_it_tag(target) => {
+                *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+                rewrote_return = true;
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        target,
+                        zone: Zone::Battlefield,
+                        ..
+                    },
+                ..
+            }) if target_references_it_tag(target) => {
+                // Returns with battlefield-entry modifiers such as "face
+                // down" use the generic move-to-zone AST rather than the
+                // simpler ReturnToBattlefield variant. They still need the
+                // exact exile-result tag so the blink sequence is retained.
                 *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
                 rewrote_return = true;
             }

@@ -1830,6 +1830,10 @@ enum SpecialActionRef {
     Companion {
         card_id: u64,
     },
+    IgnoreAttachedRestriction {
+        source_id: u64,
+        ability_index: usize,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

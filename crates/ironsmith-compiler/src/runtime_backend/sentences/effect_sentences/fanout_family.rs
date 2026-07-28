@@ -856,6 +856,7 @@ pub(crate) fn parse_compound_damage_fanout_sentence(
             player_context = target_context_for_damage_part(&target_part);
             effects.push(compound_damage_part_to_effect(target_part, part.amount));
         }
+        apply_where_x_to_damage_amounts(tokens, &mut effects)?;
         return Ok(Some(vec![EffectAst::Coordinated {
             effects,
             leading_duration: false,
@@ -984,6 +985,37 @@ mod coordinated_target_tests {
         };
         let TargetAst::Object(filter, _, _) = target else {
             panic!("expected creature target: {target:#?}");
+        };
+        assert_eq!(
+            filter.controller,
+            Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        );
+    }
+
+    #[test]
+    fn shared_dynamic_damage_keeps_player_or_planeswalker_controller_fanout() {
+        let tokens = lex_line(
+            "This enchantment deals X damage to target player or planeswalker and each creature \
+             that player or that planeswalker's controller controls, where X is twice the number \
+             of age counters on this enchantment minus 2.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_compound_damage_fanout_sentence(&tokens)
+            .unwrap()
+            .expect("shared dynamic damage fanout");
+        let [EffectAst::Coordinated { effects, .. }] = parsed.as_slice() else {
+            panic!("expected coordinated damage fanout: {parsed:#?}");
+        };
+        let [
+            _,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamageEach { filter, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected target damage plus creature fanout: {effects:#?}");
         };
         assert_eq!(
             filter.controller,

@@ -3019,6 +3019,52 @@ pub(super) fn day_of_the_moon_chapter_resolution_goads_only_chosen_name() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn spectacular_showdown_goads_only_the_creature_countered_this_way() {
+    let def = parse_oracle_card_definition("Spectacular Showdown");
+    let mut game =
+        crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let creature = |id, name| {
+        CardDefinitionBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build()
+    };
+    let countered =
+        game.create_object_from_definition(&creature(91_010, "Countered"), bob, Zone::Battlefield);
+    let bystander =
+        game.create_object_from_definition(&creature(91_011, "Bystander"), bob, Zone::Battlefield);
+
+    let mut dm = crate::decision::SelectFirstDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Object(countered)]);
+    ctx.snapshot_targets(&game);
+    for effect in def
+        .spell_effect
+        .as_ref()
+        .expect("Spectacular Showdown should have a spell effect")
+        .flattened_default_effects()
+    {
+        crate::effects::execute_effect(&mut game, effect, &mut ctx)
+            .expect("Spectacular Showdown effect should resolve");
+    }
+
+    assert_eq!(
+        game.counter_count(countered, CounterType::DoubleStrike),
+        1,
+        "the targeted creature should receive the counter"
+    );
+    assert!(game.is_goaded(countered));
+    assert!(
+        !game.is_goaded(bystander),
+        "an unrelated creature must not be included in the tagged counter result"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_public_enemy_oracle_and_compiled_text() {
     let def = parse_oracle_card_definition("Public Enemy");
     let rendered = canonical_compiled_lines(&def).join("\n");

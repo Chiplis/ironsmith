@@ -1281,7 +1281,31 @@ fn spell_effect_has_legal_targets_internal_with_preview_mode_selection(
     view: &crate::derived_view::DerivedGameView<'_>,
 ) -> bool {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::SentenceLeadingThen
+                | ironsmith_core::SequenceSurface::CommaThen
+        )
+    {
+        for inner in &sequence.effects {
+            if !spell_effect_has_legal_targets_internal_with_preview_mode_selection(
+                game,
+                inner,
+                caster,
+                source_id,
+                chosen_modes,
+                consumed_modal_selection,
+                declared_targets,
+                require_full_mode_selection,
+                view,
+            ) {
+                return false;
+            }
+        }
+        return true;
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface.is_coordinated()
     {
         let base_declared_targets = declared_targets.clone();
         let base_declared_len = base_declared_targets.len();
@@ -1423,7 +1447,28 @@ pub(super) fn extract_target_requirements_from_effect_internal(
     requirements: &mut Vec<TargetRequirement>,
 ) {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::SentenceLeadingThen
+                | ironsmith_core::SequenceSurface::CommaThen
+        )
+    {
+        for inner in &sequence.effects {
+            extract_target_requirements_from_effect_internal(
+                game,
+                inner,
+                caster,
+                source_id,
+                chosen_modes,
+                consumed_modal_selection,
+                declared_targets,
+                requirements,
+            );
+        }
+        return;
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface.is_coordinated()
     {
         let base_declared_targets = declared_targets.clone();
         let base_declared_len = base_declared_targets.len();
@@ -1851,7 +1896,27 @@ fn count_target_selection_slots_from_effect_internal(
     declared_targets: &mut Vec<DeclaredTarget>,
 ) -> usize {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::SentenceLeadingThen
+                | ironsmith_core::SequenceSurface::CommaThen
+        )
+    {
+        return sequence
+            .effects
+            .iter()
+            .map(|inner| {
+                count_target_selection_slots_from_effect_internal(
+                    inner,
+                    chosen_modes,
+                    consumed_modal_selection,
+                    declared_targets,
+                )
+            })
+            .sum();
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface.is_coordinated()
     {
         let base_declared_targets = declared_targets.clone();
         let base_declared_len = base_declared_targets.len();
@@ -2500,6 +2565,12 @@ pub fn player_matches_filter_with_combat(
         PlayerFilter::You => player_id == controller,
         PlayerFilter::NotYou => player_id != controller,
         PlayerFilter::Opponent => game.are_opponents(controller, player_id),
+        PlayerFilter::PlayerToYourLeft => {
+            game.closest_in_game_player_to_left_matching(controller, |_| true) == Some(player_id)
+        }
+        PlayerFilter::PlayerToYourRight => {
+            game.closest_in_game_player_to_right_matching(controller, |_| true) == Some(player_id)
+        }
         PlayerFilter::Active => game.is_active_player(player_id),
         PlayerFilter::Teammate => game.are_teammates(controller, player_id),
         PlayerFilter::Defending => combat
@@ -2624,7 +2695,25 @@ pub(super) fn collect_validation_target_specs_from_effect(
     specs: &mut Vec<ChooseSpec>,
 ) {
     if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface != ironsmith_core::SequenceSurface::Sequential
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::SentenceLeadingThen
+                | ironsmith_core::SequenceSurface::CommaThen
+        )
+    {
+        for inner in &sequence.effects {
+            collect_validation_target_specs_from_effect(
+                inner,
+                chosen_modes,
+                consumed_modal_selection,
+                declared_targets,
+                specs,
+            );
+        }
+        return;
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface.is_coordinated()
     {
         let base_declared_targets = declared_targets.clone();
         let base_declared_len = base_declared_targets.len();

@@ -18,7 +18,9 @@ use super::grammar::abilities::{
     is_cast_this_spell_as_though_it_had_flash_line_lexed, is_companion_marker_line_lexed,
     is_creatures_cant_block_line_lexed,
     is_creatures_entering_dont_cause_abilities_to_trigger_line_lexed,
-    is_creatures_without_flying_cant_attack_line_lexed, is_doctors_companion_marker_line_lexed,
+    is_creatures_without_flying_cant_attack_line_lexed,
+    is_dependent_doesnt_untap_during_controller_untap_step_line_lexed,
+    is_doctors_companion_marker_line_lexed,
     is_double_damage_from_sources_you_control_of_chosen_type_line_lexed,
     is_draw_replace_exile_top_face_down_line_lexed, is_draw_replacement_double_line_lexed,
     is_draw_replacement_skip_empty_library_line_lexed,
@@ -381,6 +383,12 @@ fn run_static_ability_ast_line_rule(
     }
 }
 
+fn replay_static_rule_parse_loss(report: &crate::parse_loss::ParseLossReport) {
+    for diagnostic in report.diagnostics() {
+        crate::parse_loss::record(diagnostic.code.clone(), diagnostic.message.clone());
+    }
+}
+
 fn try_static_ability_ast_line_rule_indices(
     rules: &'static [StaticAbilityLineRuleDef],
     tokens: &[OwnedLexToken],
@@ -390,8 +398,12 @@ fn try_static_ability_ast_line_rule_indices(
 ) -> Option<Vec<StaticAbilityAst>> {
     for &idx in candidate_indices {
         tried[idx] = true;
-        match run_static_ability_ast_line_rule(rules[idx].rule, tokens) {
+        let (result, loss) = crate::parse_loss::capture(|| {
+            run_static_ability_ast_line_rule(rules[idx].rule, tokens)
+        });
+        match result {
             Ok(Some(abilities)) => {
+                replay_static_rule_parse_loss(&loss);
                 if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
                     eprintln!("static-rule claim: {}", rules[idx].id);
                 }
@@ -432,11 +444,24 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
         ],
-        "parse_subject_has_keywords_and_cant_be_blocked_line" => vec![
+        "parse_subject_has_keywords_and_cant_be_blocked_line"
+        | "parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line" => vec![
             StaticAbilityLineHeadHint::Single("as"),
             StaticAbilityLineHeadHint::Pair("as", "long"),
             StaticAbilityLineHeadHint::Single("this"),
             StaticAbilityLineHeadHint::Pair("this", "creature"),
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
+        ],
+        "parse_subject_cant_be_blocked_and_has_keywords_line" => vec![
+            StaticAbilityLineHeadHint::Single("this"),
+            StaticAbilityLineHeadHint::Pair("this", "creature"),
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
         ],
         "parse_landwalk_as_though_block_override_line" => vec![
             StaticAbilityLineHeadHint::Single("creatures"),
@@ -469,6 +494,13 @@ fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLin
             StaticAbilityLineHeadHint::Single("equipped"),
             StaticAbilityLineHeadHint::Pair("equipped", "creature"),
             StaticAbilityLineHeadHint::Single("attached"),
+        ],
+        "parse_attached_restriction_and_granted_ability_line" => vec![
+            StaticAbilityLineHeadHint::Single("enchanted"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "creature"),
+            StaticAbilityLineHeadHint::Pair("enchanted", "permanent"),
+            StaticAbilityLineHeadHint::Single("equipped"),
+            StaticAbilityLineHeadHint::Pair("equipped", "creature"),
         ],
         "parse_no_maximum_hand_size_line" => vec![
             StaticAbilityLineHeadHint::Single("you"),
@@ -693,6 +725,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
             parse_revealed_hand_choose_nonland_card_name_as_enters_line
         ),
         single_static_ability_ast_rule!(parse_choose_card_name_as_enters_line),
+        multi_static_ability_ast_rule!(parse_choose_color_and_creature_type_as_enters_line),
+        single_static_ability_ast_rule!(parse_choose_color_creature_type_pairs_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_creature_type_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_named_options_as_enters_line),
         single_static_ability_ast_rule!(parse_choose_player_as_enters_line),
@@ -856,10 +890,19 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_rule!(parse_anthem_and_goaded_line),
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_granted_ability_line),
         multi_static_ability_ast_passthrough_rule!(
+            parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line
+        ),
+        multi_static_ability_ast_passthrough_rule!(
             parse_subject_has_keywords_and_cant_be_blocked_line
+        ),
+        multi_static_ability_ast_passthrough_rule!(
+            parse_subject_cant_be_blocked_and_has_keywords_line
         ),
         single_static_ability_ast_passthrough_rule!(parse_subject_is_every_subtype_family_line),
         single_static_ability_ast_passthrough_rule!(parse_all_have_indestructible_line),
+        single_static_ability_ast_passthrough_rule!(
+            parse_subject_cant_be_blocked_while_defending_player_controls_most_creatures_line
+        ),
         single_static_ability_ast_passthrough_rule!(
             parse_subject_cant_be_blocked_as_long_as_defending_player_controls_card_type_line
         ),
@@ -870,6 +913,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_may_choose_not_to_untap_during_untap_step_line),
         single_static_ability_ast_rule!(parse_untap_during_each_other_players_untap_step_line),
         single_static_ability_ast_passthrough_rule!(parse_doesnt_untap_during_untap_step_line),
+        multi_static_ability_ast_rule!(parse_attached_restrictions_with_ignore_special_action_line),
+        multi_static_ability_ast_rule!(parse_attached_has_keywords_and_is_goaded_line),
         multi_static_ability_ast_rule!(parse_equipped_creature_has_line),
         multi_static_ability_ast_rule!(parse_enchanted_creature_has_line),
         single_static_ability_ast_passthrough_rule!(
@@ -970,8 +1015,8 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         single_static_ability_ast_rule!(parse_prevent_all_damage_dealt_to_creatures_line),
         single_static_ability_ast_passthrough_rule!(parse_creatures_cant_block_line),
         multi_static_ability_ast_rule!(parse_enters_tapped_with_counters_line),
-        multi_static_ability_ast_rule!(parse_enters_with_counters_line),
         single_static_ability_ast_rule!(parse_enters_with_additional_counter_for_filter_line),
+        multi_static_ability_ast_rule!(parse_enters_with_counters_line),
         single_static_ability_ast_rule!(parse_as_enters_reveal_from_hand_line),
         single_static_ability_ast_rule!(parse_reveal_from_hand_or_enters_tapped_line),
         single_static_ability_ast_rule!(parse_conditional_enters_tapped_unless_line),
@@ -1036,8 +1081,11 @@ fn parse_static_ability_ast_line_lowered(
         if tried[idx] {
             continue;
         }
-        match run_static_ability_ast_line_rule(rule.rule, tokens) {
+        let (result, loss) =
+            crate::parse_loss::capture(|| run_static_ability_ast_line_rule(rule.rule, tokens));
+        match result {
             Ok(Some(abilities)) => {
+                replay_static_rule_parse_loss(&loss);
                 if std::env::var("IRONSMITH_STATIC_RULE_TRACE").is_ok() {
                     eprintln!("static-rule claim: {}", rule.id);
                 }
@@ -1232,6 +1280,11 @@ fn parse_static_ability_ast_line_early_lexed(
     // accept their leading "lose all abilities" clause as a complete,
     // narrower removal effect and discard the remaining characteristic
     // changes.
+    if let Some(abilities) = parse_lose_all_abilities_and_doesnt_untap_line(tokens)? {
+        return Ok(Some(
+            abilities.into_iter().map(StaticAbilityAst::from).collect(),
+        ));
+    }
     if let Some(abilities) = parse_lose_all_abilities_and_transform_base_pt_line(tokens)? {
         return Ok(Some(
             abilities.into_iter().map(StaticAbilityAst::from).collect(),
@@ -1259,6 +1312,21 @@ fn parse_static_ability_ast_line_early_lexed(
     }
     if let Some(ability) = parse_cycling_cost_alternative_line(tokens)? {
         return Ok(Some(vec![ability.into()]));
+    }
+    // A quoted ability belongs to the filtered subject before the quote. The
+    // broad spell/activated-cost parser deliberately scans for a nested
+    // "Spells ... cost" clause, so let the typed grant route bind that inner
+    // static ability to its affected objects first.
+    if contains_token_kind(tokens, TokenKind::Quote) {
+        // Attached combat restrictions can precede the quoted grant. Route
+        // that coordinated shape before the broad `has "<ability>"` parser
+        // treats the restriction prefix as an anthem subject.
+        if let Some(abilities) = parse_attached_restriction_and_granted_ability_line(tokens)? {
+            return Ok(Some(abilities));
+        }
+        if let Some(abilities) = parse_filter_has_granted_ability_line(tokens)? {
+            return Ok(Some(abilities));
+        }
     }
     if let Some(abilities) = parse_spell_and_player_activated_ability_cost_modifier_line(tokens)? {
         return Ok(Some(
@@ -1384,6 +1452,13 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     if let Some(abilities) = parse_carried_subject_type_addition_line(tokens)? {
         return Ok(Some(abilities));
     }
+    // The attached object's controller receives a turn-scoped special action,
+    // not a one-shot choice as this Aura resolves. Keep the complete
+    // two-sentence rule together before ordinary sentence splitting can lower
+    // the restriction and sacrifice permission as spell effects.
+    if let Some(abilities) = parse_attached_restrictions_with_ignore_special_action_line(tokens)? {
+        return Ok(Some(abilities));
+    }
 
     let sentences = split_lexed_sentences(tokens);
     if sentences.len() > 1 {
@@ -1403,6 +1478,44 @@ fn parse_static_ability_ast_line_lexed_unstacked(
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(spec) =
+        crate::runtime_backend::grammar::static_line_support::parse_leading_if_clause(tokens)
+        && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
+        && let Some(abilities) =
+            parse_static_ability_ast_line_lexed_single_without_leading_condition(
+                spec.remainder_tokens,
+            )?
+        && !abilities.is_empty()
+    {
+        let mut conditioned = Vec::with_capacity(abilities.len());
+        for ability in abilities {
+            conditioned.push(add_static_ability_ast_condition(
+                ability,
+                condition.clone(),
+            )?);
+        }
+        return Ok(Some(conditioned));
+    }
+
+    if let Some(spec) = anthem_grant_grammar::parse_fixed_prefix_condition_shape(tokens)
+        && spec.kind == anthem_grant_grammar::AnthemPrefixConditionKind::DuringTurnsOtherThanYours
+        && let Some(abilities) =
+            parse_static_ability_ast_line_lexed_single_without_leading_condition(
+                spec.subject_tokens,
+            )?
+        && !abilities.is_empty()
+    {
+        let condition = crate::ConditionExpr::Not(Box::new(crate::ConditionExpr::YourTurn));
+        let mut conditioned = Vec::with_capacity(abilities.len());
+        for ability in abilities {
+            conditioned.push(add_static_ability_ast_condition(
+                ability,
+                condition.clone(),
+            )?);
+        }
+        return Ok(Some(conditioned));
+    }
+
     let existing = parse_static_ability_ast_line_lexed_single_without_leading_condition(tokens)?;
     let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens) else {
         return Ok(existing);
@@ -1473,7 +1586,10 @@ fn parse_static_ability_ast_line_lexed_single_without_leading_condition(
         return Ok(None);
     }
 
-    if let Some(abilities) = parse_static_ability_ast_line_early_lexed(tokens)? {
+    let (early_result, early_loss) =
+        crate::parse_loss::capture(|| parse_static_ability_ast_line_early_lexed(tokens));
+    if let Some(abilities) = early_result? {
+        replay_static_rule_parse_loss(&early_loss);
         return Ok(Some(abilities));
     }
 
@@ -1768,6 +1884,7 @@ fn parse_pregame_reveal_from_opening_hand_line(
         keyword_static_lines::PregameRevealTiming::EachOpponentFirstSpellOfGame => (
             crate::cards::builders::TriggerSpec::SpellCast {
                 filter: None,
+                mana_source_filter: None,
                 caster: PlayerFilter::Opponent,
                 timing: None,
                 during_turn: None,
@@ -2608,6 +2725,84 @@ pub(crate) fn parse_choose_creature_type_as_enters_line(
 
     Ok(Some(StaticAbility::choose_creature_type_as_enters(
         format!("As {display_subject} enters, choose a creature type."),
+    )))
+}
+
+pub(crate) fn parse_choose_color_and_creature_type_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
+    let Some((tail_tokens, display_subject)) =
+        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_STANDARD_SUBJECTS)
+    else {
+        return Ok(None);
+    };
+    let tail_words = LexedClause::new(tail_tokens).word_refs();
+    if tail_words.as_slice() != ["choose", "a", "color", "and", "a", "creature", "type"] {
+        return Ok(None);
+    }
+
+    Ok(Some(vec![
+        StaticAbility::choose_color_as_enters(
+            None,
+            format!("As {display_subject} enters, choose a color."),
+        ),
+        StaticAbility::choose_creature_type_as_enters(format!(
+            "As {display_subject} enters, choose a creature type."
+        )),
+    ]))
+}
+
+pub(crate) fn parse_choose_color_creature_type_pairs_as_enters_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    let Some((tail_tokens, display_subject)) =
+        parse_as_enters_choice_subject_tokens(tokens, AS_ENTERS_STANDARD_SUBJECTS)
+    else {
+        return Ok(None);
+    };
+    let tail_words = LexedClause::new(tail_tokens).word_refs();
+    let Some((choice_word, option_words)) = tail_words.split_first() else {
+        return Ok(None);
+    };
+    if *choice_word != "choose" {
+        return Ok(None);
+    }
+
+    let option_words = option_words
+        .iter()
+        .copied()
+        .filter(|word| *word != "," && *word != "or")
+        .collect::<Vec<_>>();
+    let mut option_chunks = option_words.chunks_exact(2);
+    let raw_options = option_chunks.by_ref().collect::<Vec<_>>();
+    if !option_chunks.remainder().is_empty() || raw_options.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut options = Vec::with_capacity(raw_options.len());
+    for words in raw_options {
+        let [color_word, subtype_word] = words else {
+            return Ok(None);
+        };
+        let Some(color) = Color::from_name(color_word) else {
+            return Ok(None);
+        };
+        let Some(subtype) =
+            parse_subtype_flexible(subtype_word).filter(crate::types::Subtype::is_creature_type)
+        else {
+            return Ok(None);
+        };
+        options.push(format!("{} {}", color.name(), subtype));
+    }
+
+    let display_options = match options.as_slice() {
+        [first, second] => format!("{first} or {second}"),
+        [head @ .., last] => format!("{}, or {last}", head.join(", ")),
+        _ => return Ok(None),
+    };
+    Ok(Some(StaticAbility::choose_named_option_as_enters(
+        options,
+        format!("As {display_subject} enters, choose {display_options}."),
     )))
 }
 

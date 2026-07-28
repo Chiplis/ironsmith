@@ -843,6 +843,18 @@ pub fn resolve_value(
         }
         Value::GreatestManaValue(filter) => {
             let filter_ctx = ctx.filter_context(game);
+            if filter.cast_this_turn && filter.zone == Some(Zone::Stack) {
+                let max = game
+                    .turn_store
+                    .turn_history
+                    .spell_cast_snapshot_history()
+                    .iter()
+                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .map(crate::filter::snapshot_mana_value_for_filter)
+                    .max()
+                    .unwrap_or(0);
+                return Ok(max);
+            }
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
                 let max = snapshots
                     .iter()
@@ -1261,6 +1273,17 @@ pub fn resolve_value(
                 .count();
             Ok(count as i32)
         }
+        Value::CountPlayersWithCardsInHandAtLeast(player_filter, minimum) => {
+            let filter_ctx = ctx.filter_context(game);
+            let count = game
+                .players
+                .iter()
+                .filter(|player| player.is_in_game())
+                .filter(|player| player_filter.matches_player(player.id, &filter_ctx))
+                .filter(|player| player.hand.len() >= *minimum as usize)
+                .count();
+            Ok(count as i32)
+        }
         Value::PartySize(player_filter) => {
             let player_id = resolve_player_filter(game, player_filter, ctx)?;
             Ok(crate::party::party_size(game, player_id))
@@ -1538,6 +1561,10 @@ pub fn resolve_value(
             } else {
                 Err(ExecutionError::ObjectNotFound(target_id))
             }
+        }
+
+        Value::NameStickerCharacterCountOnSource { character, .. } => {
+            Ok(game.name_sticker_character_count_on_object(ctx.source, *character) as i32)
         }
 
         Value::LifeTotal(player_spec) => {
@@ -1905,6 +1932,13 @@ pub fn resolve_value(
                 return Ok(0);
             };
             Ok(source_obj.mana_spent_to_cast.total() as i32)
+        }
+
+        Value::ManaSymbolSpentToCastThisSpell { symbol, .. } => {
+            let Some(source_obj) = game.object(ctx.source) else {
+                return Ok(0);
+            };
+            Ok(source_obj.mana_spent_to_cast.amount(*symbol) as i32)
         }
 
         Value::ManaFromSourceSpentToCastThisSpell { source_filter, .. } => {
@@ -2778,6 +2812,20 @@ pub fn resolve_player_filter(
                 "Teammate filter requires a targeted player".to_string(),
             ))
         }
+        PlayerFilter::PlayerToYourLeft => game
+            .closest_in_game_player_to_left_matching(ctx.controller, |_| true)
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "there is no in-game player to the effect controller's left".to_string(),
+                )
+            }),
+        PlayerFilter::PlayerToYourRight => game
+            .closest_in_game_player_to_right_matching(ctx.controller, |_| true)
+            .ok_or_else(|| {
+                ExecutionError::UnresolvableValue(
+                    "there is no in-game player to the effect controller's right".to_string(),
+                )
+            }),
         PlayerFilter::Attacking => ctx.combat.attacking_player.ok_or_else(|| {
             ExecutionError::UnresolvableValue("AttackingPlayer not set".to_string())
         }),
@@ -3377,7 +3425,7 @@ pub fn resolve_objects_for_effect_with_choice_description(
         };
         let mut candidates = candidate_object_ids_for_filter(game, filter, ctx);
         if candidates.is_empty() {
-            if resolved_dynamic_count.is_some() {
+            if count.min == 0 || resolved_dynamic_count.is_some() {
                 return Ok(Vec::new());
             }
             return Err(ExecutionError::InvalidTarget);
@@ -3414,6 +3462,10 @@ pub fn resolve_objects_for_effect_with_choice_description(
         if count.is_random() {
             game.shuffle_slice(&mut candidates);
             candidates.truncate(max);
+            if filter.one_per_card_type {
+                candidates =
+                    normalize_chosen_one_per_card_type(game, candidates, &[], min, max, false);
+            }
             if candidates.len() < min {
                 return Err(ExecutionError::InvalidTarget);
             }
@@ -3435,7 +3487,21 @@ pub fn resolve_objects_for_effect_with_choice_description(
                 }
             }
             if chosen.len() >= min && chosen.len() <= max {
-                return Ok(chosen);
+                if !filter.one_per_card_type {
+                    return Ok(chosen);
+                }
+                let normalized = normalize_chosen_one_per_card_type(
+                    game,
+                    chosen.clone(),
+                    &candidates,
+                    min,
+                    max,
+                    false,
+                );
+                if normalized.len() == chosen.len() {
+                    return Ok(normalized);
+                }
+                return Err(ExecutionError::InvalidTarget);
             }
             if !chosen.is_empty() {
                 return Err(ExecutionError::InvalidTarget);
@@ -3479,6 +3545,14 @@ pub fn resolve_objects_for_effect_with_choice_description(
         }
 
         let chosen = normalize_objects_for_count(chosen, &candidates, min, max);
+        let chosen = if filter.one_per_card_type {
+            normalize_chosen_one_per_card_type(game, chosen, &candidates, min, max, true)
+        } else {
+            chosen
+        };
+        if chosen.len() < min {
+            return Err(ExecutionError::InvalidTarget);
+        }
         return Ok(chosen);
     }
 
@@ -3519,6 +3593,80 @@ fn normalize_objects_for_count(
             }
             if !normalized.contains(id) {
                 normalized.push(*id);
+            }
+        }
+    }
+
+    normalized
+}
+
+fn card_type_assignment_exists(game: &GameState, chosen: &[ObjectId]) -> bool {
+    fn assign_card(
+        game: &GameState,
+        id: ObjectId,
+        visited_types: &mut HashSet<CardType>,
+        assigned: &mut HashMap<CardType, ObjectId>,
+    ) -> bool {
+        let card_types = game
+            .current_card_types(id)
+            .or_else(|| game.object(id).map(|object| object.card_types.to_vec()))
+            .unwrap_or_default();
+        for card_type in card_types {
+            if !visited_types.insert(card_type) {
+                continue;
+            }
+            let previous = assigned.get(&card_type).copied();
+            if previous.is_none()
+                || previous
+                    .is_some_and(|previous| assign_card(game, previous, visited_types, assigned))
+            {
+                assigned.insert(card_type, id);
+                return true;
+            }
+        }
+        false
+    }
+
+    let mut assigned = HashMap::new();
+    for &id in chosen {
+        if !assign_card(game, id, &mut HashSet::new(), &mut assigned) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Normalize a selection so every chosen card can occupy a different
+/// card-type slot. Multitype cards are reassigned through bipartite matching,
+/// allowing (for example) an artifact creature and a creature card to occupy
+/// the artifact and creature slots respectively.
+pub(crate) fn normalize_chosen_one_per_card_type(
+    game: &GameState,
+    chosen: Vec<ObjectId>,
+    candidates: &[ObjectId],
+    min: usize,
+    max: usize,
+    fill_to_min: bool,
+) -> Vec<ObjectId> {
+    let mut normalized = Vec::new();
+    for id in chosen {
+        if normalized.len() >= max || normalized.contains(&id) {
+            continue;
+        }
+        normalized.push(id);
+        if !card_type_assignment_exists(game, &normalized) {
+            normalized.pop();
+        }
+    }
+
+    if fill_to_min && normalized.len() < min {
+        for &id in candidates {
+            if normalized.len() >= min || normalized.len() >= max || normalized.contains(&id) {
+                continue;
+            }
+            normalized.push(id);
+            if !card_type_assignment_exists(game, &normalized) {
+                normalized.pop();
             }
         }
     }
@@ -4075,6 +4223,9 @@ pub(crate) fn resolve_player_filter_to_list(
             Ok(opponents)
         }
         PlayerFilter::Specific(id) => Ok(vec![*id]),
+        PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+            Ok(vec![resolve_player_filter(game, filter, ctx)?])
+        }
         PlayerFilter::MostLifeTied => {
             let max_life = game
                 .players
@@ -4676,6 +4827,32 @@ mod tests {
     }
 
     #[test]
+    fn mana_symbol_spent_value_counts_only_that_symbol_and_composes_with_division() {
+        use crate::player::ManaPool;
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = add_hand_card(&mut game, 399, "Colored Payment Spell", alice);
+        game.object_mut(source_id)
+            .expect("source spell should exist")
+            .mana_spent_to_cast = ManaPool {
+            blue: 5,
+            red: 2,
+            ..ManaPool::default()
+        };
+        let ctx = ExecutionContext::new_default(source_id, alice);
+        let blue_pairs = Value::DividedRoundedDown(
+            Box::new(Value::ManaSymbolSpentToCastThisSpell {
+                symbol: ManaSymbol::Blue,
+                reference: ironsmith_core::ManaSpentCastReferenceSurface::It,
+            }),
+            2,
+        );
+
+        assert_eq!(resolve_value(&game, &blue_pairs, &ctx).unwrap(), 2);
+    }
+
+    #[test]
     fn mana_value_of_source_uses_lki_after_source_moves_from_expected_zone() {
         let mut game = new_test_game();
         let alice = game.players[0].id;
@@ -5118,6 +5295,46 @@ mod tests {
             resolve_value(&game, &Value::TotalPower(filter), &ctx).unwrap(),
             3,
             "pure tagged filters should evaluate against their tagged objects, even off the battlefield"
+        );
+    }
+
+    #[test]
+    fn chosen_object_power_difference_uses_only_the_tagged_set() {
+        use crate::filter::{ObjectFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
+        use crate::snapshot::ObjectSnapshot;
+        use crate::tag::TagKey;
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+        let small = add_custom_creature(&mut game, 5005, "Small Choice", alice, 1, 2, 2);
+        let large = add_custom_creature(&mut game, 5006, "Large Choice", alice, 1, 5, 5);
+        let _unchosen = add_custom_creature(&mut game, 5007, "Unchosen Creature", alice, 1, 11, 11);
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.set_tagged_objects(
+            "__chosen_objects__",
+            vec![
+                ObjectSnapshot::from_object(game.object(small).unwrap(), &game),
+                ObjectSnapshot::from_object(game.object(large).unwrap(), &game),
+            ],
+        );
+
+        let mut filter = ObjectFilter::creature();
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: TagKey::from("__chosen_objects__"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        let difference = Value::absolute_difference(
+            Value::GreatestPower(filter.clone()),
+            Value::LeastPower(filter),
+        )
+        .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference);
+
+        assert_eq!(
+            resolve_value(&game, &difference, &ctx).unwrap(),
+            3,
+            "the aggregate must ignore creatures outside the exact chosen set"
         );
     }
 
@@ -5747,6 +5964,33 @@ mod tests {
         assert!(
             matches!(err, ExecutionError::UnresolvableValue(ref message) if message.contains("unique")),
             "expected unique-leader resolution error, got {err:?}"
+        );
+    }
+
+    #[test]
+    fn count_players_with_minimum_hand_size_resolves_the_qualified_player_set() {
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source_id = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source_id, alice);
+        let value = Value::CountPlayersWithCardsInHandAtLeast(PlayerFilter::Opponent, 4);
+
+        for (index, name) in ["Mountain", "Forest", "Island"].into_iter().enumerate() {
+            add_hand_card(&mut game, 400 + index as u32, name, bob);
+        }
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 0);
+
+        add_hand_card(&mut game, 403, "Plains", bob);
+        assert_eq!(resolve_value(&game, &value, &ctx).unwrap(), 1);
+
+        for (index, name) in ["Swamp", "Wastes", "Mine", "Tower"].into_iter().enumerate() {
+            add_hand_card(&mut game, 500 + index as u32, name, alice);
+        }
+        assert_eq!(
+            resolve_value(&game, &value, &ctx).unwrap(),
+            1,
+            "the controller is not part of the opponent set"
         );
     }
 }

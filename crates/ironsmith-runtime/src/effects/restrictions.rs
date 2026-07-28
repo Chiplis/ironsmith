@@ -282,6 +282,32 @@ mod tests {
     }
 
     #[test]
+    fn forever_player_rule_removes_only_that_players_maximum_hand_size() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        CantEffect::new(
+            Restriction::no_maximum_hand_size(PlayerFilter::You),
+            Until::Forever,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("register the lasting player rule");
+
+        assert_eq!(game.player(alice).unwrap().max_hand_size, i32::MAX);
+        assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+        assert_eq!(game.effect_store.restriction_effects.len(), 1);
+
+        // Rebuilding derived rule state must retain a resolving effect whose
+        // duration is the rest of the game.
+        game.update_cant_effects();
+        assert_eq!(game.player(alice).unwrap().max_hand_size, i32::MAX);
+        assert_eq!(game.player(bob).unwrap().max_hand_size, 7);
+    }
+
+    #[test]
     fn cant_effect_can_start_at_the_affected_players_next_turn_boundary() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = PlayerId::from_index(0);

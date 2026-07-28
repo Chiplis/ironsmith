@@ -9,6 +9,7 @@ use crate::effects::helpers::resolve_player_filter;
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::events::ShuffleLibraryEvent;
 use crate::game_state::GameState;
+use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, TaggedOpbjectRelation};
 use crate::triggers::TriggerEvent;
@@ -45,32 +46,51 @@ impl EffectExecutor for ForEachObject {
                 .iter()
                 .all(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject);
 
-        let candidate_ids: Vec<_> = if has_only_is_tagged_constraints {
-            let mut seen = HashSet::new();
-            let mut ids = Vec::new();
-            for constraint in &self.filter.tagged_constraints {
-                let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
-                    continue;
-                };
-                for snapshot in snapshots {
-                    if seen.insert(snapshot.object_id) {
-                        ids.push(snapshot.object_id);
+        let matching: Vec<(crate::ids::ObjectId, ObjectSnapshot)> =
+            if has_only_is_tagged_constraints {
+                let mut seen = HashSet::new();
+                let mut candidates = Vec::new();
+                for constraint in &self.filter.tagged_constraints {
+                    let Some(snapshots) = ctx.get_tagged_all(&constraint.tag) else {
+                        continue;
+                    };
+                    for snapshot in snapshots {
+                        if seen.insert(snapshot.stable_id) {
+                            candidates.push(snapshot.clone());
+                        }
                     }
                 }
-            }
-            ids
-        } else if let Some(zone) = self.filter.zone {
-            game.zone_ids(zone).collect()
-        } else {
-            game.battlefield.clone()
-        };
-
-        let matching: Vec<_> = candidate_ids
-            .into_iter()
-            .filter_map(|id| game.object(id).map(|obj| (id, obj)))
-            .filter(|(_, obj)| self.filter.matches(obj, &filter_ctx, game))
-            .map(|(id, _)| id)
-            .collect();
+                candidates
+                    .into_iter()
+                    .filter_map(|snapshot| {
+                        let current_id =
+                            crate::effects::helpers::resolve_tagged_object_id(game, &snapshot);
+                        let matched_as_lki =
+                            self.filter.matches_snapshot(&snapshot, &filter_ctx, game);
+                        let matched_current = current_id
+                            .and_then(|id| game.object(id))
+                            .is_some_and(|object| self.filter.matches(object, &filter_ctx, game));
+                        (matched_as_lki || matched_current)
+                            .then_some((current_id.unwrap_or(snapshot.object_id), snapshot))
+                    })
+                    .collect()
+            } else {
+                let candidate_ids: Vec<_> = if let Some(zone) = self.filter.zone {
+                    game.zone_ids(zone).collect()
+                } else {
+                    game.battlefield.clone()
+                };
+                candidate_ids
+                    .into_iter()
+                    .filter_map(|id| {
+                        game.object(id).and_then(|object| {
+                            self.filter
+                                .matches(object, &filter_ctx, game)
+                                .then(|| (id, ObjectSnapshot::from_object(object, game)))
+                        })
+                    })
+                    .collect()
+            };
 
         let mut outcomes = Vec::new();
 
@@ -90,11 +110,7 @@ impl EffectExecutor for ForEachObject {
             )
         {
             let mut owners = Vec::new();
-            for object_id in &matching {
-                let Some(object) = game.object(*object_id) else {
-                    continue;
-                };
-                let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+            for (object_id, snapshot) in &matching {
                 let original_it = ctx.tagged_objects.remove(&it_tag);
                 ctx.tag_object(it_tag.clone(), snapshot.clone());
                 let owner = resolve_player_filter(game, &shuffle.player, ctx)?;
@@ -132,11 +148,7 @@ impl EffectExecutor for ForEachObject {
             return Ok(EffectOutcome::aggregate_summing_counts(outcomes));
         }
 
-        for object_id in &matching {
-            let Some(object) = game.object(*object_id) else {
-                continue;
-            };
-            let snapshot = crate::snapshot::ObjectSnapshot::from_object(object, game);
+        for (object_id, snapshot) in &matching {
             let original_it = ctx.tagged_objects.remove(&it_tag);
             ctx.tag_object(it_tag.clone(), snapshot.clone());
 
@@ -168,6 +180,7 @@ mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
     use crate::effects::CounterEffect;
+    use crate::events::DamageEvent;
     use crate::game_state::StackEntry;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -175,7 +188,7 @@ mod tests {
     use crate::object::Object;
     use crate::snapshot::ObjectSnapshot;
     use crate::tag::TagKey;
-    use crate::target::{ChooseSpec, PlayerFilter, TaggedObjectConstraint};
+    use crate::target::{ChooseSpec, ObjectRef, PlayerFilter, TaggedObjectConstraint};
     use crate::test_prelude::*;
     use crate::types::CardType;
     use crate::zone::Zone;
@@ -193,6 +206,22 @@ mod tests {
         let id = game.new_object_id();
         let obj = Object::from_card(id, &card, controller, Zone::Battlefield);
         game.add_object(obj);
+        id
+    }
+
+    fn create_creature_with_stats(
+        game: &mut GameState,
+        name: &str,
+        controller: PlayerId,
+        power: i32,
+        toughness: i32,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(power, toughness))
+            .build();
+        let id = game.new_object_id();
+        game.add_object(Object::from_card(id, &card, controller, Zone::Battlefield));
         id
     }
 
@@ -280,6 +309,69 @@ mod tests {
     }
 
     #[test]
+    fn each_object_power_damage_gameplay_uses_each_source_and_its_own_power() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let ability_source = game.new_object_id();
+        let below_threshold = create_creature_with_stats(&mut game, "Small Source", alice, 3, 3);
+        let four_power = create_creature_with_stats(&mut game, "Four Source", alice, 4, 4);
+        let six_power = create_creature_with_stats(&mut game, "Six Source", alice, 6, 6);
+        let opposing_source = create_creature_with_stats(&mut game, "Opposing Source", bob, 8, 8);
+        let target = create_creature_with_stats(&mut game, "Chosen Target", bob, 0, 20);
+
+        let target_tag = TagKey::from("targeted_0");
+        let target_snapshot =
+            ObjectSnapshot::from_object(game.object(target).expect("target exists"), &game);
+        let mut ctx = ExecutionContext::new_default(ability_source, alice);
+        ctx.tag_object(target_tag.clone(), target_snapshot);
+
+        let source_filter = ObjectFilter::creature()
+            .controlled_by(PlayerFilter::You)
+            .with_power(crate::filter::Comparison::GreaterThanOrEqual(4));
+        let target_filter = ObjectFilter::permanent()
+            .match_tagged(target_tag, TaggedOpbjectRelation::IsTaggedObject);
+        let effect = ForEachObject::new(
+            source_filter,
+            vec![Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+                ChooseSpec::Iterated,
+                Effect::deal_damage(
+                    crate::effect::Value::PowerOf(Box::new(ChooseSpec::Iterated)),
+                    ChooseSpec::Object(target_filter),
+                ),
+            ))],
+        );
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("source loop resolves");
+        let damage = outcome
+            .events
+            .iter()
+            .filter_map(|event| event.downcast::<DamageEvent>())
+            .map(|event| (event.source, event.amount, event.target))
+            .collect::<Vec<_>>();
+
+        assert_eq!(game.damage_on(target), 10);
+        assert_eq!(damage.len(), 2, "{damage:?}");
+        assert!(damage.iter().any(|(source, amount, damage_target)| {
+            *source == four_power
+                && *amount == 4
+                && matches!(damage_target, crate::events::DamageTarget::Object(id) if *id == target)
+        }));
+        assert!(damage.iter().any(|(source, amount, damage_target)| {
+            *source == six_power
+                && *amount == 6
+                && matches!(damage_target, crate::events::DamageTarget::Object(id) if *id == target)
+        }));
+        assert!(
+            !damage
+                .iter()
+                .any(|(source, _, _)| { *source == below_threshold || *source == opposing_source })
+        );
+    }
+
+    #[test]
     fn test_for_each_clone_box() {
         let effect = ForEachObject::new(ObjectFilter::creature(), vec![Effect::gain_life(1)]);
         let cloned = effect.clone_box();
@@ -352,6 +444,50 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
         assert_eq!(game.player(alice).unwrap().life, initial_life + 1);
+    }
+
+    #[test]
+    fn tagged_for_each_uses_lki_after_the_producing_action_changes_zones() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = game.new_object_id();
+        let destroyed = create_creature(&mut game, "Destroyed Creature", bob);
+        let destroyed_snapshot =
+            ObjectSnapshot::from_object(game.object(destroyed).expect("creature exists"), &game);
+        let destroyed_tag = TagKey::from("destroyed_0");
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        ctx.tag_object(destroyed_tag.clone(), destroyed_snapshot);
+        game.move_object(
+            destroyed,
+            Zone::Graveyard,
+            crate::events::cause::EventCause::effect(),
+        )
+        .expect("the tagged permanent moves to its graveyard");
+
+        let filter = ObjectFilter::permanent()
+            .in_zone(Zone::Battlefield)
+            .match_tagged(destroyed_tag, TaggedOpbjectRelation::IsTaggedObject);
+        let initial_bob_life = game.player(bob).expect("Bob exists").life;
+        let effect = ForEachObject::new(
+            filter,
+            vec![Effect::gain_life_player(
+                1,
+                ChooseSpec::Player(PlayerFilter::ControllerOf(ObjectRef::tagged("__it__"))),
+            )],
+        );
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("the LKI-backed tagged loop resolves");
+
+        assert_eq!(result.as_count(), Some(1));
+        assert_eq!(
+            game.player(bob).expect("Bob exists").life,
+            initial_bob_life + 1,
+            "the follow-up must use the tagged permanent's last-known controller"
+        );
     }
 
     #[test]

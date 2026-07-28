@@ -332,6 +332,11 @@ pub struct GrantSpec<SA, E, C, Cond> {
     pub usage_limit: Option<GrantUsageLimit>,
     /// Static abilities granted to a spell as it is cast using this permission.
     pub cast_this_way_grants: Vec<SA>,
+    /// An optional narrower filter for the spell that receives
+    /// `cast_this_way_grants`. The permission itself continues to use
+    /// `filter`, which matters for permissions that include lands or
+    /// noncreature spells but only modify creature spells cast this way.
+    pub cast_this_way_filter: Option<ObjectFilter>,
 }
 
 impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
@@ -344,6 +349,7 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
         }
     }
 
@@ -360,6 +366,11 @@ impl<SA, E, C, Cond> GrantSpec<SA, E, C, Cond> {
 
     pub fn with_cast_this_way_grant(mut self, ability: SA) -> Self {
         self.cast_this_way_grants.push(ability);
+        self
+    }
+
+    pub fn with_cast_this_way_filter(mut self, filter: ObjectFilter) -> Self {
+        self.cast_this_way_filter = Some(filter);
         self
     }
 
@@ -400,6 +411,7 @@ where
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
         }
     }
 
@@ -458,6 +470,7 @@ where
             beneficiary: PlayerFilter::You,
             usage_limit: None,
             cast_this_way_grants: Vec::new(),
+            cast_this_way_filter: None,
         }
     }
 }
@@ -779,6 +792,8 @@ where
                 PlayerFilter::NotYou => "Any player other than you may".to_string(),
                 PlayerFilter::Opponent => "Opponent may".to_string(),
                 PlayerFilter::Teammate => "A teammate may".to_string(),
+                PlayerFilter::PlayerToYourLeft => "The player to your left may".to_string(),
+                PlayerFilter::PlayerToYourRight => "The player to your right may".to_string(),
                 PlayerFilter::Active => "The active player may".to_string(),
                 PlayerFilter::Defending => "The defending player may".to_string(),
                 PlayerFilter::Attacking => "The attacking player may".to_string(),
@@ -1024,8 +1039,9 @@ where
                 .iter()
                 .map(GrantStaticAbility::grant_display)
                 .collect::<Vec<_>>();
+            let cast_filter = self.cast_this_way_filter.as_ref().unwrap_or(&self.filter);
             if grants.len() == 1 && grants[0].eq_ignore_ascii_case("haste") {
-                let spell_text = cast_this_way_spell_subject(&self.filter);
+                let spell_text = cast_this_way_spell_subject(cast_filter);
                 return format!(
                     ". If you cast {spell_text} this way, it gains haste until end of turn"
                 );
@@ -1039,10 +1055,12 @@ where
                 if self.filter == ObjectFilter::source() {
                     return ". If you do, it enters tapped".to_string();
                 }
-                if let Some(subject) = cast_this_way_entered_object_subject(&self.filter) {
-                    return format!(". If you cast a spell this way, that {subject} enters tapped");
+                let spell_text = cast_this_way_spell_subject(cast_filter);
+                if let Some(subject) = cast_this_way_entered_object_subject(cast_filter) {
+                    return format!(
+                        ". If you cast {spell_text} this way, that {subject} enters tapped"
+                    );
                 }
-                let spell_text = cast_this_way_spell_subject(&self.filter);
                 return format!(". If you cast {spell_text} this way, it enters tapped");
             }
             if grants.len() == 1
@@ -1050,9 +1068,14 @@ where
                     .strip_prefix("Enters the battlefield with ")
                     .or_else(|| grants[0].strip_prefix("enters the battlefield with "))
             {
-                let spell_text = cast_this_way_spell_subject(&self.filter);
+                let spell_text = cast_this_way_spell_subject(cast_filter);
                 if self.filter == ObjectFilter::source() {
                     return format!(". If you do, it enters with {rest}");
+                }
+                if let Some(subject) = cast_this_way_entered_object_subject(cast_filter) {
+                    return format!(
+                        ". If you cast {spell_text} this way, that {subject} enters with {rest}"
+                    );
                 }
                 return format!(". If you cast {spell_text} this way, it enters with {rest}");
             }
@@ -1138,13 +1161,19 @@ where
             && self.zone == Zone::Library
             && self.filter == ObjectFilter::default()
         {
-            return format!("{may_prefix} play lands and cast spells from the top of your library");
+            return format!(
+                "{may_prefix} play lands and cast spells from the top of your library{}",
+                cast_this_way_suffix()
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
             && self.filter.card_types.as_slice() == [CardType::Land]
         {
-            return format!("{may_prefix} play lands from the top of your library");
+            return format!(
+                "{may_prefix} play lands from the top of your library{}",
+                cast_this_way_suffix()
+            );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
             && self.zone == Zone::Library
@@ -1157,7 +1186,8 @@ where
             })
         {
             return format!(
-                "{may_prefix} cast a spell from the top of your library if it shares a card type with a card exiled with this permanent"
+                "{may_prefix} cast a spell from the top of your library if it shares a card type with a card exiled with this permanent{}",
+                cast_this_way_suffix()
             );
         }
         if matches!(self.grantable, Grantable::PlayFrom)
@@ -1178,12 +1208,13 @@ where
                 && let Some(other) = other_branch
             {
                 return format!(
-                    "{may_prefix} play lands and cast {} from the top of your library",
+                    "{may_prefix} play lands and cast {} from the top of your library{}",
                     if self.usage_limit.is_none() {
                         unlimited_zone_castable_filter_description(other)
                     } else {
                         castable_filter_description(other)
-                    }
+                    },
+                    cast_this_way_suffix()
                 );
             }
         }

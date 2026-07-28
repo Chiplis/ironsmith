@@ -471,6 +471,10 @@ struct ExileTracking {
     imprinted_cards: HashMap<ObjectId, Vec<ObjectId>>,
     /// Cards exiled by a specific source object ID.
     exiled_with_source: HashMap<ObjectId, Vec<ObjectId>>,
+    /// Monotonic count of successful exile events attributed to each source
+    /// object. Unlike the live link collection, this does not decrease when an
+    /// exiled card changes zones.
+    exiled_with_source_revisions: HashMap<ObjectId, u64>,
     /// Battlefield object identities put there by an effect of a specific
     /// source. Object IDs intentionally preserve zone-change identity: if the
     /// card later returns independently, it is no longer "the creature put
@@ -1438,6 +1442,10 @@ pub struct CantEffectTracker {
     /// Example: "Target permanent can't phase out."
     pub cant_phase_out: HashSet<ObjectId>,
 
+    /// Phased-out permanents that can't phase in.
+    /// Example: "Permanents can't phase in."
+    pub cant_phase_in: HashSet<ObjectId>,
+
     /// Players who don't lose unspent mana as steps and phases end.
     /// A `None` entry retains the whole pool; `Some(color)` retains that color.
     /// Example: Upwelling, Kruphix (all mana); Omnath, Locus of Mana (green)
@@ -1462,6 +1470,7 @@ pub struct ObjectCantBeTargetedFrom {
 pub struct StickerMarker {
     pub action: KeywordActionKind,
     pub name_letter_count: Option<u32>,
+    pub name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -1709,6 +1718,7 @@ impl CantEffectTracker {
         self.cant_be_countered.extend(other.cant_be_countered);
         self.cant_transform.extend(other.cant_transform);
         self.cant_phase_out.extend(other.cant_phase_out);
+        self.cant_phase_in.extend(other.cant_phase_in);
         for (player, scopes) in other.dont_lose_unspent_mana {
             self.dont_lose_unspent_mana
                 .entry(player)
@@ -1760,6 +1770,7 @@ impl CantEffectTracker {
         self.cant_be_countered.clear();
         self.cant_transform.clear();
         self.cant_phase_out.clear();
+        self.cant_phase_in.clear();
         self.dont_lose_unspent_mana.clear();
     }
 
@@ -2131,6 +2142,11 @@ impl CantEffectTracker {
     /// Check if a permanent can phase out.
     pub fn can_phase_out(&self, permanent: ObjectId) -> bool {
         !self.cant_phase_out.contains(&permanent)
+    }
+
+    /// Check if a permanent can phase in.
+    pub fn can_phase_in(&self, permanent: ObjectId) -> bool {
+        !self.cant_phase_in.contains(&permanent)
     }
 
     /// Add a player to the "can't gain life" set.
@@ -3381,7 +3397,51 @@ impl GameState {
             .push(StickerMarker {
                 action,
                 name_letter_count: None,
+                name: None,
             });
+    }
+
+    pub fn put_name_sticker_on_object(&mut self, object_id: ObjectId, name: impl Into<String>) {
+        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
+            return;
+        };
+        let name = name.into();
+        let name_letter_count = name
+            .chars()
+            .filter(|character| character.is_alphabetic())
+            .count();
+        self.object_annotations_mut()
+            .object_stickers
+            .entry(stable_id)
+            .or_default()
+            .push(StickerMarker {
+                action: KeywordActionKind::NameSticker,
+                name_letter_count: Some(name_letter_count as u32),
+                name: Some(name),
+            });
+    }
+
+    pub fn name_sticker_character_count_on_object(
+        &self,
+        object_id: ObjectId,
+        character: char,
+    ) -> u32 {
+        let Some(stable_id) = self.object(object_id).map(|object| object.stable_id) else {
+            return 0;
+        };
+        self.object_annotations
+            .object_stickers
+            .get(&stable_id)
+            .into_iter()
+            .flatten()
+            .filter(|sticker| sticker.action == KeywordActionKind::NameSticker)
+            .filter_map(|sticker| sticker.name.as_deref())
+            .map(|name| {
+                name.chars()
+                    .filter(|candidate| candidate.eq_ignore_ascii_case(&character))
+                    .count() as u32
+            })
+            .sum()
     }
 
     pub fn sticker_count_on_object(
@@ -3399,7 +3459,7 @@ impl GameState {
             .into_iter()
             .flatten()
             .filter(|sticker| {
-                sticker.action == action
+                action.matches_performed_action(sticker.action)
                     && max_name_letters.is_none_or(|max| {
                         sticker
                             .name_letter_count
@@ -3703,6 +3763,7 @@ impl GameState {
             | crate::effect::Value::SourceRegeneratedThisTurnCount
             | crate::effect::Value::DamageDealtThisTurnByTaggedSpellCast(_) => true,
             crate::effect::Value::CountPlayers(player)
+            | crate::effect::Value::CountPlayersWithCardsInHandAtLeast(player, _)
             | crate::effect::Value::PartySize(player)
             | crate::effect::Value::LifeTotal(player)
             | crate::effect::Value::LifeTotalDifference(player)
@@ -3731,6 +3792,7 @@ impl GameState {
             || filter.first_spell_cast_each_turn
             || filter.attacking
             || filter.attacked_this_turn
+            || filter.didnt_attack_this_turn
             || filter.nonattacking
             || filter.enlist_eligible
             || filter.blocking
@@ -3738,9 +3800,11 @@ impl GameState {
             || filter.blocked
             || filter.blocked_by.is_some()
             || filter.blocked_by_source
+            || filter.blocked_or_was_blocked_by_this_turn.is_some()
             || filter.unblocked
             || filter.in_combat_with_source
             || filter.entered_since_your_last_turn_ended
+            || filter.didnt_enter_battlefield_this_turn
             || filter.entered_battlefield_this_turn
             || filter.entered_graveyard_this_turn
             || filter.entered_graveyard_from_battlefield_this_turn
@@ -3767,6 +3831,10 @@ impl GameState {
                 .attached_to_object
                 .as_deref()
                 .is_some_and(Self::object_filter_is_turn_context_sensitive)
+            || filter
+                .blocked_or_was_blocked_by_this_turn
+                .as_deref()
+                .is_some_and(Self::object_filter_is_turn_context_sensitive)
             || Self::player_filter_option_is_turn_context_sensitive(
                 filter.entered_battlefield_controller.as_ref(),
             )
@@ -3788,6 +3856,10 @@ impl GameState {
                 .no_shared_creature_types_with
                 .iter()
                 .any(Self::object_filter_is_turn_context_sensitive)
+            || filter
+                .characteristic_relations
+                .iter()
+                .any(|relation| Self::object_filter_is_turn_context_sensitive(&relation.comparison))
             || filter
                 .any_of
                 .iter()
@@ -5420,6 +5492,11 @@ impl GameState {
     /// Can this permanent phase out?
     pub fn can_phase_out(&self, permanent: ObjectId) -> bool {
         self.effect_store.cant_effects.can_phase_out(permanent)
+    }
+
+    /// Can this permanent phase in?
+    pub fn can_phase_in(&self, permanent: ObjectId) -> bool {
+        self.effect_store.cant_effects.can_phase_in(permanent)
     }
 
     /// Adds an object to the game.

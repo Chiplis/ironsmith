@@ -433,7 +433,7 @@ pub(crate) fn parse_exile_then_shuffle_graveyard_into_library_sentence(
         matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary,
+                action: SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. },
                 ..
             })
         )

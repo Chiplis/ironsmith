@@ -1461,7 +1461,7 @@ pub(crate) fn describe_dynamic_pt_token_bundle(filtered: &[&Effect]) -> Option<S
         ) {
             return None;
         }
-        let mut token_phrase = describe_token_blueprint(&create.token);
+        let mut token_phrase = describe_create_token_blueprint(create);
         token_phrase = token_phrase.replace("0/0 ", "");
         return Some(format!(
             "{}. Create {} with base power and toughness equal to that card's power and toughness.",
@@ -1477,7 +1477,7 @@ pub(crate) fn describe_dynamic_pt_token_bundle(filtered: &[&Effect]) -> Option<S
     ) {
         return None;
     }
-    let mut token_phrase = describe_token_blueprint(&create.token);
+    let mut token_phrase = describe_create_token_blueprint(create);
     token_phrase = token_phrase.replace("0/0 ", "");
     Some(format!(
         "{}. Create {} with base power and toughness equal to that creature's power and toughness{}.",
@@ -1585,7 +1585,7 @@ pub(crate) fn describe_prior_effect_count_create_token_bundle(
         .to_string();
     Some(format!(
         "{prior_text}, then create a {} for each {subject} {action} this way",
-        describe_token_blueprint(&create.token)
+        describe_create_token_blueprint(create)
     ))
 }
 
@@ -1595,7 +1595,6 @@ pub(crate) fn describe_prior_effect_dynamic_count_token_bundle(
     let [prior_effect, create_effect, set_pt_effect] = filtered else {
         return None;
     };
-    let with_id = prior_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let create = downcast_create_token(create_effect)?;
     let set_pt = downcast_set_base_power_toughness(set_pt_effect)?;
     let created_tag = wrapped_effect_tag(create_effect)?;
@@ -1609,17 +1608,47 @@ pub(crate) fn describe_prior_effect_dynamic_count_token_bundle(
     {
         return None;
     }
-    if prior_effect_count_metric(&set_pt.power) != Some(with_id.id) {
-        return None;
+    let (producer, linked_by_tag) =
+        if let Some(with_id) = prior_effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            if prior_effect_count_metric(&set_pt.power) != Some(with_id.id) {
+                return None;
+            }
+            (with_id.effect.as_ref(), false)
+        } else {
+            let producer_tag = wrapped_effect_tag(prior_effect)?;
+            let Value::Count(filter) = set_pt.power.unhinted() else {
+                return None;
+            };
+            let references_producer = filter.tagged_constraints.iter().any(|constraint| {
+                &constraint.tag == producer_tag
+                    && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            });
+            if !references_producer
+                || !matches!(create.controller, PlayerFilter::You)
+                || create.controller_target.is_some()
+                || create.exile_at_end_of_combat
+                || create.sacrifice_at_end_of_combat
+                || create.sacrifice_at_next_end_step
+                || create.exile_at_next_end_step
+            {
+                return None;
+            }
+            (*prior_effect, true)
+        };
+    let (subject, action) = prior_effect_count_subject(producer)?;
+    if linked_by_tag {
+        let producer_tag = wrapped_effect_tag(prior_effect)?;
+        if tagged_this_way_action(producer_tag.as_str()) != Some(action) {
+            return None;
+        }
     }
-    let (subject, action) = prior_effect_count_subject(&with_id.effect)?;
     let dynamic_pt_prefix = if create.enters_tapped {
         "tapped X/X "
     } else {
         "X/X "
     };
     let token_phrase =
-        describe_token_blueprint(&create.token).replacen("0/0 ", dynamic_pt_prefix, 1);
+        describe_create_token_blueprint(create).replacen("0/0 ", dynamic_pt_prefix, 1);
     let controller_suffix = if matches!(create.controller, PlayerFilter::You) {
         String::new()
     } else {
@@ -1628,17 +1657,47 @@ pub(crate) fn describe_prior_effect_dynamic_count_token_bundle(
             describe_possessive_player_filter(&create.controller)
         )
     };
-    Some(format!(
-        "{}. Create {}{}, where X is the number of {subject} {action} this way",
-        describe_effect(prior_effect),
-        with_indefinite_article(&token_phrase),
-        controller_suffix
-    ))
+    let producer_text = describe_effect(prior_effect);
+    if linked_by_tag {
+        Some(format!(
+            "{}, then create {}{}, where X is the number of {subject} {action} this way",
+            producer_text.trim_end_matches('.'),
+            with_indefinite_article(&token_phrase),
+            controller_suffix
+        ))
+    } else {
+        Some(format!(
+            "{producer_text}. Create {}{}, where X is the number of {subject} {action} this way",
+            with_indefinite_article(&token_phrase),
+            controller_suffix
+        ))
+    }
 }
 
 pub(crate) fn describe_create_token_then_set_base_pt_bundle(
     filtered: &[&Effect],
 ) -> Option<String> {
+    fn append_token_cleanup(
+        mut text: String,
+        create: &crate::effects::CreateTokenEffect,
+    ) -> String {
+        if create.sacrifice_at_end_of_combat {
+            text.push_str(". Sacrifice it at end of combat");
+        }
+        if create.sacrifice_at_next_end_step {
+            let timing = describe_next_end_step_cleanup_timing(&create.next_end_step_player);
+            text.push_str(&format!(". Sacrifice it at the beginning of {timing}"));
+        }
+        if create.exile_at_end_of_combat {
+            text.push_str(". Exile it at end of combat");
+        }
+        if create.exile_at_next_end_step {
+            let timing = describe_next_end_step_cleanup_timing(&create.next_end_step_player);
+            text.push_str(&format!(". Exile it at the beginning of {timing}"));
+        }
+        text
+    }
+
     fn append_token_entry_and_cleanup(
         mut text: String,
         create: &crate::effects::CreateTokenEffect,
@@ -1650,19 +1709,7 @@ pub(crate) fn describe_create_token_then_set_base_pt_bundle(
         } else if create.enters_tapped {
             text.push_str(" tapped");
         }
-        if create.sacrifice_at_end_of_combat {
-            text.push_str(". Sacrifice it at end of combat");
-        }
-        if create.sacrifice_at_next_end_step {
-            text.push_str(". Sacrifice it at the beginning of the next end step");
-        }
-        if create.exile_at_end_of_combat {
-            text.push_str(". Exile it at end of combat");
-        }
-        if create.exile_at_next_end_step {
-            text.push_str(". Exile it at the beginning of the next end step");
-        }
-        text
+        append_token_cleanup(text, create)
     }
 
     let [create_effect, set_pt_effect] = filtered else {
@@ -1671,17 +1718,14 @@ pub(crate) fn describe_create_token_then_set_base_pt_bundle(
     let create = downcast_create_token(create_effect)?;
     let set_pt = downcast_set_base_power_toughness(set_pt_effect)?;
     let created_tag = wrapped_effect_tag(create_effect)?;
-    if create.count != Value::Fixed(1)
-        || create.exile_at_next_end_step
-        || set_pt.duration != Until::Forever
-    {
+    if create.count != Value::Fixed(1) || set_pt.duration != Until::Forever {
         return None;
     }
     if !matches!(&set_pt.target, ChooseSpec::Tagged(tag) if tag == created_tag) {
         return None;
     }
 
-    let token_blueprint = describe_token_blueprint(&create.token);
+    let token_blueprint = describe_create_token_blueprint(create);
     if matches!(set_pt.power, Value::SourcePower | Value::PowerOf(_))
         && matches!(
             set_pt.toughness,
@@ -1711,27 +1755,30 @@ pub(crate) fn describe_create_token_then_set_base_pt_bundle(
         return Some(text);
     }
 
-    if set_pt.power.unhinted() != set_pt.toughness.unhinted()
-        || matches!(set_pt.power.unhinted(), Value::Fixed(_))
-    {
-        return None;
-    }
-
-    let token_phrase = if let Some(rest) = token_blueprint.strip_prefix("0/0 ") {
-        let dynamic_pt_prefix = if create.enters_tapped {
-            "tapped X/X "
-        } else {
-            "X/X "
-        };
-        format!("{dynamic_pt_prefix}{rest}")
-    } else if token_blueprint.starts_with("X/X ") {
-        if create.enters_tapped {
-            format!("tapped {token_blueprint}")
-        } else {
-            token_blueprint
+    let power_fixed = matches!(set_pt.power.unhinted(), Value::Fixed(_));
+    let toughness_fixed = matches!(set_pt.toughness.unhinted(), Value::Fixed(_));
+    let (dynamic_pt, basis) = match (power_fixed, toughness_fixed) {
+        (false, false) if set_pt.power.unhinted() == set_pt.toughness.unhinted() => {
+            ("X/X".to_string(), &set_pt.power)
         }
+        (false, true) => (
+            format!("X/{}", describe_value(&set_pt.toughness)),
+            &set_pt.power,
+        ),
+        (true, false) => (
+            format!("{}/X", describe_value(&set_pt.power)),
+            &set_pt.toughness,
+        ),
+        _ => return None,
+    };
+
+    let rest = token_blueprint
+        .strip_prefix("0/0 ")
+        .or_else(|| token_blueprint.strip_prefix("X/X "))?;
+    let token_phrase = if create.enters_tapped {
+        format!("tapped {dynamic_pt} {rest}")
     } else {
-        return None;
+        format!("{dynamic_pt} {rest}")
     };
     let controller_suffix = if matches!(create.controller, PlayerFilter::You) {
         String::new()
@@ -1742,11 +1789,14 @@ pub(crate) fn describe_create_token_then_set_base_pt_bundle(
         )
     };
 
-    Some(format!(
-        "Create {}{}, where X is {}",
-        with_indefinite_article(&token_phrase),
-        controller_suffix,
-        describe_dynamic_token_pt_value(&set_pt.power)
+    Some(append_token_cleanup(
+        format!(
+            "Create {}{}, where X is {}",
+            with_indefinite_article(&token_phrase),
+            controller_suffix,
+            describe_dynamic_token_pt_value(basis)
+        ),
+        create,
     ))
 }
 
@@ -2766,7 +2816,10 @@ pub(crate) fn divvy_search_selection(search: &crate::effects::ChooseObjectsEffec
         && search.filter.name.is_none()
         && search.filter.tagged_constraints.is_empty()
         && search.filter.mana_value.is_none()
-        && let Some(excluded_name) = search.filter.excluded_name.as_ref()
+        && let Some(excluded_name) = search
+            .filter
+            .excluded_name_surface()
+            .or(search.filter.excluded_name.as_deref())
         && let Some(exact) = choose_exact_count(search)
     {
         let count = number_word(exact as i32).unwrap_or_else(|| exact.to_string());

@@ -1,7 +1,8 @@
 use crate::{
     CardType, ChoiceCount, ChooseSpec, Color, ColorSet, CounterType, EffectMetric,
     KeywordActionKind, ObjectId, PlayerId, PriorEffectAction, SourceReferenceSurface,
-    StaticAbilityId, Subtype, Supertype, TagKey, Value, Zone, effect_model::EventValueSpec,
+    StaticAbilityId, Subtype, SubtypeFamily, Supertype, TagKey, Value, Zone,
+    effect_model::EventValueSpec,
 };
 
 fn ensure_indefinite_article(text: String) -> String {
@@ -37,6 +38,21 @@ fn ensure_indefinite_article(text: String) -> String {
     format!("{article} {trimmed}")
 }
 
+fn correct_leading_indefinite_article(text: String) -> String {
+    let Some(rest) = text.strip_prefix("a ") else {
+        return text;
+    };
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|first| matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        format!("an {rest}")
+    } else {
+        text
+    }
+}
+
 fn describe_filter_union_list(
     mut parts: Vec<String>,
     connective: ObjectFilterUnionConnective,
@@ -64,6 +80,19 @@ fn describe_filter_union_list(
         ObjectFilterUnionConnective::AndOr => "and/or",
     };
     format!("{}, {joiner} {last}", parts.join(", "))
+}
+
+fn describe_conjunctive_filter_list(mut parts: Vec<String>) -> String {
+    match parts.as_slice() {
+        [] => return String::new(),
+        [single] => return single.clone(),
+        [first, second] => return format!("{first} and {second}"),
+        _ => {}
+    }
+    let last = parts
+        .pop()
+        .expect("conjunctive list has at least three parts");
+    format!("{}, and {last}", parts.join(", "))
 }
 
 /// A reference to an object for use in filters and effects.
@@ -148,6 +177,58 @@ impl SameNameAntecedentSurface {
     }
 }
 
+/// Authored noun in a demonstrative condition subject such as "that land."
+///
+/// Tagged-object identity remains the runtime source of truth. This value is
+/// equality-transparent presentation metadata retained on the comparison
+/// filter so compiled text does not collapse an explicit antecedent to "it."
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DemonstrativeAntecedentSurface {
+    Artifact,
+    Card,
+    Creature,
+    Enchantment,
+    Land,
+    Object,
+    Permanent,
+    Source,
+    Spell,
+    Token,
+}
+
+impl DemonstrativeAntecedentSurface {
+    pub fn from_noun(noun: &str) -> Option<Self> {
+        match noun {
+            "artifact" => Some(Self::Artifact),
+            "card" => Some(Self::Card),
+            "creature" | "creatures" => Some(Self::Creature),
+            "enchantment" => Some(Self::Enchantment),
+            "land" => Some(Self::Land),
+            "object" => Some(Self::Object),
+            "permanent" => Some(Self::Permanent),
+            "source" => Some(Self::Source),
+            "spell" => Some(Self::Spell),
+            "token" => Some(Self::Token),
+            _ => None,
+        }
+    }
+
+    pub const fn phrase(self) -> &'static str {
+        match self {
+            Self::Artifact => "that artifact",
+            Self::Card => "that card",
+            Self::Creature => "that creature",
+            Self::Enchantment => "that enchantment",
+            Self::Land => "that land",
+            Self::Object => "that object",
+            Self::Permanent => "that permanent",
+            Self::Source => "that source",
+            Self::Spell => "that spell",
+            Self::Token => "that token",
+        }
+    }
+}
+
 /// Oracle-facing action used when a filter refers back to the object paid as
 /// an additional cost. Object identity remains a tagged runtime relation;
 /// this value only preserves whether the authored noun was sacrificed or
@@ -188,6 +269,36 @@ impl AdditionalCostObjectSurface {
     }
 }
 
+/// Authored opponent quantifier in a "played by ..." entry restriction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayedByOpponentSurface {
+    YourOpponents,
+    AnOpponent,
+    Opponents,
+}
+
+impl PlayedByOpponentSurface {
+    pub const fn description(self) -> &'static str {
+        match self {
+            Self::YourOpponents => "your opponents",
+            Self::AnOpponent => "an opponent",
+            Self::Opponents => "opponents",
+        }
+    }
+}
+
+/// Oracle wording for an object's current-turn graveyard-entry history.
+///
+/// The `entered_graveyard_*` flags remain the executable semantics. This
+/// equality-transparent surface distinguishes the broad canonical wording
+/// "put there this turn" from an explicitly authored "from anywhere" clause.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GraveyardEntryHistorySurface {
+    PutThereThisTurn,
+    PutThereFromAnywhereThisTurn,
+    PutThereFromBattlefieldThisTurn,
+}
+
 /// Presentation metadata for an [`ObjectFilter`].
 ///
 /// `PartialEq` is intentionally semantic-transparent: `ObjectFilter` derives
@@ -197,6 +308,42 @@ impl AdditionalCostObjectSurface {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ObjectFilterUnionSurface {
     connective: ObjectFilterUnionConnective,
+    /// Oracle placed subtype arms before card-type arms in a mixed
+    /// type-or-subtype union (for example, "Vehicles and/or creatures").
+    /// Matching is order-independent; this preserves only authored order.
+    subtype_before_card_type: bool,
+    /// Oracle placed a shared `card` or `spell` noun after every member of a
+    /// mixed union, as in "creature or Aura spell".
+    terminal_noun_after_type_subtype_union: bool,
+    /// Oracle used `and` to describe the members of one inclusive object set,
+    /// as in "Plants and Treefolk you control".
+    conjunctive_set_surface: bool,
+    /// Oracle used a serial-comma `or` list instead of repeating `or`
+    /// between every member.
+    serial_or_list: bool,
+    /// Oracle used one indefinite article shared by every member of a union,
+    /// as in "a Kraken, Leviathan, Merfolk, Octopus, or Serpent."
+    shared_indefinite_article: bool,
+    /// Oracle placed controller scope after a restrictive `with`/`without`
+    /// predicate, as in "permanent with fading you control." Controller
+    /// identity remains semantic; this retains only authored word order.
+    controller_after_qualifiers: bool,
+    /// Oracle placed the controller after an enters event, as in "a land
+    /// enters under an opponent's control." The ordinary controller filter
+    /// remains the matching constraint; this retains only authored word order.
+    enters_under_controller: bool,
+    /// Oracle used the plural player pronoun for the actor and the controlled
+    /// object in the same clause, as in "they return a land they control."
+    /// Player identity remains the ordinary iterated-player filter.
+    iterated_actor_pronoun: bool,
+    /// Oracle used the pre-M10-style "played by [an opponent/your
+    /// opponents]" entry surface. The controller filter remains the runtime
+    /// meaning; this typed hint preserves the authored entry wording.
+    played_by_opponent: Option<PlayedByOpponentSurface>,
+    /// Oracle phrased a caster restriction as "except during its controller's
+    /// turn." Runtime matching excludes spells cast by the active player;
+    /// this hint retains the equivalent authored exception surface.
+    except_during_controller_turn: bool,
     one_or_more: bool,
     /// Oracle repeated an indefinite article for every arm of an explicit
     /// object-filter union (for example, "a Doctor card, a card with ..., or
@@ -206,9 +353,21 @@ pub struct ObjectFilterUnionSurface {
     /// wording such as "one of them". Lowering owns the actual choice; this
     /// flag only preserves that authored reference in compiled text.
     one_of_tagged_set: bool,
+    /// Oracle referred to a previously established plural object set using
+    /// the bare pronoun `them`. The tagged constraint retains identity; this
+    /// flag only distinguishes that surface from `those creatures`, etc.
+    plural_pronoun_reference: bool,
     /// Oracle explicitly quantified this set with `all` or distributive
     /// `each`. This is presentation-only and does not change the matched set.
     set_quantifier: Option<crate::effect::SetQuantifierSurface>,
+    /// Oracle authored this filter's object noun in the plural. Runtime
+    /// matching is number-agnostic; this is retained for nested relation
+    /// surfaces such as "attached to permanents you control."
+    plural_object_noun: bool,
+    /// Oracle placed a return destination before its object set, as in
+    /// "return to your hand all enchantments." The destination and selected
+    /// objects remain represented by the ordinary return effect.
+    return_destination_first: bool,
     /// Oracle explicitly used `card`/`cards` for this filter's noun.
     ///
     /// Lowering may intentionally clear a nonbattlefield zone after it has
@@ -216,6 +375,12 @@ pub struct ObjectFilterUnionSurface {
     /// independently so that the same semantic filter does not render as a
     /// battlefield `permanent` merely because its contextual zone moved.
     explicit_card_noun: bool,
+    /// Card-type noun explicitly authored alongside another characteristic.
+    ///
+    /// Some canonical subtype renderings omit an inferred type noun (for
+    /// example, `Urza's` rather than `Urza's land`). This equality-transparent
+    /// hint retains an explicitly written noun when that distinction matters.
+    explicit_card_type_noun: Option<CardType>,
     counter_requirement_one_or_more: bool,
     counter_requirement_plural_noun: bool,
     counter_requirement_plural_subject: bool,
@@ -239,17 +404,35 @@ pub struct ObjectFilterUnionSurface {
     /// Authored noun for a `SameNameAsTagged` antecedent. The tagged relation
     /// carries identity; this field only preserves the unambiguous noun.
     same_name_antecedent: Option<SameNameAntecedentSurface>,
+    /// Authored noun for an explicit demonstrative condition subject.
+    demonstrative_antecedent: Option<DemonstrativeAntecedentSurface>,
+    /// Authored relative clause for current-turn graveyard entry.
+    graveyard_entry_history: Option<GraveyardEntryHistorySurface>,
 }
 
 impl ObjectFilterUnionSurface {
     pub const fn new(connective: ObjectFilterUnionConnective) -> Self {
         Self {
             connective,
+            subtype_before_card_type: false,
+            terminal_noun_after_type_subtype_union: false,
+            conjunctive_set_surface: false,
+            serial_or_list: false,
+            shared_indefinite_article: false,
+            controller_after_qualifiers: false,
+            enters_under_controller: false,
+            iterated_actor_pronoun: false,
+            played_by_opponent: None,
+            except_during_controller_turn: false,
             one_or_more: false,
             explicit_branch_articles: false,
             one_of_tagged_set: false,
+            plural_pronoun_reference: false,
             set_quantifier: None,
+            plural_object_noun: false,
+            return_destination_first: false,
             explicit_card_noun: false,
+            explicit_card_type_noun: None,
             counter_requirement_one_or_more: false,
             counter_requirement_plural_noun: false,
             counter_requirement_plural_subject: false,
@@ -260,6 +443,8 @@ impl ObjectFilterUnionSurface {
             prior_effect_action: None,
             additional_cost_object: None,
             same_name_antecedent: None,
+            demonstrative_antecedent: None,
+            graveyard_entry_history: None,
         }
     }
 
@@ -270,6 +455,99 @@ impl ObjectFilterUnionSurface {
     pub const fn with_connective(mut self, connective: ObjectFilterUnionConnective) -> Self {
         self.connective = connective;
         self
+    }
+
+    pub const fn with_subtype_before_card_type(mut self, subtype_first: bool) -> Self {
+        self.subtype_before_card_type = subtype_first;
+        self
+    }
+
+    pub const fn subtype_before_card_type(self) -> bool {
+        self.subtype_before_card_type
+    }
+
+    pub const fn with_terminal_noun_after_type_subtype_union(mut self, terminal: bool) -> Self {
+        self.terminal_noun_after_type_subtype_union = terminal;
+        self
+    }
+
+    pub const fn terminal_noun_after_type_subtype_union(self) -> bool {
+        self.terminal_noun_after_type_subtype_union
+    }
+
+    pub const fn with_conjunctive_set_surface(mut self, conjunctive: bool) -> Self {
+        self.conjunctive_set_surface = conjunctive;
+        self
+    }
+
+    pub const fn conjunctive_set_surface(self) -> bool {
+        self.conjunctive_set_surface
+    }
+
+    pub const fn with_serial_or_list(mut self, serial: bool) -> Self {
+        self.serial_or_list = serial;
+        self
+    }
+
+    pub const fn serial_or_list(self) -> bool {
+        self.serial_or_list
+    }
+
+    pub const fn with_shared_indefinite_article(mut self, shared: bool) -> Self {
+        self.shared_indefinite_article = shared;
+        self
+    }
+
+    pub const fn shared_indefinite_article(self) -> bool {
+        self.shared_indefinite_article
+    }
+
+    pub const fn with_controller_after_qualifiers(mut self, postpositive: bool) -> Self {
+        self.controller_after_qualifiers = postpositive;
+        self
+    }
+
+    pub const fn controller_after_qualifiers(self) -> bool {
+        self.controller_after_qualifiers
+    }
+
+    pub const fn with_enters_under_controller(mut self, postpositive: bool) -> Self {
+        self.enters_under_controller = postpositive;
+        self
+    }
+
+    pub const fn enters_under_controller(self) -> bool {
+        self.enters_under_controller
+    }
+
+    pub const fn with_iterated_actor_pronoun(mut self, pronoun: bool) -> Self {
+        self.iterated_actor_pronoun = pronoun;
+        self
+    }
+
+    pub const fn iterated_actor_pronoun(self) -> bool {
+        self.iterated_actor_pronoun
+    }
+
+    pub const fn with_played_by_opponent(
+        mut self,
+        surface: Option<PlayedByOpponentSurface>,
+    ) -> Self {
+        self.played_by_opponent = surface;
+        self
+    }
+
+    pub const fn played_by_opponent(self) -> Option<PlayedByOpponentSurface> {
+        self.played_by_opponent
+    }
+
+    pub const fn with_except_during_controller_turn(mut self, except: bool) -> Self {
+        self.except_during_controller_turn = except;
+        self
+    }
+
+    pub const fn except_during_controller_turn(self) -> bool {
+        self.except_during_controller_turn
     }
 
     pub const fn one_or_more(self) -> bool {
@@ -299,6 +577,15 @@ impl ObjectFilterUnionSurface {
         self.one_of_tagged_set
     }
 
+    pub const fn with_plural_pronoun_reference(mut self, pronoun: bool) -> Self {
+        self.plural_pronoun_reference = pronoun;
+        self
+    }
+
+    pub const fn plural_pronoun_reference(self) -> bool {
+        self.plural_pronoun_reference
+    }
+
     pub const fn with_set_quantifier(
         mut self,
         set_quantifier: Option<crate::effect::SetQuantifierSurface>,
@@ -311,12 +598,39 @@ impl ObjectFilterUnionSurface {
         self.set_quantifier
     }
 
+    pub const fn with_plural_object_noun(mut self, plural: bool) -> Self {
+        self.plural_object_noun = plural;
+        self
+    }
+
+    pub const fn plural_object_noun(self) -> bool {
+        self.plural_object_noun
+    }
+
+    pub const fn with_return_destination_first(mut self, destination_first: bool) -> Self {
+        self.return_destination_first = destination_first;
+        self
+    }
+
+    pub const fn return_destination_first(self) -> bool {
+        self.return_destination_first
+    }
+
     pub const fn explicit_card_noun(self) -> bool {
         self.explicit_card_noun
     }
 
     pub const fn with_explicit_card_noun(mut self, explicit_card_noun: bool) -> Self {
         self.explicit_card_noun = explicit_card_noun;
+        self
+    }
+
+    pub const fn explicit_card_type_noun(self) -> Option<CardType> {
+        self.explicit_card_type_noun
+    }
+
+    pub const fn with_explicit_card_type_noun(mut self, card_type: Option<CardType>) -> Self {
+        self.explicit_card_type_noun = card_type;
         self
     }
 
@@ -407,6 +721,30 @@ impl ObjectFilterUnionSurface {
     pub const fn same_name_antecedent(self) -> Option<SameNameAntecedentSurface> {
         self.same_name_antecedent
     }
+
+    pub const fn with_demonstrative_antecedent(
+        mut self,
+        surface: Option<DemonstrativeAntecedentSurface>,
+    ) -> Self {
+        self.demonstrative_antecedent = surface;
+        self
+    }
+
+    pub const fn demonstrative_antecedent(self) -> Option<DemonstrativeAntecedentSurface> {
+        self.demonstrative_antecedent
+    }
+
+    pub const fn with_graveyard_entry_history(
+        mut self,
+        surface: Option<GraveyardEntryHistorySurface>,
+    ) -> Self {
+        self.graveyard_entry_history = surface;
+        self
+    }
+
+    pub const fn graveyard_entry_history(self) -> Option<GraveyardEntryHistorySurface> {
+        self.graveyard_entry_history
+    }
 }
 
 impl PartialEq for ObjectFilterUnionSurface {
@@ -458,8 +796,99 @@ pub enum TaggedOpbjectRelation {
     ManaValueLteTagged,
     ManaValueLtTagged,
     AttachedToTaggedObject,
+    /// The candidate was among the attachments recorded on the tagged
+    /// object's last-known snapshot. Unlike `AttachedToTaggedObject`, this
+    /// remains true after the tagged object leaves the battlefield and the
+    /// game's ordinary attachment cleanup detaches the candidate.
+    WasAttachedToTaggedObject,
     SoulbondPartnerOfTagged,
     IsNotTaggedObject,
+}
+
+/// A characteristic that can be compared between a candidate object and a
+/// separately filtered set of objects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectCharacteristic {
+    CardType,
+    /// Runtime-equivalent to `CardType`, while preserving Oracle's
+    /// "permanent type" surface.
+    PermanentType,
+    Subtype(SubtypeFamily),
+    Color,
+    ManaValue,
+}
+
+impl ObjectCharacteristic {
+    pub fn sharing_phrase(self) -> String {
+        match self {
+            Self::CardType => "a card type".to_string(),
+            Self::PermanentType => "a permanent type".to_string(),
+            Self::Subtype(family) => format!("a {}", family.type_phrase()),
+            Self::Color => "a color".to_string(),
+            Self::ManaValue => "mana value".to_string(),
+        }
+    }
+}
+
+/// Whether a candidate must share at least one listed characteristic with the
+/// comparison set, or share none of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ObjectCharacteristicRelationKind {
+    SharesAny,
+    SharesNone,
+}
+
+/// A relation between the candidate object and all objects selected by
+/// `comparison`.
+///
+/// Multiple characteristics are alternatives, matching Oracle constructions
+/// such as "shares a color or mana value with the exiled card."
+#[derive(Debug, Clone, PartialEq)]
+pub struct ObjectCharacteristicRelation {
+    pub kind: ObjectCharacteristicRelationKind,
+    pub characteristics: Vec<ObjectCharacteristic>,
+    pub comparison: ObjectFilter,
+}
+
+impl ObjectCharacteristicRelation {
+    pub fn shares(characteristics: Vec<ObjectCharacteristic>, comparison: ObjectFilter) -> Self {
+        Self {
+            kind: ObjectCharacteristicRelationKind::SharesAny,
+            characteristics,
+            comparison,
+        }
+    }
+
+    pub fn shares_none(
+        characteristics: Vec<ObjectCharacteristic>,
+        comparison: ObjectFilter,
+    ) -> Self {
+        Self {
+            kind: ObjectCharacteristicRelationKind::SharesNone,
+            characteristics,
+            comparison,
+        }
+    }
+
+    pub fn comparison_description(&self) -> String {
+        if self.comparison.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == crate::SOURCE_EXILED_TAG
+        }) {
+            return "the exiled card".to_string();
+        }
+
+        let description = self.comparison.description();
+        let keep_bare_reference = self.comparison.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && matches!(constraint.tag.as_str(), "equipped" | "enchanted")
+        });
+        if keep_bare_reference {
+            description
+        } else {
+            ensure_indefinite_article(description)
+        }
+    }
 }
 
 /// Alternative casting capability qualifier for card filters.
@@ -480,6 +909,10 @@ pub enum AlternativeCastKind {
 pub enum CounterConstraint {
     Any,
     Typed(CounterType),
+    AtLeast {
+        counter_type: Option<CounterType>,
+        count: u32,
+    },
 }
 
 /// A parity requirement for numeric object properties.
@@ -541,6 +974,10 @@ pub enum PlayerFilter {
     NotYou,
     Opponent,
     Teammate,
+    /// The nearest in-game player seated to the effect controller's left.
+    PlayerToYourLeft,
+    /// The nearest in-game player seated to the effect controller's right.
+    PlayerToYourRight,
     Active,
     Defending,
     Attacking,
@@ -603,6 +1040,21 @@ impl PlayerFilter {
         }
     }
 
+    /// You and every teammate of yours. In a non-team game this matches only
+    /// you, because every other player is an opponent.
+    pub fn your_team() -> Self {
+        Self::excluding(Self::Any, Self::Opponent)
+    }
+
+    pub fn is_your_team(&self) -> bool {
+        matches!(
+            self,
+            Self::Excluding { base, excluded }
+                if matches!(base.as_ref(), Self::Any)
+                    && matches!(excluded.as_ref(), Self::Opponent)
+        )
+    }
+
     pub fn with_max_speed(base: PlayerFilter) -> Self {
         Self::MaxSpeed {
             base: Box::new(base),
@@ -635,6 +1087,8 @@ impl PlayerFilter {
             | Self::NotYou
             | Self::Opponent
             | Self::Teammate
+            | Self::PlayerToYourLeft
+            | Self::PlayerToYourRight
             | Self::Active
             | Self::Defending
             | Self::Attacking
@@ -662,6 +1116,8 @@ impl PlayerFilter {
             Self::NotYou => "a player other than you".to_string(),
             Self::Opponent => "an opponent".to_string(),
             Self::Teammate => "a teammate".to_string(),
+            Self::PlayerToYourLeft => "the player to your left".to_string(),
+            Self::PlayerToYourRight => "the player to your right".to_string(),
             Self::Active => "the active player".to_string(),
             Self::Defending => "the defending player".to_string(),
             Self::Attacking => "the attacking player".to_string(),
@@ -774,12 +1230,44 @@ impl Comparison {
     }
 }
 
+/// Oracle spelling retained for an excluded literal card name.
+///
+/// The normalized value in [`ObjectFilter::excluded_name`] remains the
+/// semantic source of truth for matching and filter equality. This wrapper is
+/// deliberately equality-transparent so capitalization and punctuation never
+/// affect lowering, deduplication, or runtime behavior.
+#[derive(Debug, Clone, Default)]
+pub struct ExcludedNameSurface(Option<String>);
+
+impl ExcludedNameSurface {
+    pub fn new(surface: impl Into<String>) -> Self {
+        Self(Some(surface.into()))
+    }
+
+    pub fn as_deref(&self) -> Option<&str> {
+        self.0.as_deref()
+    }
+}
+
+impl PartialEq for ExcludedNameSurface {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
 /// Filter for selecting objects (permanents, spells, cards).
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ObjectFilter {
     pub zone: Option<Zone>,
     pub controller: Option<PlayerFilter>,
     pub cast_by: Option<PlayerFilter>,
+    /// A stack spell must not have been cast from this zone.
+    ///
+    /// This is distinct from `zone`: for stack spells, a non-stack `zone`
+    /// is the positive "cast from <zone>" constraint, while this field
+    /// represents Oracle restrictions such as "a spell that wasn't cast
+    /// from its owner's hand."
+    pub excluded_cast_origin_zone: Option<Zone>,
     pub cast_this_turn: bool,
     pub first_spell_cast_each_turn: bool,
     pub owner: Option<PlayerFilter>,
@@ -799,6 +1287,10 @@ pub struct ObjectFilter {
     pub all_card_types: Vec<CardType>,
     pub excluded_card_types: Vec<CardType>,
     pub subtypes: Vec<Subtype>,
+    /// Every listed subtype must be present. This represents compound
+    /// subtype phrases such as "Eldrazi Spawn"; `subtypes` remains the
+    /// inclusive-any form used by "Elf or Goblin".
+    pub all_subtypes: Vec<Subtype>,
     pub type_or_subtype_union: bool,
     pub union_surface: ObjectFilterUnionSurface,
     pub excluded_subtypes: Vec<Subtype>,
@@ -827,10 +1319,15 @@ pub struct ObjectFilter {
     pub historic: bool,
     pub nonhistoric: bool,
     pub modified: bool,
+    /// Requires a permanent currently designated as suspected.
+    pub suspected: bool,
     pub sticker: Option<KeywordActionKind>,
     pub token: bool,
     pub nontoken: bool,
     pub face_down: Option<bool>,
+    /// Requires a card currently marked as having been exiled by the foretell
+    /// special action. This is distinct from merely being face down in exile.
+    pub foretold: bool,
     pub other: bool,
     pub tapped: bool,
     pub untapped: bool,
@@ -857,9 +1354,17 @@ pub struct ObjectFilter {
     pub blocked: bool,
     pub blocked_by: Option<ObjectRef>,
     pub blocked_by_source: bool,
+    /// This creature either blocked an object matching the nested filter or
+    /// was blocked by one this turn. Runtime matching uses the declaration
+    /// event's object snapshots so the other creature can be checked using
+    /// last known information after it leaves the battlefield.
+    pub blocked_or_was_blocked_by_this_turn: Option<Box<ObjectFilter>>,
     pub unblocked: bool,
     pub in_combat_with_source: bool,
     pub entered_since_your_last_turn_ended: bool,
+    /// Requires an object that has not entered the battlefield during the
+    /// current turn.
+    pub didnt_enter_battlefield_this_turn: bool,
     pub entered_battlefield_this_turn: bool,
     pub entered_battlefield_controller: Option<PlayerFilter>,
     /// The object was put onto the battlefield by an effect of the current
@@ -906,18 +1411,24 @@ pub struct ObjectFilter {
     pub total_counters_parity: Option<ParityRequirement>,
     pub name: Option<String>,
     pub excluded_name: Option<String>,
+    pub excluded_name_surface: ExcludedNameSurface,
     /// The candidate's current name must belong to an oracle identity whose
     /// earliest eligible paper printing was in this expansion.
     pub name_originally_printed_in_set: Option<String>,
     pub distinct_names: bool,
     pub distinct_powers: bool,
     pub distinct_creature_types: bool,
+    /// Selection-set constraint: chosen cards must be assignable to distinct
+    /// card-type slots. A multitype card may satisfy any one of its types, but
+    /// the same type cannot be assigned to two chosen cards.
+    pub one_per_card_type: bool,
     pub alternative_cast: Option<AlternativeCastKind>,
     pub static_abilities: Vec<StaticAbilityId>,
     pub excluded_static_abilities: Vec<StaticAbilityId>,
     pub ability_markers: Vec<String>,
     pub excluded_ability_markers: Vec<String>,
     pub no_shared_creature_types_with: Vec<ObjectFilter>,
+    pub characteristic_relations: Vec<ObjectCharacteristicRelation>,
     pub shares_creature_type_with_source: bool,
     pub is_commander: bool,
     pub noncommander: bool,
@@ -929,6 +1440,97 @@ pub struct ObjectFilter {
 }
 
 impl ObjectFilter {
+    /// Whether this filter carries the complete permanent card-type domain.
+    ///
+    /// Parsers use this typed representation for an authored `permanent`
+    /// noun when the surrounding filter needs to retain object
+    /// characteristics. Keeping the distinction from an otherwise untyped
+    /// battlefield filter lets renderers preserve the authored noun.
+    pub fn has_all_permanent_card_types(&self) -> bool {
+        const PERMANENT_CARD_TYPES: [CardType; 6] = [
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Land,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ];
+
+        self.card_types.len() == PERMANENT_CARD_TYPES.len()
+            && PERMANENT_CARD_TYPES
+                .iter()
+                .all(|card_type| self.card_types.contains(card_type))
+    }
+
+    /// Whether this stack filter carries the complete permanent-spell domain.
+    ///
+    /// Lands are deliberately absent because they cannot be spells. Keeping
+    /// this check separate from [`Self::has_all_permanent_card_types`] lets a
+    /// conditional retain its executable card-type filter while rendering the
+    /// authored aggregate noun `permanent spell`.
+    pub fn has_all_permanent_spell_card_types(&self) -> bool {
+        const PERMANENT_SPELL_CARD_TYPES: [CardType; 5] = [
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ];
+
+        matches!(self.zone, Some(Zone::Stack))
+            && matches!(self.stack_kind, Some(StackObjectKind::Spell))
+            && self.card_types.len() == PERMANENT_SPELL_CARD_TYPES.len()
+            && PERMANENT_SPELL_CARD_TYPES
+                .iter()
+                .all(|card_type| self.card_types.contains(card_type))
+    }
+
+    pub fn set_controller_after_qualifiers_surface(&mut self, postpositive: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_controller_after_qualifiers(postpositive);
+    }
+
+    pub fn has_controller_after_qualifiers_surface(&self) -> bool {
+        self.union_surface.controller_after_qualifiers()
+    }
+
+    pub fn set_enters_under_controller_surface(&mut self, postpositive: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_enters_under_controller(postpositive);
+    }
+
+    pub fn has_enters_under_controller_surface(&self) -> bool {
+        self.union_surface.enters_under_controller()
+    }
+
+    pub fn set_iterated_actor_pronoun_surface(&mut self, pronoun: bool) {
+        self.union_surface = self.union_surface.with_iterated_actor_pronoun(pronoun);
+    }
+
+    pub fn has_iterated_actor_pronoun_surface(&self) -> bool {
+        self.union_surface.iterated_actor_pronoun()
+    }
+
+    pub fn set_played_by_opponent_surface(&mut self, surface: PlayedByOpponentSurface) {
+        self.union_surface = self.union_surface.with_played_by_opponent(Some(surface));
+    }
+
+    pub fn played_by_opponent_surface(&self) -> Option<PlayedByOpponentSurface> {
+        self.union_surface.played_by_opponent()
+    }
+
+    pub fn set_except_during_controller_turn_surface(&mut self, except: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_except_during_controller_turn(except);
+    }
+
+    pub fn has_except_during_controller_turn_surface(&self) -> bool {
+        self.union_surface.except_during_controller_turn()
+    }
+
     pub fn mentions_iterated_player(&self) -> bool {
         [
             self.controller.as_ref(),
@@ -958,9 +1560,17 @@ impl ObjectFilter {
                 .as_deref()
                 .is_some_and(ObjectFilter::mentions_iterated_player)
             || self
+                .blocked_or_was_blocked_by_this_turn
+                .as_deref()
+                .is_some_and(ObjectFilter::mentions_iterated_player)
+            || self
                 .no_shared_creature_types_with
                 .iter()
                 .any(ObjectFilter::mentions_iterated_player)
+            || self
+                .characteristic_relations
+                .iter()
+                .any(|relation| relation.comparison.mentions_iterated_player())
             || self
                 .any_of
                 .iter()
@@ -980,6 +1590,50 @@ impl ObjectFilter {
 
     pub const fn union_connective(&self) -> ObjectFilterUnionConnective {
         self.union_surface.connective()
+    }
+
+    pub fn set_subtype_before_card_type_union_surface(&mut self, subtype_first: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_subtype_before_card_type(subtype_first);
+    }
+
+    pub const fn has_subtype_before_card_type_union_surface(&self) -> bool {
+        self.union_surface.subtype_before_card_type()
+    }
+
+    pub fn set_terminal_noun_after_type_subtype_union_surface(&mut self, terminal: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_terminal_noun_after_type_subtype_union(terminal);
+    }
+
+    pub const fn has_terminal_noun_after_type_subtype_union_surface(&self) -> bool {
+        self.union_surface.terminal_noun_after_type_subtype_union()
+    }
+
+    pub fn set_conjunctive_set_surface(&mut self, conjunctive: bool) {
+        self.union_surface = self.union_surface.with_conjunctive_set_surface(conjunctive);
+    }
+
+    pub const fn has_conjunctive_set_surface(&self) -> bool {
+        self.union_surface.conjunctive_set_surface()
+    }
+
+    pub fn set_serial_or_list_surface(&mut self, serial: bool) {
+        self.union_surface = self.union_surface.with_serial_or_list(serial);
+    }
+
+    pub const fn has_serial_or_list_surface(&self) -> bool {
+        self.union_surface.serial_or_list()
+    }
+
+    pub fn set_shared_indefinite_article_surface(&mut self, shared: bool) {
+        self.union_surface = self.union_surface.with_shared_indefinite_article(shared);
+    }
+
+    pub const fn has_shared_indefinite_article_surface(&self) -> bool {
+        self.union_surface.shared_indefinite_article()
     }
 
     pub fn set_union_one_or_more(&mut self, one_or_more: bool) {
@@ -1006,6 +1660,14 @@ impl ObjectFilter {
         self.union_surface.one_of_tagged_set()
     }
 
+    pub fn set_plural_pronoun_reference_surface(&mut self, pronoun: bool) {
+        self.union_surface = self.union_surface.with_plural_pronoun_reference(pronoun);
+    }
+
+    pub const fn has_plural_pronoun_reference_surface(&self) -> bool {
+        self.union_surface.plural_pronoun_reference()
+    }
+
     /// Preserve an authored leading `all`/`each` quantifier without changing
     /// filter equality or runtime matching.
     pub fn set_set_quantifier_surface(
@@ -1019,6 +1681,29 @@ impl ObjectFilter {
         self.union_surface.set_quantifier()
     }
 
+    /// Preserve whether this filter's noun was authored in the plural.
+    /// This is useful for nested relation filters whose ordinary singular
+    /// description would otherwise erase "permanents" or "creatures."
+    pub fn set_plural_object_noun_surface(&mut self, plural: bool) {
+        self.union_surface = self.union_surface.with_plural_object_noun(plural);
+    }
+
+    pub const fn has_plural_object_noun_surface(&self) -> bool {
+        self.union_surface.plural_object_noun()
+    }
+
+    /// Preserve destination-first return word order without changing the
+    /// selected objects or destination semantics.
+    pub fn set_return_destination_first_surface(&mut self, destination_first: bool) {
+        self.union_surface = self
+            .union_surface
+            .with_return_destination_first(destination_first);
+    }
+
+    pub const fn has_return_destination_first_surface(&self) -> bool {
+        self.union_surface.return_destination_first()
+    }
+
     /// Preserve an explicit Oracle `card`/`cards` noun without changing the
     /// zones or object characteristics used for matching.
     pub fn set_explicit_card_noun(&mut self, explicit_card_noun: bool) {
@@ -1029,6 +1714,16 @@ impl ObjectFilter {
 
     pub const fn has_explicit_card_noun(&self) -> bool {
         self.union_surface.explicit_card_noun()
+    }
+
+    /// Preserve a card-type noun that Oracle wrote explicitly even when the
+    /// semantic filter could infer it from an adjacent subtype.
+    pub fn set_explicit_card_type_noun(&mut self, card_type: Option<CardType>) {
+        self.union_surface = self.union_surface.with_explicit_card_type_noun(card_type);
+    }
+
+    pub const fn explicit_card_type_noun(&self) -> Option<CardType> {
+        self.union_surface.explicit_card_type_noun()
     }
 
     /// Preserve whether Oracle used `one or more`, `counter`/`counters`, and
@@ -1112,6 +1807,32 @@ impl ObjectFilter {
         self.union_surface.same_name_antecedent()
     }
 
+    /// Preserve the authored noun of an explicit demonstrative condition
+    /// subject without changing filter matching.
+    pub fn set_demonstrative_antecedent_surface(
+        &mut self,
+        surface: Option<DemonstrativeAntecedentSurface>,
+    ) {
+        self.union_surface = self.union_surface.with_demonstrative_antecedent(surface);
+    }
+
+    pub const fn demonstrative_antecedent_surface(&self) -> Option<DemonstrativeAntecedentSurface> {
+        self.union_surface.demonstrative_antecedent()
+    }
+
+    /// Preserve the authored graveyard-entry relative clause without changing
+    /// the executable current-turn history predicate.
+    pub fn set_graveyard_entry_history_surface(
+        &mut self,
+        surface: Option<GraveyardEntryHistorySurface>,
+    ) {
+        self.union_surface = self.union_surface.with_graveyard_entry_history(surface);
+    }
+
+    pub const fn graveyard_entry_history_surface(&self) -> Option<GraveyardEntryHistorySurface> {
+        self.union_surface.graveyard_entry_history()
+    }
+
     pub const fn additional_cost_object_surface(&self) -> Option<AdditionalCostObjectSurface> {
         self.union_surface.additional_cost_object()
     }
@@ -1131,6 +1852,15 @@ impl ObjectFilter {
                 .as_deref()
                 .is_some_and(Self::uses_power_or_toughness_characteristics)
             || self
+                .blocked_or_was_blocked_by_this_turn
+                .as_deref()
+                .is_some_and(Self::uses_power_or_toughness_characteristics)
+            || self.characteristic_relations.iter().any(|relation| {
+                relation
+                    .comparison
+                    .uses_power_or_toughness_characteristics()
+            })
+            || self
                 .any_of
                 .iter()
                 .any(Self::uses_power_or_toughness_characteristics)
@@ -1142,6 +1872,7 @@ impl ObjectFilter {
             || !self.all_card_types.is_empty()
             || !self.excluded_card_types.is_empty()
             || !self.subtypes.is_empty()
+            || !self.all_subtypes.is_empty()
             || self.type_or_subtype_union
             || !self.excluded_subtypes.is_empty()
             || !self.supertypes.is_empty()
@@ -1168,6 +1899,7 @@ impl ObjectFilter {
             || self.sticker.is_some()
             || self.enlist_eligible
             || self.attached_to_object.is_some()
+            || self.blocked_or_was_blocked_by_this_turn.is_some()
             || self.attached_to_player.is_some()
             || self.surveilled_this_turn
             || self.discarded_or_cycled_this_turn_by.is_some()
@@ -1183,18 +1915,29 @@ impl ObjectFilter {
             || self.name.is_some()
             || self.excluded_name.is_some()
             || self.name_originally_printed_in_set.is_some()
+            || self.one_per_card_type
             || self.alternative_cast.is_some()
             || !self.static_abilities.is_empty()
             || !self.excluded_static_abilities.is_empty()
             || !self.ability_markers.is_empty()
             || !self.excluded_ability_markers.is_empty()
             || !self.no_shared_creature_types_with.is_empty()
+            || !self.characteristic_relations.is_empty()
             || self.shares_creature_type_with_source
             || !self.tagged_constraints.is_empty()
             || self
                 .attached_to_object
                 .as_deref()
                 .is_some_and(Self::uses_non_pt_battlefield_characteristics)
+            || self
+                .blocked_or_was_blocked_by_this_turn
+                .as_deref()
+                .is_some_and(Self::uses_non_pt_battlefield_characteristics)
+            || self.characteristic_relations.iter().any(|relation| {
+                relation
+                    .comparison
+                    .uses_non_pt_battlefield_characteristics()
+            })
             || self
                 .any_of
                 .iter()
@@ -1360,6 +2103,7 @@ impl ObjectFilter {
         generic.owner = self.owner.clone();
         generic.controller = self.controller.clone();
         generic.cast_by = self.cast_by.clone();
+        generic.excluded_cast_origin_zone = self.excluded_cast_origin_zone;
         generic.first_spell_cast_each_turn = self.first_spell_cast_each_turn;
         generic.single_graveyard = self.single_graveyard;
         self != &generic
@@ -1441,6 +2185,11 @@ impl ObjectFilter {
         self.cast_by(PlayerFilter::You)
     }
 
+    pub fn not_cast_from_zone(mut self, zone: Zone) -> Self {
+        self.excluded_cast_origin_zone = Some(zone);
+        self
+    }
+
     pub fn first_spell_cast_each_turn(mut self) -> Self {
         self.first_spell_cast_each_turn = true;
         self
@@ -1486,6 +2235,11 @@ impl ObjectFilter {
 
     pub fn with_subtype(mut self, subtype: Subtype) -> Self {
         self.subtypes.push(subtype);
+        self
+    }
+
+    pub fn with_all_subtype(mut self, subtype: Subtype) -> Self {
+        self.all_subtypes.push(subtype);
         self
     }
 
@@ -1681,14 +2435,29 @@ impl ObjectFilter {
         self
     }
 
+    pub fn suspected(mut self) -> Self {
+        self.suspected = true;
+        self
+    }
+
     pub fn named(mut self, name: impl Into<String>) -> Self {
         self.name = Some(name.into());
         self
     }
 
     pub fn not_named(mut self, name: impl Into<String>) -> Self {
-        self.excluded_name = Some(name.into());
+        let name = name.into();
+        self.excluded_name_surface = ExcludedNameSurface::new(name.clone());
+        self.excluded_name = Some(name);
         self
+    }
+
+    pub fn set_excluded_name_surface(&mut self, surface: impl Into<String>) {
+        self.excluded_name_surface = ExcludedNameSurface::new(surface);
+    }
+
+    pub fn excluded_name_surface(&self) -> Option<&str> {
+        self.excluded_name_surface.as_deref()
     }
 
     pub fn commander(mut self) -> Self {
@@ -1766,6 +2535,32 @@ impl ObjectFilter {
 
     pub fn sharing_no_creature_types_with(mut self, filter: ObjectFilter) -> Self {
         self.no_shared_creature_types_with.push(filter);
+        self
+    }
+
+    pub fn sharing_characteristics_with(
+        mut self,
+        characteristics: Vec<ObjectCharacteristic>,
+        comparison: ObjectFilter,
+    ) -> Self {
+        self.characteristic_relations
+            .push(ObjectCharacteristicRelation::shares(
+                characteristics,
+                comparison,
+            ));
+        self
+    }
+
+    pub fn sharing_no_characteristics_with(
+        mut self,
+        characteristics: Vec<ObjectCharacteristic>,
+        comparison: ObjectFilter,
+    ) -> Self {
+        self.characteristic_relations
+            .push(ObjectCharacteristicRelation::shares_none(
+                characteristics,
+                comparison,
+            ));
         self
     }
 
@@ -1848,29 +2643,62 @@ impl ObjectFilter {
     pub fn description(&self) -> String {
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
+        if let Some(description) = describe_relative_characteristic_list_filter(self) {
+            return description;
+        }
         if let Some(description) = describe_branch_scoped_card_type_union(self) {
+            return description;
+        }
+        if let Some(description) =
+            describe_controlled_battlefield_and_owned_nonbattlefield_card_union(self)
+        {
+            return description;
+        }
+        if let Some(description) = describe_owned_nonbattlefield_card_union(self) {
             return description;
         }
         if let Some(description) = describe_owner_scoped_zone_union(self) {
             return description;
         }
+        if let Some(description) = describe_you_own_or_control_union(self) {
+            return description;
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
-            let mut description = describe_filter_union_list(
-                self.any_of
-                    .iter()
-                    .map(ObjectFilter::description)
-                    .map(|description| {
-                        if explicit_branch_articles {
-                            ensure_indefinite_article(description)
-                        } else {
-                            description
-                        }
-                    })
-                    .collect(),
-                self.union_connective(),
-                explicit_branch_articles,
-            );
+            let branch_descriptions = self
+                .any_of
+                .iter()
+                .map(|branch| {
+                    let mut described_branch = branch.clone();
+                    if described_branch.controller.is_none() {
+                        described_branch.controller = self.controller.clone();
+                    }
+                    if described_branch.owner.is_none() {
+                        described_branch.owner = self.owner.clone();
+                    }
+                    if self.other {
+                        described_branch.other = true;
+                    }
+                    described_branch.description()
+                })
+                .map(correct_leading_indefinite_article)
+                .map(|description| {
+                    if explicit_branch_articles {
+                        ensure_indefinite_article(description)
+                    } else {
+                        description
+                    }
+                })
+                .collect();
+            let mut description = if self.has_conjunctive_set_surface() {
+                describe_conjunctive_filter_list(branch_descriptions)
+            } else {
+                describe_filter_union_list(
+                    branch_descriptions,
+                    self.union_connective(),
+                    explicit_branch_articles,
+                )
+            };
             if let Some(attached_to) = &self.attached_to_object {
                 description.push_str(&format!(
                     " attached to {}",
@@ -1929,6 +2757,9 @@ impl ObjectFilter {
         }
         if self.modified {
             parts.push("modified".to_string());
+        }
+        if self.suspected {
+            parts.push("suspected".to_string());
         }
 
         let has_leading_determiner = self.other || has_target_tag || has_chosen_tag || self.source;
@@ -1992,6 +2823,9 @@ impl ObjectFilter {
                     controller_suffix = Some("that player controls".to_string());
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::Defending => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
@@ -2017,6 +2851,12 @@ impl ObjectFilter {
                     }
                     controller_suffix =
                         Some("that player or that object's controller controls".to_string())
+                }
+                PlayerFilter::Excluding { .. } if ctrl.is_your_team() => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("your team controls".to_string());
                 }
                 PlayerFilter::Excluding { base, excluded }
                     if matches!(base.as_ref(), PlayerFilter::Any)
@@ -2062,6 +2902,20 @@ impl ObjectFilter {
         if let Some(cast_by) = &self.cast_by {
             post_noun_qualifiers.push(format!("cast by {}", describe_player_filter(cast_by)));
         }
+        if let Some(zone) = self.excluded_cast_origin_zone {
+            let origin = match zone {
+                Zone::Hand => "its owner's hand".to_string(),
+                Zone::Graveyard => "a graveyard".to_string(),
+                Zone::Library => "a library".to_string(),
+                Zone::Exile => "exile".to_string(),
+                Zone::Command => "the command zone".to_string(),
+                Zone::Battlefield => "the battlefield".to_string(),
+                Zone::Stack => "the stack".to_string(),
+                Zone::Ante => "ante".to_string(),
+                Zone::OutsideGame => "outside the game".to_string(),
+            };
+            post_noun_qualifiers.push(format!("that wasn't cast from {origin}"));
+        }
         if self.cast_this_turn {
             post_noun_qualifiers.push("cast this turn".to_string());
         }
@@ -2072,8 +2926,11 @@ impl ObjectFilter {
         let owner_conveyed_by_zone = matches!(
             self.zone,
             Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
-        );
+        ) && !self.foretold;
         if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
+            if controller_suffix.is_none() && !has_leading_determiner {
+                parts.insert(0, "a".to_string());
+            }
             owner_suffix = Some(match owner {
                 PlayerFilter::You => "you own".to_string(),
                 PlayerFilter::NotYou => "you don't own".to_string(),
@@ -2110,6 +2967,9 @@ impl ObjectFilter {
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::Defending => "the defending player owns".to_string(),
                 PlayerFilter::Attacking => "an attacking player owns".to_string(),
                 PlayerFilter::DamagedPlayer => "that player owns".to_string(),
@@ -2141,6 +3001,9 @@ impl ObjectFilter {
             } else {
                 "face-up".to_string()
             });
+        }
+        if self.foretold {
+            parts.push("foretold".to_string());
         }
         if let Some(colors) = self.required_colors {
             let mut color_words = Vec::new();
@@ -2254,6 +3117,22 @@ impl ObjectFilter {
                 .join(" or ");
             post_noun_qualifiers.push(format!(
                 "that doesn't share a creature type with {comparison}"
+            ));
+        }
+        for relation in &self.characteristic_relations {
+            let characteristics = relation
+                .characteristics
+                .iter()
+                .map(|characteristic| characteristic.sharing_phrase())
+                .collect::<Vec<_>>()
+                .join(" or ");
+            let verb = match relation.kind {
+                ObjectCharacteristicRelationKind::SharesAny => "shares",
+                ObjectCharacteristicRelationKind::SharesNone => "doesn't share",
+            };
+            post_noun_qualifiers.push(format!(
+                "that {verb} {characteristics} with {}",
+                relation.comparison_description()
             ));
         }
         if self.shares_creature_type_with_source {
@@ -2418,6 +3297,9 @@ impl ObjectFilter {
                 TaggedOpbjectRelation::AttachedToTaggedObject => {
                     post_noun_qualifiers.push("attached to it".to_string());
                 }
+                TaggedOpbjectRelation::WasAttachedToTaggedObject => {
+                    post_noun_qualifiers.push("that was attached to it".to_string());
+                }
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());
                 }
@@ -2516,6 +3398,7 @@ impl ObjectFilter {
             && !(self.card_types.is_empty()
                 && self.all_card_types.is_empty()
                 && self.subtypes.is_empty()
+                && self.all_subtypes.is_empty()
                 && !self.token)
         {
             // With no type noun, "commander" IS the noun ("Commanders you
@@ -2547,6 +3430,12 @@ impl ObjectFilter {
         if self.blocked_by_source {
             post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
+        if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
+            post_noun_qualifiers.push(format!(
+                "that blocked or was blocked by {} this turn",
+                ensure_indefinite_article(combat_partner.description())
+            ));
+        }
         if self.tapped && self.untapped {
             parts.push("tapped/untapped".to_string());
         } else if self.tapped {
@@ -2557,7 +3446,11 @@ impl ObjectFilter {
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
         } else {
-            if self.attacking {
+            if self.attacking
+                && self
+                    .attacking_player_or_planeswalker_controlled_by
+                    .is_none()
+            {
                 parts.push("attacking".to_string());
             }
             if self.blocking {
@@ -2568,15 +3461,34 @@ impl ObjectFilter {
             post_noun_qualifiers.push("that attacked this turn".to_string());
         }
         if self.didnt_attack_this_turn {
-            post_noun_qualifiers.push("that didn't attack this turn".to_string());
+            let clause = if self.didnt_enter_battlefield_this_turn {
+                "that didn't attack or enter this turn"
+            } else {
+                "that didn't attack this turn"
+            };
+            post_noun_qualifiers.push(clause.to_string());
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
-            let player_text = player_filter.description();
-            if self.attacking_player_only {
-                post_noun_qualifiers.push(format!("attacking {player_text}"));
+            let player_text = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
+                "the last chosen player".to_string()
             } else {
+                player_filter.description()
+            };
+            if self.attacking_player_only {
+                let relation = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
+                    format!("attacking {player_text}")
+                } else {
+                    format!("that's attacking {player_text}")
+                };
+                post_noun_qualifiers.push(relation);
+            } else {
+                let controller_pronoun = if matches!(player_filter, PlayerFilter::You) {
+                    "you"
+                } else {
+                    "they"
+                };
                 post_noun_qualifiers.push(format!(
-                    "attacking {player_text} or a planeswalker controlled by {player_text}"
+                    "that's attacking {player_text} or a planeswalker {controller_pronoun} control"
                 ));
             }
         }
@@ -2599,28 +3511,19 @@ impl ObjectFilter {
         if self.entered_since_your_last_turn_ended {
             post_noun_qualifiers.push("that entered since your last turn ended".to_string());
         }
+        if self.didnt_enter_battlefield_this_turn && !self.didnt_attack_this_turn {
+            post_noun_qualifiers.push("that didn't enter this turn".to_string());
+        }
         if self.no_abilities {
             post_noun_qualifiers.push("with no abilities".to_string());
         }
 
-        let subtype_implies_type = !self.subtypes.is_empty()
+        let subtype_implies_type = (!self.subtypes.is_empty() || !self.all_subtypes.is_empty())
             && matches!(self.zone, None | Some(Zone::Battlefield))
             && self.all_card_types.is_empty()
             && self.card_types.is_empty();
-        let has_all_permanent_types = {
-            let required = [
-                CardType::Artifact,
-                CardType::Creature,
-                CardType::Enchantment,
-                CardType::Land,
-                CardType::Planeswalker,
-                CardType::Battle,
-            ];
-            self.card_types.len() == required.len()
-                && required
-                    .iter()
-                    .all(|card_type| self.card_types.contains(card_type))
-        };
+        let has_all_permanent_types = self.has_all_permanent_card_types();
+        let has_all_permanent_spell_types = self.has_all_permanent_spell_card_types();
         let stack_source_ability = matches!(self.zone, Some(Zone::Stack))
             && matches!(
                 self.stack_kind,
@@ -2648,13 +3551,20 @@ impl ObjectFilter {
                     describe_card_type_source_phrase(&self.card_types, self.union_connective())
                 ));
                 Some((false, describe_stack_object_kind(kind).to_string()))
-            } else if has_all_permanent_types {
+            } else if has_all_permanent_types || has_all_permanent_spell_types {
                 Some((true, "permanent".to_string()))
             } else {
-                Some((
-                    true,
-                    describe_card_type_list(&self.card_types, self.union_connective()),
-                ))
+                let card_type_phrase = if self.has_conjunctive_set_surface() {
+                    describe_conjunctive_filter_list(
+                        self.card_types
+                            .iter()
+                            .map(|card_type| card_type.name().to_string())
+                            .collect(),
+                    )
+                } else {
+                    describe_card_type_list(&self.card_types, self.union_connective())
+                };
+                Some((true, card_type_phrase))
             }
         } else if !self.token && !subtype_implies_type {
             let default_noun = if self.source {
@@ -2696,8 +3606,18 @@ impl ObjectFilter {
             None
         };
 
-        let subtype_phrase = if !self.subtypes.is_empty() {
-            let mut parts = Vec::new();
+        let subtype_parts = if !self.subtypes.is_empty() || !self.all_subtypes.is_empty() {
+            let mut parts = if self.all_subtypes.is_empty() {
+                Vec::new()
+            } else {
+                vec![
+                    self.all_subtypes
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ]
+            };
             let mut remaining = self.subtypes.clone();
             let outlaw_pack = [
                 Subtype::Assassin,
@@ -2714,14 +3634,22 @@ impl ObjectFilter {
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
             parts.extend(remaining.iter().map(std::string::ToString::to_string));
-            Some(describe_filter_union_list(
-                parts,
-                self.union_connective(),
-                false,
-            ))
+            parts
         } else {
-            None
+            Vec::new()
         };
+        let subtype_phrase = (!subtype_parts.is_empty()).then(|| {
+            let description = describe_filter_union_list(
+                subtype_parts.clone(),
+                self.union_connective(),
+                self.has_serial_or_list_surface(),
+            );
+            if self.has_shared_indefinite_article_surface() {
+                ensure_indefinite_article(description)
+            } else {
+                description
+            }
+        });
 
         if self.has_explicit_card_noun() {
             match type_phrase.as_mut() {
@@ -2772,12 +3700,43 @@ impl ObjectFilter {
             // ("this Equipment", "this creature", a short card name, etc.).
         } else if self.type_or_subtype_union {
             match (type_phrase, subtype_phrase) {
-                (Some((_, type_phrase)), Some(subtype_phrase)) => {
-                    parts.push(describe_filter_union_list(
-                        vec![type_phrase, subtype_phrase],
+                (Some((_, mut type_phrase)), Some(subtype_phrase)) => {
+                    let terminal_noun = self
+                        .has_terminal_noun_after_type_subtype_union_surface()
+                        .then(|| {
+                            [" card", " spell"].into_iter().find_map(|suffix| {
+                                type_phrase
+                                    .strip_suffix(suffix)
+                                    .map(|head| (head.to_string(), suffix.trim().to_string()))
+                            })
+                        })
+                        .flatten();
+                    if let Some((head, _)) = &terminal_noun {
+                        type_phrase = head.clone();
+                    }
+
+                    let subtype_first = self.has_subtype_before_card_type_union_surface();
+                    let preserve_individual_arms = subtype_first || terminal_noun.is_some();
+                    let mut union_parts = if preserve_individual_arms {
+                        subtype_parts
+                    } else {
+                        vec![subtype_phrase]
+                    };
+                    if subtype_first {
+                        union_parts.push(type_phrase);
+                    } else {
+                        union_parts.insert(0, type_phrase);
+                    }
+                    let mut description = describe_filter_union_list(
+                        union_parts,
                         self.union_connective(),
-                        false,
-                    ));
+                        preserve_individual_arms,
+                    );
+                    if let Some((_, terminal_noun)) = terminal_noun {
+                        description.push(' ');
+                        description.push_str(&terminal_noun);
+                    }
+                    parts.push(description);
                 }
                 (Some((_, type_phrase)), None) => parts.push(type_phrase),
                 (None, Some(subtype_phrase)) => parts.push(subtype_phrase),
@@ -2791,9 +3750,11 @@ impl ObjectFilter {
                     parts.push(subtype_phrase);
                     parts.push(type_phrase);
                 }
-                (Some((_, _type_phrase)), Some(subtype_phrase)) if land_only => {
+                (Some((_, type_phrase)), Some(subtype_phrase)) if land_only => {
                     parts.push(subtype_phrase);
-                    if self.has_explicit_card_noun()
+                    if self.explicit_card_type_noun() == Some(CardType::Land) {
+                        parts.push(type_phrase);
+                    } else if self.has_explicit_card_noun()
                         || matches!(
                             self.zone,
                             Some(
@@ -2827,6 +3788,36 @@ impl ObjectFilter {
         if append_token_after_type {
             parts.push("token".to_string());
         }
+
+        // Oracle places controller and owner scope immediately after the noun,
+        // before restrictive qualifiers: "a creature you control with
+        // deathtouch", not "a creature with deathtouch you control". Keep the
+        // scope attached to the noun here so every later AST-derived
+        // qualifier follows it consistently.
+        match (controller_suffix.take(), owner_suffix.take()) {
+            (Some(controller), Some(owner))
+                if controller == "you control" && owner == "you own" =>
+            {
+                parts.push("you both own and control".to_string());
+            }
+            (Some(controller), Some(owner))
+                if controller == "you control" && owner == "you don't own" =>
+            {
+                parts.push("you control but don't own".to_string());
+            }
+            (Some(controller), Some(owner))
+                if controller == "that player controls" && owner == "that player owns" =>
+            {
+                parts.push("that player both owns and controls".to_string());
+            }
+            (Some(controller), Some(owner)) => {
+                parts.push(format!("{owner} but {controller}"));
+            }
+            (Some(controller), None) => parts.push(controller),
+            (None, Some(owner)) => parts.push(owner),
+            (None, None) => {}
+        }
+
         if !post_noun_qualifiers.is_empty() {
             parts.extend(post_noun_qualifiers);
         }
@@ -2838,6 +3829,9 @@ impl ObjectFilter {
         }
         if self.distinct_creature_types {
             parts.push("that share no creature types".to_string());
+        }
+        if self.one_per_card_type {
+            parts.push("with at most one card of each card type".to_string());
         }
 
         if let Some(ref name) = self.name {
@@ -2861,11 +3855,19 @@ impl ObjectFilter {
             if name == "{chosen name}" {
                 // The name is a runtime back-reference to a previously chosen
                 // card name, not a literal card name.
-                return format!("a {} with that name", parts.join(" "));
+                return format!(
+                    "{} with that name",
+                    ensure_indefinite_article(parts.join(" "))
+                );
             }
-            return format!("a {} named {}", parts.join(" "), name);
+            return format!(
+                "{} named {}",
+                ensure_indefinite_article(parts.join(" ")),
+                name
+            );
         }
         if let Some(ref name) = self.excluded_name {
+            let name = self.excluded_name_surface().unwrap_or(name);
             return format!("{} not named {}", parts.join(" "), name);
         }
 
@@ -3059,7 +4061,9 @@ impl ObjectFilter {
             };
             if zone == Zone::Exile && has_source_exiled_constraint {
             } else if let Some(zone_name) = zone_name {
-                if let Some(owner) = &self.owner {
+                if self.foretold && zone == Zone::Exile {
+                    parts.push("in exile".to_string());
+                } else if let Some(owner) = &self.owner {
                     parts.push(format!(
                         "in {} {}",
                         describe_possessive_player_filter(owner),
@@ -3129,7 +4133,13 @@ impl ObjectFilter {
         if self.entered_graveyard_from_battlefield_this_turn && self.zone == Some(Zone::Graveyard) {
             parts.push("that was put there from the battlefield this turn".to_string());
         } else if self.entered_graveyard_this_turn && self.zone == Some(Zone::Graveyard) {
-            parts.push("that was put there from anywhere this turn".to_string());
+            let clause = match self.graveyard_entry_history_surface() {
+                Some(GraveyardEntryHistorySurface::PutThereFromAnywhereThisTurn) => {
+                    "that was put there from anywhere this turn"
+                }
+                _ => "that was put there this turn",
+            };
+            parts.push(clause.to_string());
         }
         if self.surveilled_this_turn {
             parts.push("you've surveilled this turn".to_string());
@@ -3160,29 +4170,6 @@ impl ObjectFilter {
             parts.push("drawn this turn".to_string());
         }
 
-        match (controller_suffix, owner_suffix) {
-            (Some(controller), Some(owner))
-                if controller == "you control" && owner == "you own" =>
-            {
-                parts.push("you both own and control".to_string());
-            }
-            (Some(controller), Some(owner))
-                if controller == "you control" && owner == "you don't own" =>
-            {
-                parts.push("you control but don't own".to_string());
-            }
-            (Some(controller), Some(owner))
-                if controller == "that player controls" && owner == "that player owns" =>
-            {
-                parts.push("that player both owns and controls".to_string());
-            }
-            (Some(controller), Some(owner)) => {
-                parts.push(format!("{owner} but {controller}"));
-            }
-            (Some(controller), None) => parts.push(controller),
-            (None, Some(owner)) => parts.push(owner),
-            (None, None) => {}
-        }
         parts.extend(chosen_trailing_qualifiers);
 
         if let Some(attached_to) = &self.attached_to_object {
@@ -3314,12 +4301,135 @@ impl ObjectFilter {
             parts.push(format!("{stack_text} could target"));
         }
 
-        parts.join(" ")
+        correct_leading_indefinite_article(parts.join(" "))
     }
 }
 
 fn source_reference_surface_text(surface: &SourceReferenceSurface) -> String {
     surface.display_text()
+}
+
+/// Compact a controlled battlefield set coordinated with the same class of
+/// owned cards in every nonbattlefield zone.
+pub fn describe_controlled_battlefield_and_owned_nonbattlefield_card_union(
+    filter: &ObjectFilter,
+) -> Option<String> {
+    if !filter.has_conjunctive_set_surface() || filter.any_of.len() != 6 {
+        return None;
+    }
+
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = ObjectFilterUnionSurface::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+
+    let battlefield_index = filter.any_of.iter().position(|branch| {
+        branch.zone == Some(Zone::Battlefield)
+            && branch.controller == Some(PlayerFilter::You)
+            && branch.owner.is_none()
+    })?;
+    let battlefield = &filter.any_of[battlefield_index];
+    let mut battlefield_basis = battlefield.clone();
+    battlefield_basis.zone = None;
+    battlefield_basis.controller = None;
+
+    let nonbattlefield_branches = filter
+        .any_of
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != battlefield_index)
+        .map(|(_, branch)| branch.clone())
+        .collect::<Vec<_>>();
+    for branch in &nonbattlefield_branches {
+        let mut basis = branch.clone();
+        basis.zone = None;
+        basis.owner = None;
+        if basis != battlefield_basis {
+            return None;
+        }
+    }
+    let nonbattlefield = ObjectFilter {
+        any_of: nonbattlefield_branches,
+        ..ObjectFilter::default()
+    };
+    let owned_cards = describe_owned_nonbattlefield_card_union(&nonbattlefield)?;
+
+    let mut battlefield_surface = battlefield.clone();
+    battlefield_surface.set_plural_object_noun_surface(false);
+    Some(format!(
+        "{} and {owned_cards}",
+        describe_count_filter_subject(&battlefield_surface)
+    ))
+}
+
+/// Compact the five owner-scoped nonbattlefield zones back into Oracle's
+/// canonical "cards you own that aren't on the battlefield" subject.
+///
+/// The branches remain separate typed runtime selectors. This renderer only
+/// applies when all five branches have the same object constraints and differ
+/// solely by zone.
+pub fn describe_owned_nonbattlefield_card_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.union_connective() != ObjectFilterUnionConnective::Or || filter.any_of.len() != 5 {
+        return None;
+    }
+
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = ObjectFilterUnionSurface::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut seen = [false; 5];
+    let mut shared_basis: Option<ObjectFilter> = None;
+    for branch in &filter.any_of {
+        if branch.owner != Some(PlayerFilter::You) || branch.controller.is_some() {
+            return None;
+        }
+        let zone_index = match branch.zone? {
+            Zone::Hand => 0,
+            Zone::Library => 1,
+            Zone::Graveyard => 2,
+            Zone::Exile => 3,
+            Zone::Command => 4,
+            _ => return None,
+        };
+        if std::mem::replace(&mut seen[zone_index], true) {
+            return None;
+        }
+
+        let mut basis = branch.clone();
+        basis.zone = None;
+        basis.owner = None;
+        match &shared_basis {
+            Some(shared) if shared != &basis => return None,
+            Some(_) => {}
+            None => shared_basis = Some(basis),
+        }
+    }
+    if !seen.into_iter().all(|present| present) {
+        return None;
+    }
+
+    let mut shared_basis = shared_basis?;
+    shared_basis.set_plural_object_noun_surface(false);
+    let description = shared_basis.description();
+    let noun = description
+        .strip_prefix("an ")
+        .or_else(|| description.strip_prefix("a "))
+        .or_else(|| description.strip_prefix("the "))
+        .unwrap_or(&description)
+        .trim();
+    let noun = noun.strip_suffix(" card")?.trim();
+    if noun.is_empty() {
+        Some("cards you own that aren't on the battlefield".to_string())
+    } else {
+        Some(format!(
+            "{noun} cards you own that aren't on the battlefield"
+        ))
+    }
 }
 
 /// An owner-scoped union of bare zones ("all cards from all opponents'
@@ -3361,30 +4471,228 @@ pub fn describe_owner_scoped_zone_union(filter: &ObjectFilter) -> Option<String>
     ))
 }
 
-fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<String> {
+/// Compact mirrored ownership/controller branches while preserving their
+/// shared object constraints.
+///
+/// `(permanent owned by you) OR (permanent controlled by you)` is the typed
+/// form of Oracle's "a permanent you own or control". The two branches must
+/// otherwise be identical so genuinely distinct selectors remain expanded.
+fn describe_you_own_or_control_union(filter: &ObjectFilter) -> Option<String> {
+    if filter.union_connective() != ObjectFilterUnionConnective::Or {
+        return None;
+    }
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = ObjectFilterUnionSurface::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+    let [first, second] = filter.any_of.as_slice() else {
+        return None;
+    };
+
+    let (owned, controlled) = if first.owner == Some(PlayerFilter::You)
+        && first.controller.is_none()
+        && second.controller == Some(PlayerFilter::You)
+        && second.owner.is_none()
+    {
+        (first, second)
+    } else if second.owner == Some(PlayerFilter::You)
+        && second.controller.is_none()
+        && first.controller == Some(PlayerFilter::You)
+        && first.owner.is_none()
+    {
+        (second, first)
+    } else {
+        return None;
+    };
+
+    let mut owned_base = owned.clone();
+    owned_base.owner = None;
+    let mut controlled_base = controlled.clone();
+    controlled_base.controller = None;
+    if owned_base != controlled_base {
+        return None;
+    }
+
+    Some(format!(
+        "{} you own or control",
+        ensure_indefinite_article(owned_base.description())
+    ))
+}
+
+fn relative_characteristic_selector_description(filter: &ObjectFilter) -> Option<String> {
+    if !filter.any_of.is_empty() {
+        return None;
+    }
+    let description = match (
+        filter.card_types.as_slice(),
+        filter.subtypes.as_slice(),
+        filter.token,
+    ) {
+        ([card_type], [], false) => card_type.name().to_string(),
+        ([], [subtype], false) => subtype.to_string(),
+        ([], [], true) => "token".to_string(),
+        _ => return None,
+    };
+
+    let mut remainder = filter.clone();
+    remainder.card_types.clear();
+    remainder.subtypes.clear();
+    remainder.token = false;
+    (remainder == ObjectFilter::default()).then_some(description)
+}
+
+pub fn describe_relative_characteristic_list_filter(filter: &ObjectFilter) -> Option<String> {
+    if !filter.has_relative_characteristic_list_surface() {
+        return None;
+    }
+
+    let mut base = filter.clone();
+    let (selectors, negated) = if filter.any_of.len() >= 2 {
+        let selectors = filter
+            .any_of
+            .iter()
+            .map(relative_characteristic_selector_description)
+            .collect::<Option<Vec<_>>>()?;
+        base.any_of.clear();
+        (selectors, false)
+    } else if filter.subtypes.len() >= 2 && filter.excluded_subtypes.is_empty() {
+        let selectors = filter
+            .subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        base.subtypes.clear();
+        (selectors, false)
+    } else if filter.excluded_subtypes.len() >= 2 && filter.subtypes.is_empty() {
+        let selectors = filter
+            .excluded_subtypes
+            .iter()
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        base.excluded_subtypes.clear();
+        (selectors, true)
+    } else if filter.type_or_subtype_union && filter.card_types.len() + filter.subtypes.len() >= 2 {
+        let selectors = filter
+            .card_types
+            .iter()
+            .map(|card_type| card_type.name().to_string())
+            .chain(filter.subtypes.iter().map(ToString::to_string))
+            .collect::<Vec<_>>();
+        base.card_types.clear();
+        base.subtypes.clear();
+        (selectors, false)
+    } else {
+        return None;
+    };
+
+    base.type_or_subtype_union = false;
+    base.set_relative_characteristic_list_surface(false);
+    let base_description = base.description();
+    let selector_description = if filter.has_explicit_union_branch_articles() {
+        describe_filter_union_list(
+            selectors
+                .into_iter()
+                .map(ensure_indefinite_article)
+                .collect(),
+            filter.union_connective(),
+            filter.has_serial_or_list_surface(),
+        )
+    } else {
+        ensure_indefinite_article(describe_filter_union_list(
+            selectors,
+            filter.union_connective(),
+            filter.has_serial_or_list_surface(),
+        ))
+    };
+    let relation = if negated { "that isn't" } else { "that's" };
+    Some(format!(
+        "{base_description} {relation} {selector_description}"
+    ))
+}
+
+pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<String> {
     if filter.any_of.len() < 2 {
         return None;
     }
 
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    let mut branches = filter.any_of.clone();
+    // Serial characteristic lists are sometimes parsed as a left-associated
+    // union tree. When the authored outer surface is conjunctive and a nested
+    // node carries no semantic predicate of its own, flatten that container
+    // for rendering so shared outer scope can qualify every list member.
+    // The executable filter remains unchanged.
+    if outer.has_conjunctive_set_surface() {
+        let mut flattened = Vec::new();
+        for branch in branches {
+            let mut container = branch.clone();
+            container.any_of.clear();
+            if !branch.any_of.is_empty() && container == ObjectFilter::default() {
+                flattened.extend(branch.any_of);
+            } else {
+                flattened.push(branch);
+            }
+        }
+        branches = flattened;
+    }
+    // The filter parser can distribute a shared state adjective over every
+    // union arm while retaining controller/zone scope on the outer filter.
+    // Factor those identical predicates back out before validating the arms
+    // as characteristic selectors, preserving both semantics and the authored
+    // shared surface ("untapped artifacts and/or creatures you control").
+    if branches.iter().all(|branch| branch.tapped) {
+        outer.tapped = true;
+        for branch in &mut branches {
+            branch.tapped = false;
+        }
+    }
+    if branches.iter().all(|branch| branch.untapped) {
+        outer.untapped = true;
+        for branch in &mut branches {
+            branch.untapped = false;
+        }
+    }
+    if let Some(stack_kind) = branches
+        .first()
+        .and_then(|branch| branch.stack_kind)
+        .filter(|stack_kind| {
+            branches
+                .iter()
+                .all(|branch| branch.stack_kind == Some(*stack_kind))
+        })
+    {
+        outer.stack_kind = Some(stack_kind);
+        for branch in &mut branches {
+            branch.stack_kind = None;
+        }
+    }
+    if branches.iter().all(|branch| branch.has_mana_cost) {
+        outer.has_mana_cost = true;
+        for branch in &mut branches {
+            branch.has_mana_cost = false;
+        }
+    }
+
     let mut selectors = Vec::new();
-    for branch in &filter.any_of {
-        if !branch_scoped_union_arm_is_card_type_selector(branch) {
+    for branch in &branches {
+        if !branch_scoped_union_arm_is_characteristic_selector(branch) {
             return None;
         }
         selectors.push(branch.description());
     }
 
-    let mut outer = filter.clone();
-    outer.any_of.clear();
     if !outer.card_types.is_empty()
         || !outer.all_card_types.is_empty()
         || !outer.excluded_card_types.is_empty()
         || !outer.subtypes.is_empty()
+        || !outer.all_subtypes.is_empty()
         || outer.type_or_subtype_union
         || !outer.excluded_subtypes.is_empty()
         || !outer.supertypes.is_empty()
         || !outer.excluded_supertypes.is_empty()
-        || outer.colors.is_some()
         || outer.required_colors.is_some()
         || !outer.excluded_colors.is_empty()
         || outer.colorless
@@ -3394,7 +4702,11 @@ fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<Strin
         return None;
     }
 
-    let selector = describe_filter_union_list(selectors, filter.union_connective(), true);
+    let selector = if filter.has_conjunctive_set_surface() {
+        describe_conjunctive_filter_list(selectors)
+    } else {
+        describe_filter_union_list(selectors, filter.union_connective(), true)
+    };
     let placeholder = if outer.has_explicit_card_noun()
         || matches!(
             outer.zone,
@@ -3418,23 +4730,77 @@ fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<Strin
     } else {
         format!("{selector} {placeholder}")
     };
-    replace_first_description_word(&outer.description(), placeholder, &replacement)
+    let mut description =
+        replace_first_description_word(&outer.description(), placeholder, &replacement)?;
+    // A branch-local source exclusion already supplies the determiner
+    // ("another Pest"). Do not retain the outer placeholder's article when
+    // that selector becomes the coordinated list head.
+    for doubled in ["a another ", "an another ", "a other ", "an other "] {
+        if description.starts_with(doubled) {
+            let determiner = doubled
+                .split_once(' ')
+                .map(|(_, remainder)| remainder)
+                .unwrap_or(doubled);
+            description.replace_range(..doubled.len(), determiner);
+            break;
+        }
+    }
+    if description.starts_with("a ")
+        && replacement
+            .chars()
+            .next()
+            .is_some_and(|first| matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        description.replace_range(..2, "an ");
+    }
+    Some(description)
 }
 
-fn branch_scoped_union_arm_is_card_type_selector(filter: &ObjectFilter) -> bool {
+fn branch_scoped_union_arm_is_characteristic_selector(filter: &ObjectFilter) -> bool {
     if !filter.any_of.is_empty()
-        || filter.card_types.len() != 1
+        || filter.card_types.len() + filter.subtypes.len() != 1
         || !filter.all_card_types.is_empty()
+        || !filter.all_subtypes.is_empty()
+        || filter.type_or_subtype_union
+        || filter.zone.is_some()
+        || filter.controller.is_some()
+        || filter.owner.is_some()
     {
         return false;
     }
 
     let mut remainder = filter.clone();
+    if remainder.tagged_constraints.iter().any(|constraint| {
+        constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+            || !matches!(constraint.tag.as_str(), "enchanted" | "equipped")
+    }) {
+        return false;
+    }
     remainder.card_types.clear();
+    remainder.subtypes.clear();
+    remainder.all_subtypes.clear();
     remainder.excluded_card_types.clear();
     remainder.excluded_subtypes.clear();
     remainder.excluded_supertypes.clear();
     remainder.excluded_colors = ColorSet::new();
+    remainder.zone = None;
+    remainder.controller = None;
+    remainder.owner = None;
+    remainder.power = None;
+    remainder.toughness = None;
+    remainder.mana_value = None;
+    // State adjectives may be scoped to just one arm while zone/controller
+    // qualifiers live on the outer union (for example, "untapped artifacts
+    // and/or creatures you control"). They are still valid characteristic
+    // selectors and remain present in each arm's rendered description.
+    remainder.tapped = false;
+    remainder.untapped = false;
+    // "Other" is a branch-local source exclusion, not a separate domain
+    // predicate. Keep it on the rendered selector (for example,
+    // "Skeletons you control and other Zombies you control") while allowing
+    // the outer battlefield/controller scope to qualify the whole union.
+    remainder.other = false;
+    remainder.tagged_constraints.clear();
     remainder == ObjectFilter::default()
 }
 
@@ -3496,6 +4862,8 @@ fn describe_possessive_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::NotYou => "a non-you player's".to_string(),
         PlayerFilter::Opponent => "an opponent's".to_string(),
         PlayerFilter::Teammate => "a teammate's".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left's".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
         PlayerFilter::Attacking => "an attacking player's".to_string(),
@@ -3578,6 +4946,8 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::NotYou => "player other than you".to_string(),
         PlayerFilter::Opponent => "opponent".to_string(),
         PlayerFilter::Teammate => "teammate".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::Active => "active player".to_string(),
         PlayerFilter::Defending => "defending player".to_string(),
         PlayerFilter::Attacking => "attacking player".to_string(),
@@ -3703,6 +5073,18 @@ fn describe_counter_constraint(constraint: CounterConstraint, plural: bool) -> S
         }
         CounterConstraint::Typed(counter_type) => {
             format!("a {} counter", counter_type.description())
+        }
+        CounterConstraint::AtLeast {
+            counter_type,
+            count,
+        } => {
+            let count = crate::cardinal_word(count).unwrap_or_else(|| count.to_string());
+            match counter_type {
+                Some(counter_type) => {
+                    format!("{count} or more {} counters", counter_type.description())
+                }
+                None => format!("{count} or more counters"),
+            }
         }
     }
 }
@@ -3831,6 +5213,7 @@ fn describe_count_filter_subject(filter: &ObjectFilter) -> String {
         " target player controls",
         " target opponent controls",
         " a teammate controls",
+        " your team controls",
         " in ",
         " on ",
         " with ",
@@ -3944,6 +5327,16 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 "X".to_string()
             }
             Value::SurfaceHinted { value, hints } => {
+                if hints.contains(&crate::ValueSurfaceHint::MasculineSourcePossessive)
+                    && matches!(value.unhinted(), Value::SourcePower)
+                {
+                    return "his power".to_string();
+                }
+                if hints.contains(&crate::ValueSurfaceHint::FeminineSourcePossessive)
+                    && matches!(value.unhinted(), Value::SourcePower)
+                {
+                    return "her power".to_string();
+                }
                 if hints.contains(&crate::ValueSurfaceHint::RevealedCardReference)
                     && matches!(value.unhinted(), Value::ManaValueOf(_))
                 {
@@ -4093,6 +5486,21 @@ fn describe_comparison(cmp: &Comparison) -> String {
                 format!(
                     "the number of counters on {}",
                     describe_counter_holder(spec)
+                )
+            }
+            Value::PlayerCounters(player, counter_type) => {
+                let holder = match player {
+                    PlayerFilter::You => "you have".to_string(),
+                    PlayerFilter::Opponent => "an opponent has".to_string(),
+                    PlayerFilter::Any => "a player has".to_string(),
+                    PlayerFilter::Target(_)
+                    | PlayerFilter::AliasedTarget(_)
+                    | PlayerFilter::Specific(_) => "that player has".to_string(),
+                    other => format!("{} has", other.description()),
+                };
+                format!(
+                    "the number of {} counters {holder}",
+                    counter_type.description()
                 )
             }
             Value::SourcePower => "this creature's power".to_string(),
@@ -4285,7 +5693,10 @@ mod tests {
         PlayerFilter, PtReference, StackObjectKind, TaggedObjectConstraint, TaggedOpbjectRelation,
         describe_comparison, describe_mana_value_comparison,
     };
-    use crate::{CardType, CounterType, ObjectId, Subtype, TagKey, Value, ValueSurfaceHint, Zone};
+    use crate::{
+        CardType, ColorSet, CounterConstraint, CounterType, ObjectId, Subtype, TagKey, Value,
+        ValueSurfaceHint, Zone,
+    };
 
     #[test]
     fn object_ref_helpers_preserve_payloads() {
@@ -4397,6 +5808,12 @@ mod tests {
             describe_comparison(&Comparison::LessThanOrEqualExpr(Box::new(postfix))),
             "your life total or less"
         );
+
+        let experience_counters = Value::PlayerCounters(PlayerFilter::You, CounterType::Experience);
+        assert_eq!(
+            describe_comparison(&Comparison::GreaterThanExpr(Box::new(experience_counters))),
+            "greater than the number of experience counters you have"
+        );
     }
 
     #[test]
@@ -4427,6 +5844,137 @@ mod tests {
         assert_eq!(
             surfaced_filter.union_connective(),
             ObjectFilterUnionConnective::AndOr
+        );
+    }
+
+    #[test]
+    fn excluded_name_surface_preserves_oracle_spelling_without_changing_filter_equality() {
+        let normalized = ObjectFilter::default().not_named("staff of eden vaults key");
+        let mut surfaced = normalized.clone();
+        surfaced.set_excluded_name_surface("Staff of Eden, Vault's Key");
+
+        assert_eq!(normalized, surfaced);
+        assert_eq!(
+            surfaced.description(),
+            "permanent not named Staff of Eden, Vault's Key"
+        );
+    }
+
+    #[test]
+    fn controlled_but_not_owned_scope_renders_in_oracle_order() {
+        let filter = ObjectFilter::default()
+            .you_control()
+            .owned_by(PlayerFilter::NotYou);
+
+        assert_eq!(
+            filter.description(),
+            "a permanent you control but don't own"
+        );
+    }
+
+    #[test]
+    fn mirrored_owner_or_controller_branches_share_the_object_noun() {
+        let permanent = ObjectFilter::permanent();
+        let union = ObjectFilter {
+            any_of: vec![
+                permanent.clone().owned_by(PlayerFilter::You),
+                permanent.controlled_by(PlayerFilter::You),
+            ],
+            ..ObjectFilter::default()
+        };
+
+        assert_eq!(union.description(), "a permanent you own or control");
+
+        let distinct = ObjectFilter {
+            any_of: vec![
+                ObjectFilter::permanent().owned_by(PlayerFilter::You),
+                ObjectFilter::creature().controlled_by(PlayerFilter::You),
+            ],
+            ..ObjectFilter::default()
+        };
+        assert_eq!(
+            distinct.description(),
+            "a permanent you own or a creature you control"
+        );
+    }
+
+    #[test]
+    fn shared_color_and_controller_qualify_a_conjunctive_spell_type_union() {
+        let mut filter = ObjectFilter::spell().you_control();
+        filter.colors = Some(ColorSet::RED);
+        filter.any_of = vec![
+            ObjectFilter::default().with_type(CardType::Instant),
+            ObjectFilter::default().with_type(CardType::Sorcery),
+        ];
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "red instant and sorcery spell you control"
+        );
+    }
+
+    #[test]
+    fn shared_outer_controller_qualifies_union_with_spell_fields_on_branches() {
+        let spell_branch = |card_type| ObjectFilter {
+            stack_kind: Some(StackObjectKind::Spell),
+            card_types: vec![card_type],
+            has_mana_cost: true,
+            ..ObjectFilter::default()
+        };
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Stack),
+            controller: Some(PlayerFilter::You),
+            any_of: vec![
+                spell_branch(CardType::Instant),
+                spell_branch(CardType::Sorcery),
+            ],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "an instant and sorcery spell you control"
+        );
+    }
+
+    #[test]
+    fn outer_controller_materializes_on_mixed_domain_union_branches() {
+        let mut creature_spell = ObjectFilter::spell().with_type(CardType::Creature);
+        creature_spell.has_mana_cost = true;
+        let mut filter = ObjectFilter {
+            controller: Some(PlayerFilter::You),
+            any_of: vec![ObjectFilter::creature(), creature_spell],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "a creature you control and a creature spell you control"
+        );
+    }
+
+    #[test]
+    fn outer_other_materializes_on_mixed_domain_union_branches() {
+        let mut filter = ObjectFilter {
+            controller: Some(PlayerFilter::You),
+            other: true,
+            any_of: vec![
+                ObjectFilter::default()
+                    .with_all_type(CardType::Artifact)
+                    .with_all_type(CardType::Creature)
+                    .nontoken(),
+                ObjectFilter::default().with_subtype(Subtype::Vehicle),
+            ],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "another nontoken artifact creature you control and another Vehicle you control"
         );
     }
 
@@ -4468,6 +6016,23 @@ mod tests {
     }
 
     #[test]
+    fn counter_threshold_constraint_renders_its_exact_cardinal_minimum() {
+        let mut filter = ObjectFilter::default()
+            .with_type(CardType::Creature)
+            .you_control();
+        filter.with_counter = Some(CounterConstraint::AtLeast {
+            counter_type: Some(CounterType::PlusOnePlusOne),
+            count: 12,
+        });
+        filter.set_counter_requirement_surface(false, true, true);
+
+        assert_eq!(
+            filter.description(),
+            "a creature you control with twelve or more +1/+1 counters on them"
+        );
+    }
+
+    #[test]
     fn branch_scoped_type_union_factors_shared_card_domain() {
         let mut filter = ObjectFilter {
             zone: Some(Zone::Graveyard),
@@ -4487,6 +6052,139 @@ mod tests {
         assert_eq!(
             filter.description(),
             "artifact or non-aura enchantment card in your graveyard"
+        );
+    }
+
+    #[test]
+    fn branch_scoped_characteristic_union_keeps_comparison_on_its_arm() {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            any_of: vec![
+                ObjectFilter::creature().with_power(Comparison::LessThanOrEqual(2)),
+                ObjectFilter::default().with_subtype(Subtype::Wall),
+            ],
+            ..Default::default()
+        };
+        for branch in &mut filter.any_of {
+            branch.zone = None;
+        }
+        filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
+
+        assert_eq!(
+            filter.description(),
+            "creature with power 2 or less and/or Wall"
+        );
+    }
+
+    #[test]
+    fn branch_scoped_characteristic_union_factors_conjunctive_controller_scope() {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            controller: Some(PlayerFilter::You),
+            any_of: vec![
+                ObjectFilter::default().with_subtype(Subtype::Plant),
+                ObjectFilter::default().with_subtype(Subtype::Treefolk),
+            ],
+            ..Default::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(filter.description(), "a Plant and Treefolk you control");
+    }
+
+    #[test]
+    fn branch_scoped_characteristic_union_keeps_other_on_one_arm() {
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            controller: Some(PlayerFilter::You),
+            any_of: vec![
+                ObjectFilter::default().with_subtype(Subtype::Skeleton),
+                ObjectFilter::default()
+                    .with_subtype(Subtype::Zombie)
+                    .other(),
+            ],
+            ..Default::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "a Skeleton and another Zombie you control"
+        );
+    }
+
+    #[test]
+    fn branch_scoped_characteristic_union_flattens_a_serial_list_container() {
+        let mut leading = ObjectFilter::default();
+        leading.any_of = vec![
+            ObjectFilter::default().with_subtype(Subtype::Pest).other(),
+            ObjectFilter::default().with_subtype(Subtype::Bat),
+            ObjectFilter::default().with_subtype(Subtype::Insect),
+            ObjectFilter::default().with_subtype(Subtype::Snake),
+        ];
+        let mut filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            controller: Some(PlayerFilter::You),
+            any_of: vec![
+                leading,
+                ObjectFilter::default().with_subtype(Subtype::Spider),
+            ],
+            ..ObjectFilter::default()
+        };
+        filter.set_conjunctive_set_surface(true);
+
+        assert_eq!(
+            filter.description(),
+            "another Pest, Bat, Insect, Snake, and Spider you control"
+        );
+    }
+
+    #[test]
+    fn branch_scoped_type_union_factors_shared_tap_state_and_controller_scope() {
+        for (tapped, untapped, expected) in [
+            (true, false, "a tapped artifact and/or creature you control"),
+            (
+                false,
+                true,
+                "an untapped artifact and/or creature you control",
+            ),
+        ] {
+            let mut artifact = ObjectFilter::default().with_type(CardType::Artifact);
+            artifact.tapped = tapped;
+            artifact.untapped = untapped;
+            let mut creature = ObjectFilter::default().with_type(CardType::Creature);
+            creature.tapped = tapped;
+            creature.untapped = untapped;
+            let filter = ObjectFilter {
+                zone: Some(Zone::Battlefield),
+                controller: Some(PlayerFilter::You),
+                any_of: vec![artifact, creature],
+                ..Default::default()
+            }
+            .with_union_connective(ObjectFilterUnionConnective::AndOr);
+
+            assert_eq!(filter.description(), expected);
+        }
+    }
+
+    #[test]
+    fn branch_scoped_type_union_keeps_arm_tap_state_and_outer_controller_scope() {
+        let mut artifact = ObjectFilter::default().with_type(CardType::Artifact);
+        artifact.untapped = true;
+        let filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            controller: Some(PlayerFilter::You),
+            any_of: vec![
+                artifact,
+                ObjectFilter::default().with_type(CardType::Creature),
+            ],
+            ..Default::default()
+        }
+        .with_union_connective(ObjectFilterUnionConnective::AndOr);
+
+        assert_eq!(
+            filter.description(),
+            "an untapped artifact and/or creature you control"
         );
     }
 
@@ -4534,6 +6232,60 @@ mod tests {
     }
 
     #[test]
+    fn relative_and_controller_qualified_unions_keep_their_authored_shape() {
+        let mut relative = ObjectFilter::creature()
+            .you_control()
+            .with_subtype(Subtype::Fungus)
+            .with_subtype(Subtype::Saproling)
+            .with_union_connective(ObjectFilterUnionConnective::AndOr);
+        relative.set_relative_characteristic_list_surface(true);
+        assert_eq!(
+            relative.description(),
+            "a creature you control that's a Fungus and/or Saproling"
+        );
+
+        let mut relative_with_repeated_articles = ObjectFilter::creature().you_control().other();
+        relative_with_repeated_articles.any_of = vec![
+            ObjectFilter::default().token(),
+            ObjectFilter::default().with_subtype(Subtype::Rabbit),
+        ];
+        relative_with_repeated_articles.set_relative_characteristic_list_surface(true);
+        relative_with_repeated_articles.set_explicit_union_branch_articles(true);
+        assert_eq!(
+            relative_with_repeated_articles.description(),
+            "another creature you control that's a token or a Rabbit"
+        );
+
+        let mut controller_qualified = ObjectFilter::creature()
+            .you_control()
+            .with_subtype(Subtype::Vehicle)
+            .with_union_connective(ObjectFilterUnionConnective::AndOr);
+        controller_qualified.type_or_subtype_union = true;
+        assert_eq!(
+            controller_qualified.description(),
+            "a creature and/or Vehicle you control"
+        );
+
+        let mut subtype_first = controller_qualified;
+        subtype_first.set_subtype_before_card_type_union_surface(true);
+        assert_eq!(
+            subtype_first.description(),
+            "a Vehicle and/or creature you control"
+        );
+
+        let mut shared_spell_noun = ObjectFilter {
+            zone: Some(Zone::Stack),
+            card_types: vec![CardType::Creature],
+            subtypes: vec![Subtype::Aura],
+            type_or_subtype_union: true,
+            ..Default::default()
+        };
+        shared_spell_noun.set_union_connective(ObjectFilterUnionConnective::Or);
+        shared_spell_noun.set_terminal_noun_after_type_subtype_union_surface(true);
+        assert_eq!(shared_spell_noun.description(), "creature or Aura spell");
+    }
+
+    #[test]
     fn explicit_card_noun_survives_a_cleared_zone_without_changing_filter_equality() {
         let semantic_filter = ObjectFilter::creature();
         let mut surfaced_filter = semantic_filter.clone();
@@ -4549,6 +6301,19 @@ mod tests {
     }
 
     #[test]
+    fn explicit_land_type_noun_is_surface_only_for_subtyped_lands() {
+        let semantic_filter = ObjectFilter::land()
+            .with_subtype(Subtype::Urzas)
+            .you_control();
+        let mut surfaced_filter = semantic_filter.clone();
+        surfaced_filter.set_explicit_card_type_noun(Some(CardType::Land));
+
+        assert_eq!(semantic_filter, surfaced_filter);
+        assert_eq!(semantic_filter.description(), "a Urza's you control");
+        assert_eq!(surfaced_filter.description(), "a Urza's land you control");
+    }
+
+    #[test]
     fn original_printing_set_predicate_renders_as_a_typed_qualifier() {
         let filter = ObjectFilter {
             card_types: vec![CardType::Artifact],
@@ -4561,6 +6326,29 @@ mod tests {
         assert_eq!(
             filter.description(),
             "nontoken artifact with a name originally printed in the Antiquities expansion"
+        );
+    }
+
+    #[test]
+    fn attack_destination_constraint_does_not_repeat_attacking_as_an_adjective() {
+        let mut filter = ObjectFilter::creature()
+            .attacking_player_or_planeswalker_controlled_by(PlayerFilter::You);
+        filter.attacking = true;
+
+        assert_eq!(
+            filter.description(),
+            "creature that's attacking you or a planeswalker you control"
+        );
+    }
+
+    #[test]
+    fn attack_destination_constraint_uses_the_prior_player_as_pronoun_antecedent() {
+        let filter = ObjectFilter::creature()
+            .attacking_player_or_planeswalker_controlled_by(PlayerFilter::IteratedPlayer);
+
+        assert_eq!(
+            filter.description(),
+            "creature that's attacking that player or a planeswalker they control"
         );
     }
 }

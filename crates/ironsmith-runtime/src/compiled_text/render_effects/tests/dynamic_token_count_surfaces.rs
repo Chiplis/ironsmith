@@ -24,6 +24,31 @@ fn render_create(token: crate::cards::CardDefinition, count: Value) -> String {
 }
 
 #[test]
+fn quoted_token_ability_punctuation_stays_inside_before_where_x() {
+    assert_eq!(
+        append_token_where_x_continuation(
+            "Create X 1/1 black Rat creature tokens with \"This token can't block.\"".to_string(),
+            "the amount of damage dealt to it this turn",
+        ),
+        "Create X 1/1 black Rat creature tokens with \"This token can't block,\" where X is the amount of damage dealt to it this turn"
+    );
+    assert_eq!(
+        append_token_where_x_continuation(
+            "Create X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life\"".to_string(),
+            "the sacrificed creature's power",
+        ),
+        "Create X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life,\" where X is the sacrificed creature's power"
+    );
+    assert_eq!(
+        append_token_where_x_continuation(
+            "Create X 1/1 green Saproling creature tokens".to_string(),
+            "the number of creatures you control",
+        ),
+        "Create X 1/1 green Saproling creature tokens, where X is the number of creatures you control"
+    );
+}
+
+#[test]
 fn ferrafor_and_hare_equal_to_counts_are_not_rewritten_as_for_each() {
     let ferrafor_count = Value::CountersOn(
         Box::new(ChooseSpec::All(
@@ -58,6 +83,21 @@ fn ferrafor_and_hare_equal_to_counts_are_not_rewritten_as_for_each() {
             hare_count,
         ),
         "Create a number of 1/1 white Rabbit creature tokens equal to the number of other creatures you control named Hare Apparent"
+    );
+}
+
+#[test]
+fn prior_roll_result_token_count_keeps_the_authored_result_surface() {
+    let count = Value::EffectValue(crate::effect::EffectId(0))
+        .with_surface_hint(ValueSurfaceHint::PriorEffectResult)
+        .with_surface_hint(ValueSurfaceHint::EqualTo);
+
+    assert_eq!(
+        render_create(
+            creature_token("Insect", Subtype::Insect, crate::color::ColorSet::GREEN),
+            count,
+        ),
+        "Create a number of 1/1 green Insect creature tokens equal to the result"
     );
 }
 

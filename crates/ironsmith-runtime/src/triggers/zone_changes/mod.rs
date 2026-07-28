@@ -17,7 +17,7 @@ pub use enters_tapped::EntersBattlefieldTappedTrigger;
 pub use enters_untapped::EntersBattlefieldUntappedTrigger;
 
 // Composable zone change trigger and supporting types
+pub(crate) use zone_change_trigger::moved_or_cast_origin_display_suffix;
 pub use zone_change_trigger::{
     CountMode, PlayerRelation, TriggerSubjectNumber, ZoneChangeTrigger, ZonePattern,
 };
-pub(crate) use zone_change_trigger::moved_or_cast_origin_display_suffix;

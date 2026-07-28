@@ -255,8 +255,12 @@ fn where_x_split<'a>(
 pub(crate) fn parse_where_x_usage_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<WhereXUsageShape<'_>> {
-    let (leading, binding_tokens) =
+    let (leading, full_binding_tokens) =
         primitives::parse_all(tokens, where_x_split, "where X binding").ok()?;
+    let binding_tokens = full_binding_tokens
+        .windows(2)
+        .position(|window| window[0].is_comma() && window[1].is_word("then"))
+        .map_or(full_binding_tokens, |split| &full_binding_tokens[..split]);
     let damage_or_life = marker_present(
         leading,
         alt((
@@ -598,5 +602,34 @@ mod tests {
 
         let ability = lex_line("Those tokens gain haste.", 0).unwrap();
         assert!(parse_token_granted_ability_tokens(&ability).is_some());
+    }
+
+    #[test]
+    fn where_x_binding_stops_before_a_trailing_then_action() {
+        let tokens = lex_line(
+            "This artifact deals X damage to any target, where X is the total power of the \
+             creatures sacrificed this way, then exile this artifact.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_where_x_usage_shape_tokens(&tokens).expect("where-X binding");
+
+        assert_eq!(
+            parser_token_word_refs(shape.binding_tokens),
+            [
+                "where",
+                "x",
+                "is",
+                "the",
+                "total",
+                "power",
+                "of",
+                "the",
+                "creatures",
+                "sacrificed",
+                "this",
+                "way"
+            ]
+        );
     }
 }

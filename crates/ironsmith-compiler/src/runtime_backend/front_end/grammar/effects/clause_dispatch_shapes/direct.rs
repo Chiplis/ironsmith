@@ -243,6 +243,27 @@ pub(crate) fn parse_direct_clause_shape(tokens: &[OwnedLexToken]) -> Option<Dire
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct TurnTargetFaceUpShape<'a> {
+    pub(crate) target_tokens: &'a [OwnedLexToken],
+}
+
+pub(crate) fn parse_turn_target_face_up_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<TurnTargetFaceUpShape<'_>> {
+    let (_, tail) = primitives::parse_prefix(tokens, primitives::kw("turn"))?;
+    let (target_tokens, ()) = primitives::split_lexed_once_before_suffix(tail, 1, || {
+        (
+            primitives::phrase(&["face", "up"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    })?;
+    let target_tokens = trim_lexed_commas(target_tokens);
+    super::super::super::activation_restrictions::parse_target_indicator_tokens(target_tokens)?;
+    (!target_tokens.is_empty()).then_some(TurnTargetFaceUpShape { target_tokens })
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SharedAbilityGainShape {
     pub(crate) abilities: Vec<KeywordAction>,

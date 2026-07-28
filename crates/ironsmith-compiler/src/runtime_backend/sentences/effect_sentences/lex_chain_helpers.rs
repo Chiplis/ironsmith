@@ -37,6 +37,8 @@ pub(crate) fn has_effect_head_without_verb_lexed(tokens: &[OwnedLexToken]) -> bo
 pub(crate) fn segment_has_effect_head_lexed(tokens: &[OwnedLexToken]) -> bool {
     find_verb_lexed(tokens).is_some()
         || has_effect_head_without_verb_lexed(tokens)
+        || super::super::grammar::effects::chain_carry::parse_carry_duration_prefix_tokens(tokens)
+            .is_some_and(|shape| segment_has_effect_head_lexed(shape.rest))
         || chain_grammar::starts_with_player_may_tokens(tokens)
         // `copy` is a real effect head, but it is intentionally kept out of
         // the generic chain-verb vocabulary because copy parsing has several
@@ -55,6 +57,16 @@ pub(crate) fn split_segments_on_comma_then_lexed(
     chain_grammar::split_segments_on_comma_then_tokens(segments, |tokens| {
         parse_ability_line_lexed(tokens).is_some()
     })
+}
+
+pub(crate) fn has_explicit_comma_then_boundary_lexed(tokens: &[OwnedLexToken]) -> bool {
+    chain_grammar::has_explicit_comma_then_boundary_tokens(tokens, |tokens| {
+        parse_ability_line_lexed(tokens).is_some()
+    })
+}
+
+pub(crate) fn has_authored_comma_then_surface_lexed(tokens: &[OwnedLexToken]) -> bool {
+    chain_grammar::has_authored_comma_then_surface_tokens(tokens)
 }
 
 pub(crate) fn split_segments_on_comma_effect_head_lexed(

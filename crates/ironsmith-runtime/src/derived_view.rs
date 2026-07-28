@@ -996,6 +996,7 @@ impl<'a> DerivedGameView<'a> {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)
@@ -1063,6 +1064,7 @@ impl<'a> DerivedGameView<'a> {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                 }),
                 Grantable::Ability(_)
                 | Grantable::AlternativeCast(_)

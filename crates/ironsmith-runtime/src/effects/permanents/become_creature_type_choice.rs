@@ -41,6 +41,7 @@ pub(crate) fn all_creature_types() -> &'static [Subtype] {
         Subtype::Boar,
         Subtype::Cat,
         Subtype::Centaur,
+        Subtype::Camarid,
         Subtype::Citizen,
         Subtype::Coward,
         Subtype::Changeling,

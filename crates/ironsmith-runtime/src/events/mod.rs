@@ -115,9 +115,10 @@ pub use other::{
     TransformedEvent, TurnedFaceUpEvent, WouldKeywordActionMatcher,
 };
 pub use phase::{
-    BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,
-    BeginningOfPostcombatMainPhaseEvent, BeginningOfPrecombatMainPhaseEvent,
-    BeginningOfUpkeepEvent, EndOfCombatEvent,
+    BeginningOfCleanupStepEvent, BeginningOfCombatEvent, BeginningOfDrawStepEvent,
+    BeginningOfEndStepEvent, BeginningOfPostcombatMainPhaseEvent,
+    BeginningOfPrecombatMainPhaseEvent, BeginningOfUpkeepEvent, EndOfCombatEvent,
+    PermanentsUntapStepEvent,
 };
 pub use raw_event::RawEvent;
 pub use spells::{
@@ -252,7 +253,7 @@ impl Event {
 
     /// Create a life gain event.
     pub fn life_gain(player: PlayerId, amount: u32) -> Self {
-        Self::new_with_provenance(LifeGainEvent { player, amount }, ProvNodeId::default())
+        Self::new_with_provenance(LifeGainEvent::new(player, amount), ProvNodeId::default())
     }
 
     /// Create a life loss event.

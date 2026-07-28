@@ -73,9 +73,8 @@ impl RemoveAnyCountersFromSourceEffect {
         };
         match self.counter_type {
             Some(counter_type) => format!(
-                "Remove {amount_text} {} counter{} from this source",
+                "Remove {amount_text} {} counters from this source",
                 counter_type.description(),
-                if self.display_x { "" } else { "s" }
             ),
             None => format!("Remove {amount_text} counters from this source"),
         }
@@ -251,6 +250,14 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_x_counter_cost_keeps_plural_counter_noun() {
+        assert_eq!(
+            RemoveAnyCountersFromSourceEffect::x(Some(CounterType::Ki)).cost_display(),
+            "Remove X ki counters from this source"
+        );
+    }
+
+    #[test]
     fn display_text() {
         assert_eq!(
             RemoveAnyCountersFromSourceEffect::any_number(Some(CounterType::Charge)).cost_display(),
@@ -258,7 +265,7 @@ mod tests {
         );
         assert_eq!(
             RemoveAnyCountersFromSourceEffect::x(Some(CounterType::Storage)).cost_display(),
-            "Remove X storage counter from this source"
+            "Remove X storage counters from this source"
         );
         assert_eq!(
             RemoveAnyCountersFromSourceEffect::all(Some(CounterType::Charge)).cost_display(),

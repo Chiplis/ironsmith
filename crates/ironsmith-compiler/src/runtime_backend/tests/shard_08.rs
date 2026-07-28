@@ -1,6 +1,53 @@
 use super::*;
 
 #[test]
+pub(super) fn distinct_spell_source_lines_survive_as_resolution_provenance()
+-> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Source Line Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Exile target permanent you own or control.\nDraw a card at the beginning of the next turn's upkeep.",
+        )?;
+    let program = definition
+        .spell_effect
+        .as_ref()
+        .expect("instant should have a spell program");
+
+    assert!(program.segments.len() >= 2, "{program:#?}");
+    assert!(!program.segments[0].starts_new_source_line);
+    assert!(
+        program
+            .segments
+            .iter()
+            .skip(1)
+            .any(|segment| segment.starts_new_source_line),
+        "{program:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn undiscovered_paradise_uses_the_live_delayed_untap_route() -> Result<(), CardTextError>
+{
+    let definition =
+        CardDefinitionBuilder::new(CardId::new(), "Undiscovered Paradise")
+            .card_types(vec![CardType::Land])
+            .parse_text(
+                "{T}: Add one mana of any color. During your next untap step, as you untap your permanents, return this land to its owner's hand.",
+            )?;
+    let debug = format!("{definition:#?}");
+
+    assert!(debug.contains("ScheduleDelayedTriggerEffect"), "{debug}");
+    assert!(debug.contains("AsPermanentsUntap"), "{debug}");
+    assert!(debug.contains("ReturnToHandEffect"), "{debug}");
+    assert!(
+        !debug.contains("UntapEffect"),
+        "the timing phrase must not lower as an ordinary untap action: {debug}"
+    );
+    Ok(())
+}
+
+#[test]
 pub(super) fn modal_header_tracks_distinct_player_targets_per_mode() {
     let header = parse_modal_header_for_test(
         "When this creature enters, choose one or both. Each mode must target a different player.",
@@ -42,6 +89,190 @@ pub(super) fn modal_distinct_player_rule_lowers_to_choose_mode_metadata()
     assert_eq!(modal.min_choose_count, Value::Fixed(1));
     assert_eq!(modal.choose_count, Value::Fixed(2));
     assert!(modal.distinct_player_targets_per_mode, "{modal:#?}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn inline_token_creation_or_is_a_resolution_choice_with_two_create_modes()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Token Choice Variant")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "When this creature enters, create a Food token or a Treasure token.".to_string(),
+        false,
+    )?;
+    let choice = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => triggered
+                .effects
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| {
+                    super::find_nested_effect::<crate::effects::ChooseModeEffect>(effect)
+                }),
+            _ => None,
+        })
+        .expect("trigger should lower to an inline token choice");
+
+    assert_eq!(
+        choice.chooser,
+        Some(crate::target::PlayerFilter::You),
+        "the inline or-choice must be made during resolution"
+    );
+    assert_eq!(choice.modes.len(), 2);
+    assert!(choice.modes.iter().all(|mode| {
+        matches!(
+            mode.effects.as_slice(),
+            [effect] if effect
+                .downcast_ref::<crate::effects::CreateTokenEffect>()
+                .is_some()
+        )
+    }));
+    Ok(())
+}
+
+#[test]
+pub(super) fn compound_token_creation_keeps_generic_ward_on_its_own_blueprint()
+-> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Compound Ward Token Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create a 1/1 white Human creature token with ward {2} and a 4/4 white Alien Rhino creature token.",
+        )?;
+    let spell = definition
+        .spell_effect
+        .as_ref()
+        .expect("sorcery should have a spell effect");
+    let [effect] = spell.flattened_default_effects() else {
+        panic!(
+            "expected one coordinated token-creation effect, got {:#?}",
+            spell.flattened_default_effects()
+        );
+    };
+    let sequence = super::find_nested_effect::<crate::effects::SequenceEffect>(effect)
+        .expect("compound creation should lower to a coordinated sequence");
+    let creates = sequence
+        .effects
+        .iter()
+        .map(|effect| {
+            super::find_nested_effect::<crate::effects::CreateTokenEffect>(effect)
+                .expect("each coordinated branch should create one token")
+        })
+        .collect::<Vec<_>>();
+    let [human, alien_rhino] = creates.as_slice() else {
+        panic!("expected two token blueprints, got {creates:#?}");
+    };
+
+    assert_eq!(human.token.card.name, "Human");
+    let ward = human
+        .token
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Ward => Some(ability),
+            _ => None,
+        })
+        .expect("the Human token should retain ward");
+    assert_eq!(
+        ward.payload,
+        StaticAbilityPayload::Ward(crate::cost::TotalCost::mana(
+            crate::mana::ManaCost::from_symbols(vec![ManaSymbol::Generic(2)])
+        ))
+    );
+    assert_eq!(alien_rhino.token.card.name, "Alien Rhino");
+    assert!(
+        alien_rhino.token.abilities.iter().all(|ability| {
+            !matches!(
+                &ability.kind,
+                AbilityKind::Static(ability) if ability.id() == StaticAbilityId::Ward
+            )
+        }),
+        "ward must remain scoped to the first token blueprint"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn spry_and_mighty_preserves_exact_choice_and_power_gap_value()
+-> Result<(), CardTextError> {
+    let oracle = "Choose exactly two creatures you control. You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn, where X is the difference between the chosen creatures' powers.";
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Spry and Mighty")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)?;
+    let effects = definition
+        .spell_effect
+        .as_ref()
+        .expect("sorcery should have a spell program")
+        .flattened_default_effects();
+
+    let choose = effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::ChooseObjectsEffect>(effect))
+        .expect("the spell should choose its creature pair");
+    assert_eq!(choose.count.min, 2);
+    assert_eq!(choose.count.max, Some(2));
+    assert!(
+        choose.count.explicit_exactly,
+        "the explicitly authored `exactly` choice surface must survive lowering"
+    );
+    assert_eq!(
+        choose.tag.as_str(),
+        crate::cards::builders::CHOSEN_OBJECTS_TAG
+    );
+
+    let draw = effects
+        .iter()
+        .find_map(|effect| super::find_nested_effect::<crate::effects::DrawCardsEffect>(effect))
+        .expect("the spell should draw the power-gap count");
+    assert!(
+        draw.count
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::Difference),
+        "{:#?}",
+        draw.count
+    );
+    let debug = format!("{definition:#?}");
+    assert!(
+        debug.contains("GreatestPower")
+            && debug.contains("LeastPower")
+            && debug.contains(crate::cards::builders::CHOSEN_OBJECTS_TAG)
+            && debug.contains("Trample")
+            && debug.contains("ModifyPowerToughness"),
+        "the chosen pair must feed draw, pump, and trample: {debug}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn as_enters_opponent_choice_persists_into_static_values_and_triggers()
+-> Result<(), CardTextError> {
+    let pallimud = CardDefinitionBuilder::new(CardId::new(), "Persistent Choice Value")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "As this creature enters, choose an opponent.\nThis creature's power is equal to the number of tapped lands the chosen player controls.",
+        )?;
+    let pallimud_debug = format!("{pallimud:#?}");
+    assert!(
+        pallimud_debug.contains("remember_as_chosen_player: true")
+            && pallimud_debug.contains("controller: Some(\n")
+            && pallimud_debug.contains("ChosenPlayer"),
+        "as-enters choice and characteristic value must share persistent chosen-player state: {pallimud_debug}"
+    );
+
+    let vise = CardDefinitionBuilder::new(CardId::new(), "Persistent Choice Trigger")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "As this artifact enters, choose an opponent.\nAt the beginning of the chosen player's upkeep, this artifact deals 1 damage to that player.",
+        )?;
+    let vise_debug = format!("{vise:#?}");
+    assert!(
+        vise_debug.contains("remember_as_chosen_player: true")
+            && vise_debug.contains("BeginningOfUpkeepTrigger {\n")
+            && vise_debug.contains("player: ChosenPlayer"),
+        "as-enters choice and possessive trigger must share persistent chosen-player state: {vise_debug}"
+    );
     Ok(())
 }
 

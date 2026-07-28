@@ -4644,6 +4644,10 @@ fn apply_play_from_cast_this_way_grants(
             && grantable_matches_cast
             && !spec.cast_this_way_grants.is_empty()
             && spec.filter.matches(&spell_as_cast, &ctx, game)
+            && spec
+                .cast_this_way_filter
+                .as_ref()
+                .is_none_or(|filter| filter.matches(&spell_as_cast, &ctx, game))
         {
             granted.extend(spec.cast_this_way_grants.iter().cloned());
         }
@@ -4949,6 +4953,24 @@ pub(super) fn finalize_spell_cast(
     stack_entry_tagged_objects.insert(
         crate::tag::TagKey::from(ironsmith_core::CAST_MODIFIED_CREATURES_TAG),
         cast_modified_creatures,
+    );
+
+    // Preserve the complete controlled-object set for cast-time aggregates.
+    // The snapshots retain calculated characteristics even if an object
+    // changes characteristics or leaves the battlefield before resolution.
+    let cast_controlled_filter = crate::target::ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(crate::target::PlayerFilter::You);
+    let cast_controlled_objects = game
+        .object_ids_in_deterministic_order()
+        .into_iter()
+        .filter_map(|id| game.object(id))
+        .filter(|object| cast_controlled_filter.matches(object, &cast_filter_ctx, game))
+        .map(|object| ObjectSnapshot::from_object_with_calculated_characteristics(object, game))
+        .collect();
+    stack_entry_tagged_objects.insert(
+        crate::tag::TagKey::from(ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG),
+        cast_controlled_objects,
     );
 
     // Create stack entry with targets, X value, casting method, optional costs, and chosen modes

@@ -697,6 +697,39 @@ pub(crate) fn describe_return_with_counter_and_static_followups_text(
             choose_spec_references_exact_tag(&put_counters.target, moved_tag).then_some(moved_tag)
         })?;
 
+    let followup_clauses = describe_permanent_static_followup_clauses(followups, continuation_tag)?;
+
+    let mut text = describe_effect(return_effect)
+        .trim_end_matches('.')
+        .to_string();
+    if triggering_tag.is_some_and(|tag| tag == moved_tag) {
+        text = text.replacen("Return it ", "Return that card ", 1);
+    }
+    text.push_str(" with ");
+    text.push_str(&describe_put_counter_phrase(
+        &put_counters.amount,
+        put_counters.counter_type,
+    ));
+    text.push_str(" on it");
+    if let Some(timing_suffix) = timing_suffix {
+        text.push(' ');
+        text.push_str(timing_suffix);
+    }
+
+    if followup_clauses.is_empty() {
+        return timing_suffix.map(|_| text);
+    }
+    text.push_str(". ");
+    text.push_str(followup_subject);
+    text.push(' ');
+    text.push_str(&join_with_and(&followup_clauses));
+    Some(text)
+}
+
+fn describe_permanent_static_followup_clauses(
+    followups: &[&Effect],
+    continuation_tag: &crate::TagKey,
+) -> Option<Vec<String>> {
     let mut ability_labels = Vec::new();
     let mut color_words = Vec::new();
     let mut subtype_words = Vec::new();
@@ -747,23 +780,6 @@ pub(crate) fn describe_return_with_counter_and_static_followups_text(
         }
     }
 
-    let mut text = describe_effect(return_effect)
-        .trim_end_matches('.')
-        .to_string();
-    if triggering_tag.is_some_and(|tag| tag == moved_tag) {
-        text = text.replacen("Return it ", "Return that card ", 1);
-    }
-    text.push_str(" with ");
-    text.push_str(&describe_put_counter_phrase(
-        &put_counters.amount,
-        put_counters.counter_type,
-    ));
-    text.push_str(" on it");
-    if let Some(timing_suffix) = timing_suffix {
-        text.push(' ');
-        text.push_str(timing_suffix);
-    }
-
     let mut followup_clauses = Vec::new();
     if !ability_labels.is_empty() {
         followup_clauses.push(format!("has {}", join_with_and(&ability_labels)));
@@ -788,12 +804,58 @@ pub(crate) fn describe_return_with_counter_and_static_followups_text(
             with_indefinite_article(&subtype_words.join(" "))
         ));
     }
-    if followup_clauses.is_empty() {
-        return timing_suffix.map(|_| text);
+    Some(followup_clauses)
+}
+
+/// Preserve authored follow-up predicates when lowering has already fused an
+/// inline entry counter into the battlefield move. The result tag proves that
+/// every permanent characteristic change applies to the object returned by
+/// that move rather than to its old graveyard snapshot.
+pub(crate) fn describe_return_with_inline_counter_and_static_followups(
+    effects: &[&Effect],
+) -> Option<String> {
+    let (effects, triggering_tag) = if let Some(first) = effects.first()
+        && let Some(tag_triggering) =
+            first.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+    {
+        (&effects[1..], Some(&tag_triggering.tag))
+    } else {
+        (effects, None)
+    };
+    let [return_effect, followups @ ..] = effects else {
+        return None;
+    };
+    if followups.is_empty() {
+        return None;
     }
-    text.push_str(". ");
-    text.push_str(followup_subject);
-    text.push(' ');
+
+    let move_to_zone =
+        unwrap_wrapped_effect(return_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.enters_with_counters.is_empty()
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+    {
+        return None;
+    }
+    let moved_tag = choose_spec_tag(&move_to_zone.target)?;
+    let returned_tag = effect_tag(return_effect);
+    let followup_clauses = returned_tag
+        .and_then(|tag| describe_permanent_static_followup_clauses(followups, tag))
+        .or_else(|| describe_permanent_static_followup_clauses(followups, moved_tag))?;
+    if followup_clauses.is_empty() {
+        return None;
+    }
+
+    let mut text = describe_effect(return_effect)
+        .trim_end_matches('.')
+        .to_string();
+    if triggering_tag.is_some_and(|tag| tag == moved_tag) {
+        text = text.replacen("Return it ", "Return that card ", 1);
+    }
+    text.push_str(". It ");
     text.push_str(&join_with_and(&followup_clauses));
     Some(text)
 }
@@ -1012,8 +1074,13 @@ pub(crate) fn describe_tagged_pump_then_conditional_keyword(effects: &[&Effect])
         } else {
             capitalize_first(&describe_choose_spec(target_spec))
         };
+        let choice = if become_color.allow_multiple {
+            "color or colors"
+        } else {
+            "color"
+        };
         let color_action = format!(
-            "becomes the color of {} choice",
+            "becomes the {choice} of {} choice",
             describe_possessive_player_filter(&become_color.chooser)
         );
         return Some(format!(
@@ -1166,7 +1233,14 @@ pub(crate) fn tagged_reference_noun_from_target(spec: &ChooseSpec) -> Option<&'s
     let ChooseSpec::Object(filter) = inner.as_ref() else {
         return None;
     };
-    if filter.card_types.contains(&CardType::Creature) {
+    if filter.zone == Some(Zone::Stack)
+        && matches!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell)
+        )
+    {
+        Some("that spell")
+    } else if filter.card_types.contains(&CardType::Creature) {
         Some("that creature")
     } else if filter.card_types.contains(&CardType::Artifact) {
         Some("that artifact")
@@ -1723,15 +1797,15 @@ pub(crate) fn describe_put_onto_battlefield_attached(effects: &[&Effect]) -> Opt
         return None;
     };
 
-    let tagged_move = move_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-    if tagged_move
-        .effect
+    let moved_tag = effect_tag(move_effect)?;
+    let moved_effect = unwrap_basic_tag_wrappers(move_effect);
+    if moved_effect
         .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
         .is_some()
     {
         let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
         if !matches!(attach.objects.base(), ChooseSpec::Source)
-            || !choose_spec_references_exact_tag(&attach.target, &tagged_move.tag)
+            || !choose_spec_references_exact_tag(&attach.target, moved_tag)
         {
             return None;
         }
@@ -1741,12 +1815,10 @@ pub(crate) fn describe_put_onto_battlefield_attached(effects: &[&Effect]) -> Opt
         let attach_text = lowercase_first(describe_effect(attach_effect).trim_end_matches('.'));
         return Some(format!("{return_text} and {attach_text}"));
     }
-    let move_to_zone = tagged_move
-        .effect
-        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_to_zone = moved_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let attach = attach_effect.downcast_ref::<crate::effects::AttachObjectsEffect>()?;
     if move_to_zone.zone != Zone::Battlefield
-        || !choose_spec_references_exact_tag(&attach.objects, &tagged_move.tag)
+        || !choose_spec_references_exact_tag(&attach.objects, moved_tag)
     {
         return None;
     }
@@ -1757,10 +1829,13 @@ pub(crate) fn describe_put_onto_battlefield_attached(effects: &[&Effect]) -> Opt
             .to_string()
     });
 
-    Some(format!(
-        "{move_text} attached to {}",
-        describe_return_attachment_target(&attach.target)
-    ))
+    let attachment_target = describe_return_attachment_target(&attach.target);
+    let attachment_target = if attach.individual_targets {
+        pluralize_noun_phrase(&attachment_target)
+    } else {
+        attachment_target
+    };
+    Some(format!("{move_text} attached to {attachment_target}"))
 }
 
 pub(crate) fn describe_become_aura_manifest_then_attach(effects: &[&Effect]) -> Option<String> {
@@ -1841,6 +1916,9 @@ pub(crate) fn describe_attached_battlefield_move_text(
 }
 
 pub(crate) fn describe_return_attachment_target(target: &ChooseSpec) -> String {
+    if let Some(surface) = target.source_reference_surface() {
+        return surface.display_text();
+    }
     let enchanted = crate::TagKey::from("enchanted");
     if choose_spec_is_tagged_object(target, &enchanted) {
         return "enchanted creature".to_string();
@@ -2607,7 +2685,9 @@ pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Optio
             sequence_effect
                 .downcast_ref::<crate::effects::SequenceEffect>()
                 .is_some(),
-            may_effect.downcast_ref::<crate::effects::MayEffect>().is_some()
+            may_effect
+                .downcast_ref::<crate::effects::MayEffect>()
+                .is_some()
         );
     }
     let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
@@ -2616,8 +2696,7 @@ pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Optio
         eprintln!("seq-copy-may copy: {copy_spell:?}");
     }
     let copy_spell = copy_spell?;
-    if copy_spell.count.unhinted() != &Value::Fixed(1)
-        || !copy_spell.removed_supertypes.is_empty()
+    if copy_spell.count.unhinted() != &Value::Fixed(1) || !copy_spell.removed_supertypes.is_empty()
     {
         return None;
     }
@@ -2625,7 +2704,8 @@ pub(crate) fn describe_sequence_copy_then_may_cast(effects: &[&Effect]) -> Optio
     let [cast_effect] = may.effects.as_slice() else {
         return None;
     };
-    let cast = unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    let cast =
+        unwrap_wrapped_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
     if std::env::var("IRONSMITH_COPY_TRACE").is_ok() {
         eprintln!(
             "seq-copy-may cast: as_copy={} tag={:?} reduction={:?}",
@@ -3425,21 +3505,33 @@ pub(crate) fn describe_tag_attached_sacrifice_then_create(effects: &[&Effect]) -
     }
     Some(format!(
         "enchanted creature's controller sacrifices it and you create {}",
-        with_indefinite_article(&describe_token_blueprint(&create.token))
+        with_indefinite_article(&describe_create_token_blueprint(create))
     ))
 }
 
 pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Option<String> {
+    // Trigger-object tags are execution scaffolding, not part of the authored
+    // participant instruction. An enters trigger commonly prefixes the
+    // target declaration with this marker in the same resolution segment.
+    let participant_effects = effects
+        .iter()
+        .copied()
+        .filter(|effect| {
+            unwrap_basic_tag_wrappers(effect)
+                .downcast_ref::<crate::effects::TagTriggeringObjectEffect>()
+                .is_none()
+        })
+        .collect::<Vec<_>>();
     let (target_only, per_player_effects): (&crate::effects::TargetOnlyEffect, Vec<&Effect>) =
-        match effects {
+        match participant_effects.as_slice() {
             [target_effect, for_players] => {
-                let target_only =
-                    target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+                let target_only = unwrap_basic_tag_wrappers(target_effect)
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
                 (target_only, vec![*for_players])
             }
             [first_for_players, target_effect, second_for_players] => {
-                let target_only =
-                    target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+                let target_only = unwrap_basic_tag_wrappers(target_effect)
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
                 (target_only, vec![*first_for_players, *second_for_players])
             }
             _ => return None,
@@ -3447,7 +3539,17 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
     let ChooseSpec::WithCount(target, count) = &target_only.target else {
         return None;
     };
-    if count.min != 0 || count.max.is_some() || count.dynamic_x || count.random {
+    // This surface is only valid for a synthetic plural target declaration.
+    // Preserve authored standalone "Choose ..." clauses and singular choices,
+    // while accepting both unbounded ("any number") and bounded plural
+    // cardinalities ("two" / "up to two").
+    let plural_count = count.max.map_or(!count.dynamic_x, |maximum| maximum >= 2);
+    if target_only.explicit_declaration
+        || target_only.chooser.is_some()
+        || count.dynamic_x
+        || count.random
+        || !plural_count
+    {
         return None;
     }
     let ChooseSpec::Target(target) = target.as_ref() else {
@@ -3463,13 +3565,14 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
         {
             Some(describe_player_filter(excluded))
         }
-        PlayerFilter::Any => None,
+        PlayerFilter::Any | PlayerFilter::Opponent => None,
         _ => return None,
     };
 
     let mut clauses = Vec::new();
     for effect in per_player_effects {
-        let for_players = effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+        let for_players =
+            unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
         if for_players.filter != PlayerFilter::Target(Box::new(target_filter.clone())) {
             return None;
         }
@@ -3494,6 +3597,11 @@ pub(crate) fn describe_target_players_each_effects(effects: &[&Effect]) -> Optio
                         clause
                             .strip_prefix("loses ")
                             .map(|rest| format!("lose {rest}"))
+                    })
+                    .or_else(|| {
+                        clause
+                            .strip_prefix("draws ")
+                            .map(|rest| format!("draw {rest}"))
                     })
                     .unwrap_or(clause)
                     .to_string(),
@@ -4789,7 +4897,7 @@ pub(crate) fn describe_target_only_then_create_token_count(
     }
 
     let choose_text = format!("Choose {}", describe_choose_spec(&target_only.target));
-    let token_blueprint = describe_token_blueprint(&create_token.token);
+    let token_blueprint = describe_create_token_blueprint(create_token);
     let token_phrase = pluralize_token_phrase(&token_blueprint);
     let target_count = target_only.target.count();
     let plural_target = target_count.max.is_none_or(|max| max > 1) || target_count.dynamic_x;
@@ -5200,6 +5308,305 @@ pub(crate) fn wrapped_effect_tag(effect: &Effect) -> Option<&crate::TagKey> {
     effect
         .downcast_ref::<crate::effects::TagAllEffect>()
         .map(|tag_all| &tag_all.tag)
+}
+
+/// Recombine an amass action with damage dealt by the exact Army produced or
+/// enlarged by that action. Runtime lowering uses a tag plus an
+/// ExecuteWithSource fanout so the damage source and its live power are
+/// correct; Oracle expresses that provenance as "the Army you amassed" and
+/// then uses "its power".
+pub(in crate::compiled_text) fn describe_amass_then_amassed_army_power_damage(
+    producer_effect: &Effect,
+    for_each_effect: &Effect,
+) -> Option<String> {
+    let producer_tag = wrapped_effect_tag(producer_effect)?;
+    let producer = unwrap_tag_wrappers(producer_effect);
+    producer.downcast_ref::<crate::effects::AmassEffect>()?;
+
+    let for_each =
+        unwrap_tag_wrappers(for_each_effect).downcast_ref::<crate::effects::ForEachObject>()?;
+    let [inner] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let Some((Some(source), damage)) = damage_with_source_view(inner) else {
+        return None;
+    };
+    let Value::PowerOf(power_source) = damage.amount.unhinted() else {
+        return None;
+    };
+    if !choose_spec_is_tagged_object(source, producer_tag)
+        || !choose_spec_is_tagged_object(power_source.as_ref(), producer_tag)
+        || !matches!(damage.target.unhinted(), ChooseSpec::Iterated)
+    {
+        return None;
+    }
+
+    let mut recipient = describe_damage_fanout_filter(&for_each.filter)?;
+    if for_each
+        .filter
+        .excluded_subtypes
+        .contains(&crate::types::Subtype::Army)
+    {
+        recipient = recipient.replace("non-army", "non-Army");
+    }
+    let producer_text = describe_effect(producer_effect)
+        .trim()
+        .trim_end_matches('.')
+        .to_string();
+    (!producer_text.is_empty()).then(|| {
+        format!(
+            "{producer_text}, then the Army you amassed deals damage equal to its power to each {recipient}"
+        )
+    })
+}
+
+/// Recombine an animation with a counter instruction that consumes the exact
+/// tagged animation result. The consumer commonly retains type refinements
+/// (`artifact creature`) for runtime validation, but identity comes from the
+/// producer tag rather than from re-querying every matching permanent.
+pub(in crate::compiled_text) fn describe_animation_then_counters_on_result(
+    producer_effect: &Effect,
+    consumer_effect: &Effect,
+) -> Option<String> {
+    fn object_filter(spec: &ChooseSpec) -> Option<&ObjectFilter> {
+        match spec.unhinted() {
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => Some(filter),
+            ChooseSpec::Target(inner)
+            | ChooseSpec::WithCount(inner, _)
+            | ChooseSpec::WithCountValue(inner, _, _) => object_filter(inner),
+            _ => None,
+        }
+    }
+
+    let producer_tag = wrapped_effect_tag(producer_effect)?;
+    let animation = unwrap_tag_wrappers(producer_effect)
+        .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    let Some(crate::continuous::Modification::AddCardTypes(types)) = &animation.modification else {
+        return None;
+    };
+    if !types.contains(&CardType::Creature) {
+        return None;
+    }
+    let animated_filter = animation
+        .target_spec
+        .as_ref()
+        .and_then(object_filter)
+        .or_else(|| match &animation.target {
+            crate::continuous::EffectTarget::Filter(filter) => Some(filter),
+            _ => None,
+        })?;
+
+    let for_each =
+        unwrap_tag_wrappers(consumer_effect).downcast_ref::<crate::effects::ForEachObject>()?;
+    if !for_each.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *producer_tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return None;
+    }
+    let [counter_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let counters =
+        unwrap_tag_wrappers(counter_effect).downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if counters.distributed
+        || counters.target_count.is_some()
+        || counters.target.unhinted() != &ChooseSpec::Iterated
+    {
+        return None;
+    }
+
+    let result_noun = animated_filter
+        .card_types
+        .iter()
+        .copied()
+        .find(|card_type| *card_type != CardType::Creature)
+        .map(CardType::name)
+        .unwrap_or("permanent");
+    let counter_text = describe_effect(counter_effect);
+    let counter_prefix = counter_text
+        .trim()
+        .trim_end_matches('.')
+        .strip_suffix(" on it")
+        .or_else(|| {
+            counter_text
+                .trim()
+                .trim_end_matches('.')
+                .strip_suffix(" on that object")
+        })?;
+    let producer_text = describe_effect(producer_effect);
+    let producer_text = producer_text.trim().trim_end_matches('.');
+    (!producer_text.is_empty()).then(|| {
+        format!(
+            "{producer_text}. {counter_prefix} on each {result_noun} that became a creature this way"
+        )
+    })
+}
+
+/// Render a goad consumer whose object set is the exact tagged outcome of a
+/// counter-placement producer. This covers both direct counter placement and
+/// counter choices nested under a per-player `may` action.
+pub(in crate::compiled_text) fn describe_counters_then_goad_countered_result(
+    producer_effect: &Effect,
+    consumer_effect: &Effect,
+) -> Option<String> {
+    fn counter_action(effect: &Effect) -> Option<&crate::effects::PutCountersEffect> {
+        let effect = unwrap_tag_wrappers(effect);
+        if let Some(counters) = effect.downcast_ref::<crate::effects::PutCountersEffect>() {
+            return Some(counters);
+        }
+        if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>()
+            && let [inner] = for_players.effects.as_slice()
+        {
+            return counter_action(inner);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>()
+            && let [inner] = may.effects.as_slice()
+        {
+            return counter_action(inner);
+        }
+        None
+    }
+
+    let producer_tag = wrapped_effect_tag(producer_effect)?;
+    let counters = counter_action(producer_effect)?;
+    let goad = unwrap_tag_wrappers(consumer_effect).downcast_ref::<crate::effects::GoadEffect>()?;
+    let (ChooseSpec::All(filter) | ChooseSpec::Object(filter)) = goad.target.base() else {
+        return None;
+    };
+    if !filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *producer_tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    }) {
+        return None;
+    }
+
+    let noun = filter
+        .card_types
+        .as_slice()
+        .first()
+        .copied()
+        .map(CardType::name)
+        .unwrap_or("permanent");
+    let counter_reference = if counters.amount.unhinted() == &Value::Fixed(1) {
+        format!("a {} counter", counters.counter_type.description())
+    } else {
+        "counters".to_string()
+    };
+    let producer_text = describe_effect(producer_effect);
+    let producer_text = producer_text.trim().trim_end_matches('.');
+    if producer_text.is_empty() {
+        return None;
+    }
+    let goad_text = format!("goad each {noun} that had {counter_reference} put on it this way");
+    if counters
+        .amount
+        .has_surface_hint(ValueSurfaceHint::CounterFollowupThen)
+    {
+        Some(format!("{producer_text}, then {goad_text}"))
+    } else {
+        Some(format!("{producer_text}. {}", capitalize_first(&goad_text)))
+    }
+}
+
+/// Preserve a per-player exile result across an intervening sacrifice. The
+/// final battlefield move is authorized by the exact producer tag, so it must
+/// not be rendered as a query over every card currently in exile.
+pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_result(
+    effect: &Effect,
+) -> Option<String> {
+    let for_players =
+        unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_players.filter != PlayerFilter::Any
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+    {
+        return None;
+    }
+    let [exile_effect, sacrifice_effect, return_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+
+    let exile_tag = wrapped_effect_tag(exile_effect)?;
+    let exile = unwrap_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
+    let (ChooseSpec::All(exile_filter) | ChooseSpec::Object(exile_filter)) = exile.spec.base()
+    else {
+        return None;
+    };
+    if exile_filter.zone != Some(Zone::Graveyard)
+        || exile_filter.owner != Some(PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+
+    let sacrifice = sacrifice_view(unwrap_tag_wrappers(sacrifice_effect))?;
+    if sacrifice.player != &PlayerFilter::IteratedPlayer {
+        return None;
+    }
+
+    let returned = unwrap_tag_wrappers(return_effect);
+    let exact_return =
+        if let Some(move_to_zone) = returned.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+            if move_to_zone.zone != Zone::Battlefield
+                || move_to_zone.battlefield_controller
+                    != crate::effects::BattlefieldController::Preserve
+            {
+                false
+            } else {
+                match move_to_zone.target.base() {
+                    ChooseSpec::All(return_filter) | ChooseSpec::Object(return_filter) => {
+                        return_filter.zone == Some(Zone::Exile)
+                            && return_filter.tagged_constraints.iter().any(|constraint| {
+                                constraint.tag == *exile_tag
+                                    && constraint.relation
+                                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                            })
+                    }
+                    ChooseSpec::Tagged(tag) => tag == exile_tag,
+                    _ => false,
+                }
+            }
+        } else if let Some(put_onto_battlefield) =
+            returned.downcast_ref::<crate::effects::PutOntoBattlefieldEffect>()
+        {
+            !put_onto_battlefield.tapped
+                && put_onto_battlefield.controller == PlayerFilter::IteratedPlayer
+                && matches!(
+                    put_onto_battlefield.target.base(),
+                    ChooseSpec::Tagged(tag) if tag == exile_tag
+                )
+        } else {
+            false
+        };
+    if !exact_return {
+        return None;
+    }
+
+    let exile_text = describe_effect(exile_effect);
+    let exile_tail = exile_text
+        .trim()
+        .trim_end_matches('.')
+        .strip_prefix("Exile ")?
+        .replace("that player's", "their")
+        .replace(" in their graveyard", " from their graveyard");
+    let sacrifice_text = lowercase_first(
+        describe_effect(sacrifice_effect)
+            .trim()
+            .trim_end_matches('.'),
+    );
+    let sacrifice_tail = sacrifice_text
+        .strip_prefix("that player ")
+        .or_else(|| sacrifice_text.strip_prefix("each player "))
+        .unwrap_or(sacrifice_text.as_str());
+    let sacrifice_tail = sacrifice_tail
+        .strip_prefix("sacrifice ")
+        .map(|tail| format!("sacrifices {tail}"))
+        .unwrap_or_else(|| sacrifice_tail.to_string());
+    let sacrifice_tail = sacrifice_tail.replace("that player controls", "they control");
+
+    Some(format!(
+        "Each player exiles {exile_tail}, then {sacrifice_tail}, then puts all cards they exiled this way onto the battlefield"
+    ))
 }
 
 pub(in crate::compiled_text) fn describe_result_producer_then_for_each_tagged(

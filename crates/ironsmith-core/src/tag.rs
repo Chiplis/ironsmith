@@ -9,6 +9,12 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Object set produced by reveal-hand effects in the current resolution.
+///
+/// Keeping this in the shared model lets compiler reference analysis and
+/// runtime execution agree on the same typed result-set identity.
+pub const REVEALED_THIS_WAY_TAG: &str = "__revealed_this_way__";
+
 /// Runtime tag for the resolving spell or ability's source object.
 ///
 /// This gives object-relative player filters (for example, "this artifact's
@@ -37,6 +43,12 @@ pub const MANIFEST_DREAD_GRAVEYARD_TAG: &str = "__manifest_dread_graveyard__";
 /// The complete set of attackers captured by a group attack trigger.
 pub const ATTACKING_GROUP_TAG: &str = "__attacking_group__";
 
+/// The player who currently holds the initiative designation.
+///
+/// Runtime filter contexts populate this system tag from game state so typed
+/// player references can follow the designation as it changes hands.
+pub const INITIATIVE_HOLDER_TAG: &str = "__initiative_holder__";
+
 /// Snapshots processed before the current object in an ordered iteration.
 pub const PREVIOUS_ITERATED_OBJECTS_TAG: &str = "__previous_iterated_objects__";
 
@@ -46,6 +58,12 @@ pub const PREVIOUS_ITERATED_OBJECTS_TAG: &str = "__previous_iterated_objects__";
 /// "modified creatures you controlled as you cast this spell", rather than
 /// accidentally recounting the battlefield when the spell resolves.
 pub const CAST_MODIFIED_CREATURES_TAG: &str = "__cast_modified_creatures__";
+
+/// Objects controlled by the caster when the current spell was cast.
+///
+/// This preserves the cast-time set for aggregate values such as "the
+/// greatest power among creatures you controlled as you cast this spell".
+pub const CAST_CONTROLLED_OBJECTS_TAG: &str = "__cast_controlled_objects__";
 
 /// Dynamic tag key used by the tagging system.
 ///

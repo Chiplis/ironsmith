@@ -341,6 +341,11 @@ pub struct StaticAbility<T, E, C, Cond> {
     pub payload: StaticAbilityPayload<T, E, C, Cond>,
 }
 
+/// Internal model-label prefix for an authored ability word that precedes an
+/// explicit conditional static clause. The condition remains rules text; this
+/// marker only lets compiled-text rendering restore the presentation prefix.
+pub const EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX: &str = "__ironsmith_explicit_static_label:";
+
 /// How an ability-loss continuous effect treats later attempts to grant the
 /// same ability.
 ///
@@ -394,6 +399,18 @@ impl<T, E, C, Cond> PowerToughnessChoiceOption<T, E, C, Cond> {
 pub enum StaticAbilityPayload<T, E, C, Cond> {
     #[default]
     None,
+    /// Presentation provenance for keyword abilities authored together on one
+    /// source line. The following `keyword_count` keyword surfaces belong to
+    /// one comma-separated Oracle line; this marker has no game semantics.
+    SourceLineKeywordGroup {
+        keyword_count: usize,
+    },
+    /// Presentation provenance for executable static abilities emitted from
+    /// one authored source-line chunk. The following `member_count` abilities
+    /// may be structurally recombined only when their typed payloads agree.
+    SourceLineStaticGroup {
+        member_count: usize,
+    },
     Companion(CompanionDeckCondition),
     Anthem(Anthem),
     AttachedAbilityGrant(Box<AttachedAbilityGrant<T, E, C, Cond>>),
@@ -694,6 +711,10 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         subject: String,
         also_turns_face_up: bool,
         uses_enters_with_counter_surface: bool,
+        /// When present, this is an immediate "as this transforms into ..."
+        /// program rather than an entry replacement program. The legacy
+        /// payload name is retained for serialized-model compatibility.
+        transforms_into: Option<String>,
         presentation_label: Option<PresentationLabel>,
     },
     EntersWithCharacteristicsForFilter {
@@ -1126,6 +1147,7 @@ where
                 zone: spec.zone,
                 beneficiary: spec.beneficiary,
                 usage_limit: spec.usage_limit,
+                cast_this_way_filter: spec.cast_this_way_filter,
                 cast_this_way_grants: spec
                     .cast_this_way_grants
                     .into_iter()
@@ -1150,6 +1172,12 @@ where
         {
             let payload = match ability.payload {
             StaticAbilityPayload::None => StaticAbilityPayload::None,
+            StaticAbilityPayload::SourceLineKeywordGroup { keyword_count } => {
+                StaticAbilityPayload::SourceLineKeywordGroup { keyword_count }
+            }
+            StaticAbilityPayload::SourceLineStaticGroup { member_count } => {
+                StaticAbilityPayload::SourceLineStaticGroup { member_count }
+            }
             StaticAbilityPayload::Companion(condition) => {
                 StaticAbilityPayload::Companion(condition)
             }
@@ -1764,12 +1792,14 @@ where
                 subject,
                 also_turns_face_up,
                 uses_enters_with_counter_surface,
+                transforms_into,
                 presentation_label,
             } => StaticAbilityPayload::AsEntersEffectProgram {
                 program: program.try_map_effects(|effect| map_effect(effect))?,
                 subject,
                 also_turns_face_up,
                 uses_enters_with_counter_surface,
+                transforms_into,
                 presentation_label,
             },
             StaticAbilityPayload::EntersWithCharacteristicsForFilter {
@@ -2412,6 +2442,27 @@ impl<
         Self::identified(StaticAbilityId::KeywordMarker, text)
     }
 
+    /// Preserve that multiple keyword abilities were authored together on one
+    /// Oracle source line. This metadata is inert at runtime and is consumed
+    /// only by compiled-text rendering.
+    pub fn source_line_keyword_group(keyword_count: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SourceLineKeywordGroup),
+            label: "source-line keyword group".to_string(),
+            payload: StaticAbilityPayload::SourceLineKeywordGroup { keyword_count },
+        }
+    }
+
+    /// Preserve that several lowered static abilities came from one authored
+    /// Oracle source-line chunk. This metadata is inert at runtime.
+    pub fn source_line_static_group(member_count: usize) -> Self {
+        Self {
+            id: Some(StaticAbilityId::SourceLineStaticGroup),
+            label: "source-line static group".to_string(),
+            payload: StaticAbilityPayload::SourceLineStaticGroup { member_count },
+        }
+    }
+
     pub fn dredge(amount: u32) -> Self {
         Self {
             id: Some(StaticAbilityId::Dredge),
@@ -2634,6 +2685,18 @@ impl<
 
     pub fn attached_goaded_by_source_controller(display: impl Into<String>) -> Self {
         Self::identified(StaticAbilityId::AttachedGoadedBySourceController, display)
+    }
+
+    /// A typed special-action permission for an Aura's attached object's
+    /// controller. Paying the sacrifice cost causes that player to ignore the
+    /// source's static effect for the rest of the turn without using the stack.
+    pub fn attached_controller_may_sacrifice_permanent_to_ignore_source_effect_until_end_of_turn(
+        display: impl Into<String>,
+    ) -> Self {
+        Self::identified(
+            StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn,
+            display,
+        )
     }
 
     pub fn all_creatures_attack_attached_controller_each_combat_if_able() -> Self {
@@ -3789,6 +3852,12 @@ impl<
             ),
         }
     }
+    pub fn cant_be_blocked_while_defending_player_controls_most_creatures() -> Self {
+        Self::identified(
+            StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures,
+            "can't be blocked as long as defending player controls the most creatures or is tied for the most",
+        )
+    }
     pub fn set_name(filter: ObjectFilter, name: impl Into<String>) -> Self {
         let name = name.into();
         Self {
@@ -4179,6 +4248,28 @@ impl<
                 subject,
                 also_turns_face_up,
                 uses_enters_with_counter_surface,
+                transforms_into: None,
+                presentation_label,
+            },
+        }
+    }
+    pub fn as_transforms_effect_program(
+        program: ResolutionProgram<E>,
+        subject: impl Into<String>,
+        destination: impl Into<String>,
+        presentation_label: Option<PresentationLabel>,
+    ) -> Self {
+        let subject = subject.into();
+        let destination = destination.into();
+        Self {
+            id: Some(StaticAbilityId::AsEntersEffectProgram),
+            label: format!("As {subject} transforms into {destination}"),
+            payload: StaticAbilityPayload::AsEntersEffectProgram {
+                program,
+                subject,
+                also_turns_face_up: false,
+                uses_enters_with_counter_surface: false,
+                transforms_into: Some(destination),
                 presentation_label,
             },
         }
@@ -4393,6 +4484,12 @@ impl<
         Self::identified(
             StaticAbilityId::LegendRuleDoesntApplyToController,
             "legend rule doesnt apply to permanents you control",
+        )
+    }
+    pub fn legend_rule_doesnt_apply_to_tokens_you_control() -> Self {
+        Self::identified(
+            StaticAbilityId::LegendRuleDoesntApplyToControllerTokens,
+            "legend rule doesnt apply to tokens you control",
         )
     }
     pub fn remove_supertypes(filter: ObjectFilter, supertypes: Vec<Supertype>) -> Self {

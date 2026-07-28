@@ -5,13 +5,15 @@ use winnow::error::{ContextError, ErrMode};
 use super::super::compile_support::{
     effects_have_cross_arm_tag_dependency, effects_reference_it_tag,
 };
-use super::super::effect_ast_traversal::for_each_nested_effects_mut;
+use super::super::effect_ast_traversal::{
+    for_each_nested_effect_vec_mut, for_each_nested_effects, for_each_nested_effects_mut,
+};
 use super::super::grammar::effects::{
-    chain_carry as chain_grammar, for_each_shapes, parse_additional_phases_shape,
-    parse_any_player_may_sacrifice_shape, parse_choose_then_exile_reference_shape,
-    parse_conditional_sentence_family_lexed, parse_exile_reference_action_shape,
-    parse_reveal_source_exiled_permanents_tokens, parse_tap_object_union_then_tokens,
-    sacrifice_discard_shapes as sacrifice_discard_grammar,
+    SourceLinkedExileReferenceKind, chain_carry as chain_grammar, for_each_shapes,
+    parse_additional_phases_shape, parse_any_player_may_sacrifice_shape,
+    parse_choose_then_exile_reference_shape, parse_conditional_sentence_family_lexed,
+    parse_exile_reference_action_shape, parse_reveal_source_exiled_permanents_tokens,
+    parse_tap_object_union_then_tokens, sacrifice_discard_shapes as sacrifice_discard_grammar,
 };
 use super::super::grammar::primitives::{self as grammar, TokenWordView};
 use super::super::grammar::structure::{
@@ -35,7 +37,8 @@ use super::super::util::{
 use super::clause_pattern_helpers::parse_keyword_mechanic_clause;
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
-    find_verb_lexed, has_effect_head_without_verb_lexed, segment_has_effect_head_lexed,
+    find_verb_lexed, has_authored_comma_then_surface_lexed, has_effect_head_without_verb_lexed,
+    has_explicit_comma_then_boundary_lexed, segment_has_effect_head_lexed,
     split_effect_chain_on_and_lexed, split_segments_on_comma_effect_head_lexed,
     split_segments_on_comma_then_lexed, strip_leading_instead_prefix_lexed,
 };
@@ -49,7 +52,8 @@ use super::{
     parse_sentence_put_onto_battlefield_with_counters_on_it_lexed,
     parse_sentence_return_with_counters_on_it_lexed, parse_sentence_unless_pays,
     parse_simple_gain_ability_clause_lexed, parse_simple_lose_ability_clause_lexed,
-    parse_token_copy_followup_sentence_lexed, try_apply_token_copy_followup,
+    parse_token_copy_followup_sentence_lexed, token_copy_action_reference_surface,
+    try_apply_token_copy_followup,
 };
 use crate::runtime_backend::grammar::shared_util::value_semantics::{
     parse_number_prefix_lexed, parse_value_prefix_lexed,
@@ -62,7 +66,9 @@ use crate::cards::builders::{
     SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{ChoiceCount, Until, Value};
-use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{
+    ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation,
+};
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
 
@@ -74,6 +80,24 @@ use crate::zone::Zone;
 /// "that creature", which is an ordinary causative the limited parser handles.
 fn leading_have_introduces_causative_player(tokens: &[OwnedLexToken]) -> bool {
     chain_grammar::is_causative_have_player_tokens(tokens)
+}
+
+fn has_any_number_of_times_suffix(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(trim_lexed_commas(tokens)).word_refs();
+    words.ends_with(&["any", "number", "of", "times"])
+}
+
+fn is_repeatable_optional_payment(effects: &[EffectAst]) -> bool {
+    matches!(
+        effects,
+        [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::PayMana { .. }
+                | SubjectVerbActionAst::PayEnergy { .. }
+                | SubjectVerbActionAst::PayLife { .. },
+            ..
+        })]
+    )
 }
 
 fn synthetic_lexed_word(word: &str) -> OwnedLexToken {
@@ -290,10 +314,23 @@ pub(crate) fn looks_like_multi_create_chain_lexed(tokens: &[OwnedLexToken]) -> b
 pub(crate) fn parse_reveal_source_exiled_permanents_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
-    parse_reveal_source_exiled_permanents_tokens(tokens)?;
+    let shape = parse_reveal_source_exiled_permanents_tokens(tokens)?;
+    let source_surface = match shape.source_kind {
+        SourceLinkedExileReferenceKind::Permanent => "this permanent",
+        SourceLinkedExileReferenceKind::CardType(CardType::Artifact) => "this artifact",
+        SourceLinkedExileReferenceKind::CardType(CardType::Creature) => "this creature",
+        SourceLinkedExileReferenceKind::CardType(CardType::Enchantment) => "this enchantment",
+        SourceLinkedExileReferenceKind::CardType(CardType::Land) => "this land",
+        SourceLinkedExileReferenceKind::CardType(CardType::Planeswalker) => "this planeswalker",
+        SourceLinkedExileReferenceKind::CardType(CardType::Battle) => "this battle",
+        SourceLinkedExileReferenceKind::CardType(_) => return None,
+    };
     let mut source_exiled =
         ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile);
     source_exiled.owner = Some(PlayerFilter::IteratedPlayer);
+    source_exiled.source_surface = Some(SourceReferenceSurface::ThisPermanentType(
+        source_surface.to_string(),
+    ));
     let reveal = EffectAst::subject_verb(
         crate::cards::builders::SubjectVerbRoleAst::Actor,
         PlayerAst::That,
@@ -335,6 +372,37 @@ pub(crate) fn parse_effect_chain_lexed(
     })
 }
 
+fn parse_independent_explicit_may_coordination(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let segments = split_effect_chain_on_and_lexed(tokens);
+    if segments.len() < 2
+        || !segments
+            .iter()
+            .all(|segment| parse_leading_player_may_lexed(segment).is_some())
+    {
+        return Ok(None);
+    }
+
+    // Repeating the complete "<player> may" subject after the conjunction
+    // starts a new choice. Parsing the whole line through the broad leading-
+    // may path would instead wrap every later choice inside the first May,
+    // so declining the first action would incorrectly suppress the rest.
+    let mut effects = Vec::with_capacity(segments.len());
+    for segment in segments {
+        let parsed = parse_effect_chain_lexed(segment)?;
+        let [effect] = parsed.as_slice() else {
+            return Ok(None);
+        };
+        effects.push(effect.clone());
+    }
+    Ok(Some(vec![EffectAst::Coordinated {
+        effects,
+        leading_duration: false,
+        result_conjunction: false,
+    }]))
+}
+
 fn parse_effect_chain_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
@@ -359,26 +427,119 @@ fn parse_effect_chain_lexed_inner(
     if let Some(effects) = parse_for_each_object_effect_chain_shape(tokens)? {
         return Ok(effects);
     }
+    if let Some(effects) = parse_independent_explicit_may_coordination(tokens)? {
+        return Ok(effects);
+    }
     let effects = parse_effect_chain_uncoordinated_lexed(tokens)?;
+    if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
+        return Ok(vec![EffectAst::CommaThen { effects }]);
+    }
     Ok(preserve_coordinated_effect_chain_surface(tokens, effects))
+}
+
+fn nested_comma_then_candidate_count(effect: &EffectAst) -> usize {
+    if matches!(effect, EffectAst::CommaThen { .. }) {
+        return 0;
+    }
+
+    let mut count = 0usize;
+    for_each_nested_effects(effect, true, |nested| {
+        if nested.len() > 1 {
+            count += 1;
+        } else if let [child] = nested {
+            count += nested_comma_then_candidate_count(child);
+        }
+    });
+    count
+}
+
+fn wrap_first_nested_comma_then_candidate(effect: &mut EffectAst) -> bool {
+    if matches!(effect, EffectAst::CommaThen { .. }) {
+        return false;
+    }
+
+    let mut wrapped = false;
+    for_each_nested_effect_vec_mut(effect, true, |nested| {
+        if wrapped {
+            return;
+        }
+        if nested.len() > 1 {
+            let effects = std::mem::take(nested);
+            nested.push(EffectAst::CommaThen { effects });
+            wrapped = true;
+        } else if let [child] = nested.as_mut_slice() {
+            wrapped = wrap_first_nested_comma_then_candidate(child);
+        }
+    });
+    wrapped
+}
+
+fn preserve_unique_nested_comma_then_surface(effects: &mut [EffectAst]) {
+    let [effect] = effects else {
+        return;
+    };
+    if nested_comma_then_candidate_count(effect) == 1 {
+        let _ = wrap_first_nested_comma_then_candidate(effect);
+    }
 }
 
 pub(crate) fn preserve_coordinated_effect_chain_surface(
     tokens: &[OwnedLexToken],
     mut effects: Vec<EffectAst>,
 ) -> Vec<EffectAst> {
+    // Whole-line parsing can reach this surface-preservation pass with the
+    // semantic actions already flattened, without going through
+    // `parse_effect_chain_lexed`. Preserve an authored same-sentence
+    // comma-then boundary here as well so every parser entrypoint produces
+    // the same typed sequence.
+    if effects.len() > 1 && has_authored_comma_then_surface_lexed(tokens) {
+        return vec![EffectAst::CommaThen { effects }];
+    }
+    if has_authored_comma_then_surface_lexed(tokens) {
+        preserve_unique_nested_comma_then_surface(&mut effects);
+    }
+
     let Some(leading_duration) = chain_grammar::coordinated_effect_chain_leading_duration(tokens)
     else {
         return effects;
     };
 
-    // Specialist parsers already emit the same typed boundary for shapes
-    // that need additional semantic validation. Do not nest it.
-    if effects
-        .iter()
-        .any(|effect| matches!(effect, EffectAst::Coordinated { .. }))
-    {
+    // A shared-subject tail can already be coordinated by its specialist
+    // parser even though the top-level grammar proves that an earlier action
+    // belongs to the same authored conjunction. Flatten only an ordinary
+    // nested conjunction so the complete source clause keeps one typed
+    // boundary. Result conjunctions and duration-leading conjunctions carry
+    // additional semantics and must remain nested.
+    if effects.iter().any(|effect| {
+        matches!(
+            effect,
+            EffectAst::Coordinated {
+                leading_duration: true,
+                ..
+            } | EffectAst::Coordinated {
+                result_conjunction: true,
+                ..
+            }
+        )
+    }) {
         return effects;
+    }
+    if effects.len() > 1
+        && effects
+            .iter()
+            .any(|effect| matches!(effect, EffectAst::Coordinated { .. }))
+    {
+        effects = effects
+            .into_iter()
+            .flat_map(|effect| match effect {
+                EffectAst::Coordinated {
+                    effects,
+                    leading_duration: false,
+                    result_conjunction: false,
+                } => effects,
+                effect => vec![effect],
+            })
+            .collect();
     }
 
     // The grammar above proves this was a top-level source conjunction and
@@ -621,7 +782,7 @@ fn parse_for_each_object_effect_chain_shape(
         }]));
     }
 
-    let filter = parse_object_filter(shape.filter_tokens, false)?;
+    let filter = super::for_each_helpers::parse_for_each_object_filter(shape.filter_tokens)?;
     let effects = parse_effect_chain_lexed(shape.effect_tokens)?;
     if effects.is_empty() {
         return Err(CardTextError::ParseError(
@@ -644,6 +805,25 @@ fn parse_effect_chain_uncoordinated_lexed(
         ))
     }
 
+    let comma_then_segments = split_segments_on_comma_then_lexed(vec![tokens]);
+    if let [look_tokens, partition_tokens] = comma_then_segments.as_slice()
+        && let Some(effects) =
+            super::sequence_rules::generic_subject_verb_sequences::pairs::parse_inline_look_at_top_then_singleton_hand_partition(
+                look_tokens,
+                partition_tokens,
+            )
+    {
+        return Ok(effects);
+    }
+    // Once the conservative typed splitter has proved a real `, then`
+    // boundary, route the complete chain before any prefix-tolerant
+    // specialist can claim only its final verb. The inner chain pass retains
+    // carried players, result values, tags, and authored ordering across the
+    // separately parsed arms.
+    if comma_then_segments.len() > 1 {
+        return parse_effect_chain_inner_lexed(tokens);
+    }
+
     // An immediate "you may cast/play" instruction is an optional action,
     // not a persistent permission. Claim it before the generic leading-may
     // path strips `may` while probing broader cast-permission surfaces.
@@ -661,6 +841,22 @@ fn parse_effect_chain_uncoordinated_lexed(
 
     if let Some(effects) = parse_for_each_object_effect_chain_shape(tokens)? {
         return Ok(effects);
+    }
+
+    if let Some(shape) = super::super::grammar::effects::sentence_predicate_shapes::
+        parse_attacking_doesnt_tap_if_source_untapped_tokens(tokens)
+    {
+        let filter = parse_object_filter(shape.affected_tokens, false)?;
+        return Ok(vec![
+            EffectAst::subject_verb_grant_abilities_all_dynamically_with_condition(
+                filter,
+                vec![crate::cards::builders::GrantedAbilityAst::StaticAbility(
+                    crate::static_abilities::StaticAbility::vigilance(),
+                )],
+                Until::EndOfCombat,
+                crate::ConditionExpr::SourceIsUntapped,
+            ),
+        ]);
     }
 
     // A phase-insertion clause has no ordinary subject/verb head ("there is
@@ -762,7 +958,7 @@ fn parse_effect_chain_uncoordinated_lexed(
             None,
         )?;
         return Ok(vec![EffectAst::AnyPlayerMay {
-            players: PlayerFilter::Any,
+            players: shape.players,
             effects: vec![sacrifice],
         }]);
     }
@@ -832,6 +1028,15 @@ fn parse_effect_chain_uncoordinated_lexed(
             }
             return Ok(effects);
         }
+        if has_any_number_of_times_suffix(&stripped)
+            && is_repeatable_optional_payment(&effects)
+        {
+            return Ok(vec![EffectAst::RepeatProcess {
+                effects: vec![EffectAst::MayByPlayer { player, effects }],
+                continue_effect_index: 0,
+                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+            }]);
+        }
         return Ok(vec![EffectAst::MayByPlayer { player, effects }]);
     }
 
@@ -846,6 +1051,15 @@ fn parse_effect_chain_uncoordinated_lexed(
                 return Ok(vec![EffectAst::May { effects }]);
             }
             return Ok(effects);
+        }
+        if has_any_number_of_times_suffix(&stripped)
+            && is_repeatable_optional_payment(&effects)
+        {
+            return Ok(vec![EffectAst::RepeatProcess {
+                effects: vec![EffectAst::May { effects }],
+                continue_effect_index: 0,
+                continue_predicate: crate::cards::builders::IfResultPredicate::Did,
+            }]);
         }
         return Ok(vec![EffectAst::May { effects }]);
     }
@@ -863,8 +1077,17 @@ fn parse_effect_chain_uncoordinated_lexed(
         return Ok(effects);
     }
 
+    // A consult traversal can continue after its stop condition in the same
+    // sentence. Preserve that complete procedure before the bare traversal
+    // fallback intentionally returns only the consult action.
+    if let Some(effects) =
+        super::consult_family::parse_consult_traversal_with_inline_followup(tokens)?
+    {
+        return Ok(effects);
+    }
+
     // Consult traversal has a `reveal` verb, but its `until` stop rule is
-    // what gives the sentence its semantics.  Claim the complete traversal
+    // what gives the sentence its semantics. Claim the complete traversal
     // before the ordinary subject/verb registry lowers only the leading
     // reveal as a plain top-of-library effect.
     if let Some(parts) = super::consult_family::parse_consult_traversal_sentence(tokens)? {
@@ -890,12 +1113,20 @@ fn parse_effect_chain_uncoordinated_lexed(
     // before entering that registry, otherwise a first arm such as `copy that
     // spell` or `deals damage` can silently consume the whole sentence and
     // drop the following action.
+    if has_explicit_comma_then_boundary_lexed(tokens) {
+        return parse_effect_chain_inner_lexed(tokens);
+    }
     let split_segments = split_effect_chain_on_and_lexed(tokens);
+    let executable_heads = split_segments
+        .iter()
+        .filter(|segment| super::lex_chain_helpers::segment_has_effect_head_lexed(segment))
+        .count();
+    let has_expandable_shared_verb_operand = split_segments
+        .windows(2)
+        .any(|pair| expand_missing_verb_segment_lexed(pair[0], pair[1]).is_some());
     if split_leading_result_prefix_lexed(tokens).is_none()
         && split_segments.len() > 1
-        && split_segments
-            .iter()
-            .all(|segment| super::lex_chain_helpers::segment_has_effect_head_lexed(segment))
+        && (executable_heads > 1 || has_expandable_shared_verb_operand)
     {
         return parse_effect_chain_inner_lexed(tokens);
     }
@@ -1041,9 +1272,11 @@ pub(crate) fn parse_or_action_clause_lexed(
 
         let first_starts_effect = find_verb_lexed(first).is_some_and(|(_, verb_idx)| verb_idx == 0)
             || has_effect_head_without_verb_lexed(first);
+        let second_gain_effect = parse_simple_gain_ability_clause_lexed(second)?;
         let second_starts_effect = find_verb_lexed(second)
             .is_some_and(|(_, verb_idx)| verb_idx == 0)
-            || has_effect_head_without_verb_lexed(second);
+            || has_effect_head_without_verb_lexed(second)
+            || second_gain_effect.is_some();
         if !first_starts_effect || !second_starts_effect {
             continue;
         }
@@ -1052,10 +1285,27 @@ pub(crate) fn parse_or_action_clause_lexed(
             Ok(effects) if !effects.is_empty() => effects,
             _ => continue,
         };
-        let second_effects = match parse_effect_chain_with_subject_verb_primitives_lexed(second) {
-            Ok(effects) if !effects.is_empty() => effects,
-            _ => continue,
+        let mut second_effects = match second_gain_effect {
+            Some(effect) => vec![effect],
+            None => match parse_effect_chain_with_subject_verb_primitives_lexed(second) {
+                Ok(effects) if !effects.is_empty() => effects,
+                _ => continue,
+            },
         };
+        if effects_reference_it_tag(&second_effects)
+            && let Some(primary_target) = first_effects
+                .iter()
+                .find_map(super::primary_target_from_effect)
+        {
+            // An explicit target declared before the outer action choice is
+            // shared by every branch. In "put a counter on target creature or
+            // that creature gains ...", leaving the demonstrative as ambient
+            // `it` can bind it to an activation-cost object instead, and a
+            // result tag from the primary branch would not exist when the
+            // alternative is chosen. Reuse the actual target declaration so
+            // legality and execution both have one target slot.
+            super::replace_it_target_in_effects(&mut second_effects, &primary_target);
+        }
 
         return Ok(Some(EffectAst::UnlessAction {
             effects: first_effects,
@@ -1084,6 +1334,12 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     if let Some(rest) = chain_grammar::strip_leading_and_tokens(tokens) {
         return parse_effect_chain_with_subject_verb_primitives_lexed(rest);
+    }
+
+    if let Some(effects) =
+        super::player_subject_sequences::parse_each_player_exile_sacrifice_return_exiled(tokens)?
+    {
+        return Ok(effects);
     }
 
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
@@ -1217,6 +1473,7 @@ fn parse_effect_chain_inner_lexed_unstacked(
     // lose 1 life and this creature endures 1"). Let the semantic chain
     // splitter isolate those arms before probing the bare-keyword parser.
     if split_effect_chain_on_and_lexed(tokens).len() <= 1
+        && !has_explicit_comma_then_boundary_lexed(tokens)
         && let Some(effect) = parse_keyword_mechanic_without_terminal_punctuation(tokens)?
     {
         return Ok(vec![effect]);
@@ -1278,6 +1535,12 @@ fn parse_effect_chain_inner_lexed_unstacked(
         return Ok(effects);
     }
 
+    if let Some(effects) =
+        super::consult_family::parse_consult_traversal_with_inline_followup(tokens)?
+    {
+        return Ok(effects);
+    }
+
     if let Some(parts) = super::consult_family::parse_consult_traversal_sentence(tokens)? {
         return Ok(parts.effects);
     }
@@ -1326,7 +1589,43 @@ fn parse_effect_chain_inner_lexed_unstacked(
             merged_lexed_segments.push(segment);
             continue;
         }
+        // The generic conjunction splitter must isolate independent leading
+        // actions, but `objects get ... and gain/lose/have ...` is one
+        // shared-subject continuous-effect clause. Rejoin that exact typed
+        // grammar after a preceding action has already been separated so the
+        // ability arm keeps the original object filter instead of binding to
+        // the pump's generated result tag.
+        if let Some(previous) = merged_lexed_segments.last() {
+            let mut shared_subject_clause = previous.clone();
+            shared_subject_clause.push(synthetic_lexed_word("and"));
+            shared_subject_clause.extend(segment.iter().cloned());
+            if super::super::grammar::effects::gain_ability_shapes::parse_get_then_ability_shape(
+                &shared_subject_clause,
+            )
+            .is_some()
+            {
+                *merged_lexed_segments
+                    .last_mut()
+                    .expect("checked the preceding segment above") = shared_subject_clause;
+                continue;
+            }
+        }
         if !super::lex_chain_helpers::segment_has_effect_head_lexed(&segment) {
+            // The conjunction splitter runs before comma-then segmentation.
+            // When the shared verb belongs to the final sequential arm, use
+            // that arm as the carry source rather than the earlier verb in
+            // the same raw segment. For example, in
+            // "deal damage, then exile this artifact and those cards", the
+            // orphaned second operand repeats `exile`, not `deal`.
+            if let Some(previous) = merged_lexed_segments.last()
+                && let Some(previous_tail) =
+                    split_segments_on_comma_then_lexed(vec![previous.as_slice()]).last()
+                && previous_tail.len() < previous.len()
+                && let Some(expanded) = expand_missing_verb_segment_lexed(previous_tail, &segment)
+            {
+                merged_lexed_segments.push(expanded);
+                continue;
+            }
             if let Some(previous) = merged_lexed_segments.last()
                 && let Some(expanded) = expand_missing_verb_segment_lexed(previous, &segment)
             {
@@ -1492,7 +1791,8 @@ fn parse_effect_chain_inner_lexed_unstacked(
             continue;
         }
         if let Some(shape) = for_each_shapes::parse_for_each_object_effect_shape(&segment) {
-            let filter = parse_object_filter(shape.filter_tokens, false)?;
+            let filter =
+                super::for_each_helpers::parse_for_each_object_filter(shape.filter_tokens)?;
             let nested_effects = parse_effect_chain_lexed(shape.effect_tokens)?;
             if nested_effects.is_empty() {
                 return Err(CardTextError::ParseError(
@@ -1504,6 +1804,29 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 effects: nested_effects,
             };
             effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            previous_segment = Some(segment);
+            continue;
+        }
+        if let Some(segment_effects) =
+            super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(&segment)?
+        {
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                }
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
+                }
+                if let Some(context) = explicit_player_for_carry(&effect) {
+                    carried_context = Some(context);
+                }
+                if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
+                    carried_duration = Some(duration);
+                }
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            }
             previous_segment = Some(segment);
             continue;
         }
@@ -1522,6 +1845,43 @@ fn parse_effect_chain_inner_lexed_unstacked(
                 }
                 if let Some(duration) = effect_duration_for_gain_followup_carry(&effect) {
                     carried_duration = Some(duration);
+                }
+                effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            }
+            previous_segment = Some(segment);
+            continue;
+        }
+        // The outer chain splitter isolates an anaphoric combat-assignment
+        // clause such as "you choose how those creatures block" before the
+        // sentence-level subject/verb dispatcher runs. Preserve the reusable
+        // combat-choice capability here instead of letting the broad `choose`
+        // primitive turn the pronoun into an unrelated object selection.
+        if let Some(effect) =
+            super::dispatch_inner::parse_generic_control_combat_choices_subject_verb(&segment)?
+        {
+            effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
+            previous_segment = Some(segment);
+            continue;
+        }
+        // A later comma/then arm can introduce its own complete optional
+        // action (`..., then you may pay ...`). The top-level leading-may
+        // handler cannot see that nested arm after segmentation, while the
+        // bare subject/verb primitive dispatcher does not own `may`. Re-enter
+        // the full chain parser for this strictly smaller segment so the
+        // optional action remains typed instead of being folded into the
+        // preceding verb.
+        if parse_leading_player_may_lexed(&segment).is_some()
+            || chain_grammar::starts_with_may_tokens(&segment)
+        {
+            let segment_effects = parse_effect_chain_lexed(&segment)?;
+            for mut effect in segment_effects {
+                if let Some(context) = carried_context {
+                    maybe_apply_carried_player_with_clause_lexed(&mut effect, context, &segment);
+                }
+                if (carry_gain_duration || carry_leading_duration)
+                    && let Some(duration) = &carried_duration
+                {
+                    apply_carried_effect_duration(&mut effect, duration);
                 }
                 effects.push(bind_source_exiled_effect(effect, bind_source_exiled));
             }
@@ -2236,6 +2596,18 @@ fn apply_carried_effect_duration(effect: &mut EffectAst, duration: &Until) {
                     duration: effect_duration,
                     ..
                 }
+                | SubjectVerbActionAst::PreventAllDamageToTarget {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::PreventAllDamageToTargetFromSourceFilter {
+                    duration: effect_duration,
+                    ..
+                }
+                | SubjectVerbActionAst::PreventAllDamageFromSourceFilter {
+                    duration: effect_duration,
+                    ..
+                }
                 | SubjectVerbActionAst::Cant {
                     duration: effect_duration,
                     ..
@@ -2399,6 +2771,29 @@ fn is_revealed_this_way_scalar_reward(effect: &EffectAst) -> bool {
 pub(crate) fn parse_effect_clause_with_trailing_if_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<EffectAst, CardTextError> {
+    // Some clauses contain an authored trailing condition inside a larger
+    // typed procedure, such as a face-down return followed by turning the
+    // returned permanent face up. Let the clause parser preserve that
+    // multi-effect structure before this generic splitter treats everything
+    // after the first `if` as predicate text.
+    let may_have_embedded_followup = tokens.iter().any(|token| token.is_word("if"))
+        && tokens
+            .windows(2)
+            .any(|pair| pair[0].is_comma() && pair[1].is_word("then"))
+        && tokens.iter().any(|token| token.is_word("turn"))
+        && tokens
+            .windows(2)
+            .any(|pair| pair[0].is_word("face") && pair[1].is_word("up"));
+    if may_have_embedded_followup
+        && let Ok(effect) = parse_effect_clause_lexed(tokens)
+        && matches!(
+            &effect,
+            EffectAst::TrailingIf { effects, .. } if effects.len() > 1
+        )
+    {
+        return Ok(effect);
+    }
+
     let Some(trailing_if) = split_trailing_if_clause_lexed(tokens) else {
         return parse_effect_clause_lexed(tokens);
     };
@@ -2451,6 +2846,8 @@ fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
         EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
             SubjectVerbActionAst::MoveToZone { target, .. }
             | SubjectVerbActionAst::MayMoveToZone { target, .. }
+            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
             | SubjectVerbActionAst::TurnFaceUp { target }
             | SubjectVerbActionAst::ReturnToHand { target, .. } => explicit_tagged_target(target),
             _ => None,
@@ -2465,15 +2862,101 @@ fn explicit_effect_object_tag(effect: &EffectAst) -> Option<TagKey> {
     }
 }
 
+fn explicit_target_choose_spec(target: &TargetAst) -> Option<ChooseSpec> {
+    match target {
+        TargetAst::Object(filter, Some(_), _) => Some(ChooseSpec::Target(Box::new(
+            ChooseSpec::Object(filter.clone()),
+        ))),
+        TargetAst::WithCount(inner, count) if count.is_single() => {
+            explicit_target_choose_spec(inner)
+        }
+        TargetAst::WithCountValue(inner, count, _) if count.is_single() => {
+            explicit_target_choose_spec(inner)
+        }
+        _ => None,
+    }
+}
+
+fn explicit_effect_object_target(effect: &EffectAst) -> Option<ChooseSpec> {
+    match effect {
+        EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) => match action {
+            SubjectVerbActionAst::MoveToZone { target, .. }
+            | SubjectVerbActionAst::MayMoveToZone { target, .. }
+            | SubjectVerbActionAst::ReturnToBattlefield { target, .. }
+            | SubjectVerbActionAst::PutOntoBattlefield { target, .. }
+            | SubjectVerbActionAst::TurnFaceUp { target }
+            | SubjectVerbActionAst::ReturnToHand { target, .. } => {
+                explicit_target_choose_spec(target)
+            }
+            _ => None,
+        },
+        EffectAst::May { effects } | EffectAst::MayByPlayer { effects, .. }
+            if effects.len() == 1 =>
+        {
+            explicit_effect_object_target(&effects[0])
+        }
+        _ => None,
+    }
+}
+
+fn bind_it_metric_to_explicit_target(value: Value, target: &ChooseSpec) -> Value {
+    match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_it_metric_to_explicit_target(*value, target)),
+            hints,
+        },
+        Value::PowerOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+            Value::PowerOf(Box::new(
+                target
+                    .clone()
+                    .with_surface_hints(spec.surface_hints().iter().cloned()),
+            ))
+        }
+        Value::ToughnessOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+            Value::ToughnessOf(Box::new(
+                target
+                    .clone()
+                    .with_surface_hints(spec.surface_hints().iter().cloned()),
+            ))
+        }
+        Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) => {
+            Value::ManaValueOf(Box::new(
+                target
+                    .clone()
+                    .with_surface_hints(spec.surface_hints().iter().cloned()),
+            ))
+        }
+        other => other,
+    }
+}
+
 fn bind_trailing_it_predicate_to_explicit_effect_target(
     predicate: PredicateAst,
     effect: &EffectAst,
 ) -> PredicateAst {
-    let Some(tag) = explicit_effect_object_tag(effect) else {
-        return predicate;
-    };
     match predicate {
-        PredicateAst::ItMatches(filter) => PredicateAst::TaggedMatches(tag, filter),
+        PredicateAst::ItMatches(filter) => {
+            if let Some(tag) = explicit_effect_object_tag(effect) {
+                PredicateAst::TaggedMatches(tag, filter)
+            } else if explicit_effect_object_target(effect).is_some() {
+                PredicateAst::TargetMatches(filter)
+            } else {
+                PredicateAst::ItMatches(filter)
+            }
+        }
+        PredicateAst::ValueComparison {
+            left,
+            operator,
+            right,
+        } if explicit_effect_object_target(effect).is_some() => {
+            let target = explicit_effect_object_target(effect)
+                .expect("guarded explicit effect target should remain available");
+            PredicateAst::ValueComparison {
+                left: bind_it_metric_to_explicit_target(left, &target),
+                operator,
+                right: bind_it_metric_to_explicit_target(right, &target),
+            }
+        }
         other => other,
     }
 }
@@ -2572,17 +3055,21 @@ pub(crate) fn collapse_token_copy_next_end_step_exile_followup_lexed(
                 action:
                     SubjectVerbActionAst::CreateTokenCopy {
                         exile_at_next_end_step,
+                        exile_at_next_end_step_reference_surface,
                         next_end_step_player: effect_next_end_step_player,
                         ..
                     }
                     | SubjectVerbActionAst::CreateTokenCopyFromSource {
                         exile_at_next_end_step,
+                        exile_at_next_end_step_reference_surface,
                         next_end_step_player: effect_next_end_step_player,
                         ..
                     },
                 ..
             }) => {
                 *exile_at_next_end_step = true;
+                *exile_at_next_end_step_reference_surface =
+                    token_copy_action_reference_surface(tokens, "exile");
                 *effect_next_end_step_player = next_end_step_player.clone();
             }
             _ => {}
@@ -2660,17 +3147,21 @@ pub(crate) fn collapse_token_copy_next_end_step_sacrifice_followup_lexed(
                 action:
                     SubjectVerbActionAst::CreateTokenCopy {
                         sacrifice_at_next_end_step,
+                        sacrifice_at_next_end_step_reference_surface,
                         next_end_step_player: effect_next_end_step_player,
                         ..
                     }
                     | SubjectVerbActionAst::CreateTokenCopyFromSource {
                         sacrifice_at_next_end_step,
+                        sacrifice_at_next_end_step_reference_surface,
                         next_end_step_player: effect_next_end_step_player,
                         ..
                     },
                 ..
             }) => {
                 *sacrifice_at_next_end_step = true;
+                *sacrifice_at_next_end_step_reference_surface =
+                    token_copy_action_reference_surface(tokens, "sacrifice");
                 *effect_next_end_step_player = next_end_step_player.clone();
             }
             _ => {}
@@ -2727,13 +3218,23 @@ pub(crate) fn collapse_token_copy_end_of_combat_exile_followup_lexed(
                 action:
                     SubjectVerbActionAst::CreateTokenCopy {
                         exile_at_end_of_combat,
+                        exile_at_end_of_combat_reference_surface,
                         ..
                     }
                     | SubjectVerbActionAst::CreateTokenCopyFromSource {
                         exile_at_end_of_combat,
+                        exile_at_end_of_combat_reference_surface,
                         ..
-                    }
-                    | SubjectVerbActionAst::CreateTokenWithMods {
+                    },
+                ..
+            }) => {
+                *exile_at_end_of_combat = true;
+                *exile_at_end_of_combat_reference_surface =
+                    token_copy_action_reference_surface(tokens, "exile");
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CreateTokenWithMods {
                         exile_at_end_of_combat,
                         ..
                     },
@@ -2928,6 +3429,30 @@ pub(crate) fn expand_missing_verb_segment_lexed(
                 Some("a" | "an" | "another" | "target")
             ) || parse_number_prefix_lexed(segment).is_some();
             if !starts_like_object_phrase {
+                return None;
+            }
+            let mut expanded = Vec::new();
+            expanded.extend(previous.iter().take(verb_idx + 1).cloned());
+            expanded.extend(segment.iter().cloned());
+            Some(expanded)
+        }
+        Verb::Exile => {
+            let segment_words = token_word_refs(segment);
+            let starts_like_object_reference = matches!(
+                segment_words.first().copied(),
+                Some(
+                    "a" | "an"
+                        | "another"
+                        | "target"
+                        | "it"
+                        | "them"
+                        | "this"
+                        | "that"
+                        | "these"
+                        | "those"
+                )
+            ) || parse_number_prefix_lexed(segment).is_some();
+            if !starts_like_object_reference {
                 return None;
             }
             let mut expanded = Vec::new();
@@ -3256,7 +3781,7 @@ fn subject_verb_player_action_player_mut(effect: &mut EffectAst) -> Option<&mut 
                 | SubjectVerbActionAst::RollDie { .. }
                 | SubjectVerbActionAst::RollDiceChooseResult { .. }
                 | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
-                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
                 | SubjectVerbActionAst::ReorderGraveyard
                 | SubjectVerbActionAst::ChooseColor
                 | SubjectVerbActionAst::ChooseCardType { .. }
@@ -3341,7 +3866,7 @@ fn subject_verb_player_action_player(effect: &EffectAst) -> Option<PlayerAst> {
                 | SubjectVerbActionAst::RollDie { .. }
                 | SubjectVerbActionAst::RollDiceChooseResult { .. }
                 | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
-                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+                | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
                 | SubjectVerbActionAst::ReorderGraveyard
                 | SubjectVerbActionAst::ChooseColor
                 | SubjectVerbActionAst::ChooseCardType { .. }
@@ -3481,9 +4006,16 @@ pub(crate) fn maybe_apply_carried_player_with_clause_lexed(
                     | SubjectVerbActionAst::ReturnAllToHand { .. },
             })
         );
-    let explicitly_conjugated_player_action = clause_tokens.first().is_some_and(|token| {
-        token.is_word("draws") || token.is_word("scries") || token.is_word("surveils")
-    });
+    let explicitly_conjugated_player_action = clause_tokens
+        .iter()
+        .filter(|token| !token.parser_word_pieces().is_empty())
+        .skip_while(|token| token.is_word("then") || token.is_word("and"))
+        .next()
+        .is_some_and(|token| {
+            token.slice.eq_ignore_ascii_case("draws")
+                || token.slice.eq_ignore_ascii_case("scries")
+                || token.slice.eq_ignore_ascii_case("surveils")
+        });
     if clause_head == chain_grammar::CarryClauseHead::Choose
         && normalize_imperative_choose_player(effect)
     {
@@ -3642,12 +4174,16 @@ pub(crate) fn bind_implicit_player_context(effect: &mut EffectAst, player: Playe
             action:
                 SubjectVerbActionAst::SearchLibrary {
                     player: effect_player,
+                    chooser,
                     ..
                 },
             ..
         }) => {
             if matches!(*effect_player, PlayerAst::Implicit) {
                 *effect_player = player;
+            }
+            if matches!(*chooser, PlayerAst::Implicit) {
+                *chooser = player;
             }
         }
         EffectAst::SubjectVerb(_) => {

@@ -98,6 +98,69 @@ fn choose_then_move_retains_explicit_battlefield_controller_surface() {
 }
 
 #[test]
+fn plural_hand_choice_moves_render_as_one_typed_battlefield_move() {
+    for (count, expected) in [
+        (
+            ChoiceCount::any_number(),
+            "you put any number of creature cards from your hand onto the battlefield",
+        ),
+        (
+            ChoiceCount::up_to(7),
+            "you put up to seven creature cards from your hand onto the battlefield",
+        ),
+    ] {
+        let tag = TagKey::from("chosen");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            ObjectFilter::creature()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::You),
+            count,
+            PlayerFilter::You,
+            tag.clone(),
+        );
+        let move_chosen = crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(tag),
+            Zone::Battlefield,
+            false,
+        )
+        .with_actor_surface(PlayerFilter::You);
+
+        assert_eq!(
+            describe_effect_list(&[Effect::new(choose), Effect::new(move_chosen)]),
+            expected
+        );
+    }
+}
+
+#[test]
+fn comma_then_preserves_a_trailing_plural_hand_choice_move() {
+    let tag = TagKey::from("chosen");
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        ObjectFilter::creature()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::You),
+        ChoiceCount::any_number(),
+        PlayerFilter::You,
+        tag.clone(),
+    );
+    let move_chosen =
+        crate::effects::MoveToZoneEffect::new(ChooseSpec::Tagged(tag), Zone::Battlefield, false);
+    let sequence = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        Effect::new(crate::effects::DrawCardsEffect::new(
+            Value::Fixed(2),
+            PlayerFilter::You,
+        )),
+        Effect::new(choose),
+        Effect::new(move_chosen).tag("moved"),
+    ]));
+
+    assert_eq!(
+        describe_effect(&sequence),
+        "Draw two cards, then put any number of creature cards from your hand onto the battlefield"
+    );
+}
+
+#[test]
 fn search_then_move_retains_explicit_battlefield_controller_surface() {
     let tag = TagKey::from("searched");
     let choose = crate::effects::ChooseObjectsEffect::new(

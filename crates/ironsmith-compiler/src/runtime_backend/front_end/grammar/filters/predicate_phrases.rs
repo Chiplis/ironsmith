@@ -1204,7 +1204,16 @@ fn parse_source_has_counted_counter_predicate(tokens: &[OwnedLexToken]) -> Optio
     }
     let counter_clause =
         matched.capture_clause_by_role(WinnowCaptureRole::Object, relation.tail_clause)?;
-    let (comparison, used) = predicate_quantity_prefix_tokens(counter_clause.tokens())?;
+    // An indefinite article expresses presence here ("has a counter"), not an
+    // exact cardinality of one. Keep explicit quantities such as "exactly one"
+    // exact while lowering "a"/"an" to an at-least-one comparison.
+    let (comparison, used) = parse_quantity_comparison_prefix(
+        counter_clause.tokens(),
+        false,
+        true,
+        "counter predicate quantity",
+    )
+    .ok()?;
     let (operator, count) = comparison_to_value_comparison_operator(comparison)?;
     let counter_tail = counter_clause.tokens().get(used..)?;
     let counter_type = parse_terminal_counter_phrase(counter_tail)??;
@@ -2810,6 +2819,7 @@ fn parse_active_this_way_discard_predicate(
         player,
         tag: TagKey::from(IT_TAG),
         filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
 }
 
@@ -2854,6 +2864,7 @@ fn parse_negative_put_tagged_object_predicate(tokens: &[OwnedLexToken]) -> Optio
             player: PlayerAst::You,
             tag: TagKey::from(IT_TAG),
             filter: ObjectFilter::default().in_zone(zone),
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         },
     )))
 }
@@ -2954,6 +2965,7 @@ fn parse_active_this_way_battlefield_predicate(
         player: PlayerAst::You,
         tag: TagKey::from(IT_TAG),
         filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
     }))
 }
 
@@ -3173,6 +3185,7 @@ struct DemonstrativeReferencePrefix {
     kind: DemonstrativeReferenceKind,
     tagged_that_enchantment: bool,
     reference_is_creature: bool,
+    antecedent_surface: Option<ironsmith_core::DemonstrativeAntecedentSurface>,
 }
 
 fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<DemonstrativeReferencePrefix> {
@@ -3188,6 +3201,7 @@ fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<Demonstrati
             kind: DemonstrativeReferenceKind::It,
             tagged_that_enchantment: false,
             reference_is_creature: false,
+            antecedent_surface: None,
         });
     }
 
@@ -3206,7 +3220,16 @@ fn demonstrative_reference_prefix(clause: LexedClause<'_>) -> Option<Demonstrati
         kind: DemonstrativeReferenceKind::ThatObject,
         tagged_that_enchantment: token_word_is(reference_token, ENCHANTMENT_WORD),
         reference_is_creature: token_word_is(reference_token, CREATURE_WORD),
+        antecedent_surface: ironsmith_core::DemonstrativeAntecedentSurface::from_noun(
+            reference_token.parser_text(),
+        ),
     })
+}
+
+fn demonstrative_antecedent_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::DemonstrativeAntecedentSurface> {
+    demonstrative_reference_prefix(LexedClause::new(tokens))?.antecedent_surface
 }
 
 fn clause_word_range_matches_phrase(
@@ -3382,11 +3405,18 @@ fn parse_demonstrative_or_descriptor_predicate(
         return Ok(None);
     }
 
+    let antecedent_surface = demonstrative_antecedent_surface(tokens);
     let parse_branch = |branch_tokens: &[OwnedLexToken]| -> Result<ObjectFilter, CardTextError> {
-        if let Some(filter) = parse_single_card_type_card_descriptor_tokens(branch_tokens) {
-            return Ok(filter);
+        let mut filter =
+            if let Some(filter) = parse_single_card_type_card_descriptor_tokens(branch_tokens) {
+                filter
+            } else {
+                parse_object_filter_lexed(branch_tokens, false)?
+            };
+        if antecedent_surface.is_some() {
+            filter.set_demonstrative_antecedent_surface(antecedent_surface);
         }
-        parse_object_filter_lexed(branch_tokens, false)
+        Ok(filter)
     };
 
     let left = parse_branch(left_tokens)?;
@@ -3433,6 +3463,7 @@ fn parse_demonstrative_toxic_predicate(tokens: &[OwnedLexToken]) -> Option<Predi
     if reference.reference_is_creature || tail_is_creature {
         filter.card_types.push(CardType::Creature);
     }
+    filter.set_demonstrative_antecedent_surface(reference.antecedent_surface);
     Some(PredicateAst::ItMatches(filter))
 }
 
@@ -3444,6 +3475,7 @@ fn parse_demonstrative_power_or_toughness_predicate(
     else {
         return Ok(None);
     };
+    let antecedent_surface = demonstrative_antecedent_surface(tokens);
     let descriptor_words = LexedClause::new(&descriptor_tokens).word_refs();
     if descriptor_words.len() < 2 || !word_is_any(descriptor_words[0], POWER_OR_TOUGHNESS_WORDS) {
         return Ok(None);
@@ -3474,6 +3506,7 @@ fn parse_demonstrative_power_or_toughness_predicate(
     } else {
         filter.toughness = Some(cmp);
     }
+    filter.set_demonstrative_antecedent_surface(antecedent_surface);
     Ok(Some(demonstrative_match_predicate(filter, match_time)))
 }
 
@@ -3920,6 +3953,7 @@ fn parse_attacking_you_own_control_predicate(
         ))
     })?;
     left_filter.controller = Some(PlayerFilter::You);
+    left_filter.owner = Some(PlayerFilter::You);
     left_filter.attacking = true;
 
     let mut right_filter = parse_meld_subject_filter_clause(right).map_err(|_| {
@@ -3929,6 +3963,7 @@ fn parse_attacking_you_own_control_predicate(
         ))
     })?;
     right_filter.controller = Some(PlayerFilter::You);
+    right_filter.owner = Some(PlayerFilter::You);
     right_filter.attacking = true;
 
     Ok(Some(PredicateAst::And(
@@ -3981,6 +4016,7 @@ fn parse_you_both_own_and_control_predicate(
         ))
     })?;
     left_filter.controller = Some(PlayerFilter::You);
+    left_filter.owner = Some(PlayerFilter::You);
     let mut right_filter = parse_meld_subject_filter_clause(right).map_err(|_| {
         CardTextError::ParseError(format!(
             "unsupported own-and-control predicate tail (predicate: '{}')",
@@ -3988,6 +4024,7 @@ fn parse_you_both_own_and_control_predicate(
         ))
     })?;
     right_filter.controller = Some(PlayerFilter::You);
+    right_filter.owner = Some(PlayerFilter::You);
 
     Ok(Some(PredicateAst::And(
         Box::new(PredicateAst::PlayerControls {

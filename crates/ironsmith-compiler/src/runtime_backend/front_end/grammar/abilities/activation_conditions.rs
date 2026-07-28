@@ -150,6 +150,9 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
     if let Some(condition) = parse_repeated_or_if_activation_condition(tokens) {
         return Some(condition);
     }
+    if let Some(condition) = parse_combined_once_and_timing_condition(tokens) {
+        return Some(condition);
+    }
     if let Some(condition) = parse_activate_count_each_turn_condition(tokens) {
         return Some(condition);
     }
@@ -195,6 +198,19 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
             }
         });
     }
+    if let Some(condition_tokens) = parse_activate_only_if_tail_tokens(tokens)
+        && let Ok(crate::cards::builders::PredicateAst::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+            surface,
+        }) = super::super::filters::parse_predicate(condition_tokens)
+    {
+        return Some(ConditionExpr::SourceHasCounterAtLeast {
+            counter_type,
+            count,
+            surface,
+        });
+    }
     let control_tokens = parse_activate_only_if_you_control_tail_tokens(tokens)?;
     if let Some(control_condition) =
         parse_control_condition(control_tokens, ControlConditionOptions::default())
@@ -223,6 +239,28 @@ pub(crate) fn parse_activation_condition_lexed(tokens: &[OwnedLexToken]) -> Opti
         });
     }
     parse_land_subtype_control_condition(control_tokens)
+}
+
+fn parse_combined_once_and_timing_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
+    let words = TokenWordView::new(tokens).word_refs();
+    if phrase_offset_words(&words, &["once", "each", "turn"]).is_none() {
+        return None;
+    }
+    let timing = if phrase_offset_words(&words, &["during", "your", "turn"]).is_some() {
+        ActivationTiming::DuringYourTurn
+    } else if phrase_offset_words(&words, &["during", "combat"]).is_some() {
+        ActivationTiming::DuringCombat
+    } else if phrase_offset_words(&words, &["during", "an", "opponents", "turn"]).is_some()
+        || phrase_offset_words(&words, &["during", "opponents", "turn"]).is_some()
+    {
+        ActivationTiming::DuringOpponentsTurn
+    } else {
+        return None;
+    };
+    Some(ConditionExpr::And(
+        Box::new(ConditionExpr::MaxActivationsPerTurn(1)),
+        Box::new(ConditionExpr::ActivationTiming(timing)),
+    ))
 }
 
 fn parse_repeated_or_if_activation_condition(tokens: &[OwnedLexToken]) -> Option<ConditionExpr> {
@@ -660,6 +698,35 @@ mod tests {
         assert_eq!(
             parse_activation_condition_lexed(&lex("Activate only twice each turn.")),
             Some(ConditionExpr::MaxActivationsPerTurn(2))
+        );
+        assert!(matches!(
+            parse_activation_condition_lexed(&lex(
+                "Activate only if there are three or more brick counters on this artifact."
+            )),
+            Some(ConditionExpr::SourceHasCounterAtLeast {
+                counter_type: crate::CounterType::Named("brick"),
+                count: 3,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn combined_once_and_turn_timing_keeps_both_constraints() {
+        assert_eq!(
+            parse_activation_condition_lexed(&lex(
+                "Activate only during your turn and only once each turn."
+            )),
+            Some(ConditionExpr::And(
+                Box::new(ConditionExpr::MaxActivationsPerTurn(1)),
+                Box::new(ConditionExpr::ActivationTiming(
+                    ActivationTiming::DuringYourTurn
+                )),
+            ))
+        );
+        assert_eq!(
+            parse_activation_condition_lexed(&lex("Activate only once each turn.")),
+            Some(ConditionExpr::MaxActivationsPerTurn(1))
         );
     }
 

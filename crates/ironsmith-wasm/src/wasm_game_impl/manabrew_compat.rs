@@ -959,6 +959,7 @@ impl WasmGame {
                 | SpecialAction::ActivateManaAbility { permanent_id, .. } => Some(*permanent_id),
                 SpecialAction::UnlockRoomDoor { room_id } => Some(*room_id),
                 SpecialAction::TurnConspiracyFaceUp { conspiracy_id } => Some(*conspiracy_id),
+                SpecialAction::IgnoreAttachedRestriction { source_id, .. } => Some(*source_id),
                 SpecialAction::RollPlanarDie => None,
             },
             LegalAction::PassPriority
@@ -3247,6 +3248,7 @@ mod manabrew_tests {
                 None,
                 ObjectId::from_raw(900_001),
                 "Counter Test Permanent",
+                0,
                 3,
                 vec![
                     (ironsmith::object::CounterType::PlusOnePlusOne, 2),

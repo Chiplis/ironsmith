@@ -35,7 +35,7 @@ pub(crate) fn parse_effect_with_verb(
         Verb::Lose => {
             if resource_grammar::parse_resource_all_unspent_mana_shape(tokens) {
                 return Ok(EffectAst::subject_verb_empty_mana_pool(
-                    extract_subject_player(subject).unwrap_or(PlayerAst::You),
+                    extract_subject_player(subject).unwrap_or(PlayerAst::Implicit),
                 ));
             }
             if resource_grammar::parse_resource_all_abilities_shape(tokens)

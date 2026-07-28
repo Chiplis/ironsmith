@@ -130,6 +130,35 @@ fn bind_event_amount_to_cost_x(value: &mut crate::effect::Value) {
 }
 
 fn bind_event_amounts_to_cost_x_in_effect(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::PumpByLastEffect {
+            power,
+            toughness,
+            target,
+            duration,
+            includes_this_way,
+        } = &subject_verb.action
+    {
+        let basis = crate::effect::Value::X.with_surface_hint(if *includes_this_way {
+            ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
+        } else {
+            ironsmith_core::ValueSurfaceHint::CountersRemoved
+        });
+        let scale = |multiplier: i32| match multiplier {
+            0 => crate::effect::Value::Fixed(0),
+            1 => basis.clone(),
+            _ => crate::effect::Value::Scaled(Box::new(basis.clone()), multiplier),
+        };
+        *effect = EffectAst::subject_verb_pump(
+            scale(*power),
+            scale(*toughness),
+            target.clone(),
+            duration.clone(),
+            None,
+        );
+        return;
+    }
+
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
             SubjectVerbActionAst::DealDamage { amount, .. }
@@ -174,6 +203,7 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::AddManaChosenColor { .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { .. }
                 | SubjectVerbActionAst::AddManaColorsAmong { .. }
+                | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
                 | SubjectVerbActionAst::AddManaImprintedColors
         ),
@@ -192,7 +222,7 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
 
 fn effect_ast_starts_with_mana_effect(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::SourceSentence { effects } => effects
+        EffectAst::SourceSentence { effects, .. } => effects
             .first()
             .is_some_and(effect_ast_starts_with_mana_effect),
         other => effect_ast_is_mana_effect(other),

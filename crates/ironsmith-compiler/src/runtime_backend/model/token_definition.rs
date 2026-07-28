@@ -37,6 +37,7 @@ pub(crate) enum BuiltinTokenShape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenKeywordShape {
     Flying,
+    WardGeneric(u32),
     Defender,
     Prowess,
     Vigilance,
@@ -262,6 +263,8 @@ pub(crate) struct CreatureTokenShape {
     pub(crate) power_toughness: (i32, i32),
     pub(crate) legendary: bool,
     pub(crate) colors: ColorSet,
+    pub(crate) use_source_chosen_color: bool,
+    pub(crate) use_source_chosen_creature_type: bool,
     pub(crate) keywords: Vec<TokenKeywordShape>,
     pub(crate) rules: CreatureTokenRulesShape,
 }
@@ -294,4 +297,36 @@ pub(crate) enum TokenDefinitionSpec {
     Shapeshifter(ShapeshifterTokenShape),
     AstartesWarrior(AstartesWarriorTokenShape),
     Creature(CreatureTokenShape),
+}
+
+impl TokenDefinitionSpec {
+    /// Whether a post-create `It has ...` sentence must remain separate from
+    /// abilities already authored in the token-definition sentence.
+    pub(crate) fn has_intrinsic_abilities(&self) -> bool {
+        match self {
+            Self::Vehicle(vehicle) => vehicle.flying || vehicle.crew_amount.is_some(),
+            Self::Artifact(artifact) => {
+                artifact.equipment_rules.is_some()
+                    || !artifact.token_rules.embedded_rules.is_empty()
+                    || artifact.leaves_damage_any_target.is_some()
+            }
+            Self::Construct(construct) => construct.artifact_scaling.is_some(),
+            Self::Shapeshifter(shapeshifter) => shapeshifter.changeling,
+            Self::AstartesWarrior(warrior) => warrior.vigilance,
+            Self::Creature(creature) => {
+                !creature.keywords.is_empty()
+                    || creature.rules != CreatureTokenRulesShape::default()
+            }
+            // Named and built-in token shapes may carry abilities during
+            // lowering even when their compact parser shape has no fields for
+            // them. Treat them conservatively as nonempty.
+            Self::PriorCreated
+            | Self::Builtin(_)
+            | Self::Angel
+            | Self::Wall
+            | Self::Squirrel
+            | Self::DragonEgg
+            | Self::Elephant => true,
+        }
+    }
 }

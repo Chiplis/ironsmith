@@ -121,6 +121,16 @@ fn counter_followup(effect: &Effect) -> Option<CounterFollowup> {
     })
 }
 
+fn coordinated_counter_followups(effect: &Effect) -> Option<Vec<CounterFollowup>> {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        if sequence.effects.is_empty() {
+            return None;
+        }
+        return sequence.effects.iter().map(counter_followup).collect();
+    }
+    counter_followup(effect).map(|followup| vec![followup])
+}
+
 fn producer_effect_id(effect: &Effect) -> Option<EffectId> {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return Some(with_id.id);
@@ -164,6 +174,9 @@ fn is_entry_producer(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
         .is_some()
+        || effect
+            .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+            .is_some()
         || effect
             .downcast_ref::<crate::effects::MoveToZoneEffect>()
             .is_some_and(|move_effect| move_effect.zone == Zone::Battlefield)
@@ -239,6 +252,14 @@ fn producer_characteristic_filter(effect: &Effect, tag: &TagKey) -> Option<Objec
             {
                 return characteristic_filter_from_choose_spec(&move_effect.target);
             }
+            if let Some(return_all) = tagged
+                .effect
+                .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+            {
+                return characteristic_filter_from_choose_spec(&ChooseSpec::All(
+                    return_all.filter.clone(),
+                ));
+            }
         }
         return producer_characteristic_filter(&tagged.effect, tag);
     }
@@ -277,6 +298,31 @@ fn attach_counter_to_producer(
                 && move_effect.zone == Zone::Battlefield
             {
                 let replacement = move_effect.clone().with_entry_counter(counter.clone());
+                return Some(Effect::new(crate::effects::TaggedEffect::new(
+                    tagged.tag.clone(),
+                    Effect::new(replacement),
+                )));
+            }
+            if let Some(return_all) = tagged
+                .effect
+                .downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+            {
+                // The generic MoveToZone executor already batches ChooseSpec::All
+                // battlefield entries and resolves per-object entry-counter
+                // conditions before the simultaneous entry event. Reuse that
+                // composable capability instead of growing a parallel aggregate
+                // return implementation.
+                let mut replacement = crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::All(return_all.filter.clone()),
+                    Zone::Battlefield,
+                    false,
+                );
+                replacement.enters_tapped = return_all.tapped;
+                replacement.enters_face_down = return_all.face_down;
+                replacement.battlefield_controller = return_all.battlefield_controller;
+                replacement.controller_surface_explicit = return_all.controller_surface_explicit;
+                replacement.verb_surface = return_all.verb_surface;
+                replacement = replacement.with_entry_counter(counter.clone());
                 return Some(Effect::new(crate::effects::TaggedEffect::new(
                     tagged.tag.clone(),
                     Effect::new(replacement),
@@ -365,7 +411,11 @@ fn build_counter_spec(
             filter,
             ..
         } => {
-            let surface = if result_wrapper {
+            let surface = if amount
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
+            {
+                BattlefieldEntryCounterSurface::EachOfThemEnters
+            } else if result_wrapper {
                 BattlefieldEntryCounterSurface::IfObjectEntersThisWay
             } else if producer_is_delayed(producer) {
                 BattlefieldEntryCounterSurface::IfItEntersAsObject
@@ -472,26 +522,38 @@ fn fuse_effect_list(effects: &mut Vec<Effect>) {
             continue;
         };
         let producer_id = producer_effect_id(&effects[index]);
-        let (followup, result_wrapper) =
+        let (followups, result_wrapper) =
             if let Some(followup) = result_counter_followup(&effects[index + 1], producer_id) {
-                (followup, true)
-            } else if let Some(followup) = counter_followup(&effects[index + 1]) {
-                (followup, false)
+                (vec![followup], true)
+            } else if let Some(followups) = coordinated_counter_followups(&effects[index + 1]) {
+                (followups, false)
             } else {
                 index += 1;
                 continue;
             };
-        if followup.tag() != &producer_tag {
+        if followups
+            .iter()
+            .any(|followup| followup.tag() != &producer_tag)
+        {
             index += 1;
             continue;
         }
 
-        let spec = build_counter_spec(&effects[index], followup, result_wrapper);
-        let Some(rewritten) = attach_counter_to_producer(&effects[index], &producer_tag, &spec)
-        else {
+        let mut rewritten = effects[index].clone();
+        let mut attached_all = true;
+        for followup in followups {
+            let spec = build_counter_spec(&rewritten, followup, result_wrapper);
+            let Some(attached) = attach_counter_to_producer(&rewritten, &producer_tag, &spec)
+            else {
+                attached_all = false;
+                break;
+            };
+            rewritten = attached;
+        }
+        if !attached_all {
             index += 1;
             continue;
-        };
+        }
         effects[index] = rewritten;
         effects.remove(index + 1);
     }
@@ -518,14 +580,15 @@ fn fuse_across_segment_boundaries(segments: &mut Vec<crate::resolution::Resoluti
             index += 1;
             continue;
         };
-        let Some(followup) = counter_followup(followup_effect) else {
+        let Some(followups) = coordinated_counter_followups(followup_effect) else {
             index += 1;
             continue;
         };
-        if !followup
-            .amount()
-            .has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
-        {
+        if followups.iter().any(|followup| {
+            !followup
+                .amount()
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+        }) {
             index += 1;
             continue;
         }
@@ -533,16 +596,29 @@ fn fuse_across_segment_boundaries(segments: &mut Vec<crate::resolution::Resoluti
             index += 1;
             continue;
         };
-        if followup.tag() != &producer_tag {
+        if followups
+            .iter()
+            .any(|followup| followup.tag() != &producer_tag)
+        {
             index += 1;
             continue;
         }
 
-        let spec = build_counter_spec(&producer, followup, false);
-        let Some(rewritten) = attach_counter_to_producer(&producer, &producer_tag, &spec) else {
+        let mut rewritten = producer;
+        let mut attached_all = true;
+        for followup in followups {
+            let spec = build_counter_spec(&rewritten, followup, false);
+            let Some(attached) = attach_counter_to_producer(&rewritten, &producer_tag, &spec)
+            else {
+                attached_all = false;
+                break;
+            };
+            rewritten = attached;
+        }
+        if !attached_all {
             index += 1;
             continue;
-        };
+        }
         let producer_index = segments[index].default_effects.len() - 1;
         segments[index].default_effects[producer_index] = rewritten;
         segments[index + 1].default_effects.remove(0);

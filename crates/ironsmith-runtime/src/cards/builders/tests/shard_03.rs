@@ -2969,6 +2969,25 @@ pub(super) fn test_parse_double_target_creatures_power_until_end_of_turn() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn test_parse_where_x_is_source_power_preserves_authored_pump_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Feral Animist Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text("{3}: This creature gets +X/+0 until end of turn, where X is its power.")
+        .expect("parse source-power pump");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("SourcePower") && debug.contains("WhereXIs"),
+        "expected typed source-power value and authored where-X surface, got {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec!["{3}: This creature gets +X/+0 until end of turn, where X is its power.".to_string()]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn test_parse_named_source_double_power_preserves_possessive_surface() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Casey Jones, Asphalt Hooligan")
         .card_types(vec![CardType::Creature])

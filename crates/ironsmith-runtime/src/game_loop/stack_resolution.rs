@@ -1660,6 +1660,7 @@ pub(super) fn resolve_stack_entry_full(
                             expires_at_turn: None,
                             expires_before_controller_turn_after: None,
                             expires_at_end_of_combat: false,
+                            while_any_tagged_object_in_zone: None,
                             target_objects: vec![exiled_id],
                             ability_source: None,
                             ability_source_stable_id: None,

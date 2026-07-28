@@ -15,7 +15,13 @@ pub(crate) enum RemoveShapeError {
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum RemoveCounterDestination<'a> {
+    EachOfAnyNumber {
+        filter_tokens: &'a [OwnedLexToken],
+    },
     All {
+        filter_tokens: &'a [OwnedLexToken],
+    },
+    Among {
         filter_tokens: &'a [OwnedLexToken],
     },
     ForEach {
@@ -101,6 +107,13 @@ pub(crate) enum DestroyCombatHistoryShape<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct DestroyTargetAndAttachedShape<'a> {
+    pub(crate) target_tokens: &'a [OwnedLexToken],
+    pub(crate) attachment_filter_tokens: &'a [OwnedLexToken],
+    pub(crate) demonstrative_antecedent: Option<ironsmith_core::DemonstrativeAntecedentSurface>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum DestroyClauseKind<'a> {
     Empty,
     UnsupportedDelayedTiming,
@@ -122,6 +135,7 @@ pub(crate) enum DestroyClauseKind<'a> {
         predicate_tokens: &'a [OwnedLexToken],
     },
     UnsupportedConditional,
+    TargetAndAttached(DestroyTargetAndAttachedShape<'a>),
     MultiTarget,
     Blocked {
         target_tokens: Vec<OwnedLexToken>,
@@ -268,7 +282,27 @@ pub(crate) fn parse_remove_clause_shape(
         trim_lexed_commas(after_counter)
     };
 
-    let destination = if let Some(((), filter_tokens)) =
+    let destination = if let Some(((), after_among)) =
+        primitives::parse_prefix(target_tokens, primitives::kw("among").void())
+    {
+        let filter_tokens = if let Some(((), rest)) =
+            primitives::parse_prefix(after_among, primitives::kw("all").void())
+        {
+            rest
+        } else {
+            after_among
+        };
+        RemoveCounterDestination::Among {
+            filter_tokens: trim_lexed_commas(filter_tokens),
+        }
+    } else if let Some(((), filter_tokens)) = primitives::parse_prefix(
+        target_tokens,
+        primitives::phrase(&["each", "of", "any", "number", "of"]).void(),
+    ) {
+        RemoveCounterDestination::EachOfAnyNumber {
+            filter_tokens: trim_lexed_commas(filter_tokens),
+        }
+    } else if let Some(((), filter_tokens)) =
         primitives::parse_prefix(target_tokens, all_or_each_word)
     {
         RemoveCounterDestination::All {
@@ -611,6 +645,54 @@ fn has_multi_target_tail(tokens: &[OwnedLexToken]) -> bool {
         || primitives::parse_prefix(tail, target_count_before_target).is_some()
 }
 
+fn parse_destroy_target_and_attached_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DestroyTargetAndAttachedShape<'_>> {
+    let (target_tokens, attached_tokens) =
+        primitives::split_lexed_once_on_separator(tokens, || primitives::kw("and").void())?;
+    let target_tokens = trim_lexed_commas(target_tokens);
+    let target_starts_with_selection =
+        primitives::parse_prefix(target_tokens, primitives::kw("target").void()).is_some()
+            || primitives::parse_prefix(target_tokens, target_count_before_target).is_some();
+    if !target_starts_with_selection {
+        return None;
+    }
+
+    let ((), attached_tokens) =
+        primitives::parse_prefix(attached_tokens, primitives::kw("all").void())?;
+    let (attachment_filter_tokens, attachment_reference_tokens) =
+        primitives::split_lexed_once_on_separator(attached_tokens, || {
+            primitives::phrase(&["attached", "to"]).void()
+        })?;
+    let attachment_filter_tokens = trim_lexed_commas(attachment_filter_tokens);
+    let attachment_reference_tokens = trim_lexed_commas(attachment_reference_tokens);
+    if attachment_filter_tokens.is_empty() {
+        return None;
+    }
+
+    let demonstrative_antecedent = if exact_tokens(attachment_reference_tokens, &["it"])
+        || exact_tokens(attachment_reference_tokens, &["them"])
+    {
+        None
+    } else {
+        let [that, noun] = attachment_reference_tokens else {
+            return None;
+        };
+        if !that.is_word("that") {
+            return None;
+        }
+        Some(ironsmith_core::DemonstrativeAntecedentSurface::from_noun(
+            noun.as_word()?,
+        )?)
+    };
+
+    Some(DestroyTargetAndAttachedShape {
+        target_tokens,
+        attachment_filter_tokens,
+        demonstrative_antecedent,
+    })
+}
+
 fn parse_conditional_destroy_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
@@ -683,14 +765,16 @@ pub(crate) fn parse_destroy_clause_shape(tokens: &[OwnedLexToken]) -> DestroyCla
                 predicate_tokens,
             }
         }
+    } else if let Some(shape) = parse_destroy_target_and_attached_shape(core_tokens) {
+        DestroyClauseKind::TargetAndAttached(shape)
     } else if has_multi_target_tail(core_tokens) {
         DestroyClauseKind::MultiTarget
     } else if primitives::parse_prefix(core_tokens, primitives::phrase(&["target", "blocked"]))
         .is_some()
     {
-        let mut target_tokens = core_tokens.to_vec();
-        target_tokens.remove(1);
-        DestroyClauseKind::Blocked { target_tokens }
+        DestroyClauseKind::Blocked {
+            target_tokens: core_tokens.to_vec(),
+        }
     } else {
         DestroyClauseKind::Plain {
             target_tokens: core_tokens,

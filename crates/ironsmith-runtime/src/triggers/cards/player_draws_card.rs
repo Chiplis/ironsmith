@@ -86,8 +86,13 @@ impl TriggerMatcher for PlayerDrawsCardTrigger {
     }
 
     fn display(&self) -> String {
-        let action = if self.per_card {
+        let you = self.player == PlayerFilter::You;
+        let action = if self.per_card && you {
+            "draw a card"
+        } else if self.per_card {
             "draws a card"
+        } else if you {
+            "draw one or more cards"
         } else {
             "draws one or more cards"
         };
@@ -144,7 +149,10 @@ mod tests {
         assert!(trigger.display().contains("draws one or more cards"));
 
         let per_card = PlayerDrawsCardTrigger::per_card(PlayerFilter::You);
-        assert!(per_card.display().contains("draws a card"));
+        assert_eq!(per_card.display(), "Whenever you draw a card");
+
+        let batch = PlayerDrawsCardTrigger::new(PlayerFilter::You);
+        assert_eq!(batch.display(), "Whenever you draw one or more cards");
     }
 
     #[test]

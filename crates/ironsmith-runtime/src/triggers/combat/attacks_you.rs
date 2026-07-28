@@ -167,6 +167,17 @@ impl TriggerMatcher for AttacksYouTrigger {
     fn display(&self) -> String {
         if self.one_or_more {
             let mut subject = self.filter.description();
+            if matches!(
+                self.filter.controller.as_ref(),
+                Some(crate::target::PlayerFilter::TaggedPlayer(tag))
+                    if tag.as_str() == "enchanted"
+            ) && matches!(
+                subject.as_str(),
+                "creature enchanted player controls" | "a creature enchanted player controls"
+            ) {
+                return "Whenever enchanted player attacks you or a planeswalker you control"
+                    .to_string();
+            }
             if let Some(stripped) = subject.strip_prefix("a ") {
                 subject = stripped.to_string();
             } else if let Some(stripped) = subject.strip_prefix("an ") {
@@ -217,6 +228,19 @@ mod tests {
     fn test_display() {
         let trigger = AttacksYouTrigger::new(ObjectFilter::creature());
         assert!(trigger.display().contains("attacks you"));
+    }
+
+    #[test]
+    fn enchanted_player_attack_group_keeps_player_subject_surface() {
+        let filter = ObjectFilter::creature().controlled_by(
+            crate::target::PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted")),
+        );
+        let trigger = AttacksYouTrigger::one_or_more(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever enchanted player attacks you or a planeswalker you control"
+        );
     }
 
     #[test]

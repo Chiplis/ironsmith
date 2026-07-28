@@ -182,20 +182,35 @@ pub(crate) fn interpret_trigger_model(
             crate::triggers::Trigger::attacks_you_one_or_more(filter)
         }
         TriggerKind::ThisBlocks => crate::triggers::Trigger::this_blocks(),
-        TriggerKind::ThisBlocksObject { filter } => {
-            crate::triggers::Trigger::this_blocks_object(filter)
-        }
+        TriggerKind::ThisBlocksObject {
+            filter,
+            min_blocked_objects,
+        } => match min_blocked_objects {
+            Some(minimum) => {
+                crate::triggers::Trigger::this_blocks_objects_with_minimum(filter, minimum)
+            }
+            None => crate::triggers::Trigger::this_blocks_object(filter),
+        },
         TriggerKind::Blocks { filter } => crate::triggers::Trigger::blocks(filter),
         TriggerKind::BlocksOneOrMore { filter } => {
             crate::triggers::Trigger::blocks_one_or_more(filter)
+        }
+        TriggerKind::BlocksObjectWithLesserPower { blocker, blocked } => {
+            crate::triggers::Trigger::blocks_object_with_lesser_power(blocker, blocked)
         }
         TriggerKind::ThisBecomesBlocked => crate::triggers::Trigger::this_becomes_blocked(),
         TriggerKind::BecomesBlocked { filter } => crate::triggers::Trigger::becomes_blocked(filter),
         TriggerKind::ThisBecomesBlockedByObject { filter } => {
             crate::triggers::Trigger::this_becomes_blocked_by_object(filter)
         }
+        TriggerKind::BecomesBlockedByObjectWithLesserPower { blocked, blocker } => {
+            crate::triggers::Trigger::becomes_blocked_by_object_with_lesser_power(blocked, blocker)
+        }
         TriggerKind::ThisDies => crate::triggers::Trigger::this_dies(),
         TriggerKind::ThisDiesOrIsExiled => crate::triggers::Trigger::this_dies_or_is_exiled(),
+        TriggerKind::ThisDiesOrIsExiledWithSurface { surface } => {
+            crate::triggers::Trigger::this_dies_or_is_exiled_with_surface(surface)
+        }
         TriggerKind::ThisLeavesBattlefield => crate::triggers::Trigger::this_leaves_battlefield(),
         TriggerKind::ThisPhasesOut => crate::triggers::Trigger::this_phases_out(),
         TriggerKind::ThisMutates => crate::triggers::Trigger::this_mutates(),
@@ -368,6 +383,9 @@ pub(crate) fn interpret_trigger_model(
             }
         }
         TriggerKind::YouGainLife => crate::triggers::Trigger::you_gain_life(),
+        TriggerKind::YouGainLifeCausedBy { source } => {
+            crate::triggers::Trigger::you_gain_life_caused_by(source)
+        }
         TriggerKind::YouGainLifeDuringTurn { during_turn } => {
             crate::triggers::Trigger::you_gain_life_during_turn(during_turn)
         }
@@ -482,14 +500,16 @@ pub(crate) fn interpret_trigger_model(
         },
         TriggerKind::SpellCastQualified {
             filter,
+            mana_source_filter,
             caster,
             timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
             from_not_hand,
-        } => crate::triggers::Trigger::spell_cast_qualified(
+        } => crate::triggers::Trigger::spell_cast_qualified_with_mana_source(
             filter,
+            mana_source_filter,
             caster,
             timing,
             during_turn,
@@ -601,7 +621,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::KeywordActionFromSource { action, player } => {
             crate::triggers::Trigger::keyword_action_from_source(action, player)
         }
-        TriggerKind::WinsClash { player } => crate::triggers::Trigger::wins_clash(player),
+        TriggerKind::WinsClash { player, surface } => {
+            crate::triggers::Trigger::wins_clash_with_surface(player, surface)
+        }
         TriggerKind::Expend { amount, player } => crate::triggers::Trigger::expend(amount, player),
         TriggerKind::SagaChapter { chapters } => crate::triggers::Trigger::saga_chapter(chapters),
         TriggerKind::FinalChapterAbilityResolved { filter } => {
@@ -641,6 +663,10 @@ pub(crate) fn interpret_trigger_model(
 impl super::Trigger {
     pub fn from_delayed_trigger_spec(spec: ironsmith_core::DelayedTriggerSpec) -> Self {
         match spec {
+            ironsmith_core::DelayedTriggerSpec::AsPermanentsUntap {
+                player,
+                source_must_be_controlled,
+            } => Self::as_permanents_untap(player, source_must_be_controlled),
             ironsmith_core::DelayedTriggerSpec::BeginningOfUpkeep(player) => {
                 Self::beginning_of_upkeep(player)
             }
@@ -649,6 +675,12 @@ impl super::Trigger {
             }
             ironsmith_core::DelayedTriggerSpec::BeginningOfEndStep(player) => {
                 Self::beginning_of_end_step(player)
+            }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfCleanupStep(player) => {
+                Self::beginning_of_cleanup_step(player)
+            }
+            ironsmith_core::DelayedTriggerSpec::BeginningOfNextCleanupStep(player) => {
+                Self::beginning_of_next_cleanup_step(player)
             }
             ironsmith_core::DelayedTriggerSpec::BeginningOfCombat(player) => {
                 Self::beginning_of_combat(player)

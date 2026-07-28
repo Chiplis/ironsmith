@@ -98,6 +98,41 @@ fn linked_exile_top_play_accepts_duration_player_and_land_variants() {
 }
 
 #[test]
+fn linked_exile_top_play_renders_source_exile_event_boundary() {
+    let tag = TagKey::from("__sentence_helper_exiled_l0_s0_e0");
+    let surface = ironsmith_core::GrantPlayTaggedSurface::default()
+        .with_object(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
+        .with_until_source_exiles_another(
+            crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this enchantment".to_string(),
+            ),
+        );
+    let effects = vec![
+        Effect::new(
+            crate::effects::ExileTopOfLibraryEffect::new(Value::Fixed(1), PlayerFilter::You)
+                .tag_moved(tag.clone()),
+        ),
+        Effect::new(
+            crate::effects::GrantPlayTaggedEffect::new(
+                tag,
+                PlayerFilter::You,
+                crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother,
+                true,
+                ironsmith_core::value_model::ManaSpendMode::Normal,
+            )
+            .with_surface(surface),
+        ),
+    ];
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(
+            "exile the top card of your library. You may play that card until you exile another card with this enchantment"
+        )
+    );
+}
+
+#[test]
 fn linked_exile_top_play_accepts_structural_tag_and_id_wrappers() {
     let mut effects = linked_exile_top_play_effects(
         PlayerFilter::You,
@@ -327,4 +362,34 @@ fn representative_cards_keep_linked_permission_sentence_boundaries() {
         "{valakut}"
     );
     assert!(!valakut.contains(", then you may play"), "{valakut}");
+
+    let soul_partition = render_card(
+        "Soul Partition",
+        CardType::Instant,
+        "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs {2} more to cast.",
+    );
+    assert_eq!(
+        soul_partition,
+        "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs {2} more to cast."
+    );
+
+    let pyxis = render_card(
+        "Pyxis of Pandemonium",
+        CardType::Artifact,
+        "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield.",
+    );
+    assert_eq!(
+        pyxis,
+        "{T}: Each player exiles the top card of their library face down.\n{7}, {T}, Sacrifice this artifact: Each player turns face up all cards they own exiled with this artifact, then puts all permanent cards among them onto the battlefield."
+    );
+
+    let semesters_end = render_card(
+        "Semester's End",
+        CardType::Instant,
+        "Exile any number of target creatures and/or planeswalkers you control. At the beginning of the next end step, return each of them to the battlefield under its owner's control. Each of them enters with an additional +1/+1 counter on it if it's a creature and an additional loyalty counter on it if it's a planeswalker.",
+    );
+    assert_eq!(
+        semesters_end,
+        "Exile any number of target creatures and/or planeswalkers you control. At the beginning of the next end step, return each of them to the battlefield under its owner's control. Each of them enters with an additional +1/+1 counter on it if it's a creature and an additional loyalty counter on it if it's a planeswalker."
+    );
 }

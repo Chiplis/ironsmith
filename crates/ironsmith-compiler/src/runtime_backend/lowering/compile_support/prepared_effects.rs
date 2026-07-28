@@ -1,15 +1,15 @@
 use crate::cards::builders::{
-    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PredicateAst,
-    TagKey,
+    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PlayerAst,
+    PredicateAst, SubjectVerbActionAst, TagKey,
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 
 use super::{
-    AnnotatedEffectSequence, EffectPreludeTag, LoweredEffects, PreparedEffectsForLowering,
-    PreparedPredicateForLowering, PreparedTriggeredEffectsForLowering, ReferenceEnv,
-    ReferenceExports, ReferenceImports, compile_annotated_effects_with_context,
+    AnnotatedEffect, AnnotatedEffectSequence, EffectPreludeTag, LoweredEffects,
+    PreparedEffectsForLowering, PreparedPredicateForLowering, PreparedTriggeredEffectsForLowering,
+    ReferenceEnv, ReferenceExports, ReferenceImports, compile_annotated_effects_with_context,
     compile_condition_from_predicate_ast, merge_compiled_choices, push_choice,
     rewrite_prepare_effects_for_lowering,
 };
@@ -110,13 +110,282 @@ fn fuse_trigger_context_battlefield_entry_counters(mut lowered: LoweredEffects) 
 }
 
 fn normalize_compiled_effects(compiled: Vec<Effect>) -> Vec<Effect> {
+    let compiled = normalize_plural_coordinated_result_references(compiled);
     let compiled = normalize_coordinated_two_target_fight_sequences(compiled);
+    let compiled = normalize_iterated_consult_exile_collection(compiled);
     let compiled = normalize_controller_grouped_exile_search(compiled);
     let compiled = normalize_targeted_conditional_action_then_fight(compiled);
     let compiled = normalize_two_target_conditional_then_fight(compiled);
     let compiled = normalize_two_target_counter_then_fight(compiled);
     let compiled = normalize_random_destroy_across_target_groups(compiled);
     fold_local_zone_rewrite_self_replacements(compiled)
+}
+
+fn plural_result_reference_tag(effect: &Effect) -> Option<&TagKey> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return plural_result_reference_tag(&tagged.effect);
+    }
+    let apply = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
+    if apply.set_quantifier_surface != Some(ironsmith_core::SetQuantifierSurface::They) {
+        return None;
+    }
+    match apply.target_spec.as_ref()?.base() {
+        ChooseSpec::Tagged(tag) => Some(tag),
+        _ => None,
+    }
+}
+
+fn coordinated_result_tags(effect: &Effect, final_tag: &TagKey) -> Option<Vec<TagKey>> {
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if !sequence.surface.is_coordinated() {
+        return None;
+    }
+    let tags = sequence
+        .effects
+        .iter()
+        .filter_map(|effect| {
+            effect
+                .downcast_ref::<crate::effects::TaggedEffect>()
+                .map(|tagged| tagged.tag.clone())
+        })
+        .collect::<Vec<_>>();
+    (tags.len() > 1 && tags.last() == Some(final_tag)).then_some(tags)
+}
+
+fn rewrite_plural_result_reference(effect: &Effect, tags: &[TagKey]) -> Effect {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return Effect::new(crate::effects::TaggedEffect::new(
+            tagged.tag.clone(),
+            rewrite_plural_result_reference(&tagged.effect, tags),
+        ));
+    }
+    let Some(apply) = effect.downcast_ref::<crate::effects::ApplyContinuousEffect>() else {
+        return effect.clone();
+    };
+    let mut apply = apply.clone();
+    let mut result_filter = ObjectFilter::default();
+    result_filter.any_of = tags.iter().cloned().map(ObjectFilter::tagged).collect();
+    apply.target_spec = Some(ChooseSpec::Object(result_filter));
+    Effect::new(apply)
+}
+
+/// A plural pronoun after one coordinated producer clause refers to the union
+/// of every independently tagged result in that clause, not merely its last
+/// target slot. Keep the independent tags for target legality, then lower the
+/// follow-up to an executable OR-filter over their exact result identities.
+fn normalize_plural_coordinated_result_references(mut effects: Vec<Effect>) -> Vec<Effect> {
+    for index in 1..effects.len() {
+        let Some(final_tag) = plural_result_reference_tag(&effects[index]).cloned() else {
+            continue;
+        };
+        let Some(tags) = coordinated_result_tags(&effects[index - 1], &final_tag) else {
+            continue;
+        };
+        effects[index] = rewrite_plural_result_reference(&effects[index], &tags);
+    }
+    effects
+}
+
+fn normalize_cross_segment_plural_coordinated_result_references(
+    segments: &mut [crate::resolution::ResolutionSegment],
+) {
+    for segment_idx in 1..segments.len() {
+        let (earlier, current) = segments.split_at_mut(segment_idx);
+        let Some(producer) = earlier
+            .last()
+            .and_then(|segment| segment.default_effects.last())
+        else {
+            continue;
+        };
+        let Some(followup) = current[0].default_effects.first_mut() else {
+            continue;
+        };
+        let Some(final_tag) = plural_result_reference_tag(followup).cloned() else {
+            continue;
+        };
+        let Some(tags) = coordinated_result_tags(producer, &final_tag) else {
+            continue;
+        };
+        *followup = rewrite_plural_result_reference(followup, &tags);
+    }
+}
+
+/// Oracle can assign one reveal-and-exile procedure to each object in a
+/// tagged result, then move the complete exiled collection and shuffle only
+/// after every iteration has finished. A literal `ForEachTagged` lowering
+/// incorrectly performs the move and shuffle during every iteration.
+///
+/// Keep the consult and exile paired with each iterated object, tag the
+/// aggregate outcome of that loop, then move that collection and shuffle once
+/// for each distinct controller represented by the original tagged result.
+fn unwrap_iterated_collection_result_tag(effect: &Effect) -> &Effect {
+    let mut current = effect;
+    while let Some(tagged) = current.downcast_ref::<crate::effects::TaggedEffect>() {
+        current = &tagged.effect;
+    }
+    current
+}
+
+fn normalize_iterated_consult_exile_collection(compiled: Vec<Effect>) -> Vec<Effect> {
+    let [producer_effect, per_object_effect] = compiled.as_slice() else {
+        return compiled;
+    };
+    let Some(producer_tagged) = producer_effect.downcast_ref::<crate::effects::TaggedEffect>()
+    else {
+        return compiled;
+    };
+    if unwrap_iterated_collection_result_tag(&producer_tagged.effect)
+        .downcast_ref::<crate::effects::DestroyEffect>()
+        .is_none()
+    {
+        return compiled;
+    }
+
+    let Some(per_object) =
+        per_object_effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
+    else {
+        return compiled;
+    };
+    let [consult_effect, exile_effect, move_effect, shuffle_effect] = per_object.effects.as_slice()
+    else {
+        return compiled;
+    };
+    if per_object.tag != producer_tagged.tag {
+        return compiled;
+    }
+
+    let Some(consult) = unwrap_iterated_collection_result_tag(consult_effect)
+        .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+    else {
+        return compiled;
+    };
+    let single_match_stop = matches!(
+        &consult.stop_rule,
+        crate::effects::ConsultTopOfLibraryStopRule::FirstMatch
+            | crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1))
+    );
+    let consult_uses_iterated_controller = consult.player == PlayerFilter::IteratedPlayer
+        || matches!(
+            &consult.player,
+            PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+                if tag.as_str() == crate::cards::builders::IT_TAG
+        );
+    if consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
+        || !single_match_stop
+        || !consult_uses_iterated_controller
+    {
+        return compiled;
+    }
+
+    let unwrapped_exile = unwrap_iterated_collection_result_tag(exile_effect);
+    let exile_matches_consult =
+        if let Some(exile) = unwrapped_exile.downcast_ref::<crate::effects::ExileEffect>() {
+            matches!(exile.spec.base(), ChooseSpec::Tagged(tag) if tag == &consult.match_tag)
+        } else if let Some(move_to_zone) =
+            unwrapped_exile.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        {
+            move_to_zone.zone == crate::zone::Zone::Exile
+                && matches!(
+                    move_to_zone.target.base(),
+                    ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+                )
+        } else {
+            false
+        };
+    if !exile_matches_consult {
+        return compiled;
+    }
+
+    let Some(move_to_zone) = unwrap_iterated_collection_result_tag(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+    else {
+        return compiled;
+    };
+    if move_to_zone.zone != crate::zone::Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || !matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &consult.match_tag
+        )
+    {
+        return compiled;
+    }
+
+    let Some(shuffle) = unwrap_iterated_collection_result_tag(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+    else {
+        return compiled;
+    };
+    let shuffle_uses_iterated_controller = shuffle.player == PlayerFilter::IteratedPlayer
+        || matches!(
+            &shuffle.player,
+            PlayerFilter::ControllerOf(ObjectRef::Tagged(tag))
+                if tag == &consult.match_tag
+                    || tag.as_str() == crate::cards::builders::IT_TAG
+        );
+    if !shuffle_uses_iterated_controller || shuffle.target_spec.is_some() {
+        return compiled;
+    }
+
+    let collection_tag = TagKey::from(format!("{}__exiled_collection", consult.match_tag.as_str()));
+    let collected_loop = Effect::for_each_tagged(
+        per_object.tag.clone(),
+        vec![consult_effect.clone(), exile_effect.clone()],
+    )
+    .tag_all(collection_tag.clone());
+    let mut collected_move = move_to_zone.clone();
+    collected_move.target = ChooseSpec::Tagged(collection_tag);
+
+    vec![
+        producer_effect.clone(),
+        collected_loop,
+        Effect::new(collected_move),
+        Effect::new(crate::effects::ForEachControllerOfTaggedEffect {
+            tag: per_object.tag.clone(),
+            effects: vec![Effect::shuffle_library_player(PlayerFilter::IteratedPlayer)],
+        }),
+    ]
+}
+
+/// Sentence segmentation preserves authored presentation boundaries, but a
+/// staged "for each object destroyed this way" procedure semantically spans
+/// the destroy sentence and the following reveal/exile sentence. Normalize
+/// that adjacent pair while keeping the producer in its original segment and
+/// the aggregate collection work in the following segment.
+fn normalize_cross_segment_iterated_consult_exile_collections(
+    segments: &mut [crate::resolution::ResolutionSegment],
+) {
+    for segment_idx in 0..segments.len().saturating_sub(1) {
+        let (left, right) = segments.split_at_mut(segment_idx + 1);
+        let producer_segment = &mut left[segment_idx];
+        let procedure_segment = &mut right[0];
+        if !producer_segment.self_replacements.is_empty()
+            || !procedure_segment.self_replacements.is_empty()
+        {
+            continue;
+        }
+        let (Some(producer), Some(procedure)) = (
+            producer_segment.default_effects.last().cloned(),
+            procedure_segment.default_effects.first().cloned(),
+        ) else {
+            continue;
+        };
+        let normalized = normalize_iterated_consult_exile_collection(vec![producer, procedure]);
+        let Ok(normalized): Result<[Effect; 4], _> = normalized.try_into() else {
+            continue;
+        };
+        let [producer, collected_loop, collected_move, grouped_shuffle] = normalized;
+
+        let producer_idx = producer_segment.default_effects.len() - 1;
+        producer_segment.default_effects[producer_idx] = producer;
+        procedure_segment
+            .default_effects
+            .splice(0..1, [collected_loop, collected_move, grouped_shuffle]);
+    }
 }
 
 fn normalize_coordinated_two_target_fight_sequences(effects: Vec<Effect>) -> Vec<Effect> {
@@ -329,6 +598,135 @@ fn normalize_cross_segment_fight_sequences(segments: &mut [crate::resolution::Re
     }
     for (segment, repaired) in segments.iter_mut().zip(repaired_by_segment) {
         segment.default_effects = repaired;
+    }
+}
+
+fn single_is_tagged_constraint(filter: &ObjectFilter, expected: &TagKey) -> bool {
+    matches!(
+        filter.tagged_constraints.as_slice(),
+        [constraint]
+            if constraint.tag == *expected
+                && constraint.relation
+                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    )
+}
+
+/// Preserve the one-to-one association between an object iterated by a
+/// producer sentence and the tagged result created during that iteration.
+///
+/// A later "each of those [results] ... a different one of those [sources]"
+/// sentence is otherwise lowered as a second `ForEachObject` whose `__it__`
+/// binding shadows the source set. Besides rendering "it ... it", that can
+/// make the produced object act on itself. Collapse only the exact typed
+/// create-token/fight pipeline into the reusable two-phase correlated effect.
+fn normalize_cross_segment_correlated_created_result_fights(
+    segments: &mut Vec<crate::resolution::ResolutionSegment>,
+) {
+    let mut idx = 0;
+    while idx + 1 < segments.len() {
+        if !segments[idx].self_replacements.is_empty()
+            || !segments[idx + 1].self_replacements.is_empty()
+        {
+            idx += 1;
+            continue;
+        }
+        let [producer_effect] = segments[idx].default_effects.as_slice() else {
+            idx += 1;
+            continue;
+        };
+        let [consumer_effect] = segments[idx + 1].default_effects.as_slice() else {
+            idx += 1;
+            continue;
+        };
+        let Some(producer) = producer_effect.downcast_ref::<crate::effects::ForEachObject>() else {
+            idx += 1;
+            continue;
+        };
+        let [tagged_create_effect] = producer.effects.as_slice() else {
+            idx += 1;
+            continue;
+        };
+        let Some(tagged_create) =
+            tagged_create_effect.downcast_ref::<crate::effects::TaggedEffect>()
+        else {
+            idx += 1;
+            continue;
+        };
+        let Some(create) = tagged_create
+            .effect
+            .downcast_ref::<crate::effects::CreateTokenEffect>()
+        else {
+            idx += 1;
+            continue;
+        };
+        if create.count != Value::Fixed(1)
+            || create.controller != PlayerFilter::You
+            || create.controller_target.is_some()
+            || producer.filter.zone != Some(crate::zone::Zone::Battlefield)
+            || producer.filter.card_types.as_slice() != [crate::types::CardType::Creature]
+            || !matches!(
+                producer.filter.controller.as_ref(),
+                Some(PlayerFilter::Opponent | PlayerFilter::NotYou)
+            )
+        {
+            idx += 1;
+            continue;
+        }
+
+        let Some(consumer) = consumer_effect.downcast_ref::<crate::effects::ForEachObject>() else {
+            idx += 1;
+            continue;
+        };
+        if !consumer.filter.token
+            || consumer.filter.zone.is_some()
+            || consumer.filter.controller.is_some()
+            || !consumer.filter.card_types.is_empty()
+            || !single_is_tagged_constraint(&consumer.filter, &tagged_create.tag)
+        {
+            idx += 1;
+            continue;
+        }
+        let [fight_effect] = consumer.effects.as_slice() else {
+            idx += 1;
+            continue;
+        };
+        let Some(fight) = fight_effect.downcast_ref::<crate::effects::FightEffect>() else {
+            idx += 1;
+            continue;
+        };
+        let ChooseSpec::Object(source_reference) = fight.creature2.base() else {
+            idx += 1;
+            continue;
+        };
+        let it_tag = TagKey::from(IT_TAG);
+        if !matches!(fight.creature1.base(), ChooseSpec::Iterated)
+            || source_reference.zone != Some(crate::zone::Zone::Battlefield)
+            || source_reference.card_types.as_slice() != [crate::types::CardType::Creature]
+            || !single_is_tagged_constraint(source_reference, &it_tag)
+        {
+            idx += 1;
+            continue;
+        }
+
+        let source_binding_tag =
+            TagKey::from(format!("{}_correlated_source", tagged_create.tag.as_str()));
+        let result_binding_tag =
+            TagKey::from(format!("{}_correlated_result", tagged_create.tag.as_str()));
+        let fixed_fight = Effect::fight(
+            ChooseSpec::Tagged(result_binding_tag.clone()),
+            ChooseSpec::Tagged(source_binding_tag.clone()),
+        );
+        let correlated = Effect::new(crate::effects::ForEachObjectCorrelatedResultEffect::new(
+            producer.filter.clone(),
+            producer.effects.clone(),
+            tagged_create.tag.clone(),
+            source_binding_tag,
+            result_binding_tag,
+            vec![fixed_fight],
+        ));
+        segments[idx].default_effects = vec![correlated];
+        segments.remove(idx + 1);
+        idx += 1;
     }
 }
 
@@ -613,13 +1011,13 @@ fn materialize_source_sentence_segments(
     prepared: &PreparedEffectsForLowering,
     ctx: &mut EffectLoweringContext,
 ) -> Result<Option<(crate::resolution::ResolutionProgram, Vec<ChooseSpec>)>, CardTextError> {
-    if prepared.source_sentence_effect_counts.is_empty() {
+    if prepared.source_sentence_segments.is_empty() {
         return Ok(None);
     }
     let expected_effect_count = prepared
-        .source_sentence_effect_counts
+        .source_sentence_segments
         .iter()
-        .copied()
+        .map(|segment| segment.effect_count)
         .sum::<usize>();
     if expected_effect_count != prepared.annotated.effects.len() {
         return Err(CardTextError::InvariantViolation(format!(
@@ -628,12 +1026,16 @@ fn materialize_source_sentence_segments(
         )));
     }
 
-    let mut segments = Vec::with_capacity(prepared.source_sentence_effect_counts.len());
+    let mut segments = Vec::with_capacity(prepared.source_sentence_segments.len());
     let mut choices = Vec::new();
     let mut start = 0;
-    for count in &prepared.source_sentence_effect_counts {
-        let end = start + count;
-        let annotated_effects = prepared.annotated.effects[start..end].to_vec();
+    let mut previous_sentence_was_only_you_draw = false;
+    for source_segment in &prepared.source_sentence_segments {
+        let end = start + source_segment.effect_count;
+        let mut annotated_effects = prepared.annotated.effects[start..end].to_vec();
+        if source_segment.leading_then && previous_sentence_was_only_you_draw {
+            rebind_implicit_discard_after_you_draw(&mut annotated_effects);
+        }
         let final_env = annotated_effects
             .last()
             .map(|effect| effect.out_env.clone())
@@ -648,7 +1050,24 @@ fn materialize_source_sentence_segments(
         // separate calls.
         ctx.auto_tag_object_targets = false;
         let (compiled, sentence_choices) = compile_annotated_effects_with_context(&annotated, ctx)?;
-        let compiled = normalize_compiled_effects(compiled);
+        let mut compiled = normalize_compiled_effects(compiled);
+        previous_sentence_was_only_you_draw = compiled_sentence_is_only_you_draw(&compiled);
+        if source_segment.starting_with_controller
+            && let [effect] = compiled.as_mut_slice()
+            && let Some(mut for_players) = effect
+                .downcast_ref::<crate::effects::ForPlayersEffect<Effect>>()
+                .cloned()
+        {
+            for_players.starting_with_controller = true;
+            *effect = Effect::new(for_players);
+        }
+        let compiled = if source_segment.leading_then && !compiled.is_empty() {
+            vec![Effect::new(
+                crate::effects::SequenceEffect::sentence_leading_then(compiled),
+            )]
+        } else {
+            compiled
+        };
         merge_compiled_choices(&mut choices, &compiled, sentence_choices);
         if !compiled.is_empty() {
             segments.push(crate::resolution::ResolutionSegment::from_effects(compiled));
@@ -656,6 +1075,9 @@ fn materialize_source_sentence_segments(
         start = end;
     }
 
+    normalize_cross_segment_plural_coordinated_result_references(&mut segments);
+    normalize_cross_segment_iterated_consult_exile_collections(&mut segments);
+    normalize_cross_segment_correlated_created_result_fights(&mut segments);
     normalize_cross_segment_fight_sequences(&mut segments);
     retarget_death_replacement_from_exiled_attachment(&mut segments);
     fold_cross_segment_counter_rewrites(&mut segments);
@@ -669,6 +1091,39 @@ fn materialize_source_sentence_segments(
         crate::resolution::ResolutionProgram::new(segments),
         choices,
     )))
+}
+
+fn rebind_implicit_discard_after_you_draw(annotated_effects: &mut [AnnotatedEffect]) {
+    let [annotated] = annotated_effects else {
+        return;
+    };
+    let EffectAst::Conditional {
+        predicate: PredicateAst::Not(_),
+        if_true,
+        if_false,
+    } = &mut annotated.effect
+    else {
+        return;
+    };
+    let [EffectAst::SubjectVerb(discard)] = if_true.as_mut_slice() else {
+        return;
+    };
+    if !if_false.is_empty()
+        || !matches!(discard.action, SubjectVerbActionAst::Discard { .. })
+        || discard.subject.player != PlayerAst::Implicit
+    {
+        return;
+    }
+    discard.subject.player = PlayerAst::You;
+}
+
+fn compiled_sentence_is_only_you_draw(effects: &[Effect]) -> bool {
+    let [effect] = effects else {
+        return false;
+    };
+    effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some_and(|draw| draw.player == PlayerFilter::You)
 }
 
 fn materialize_trailing_self_replacement(
@@ -713,9 +1168,13 @@ fn materialize_trailing_self_replacement(
         } else {
             None
         };
+        let has_default_action_target = default_effects.iter().rev().any(|effect| {
+            crate::runtime_backend::lower::extract_previous_replacement_target(effect).is_some()
+        });
         if condition_env.known_last_object_tag().is_none()
             && implicit_condition_tag.is_none()
             && predicate_uses_implicit_object_reference(predicate)
+            && !has_default_action_target
         {
             condition_env.source_object_antecedent = true;
         }
@@ -779,6 +1238,7 @@ fn materialize_trailing_self_replacement(
                         condition,
                         replacement_effects,
                     )],
+                    starts_new_source_line: false,
                 },
             ]),
             choices,
@@ -946,39 +1406,75 @@ fn dedupe_adjacent_target_only_effects(lowered: &mut LoweredEffects) {
 }
 
 fn strip_erroneous_meld_player_exile_effect(lowered: &mut LoweredEffects) {
-    let flattened = lowered.effects.flattened_default_effects();
-    if flattened.len() < 2 {
-        return;
+    fn is_synthetic_meld_exile(effect: &Effect) -> bool {
+        effect
+            .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            .is_some_and(|effect| {
+                if effect.zone != crate::zone::Zone::Exile {
+                    return false;
+                }
+                match &effect.target {
+                    crate::target::ChooseSpec::Player(
+                        crate::target::PlayerFilter::IteratedPlayer,
+                    ) => true,
+                    crate::target::ChooseSpec::Object(filter) => {
+                        filter.zone == Some(crate::zone::Zone::Hand)
+                            && filter.owner == Some(crate::target::PlayerFilter::You)
+                            && {
+                                let mut generic_hand_card = filter.clone();
+                                generic_hand_card.zone = None;
+                                generic_hand_card.owner = None;
+                                generic_hand_card == crate::target::ObjectFilter::default()
+                            }
+                    }
+                    _ => false,
+                }
+            })
     }
 
-    let mut rewritten = Vec::with_capacity(flattened.len());
-    let mut idx = 0usize;
-    while idx < flattened.len() {
-        let skip_erroneous_exile = idx + 1 < flattened.len()
-            && flattened[idx]
-                .downcast_ref::<crate::effects::MoveToZoneEffect>()
-                .is_some_and(|effect| {
-                    effect.zone == crate::zone::Zone::Exile
-                        && effect.target
-                            == crate::target::ChooseSpec::Player(
-                                crate::target::PlayerFilter::IteratedPlayer,
-                            )
-                })
-            && flattened[idx + 1]
-                .downcast_ref::<crate::effects::MeldEffect>()
-                .is_some();
-        if skip_erroneous_exile {
-            idx += 1;
-            continue;
+    fn strip_effect_list(effects: &mut Vec<Effect>) {
+        for effect in effects.iter_mut() {
+            if let Some(if_effect) = effect.downcast_ref::<crate::effects::IfEffect>() {
+                let mut replacement = if_effect.clone();
+                strip_effect_list(&mut replacement.then);
+                strip_effect_list(&mut replacement.else_);
+                *effect = Effect::new(replacement);
+            } else if let Some(conditional) =
+                effect.downcast_ref::<crate::effects::ConditionalEffect>()
+            {
+                let mut replacement = conditional.clone();
+                strip_effect_list(&mut replacement.if_true);
+                strip_effect_list(&mut replacement.if_false);
+                *effect = Effect::new(replacement);
+            } else if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+                let mut replacement = sequence.clone();
+                strip_effect_list(&mut replacement.effects);
+                *effect = Effect::new(replacement);
+            }
         }
 
-        rewritten.push(flattened[idx].clone());
-        idx += 1;
+        let mut idx = 0usize;
+        while idx + 1 < effects.len() {
+            if is_synthetic_meld_exile(&effects[idx])
+                && effects[idx + 1]
+                    .downcast_ref::<crate::effects::MeldEffect>()
+                    .is_some()
+            {
+                effects.remove(idx);
+            } else {
+                idx += 1;
+            }
+        }
     }
 
-    if rewritten.len() != flattened.len() {
-        lowered.effects = crate::resolution::ResolutionProgram::from_effects(rewritten);
+    let mut segments = lowered.effects.segments.clone();
+    for segment in &mut segments {
+        strip_effect_list(&mut segment.default_effects);
+        for branch in &mut segment.self_replacements {
+            strip_effect_list(&mut branch.replacement_effects);
+        }
     }
+    lowered.effects = crate::resolution::ResolutionProgram::new(segments);
 }
 
 fn fold_local_zone_rewrite_self_replacements(effects: Vec<Effect>) -> Vec<Effect> {
@@ -1707,4 +2203,102 @@ fn prepend_effect_prelude(mut compiled: Vec<Effect>, mut prelude: Vec<Effect>) -
     }
     prelude.append(&mut compiled);
     prelude
+}
+
+#[cfg(test)]
+mod plural_result_reference_tests {
+    use super::*;
+
+    fn tagged_slot(tag: &str) -> Effect {
+        Effect::new(crate::effects::TargetOnlyEffect::new(ChooseSpec::Object(
+            ObjectFilter::creature(),
+        )))
+        .tag(tag)
+    }
+
+    fn plural_followup(tag: &str) -> Effect {
+        Effect::new(
+            crate::effects::ApplyContinuousEffect::with_spec(
+                ChooseSpec::Tagged(TagKey::from(tag)),
+                crate::continuous::Modification::AddCardTypes(vec![
+                    crate::types::CardType::Creature,
+                ]),
+                crate::effect::Until::Forever,
+            )
+            .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::They)),
+        )
+    }
+
+    #[test]
+    fn plural_pronoun_unions_only_coordinated_result_slots() {
+        let coordinated = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            tagged_slot("first"),
+            tagged_slot("second"),
+        ]));
+        let normalized = normalize_plural_coordinated_result_references(vec![
+            coordinated,
+            plural_followup("second"),
+        ]);
+        let apply = normalized[1]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("plural follow-up");
+        let Some(ChooseSpec::Object(filter)) = apply.target_spec.as_ref() else {
+            panic!("coordinated plural result must lower to an exact union: {apply:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+
+        let sequential = Effect::new(crate::effects::SequenceEffect::new(vec![
+            tagged_slot("first"),
+            tagged_slot("second"),
+        ]));
+        let untouched = normalize_plural_coordinated_result_references(vec![
+            sequential,
+            plural_followup("second"),
+        ]);
+        let apply = untouched[1]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("singular sequential follow-up");
+        assert!(matches!(
+            apply.target_spec.as_ref().map(ChooseSpec::base),
+            Some(ChooseSpec::Tagged(tag)) if tag.as_str() == "second"
+        ));
+    }
+
+    #[test]
+    fn plural_pronoun_unions_coordinated_results_across_sentence_segments_only() {
+        let coordinated = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            tagged_slot("first"),
+            tagged_slot("second"),
+        ]));
+        let mut segments = vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![coordinated.clone()]),
+            crate::resolution::ResolutionSegment::from_effects(vec![plural_followup("second")]),
+        ];
+        normalize_cross_segment_plural_coordinated_result_references(&mut segments);
+        let apply = segments[1].default_effects[0]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("plural follow-up");
+        let Some(ChooseSpec::Object(filter)) = apply.target_spec.as_ref() else {
+            panic!("cross-sentence plural result must lower to an exact union: {apply:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2);
+
+        let mut singular = plural_followup("second");
+        let apply = singular
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("singular follow-up");
+        singular = Effect::new(apply.clone().with_set_quantifier_surface(None));
+        let mut segments = vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![coordinated]),
+            crate::resolution::ResolutionSegment::from_effects(vec![singular]),
+        ];
+        normalize_cross_segment_plural_coordinated_result_references(&mut segments);
+        let apply = segments[1].default_effects[0]
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("singular follow-up");
+        assert!(matches!(
+            apply.target_spec.as_ref().map(ChooseSpec::base),
+            Some(ChooseSpec::Tagged(tag)) if tag.as_str() == "second"
+        ));
+    }
 }

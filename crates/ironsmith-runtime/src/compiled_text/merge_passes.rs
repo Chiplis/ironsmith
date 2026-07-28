@@ -201,7 +201,7 @@ pub(super) fn subject_is_plural(subject: &str) -> bool {
 }
 
 pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, &str)> {
-    let mut best: Option<(usize, &str)> = None;
+    let mut candidates = Vec::new();
     for verb in [
         " gets ",
         " get ",
@@ -213,13 +213,17 @@ pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, 
         " are ",
         " can't be ",
     ] {
-        if let Some(idx) = line.find(verb)
-            && best.is_none_or(|(best_idx, _)| idx < best_idx)
-        {
-            best = Some((idx, verb));
+        for (idx, _) in line.match_indices(verb) {
+            candidates.push((idx, verb));
         }
     }
-    let (idx, verb) = best?;
+    candidates.sort_by_key(|(idx, _)| *idx);
+    let (idx, verb) = candidates.iter().copied().find(|(idx, _)| {
+        let subject_prefix = line[..*idx].trim().to_ascii_lowercase();
+        let is_relative_characteristic =
+            subject_prefix.ends_with(" that") || subject_prefix.ends_with(" who");
+        !is_relative_characteristic
+    })?;
     let subject = line[..idx].trim();
     let rest = line[idx + verb.len()..].trim();
     if !subject.is_empty() && !rest.is_empty() {
@@ -229,12 +233,44 @@ pub(super) fn split_subject_predicate_clause(line: &str) -> Option<(&str, &str, 
     }
 }
 
+fn split_attack_or_block_restriction_clause(line: &str) -> Option<(&str, &str)> {
+    let line = line.trim().trim_end_matches('.');
+    for tail in [
+        " attacks each combat if able",
+        " attack each combat if able",
+        " attacks each turn if able",
+        " attack each turn if able",
+        " blocks each combat if able",
+        " block each combat if able",
+        " attacks or blocks each combat if able",
+        " attack or block each combat if able",
+    ] {
+        if let Some(subject) = line.strip_suffix(tail)
+            && !subject.trim().is_empty()
+        {
+            return Some((subject.trim(), tail.trim()));
+        }
+    }
+    None
+}
+
 #[derive(Debug, Clone)]
 struct ConditionalSubjectPredicate {
     condition: String,
     subject: String,
     verb: String,
     predicate: String,
+}
+
+fn have_opposed_leading_tap_state_conditions(left: &str, right: &str) -> bool {
+    let condition_has_state = |line: &str, state: &str| {
+        line.trim()
+            .to_ascii_lowercase()
+            .strip_prefix("as long as ")
+            .is_some_and(|body| body.contains(&format!(" is {state}, ")))
+    };
+    (condition_has_state(left, "tapped") && condition_has_state(right, "untapped"))
+        || (condition_has_state(left, "untapped") && condition_has_state(right, "tapped"))
 }
 
 fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectPredicate> {
@@ -286,6 +322,8 @@ fn subtype_addition_predicate(predicate: &str) -> Option<String> {
     for suffix in [
         " in addition to its other types",
         " in addition to their other types",
+        " in addition to its other creature types",
+        " in addition to their other creature types",
     ] {
         if lower.ends_with(suffix) {
             let subtype = trimmed[..trimmed.len() - suffix.len()].trim();
@@ -803,14 +841,40 @@ pub(super) fn merge_during_your_turn_subject_union_lines(lines: Vec<String>) -> 
         lower == "you" || lower.starts_with("this ")
     }
 
+    fn source_union_halves_are_disjoint(left: &str, right: &str) -> bool {
+        let left = left.trim().to_ascii_lowercase();
+        if left == "you" {
+            return true;
+        }
+        // A source plus an object population can be reconstructed as one
+        // authored union only when that population explicitly excludes the
+        // source. Otherwise adjacent, independently authored statics such as
+        // "this creature has first strike" and "creatures you control with
+        // counters have first strike" would be collapsed even though the
+        // second ability is conditional on membership in that population.
+        right.trim().to_ascii_lowercase().starts_with("other ")
+    }
+
     fn normalize_union_subject_case(subject: &str) -> String {
         let first = subject.split_whitespace().next().unwrap_or(subject);
         // Only sentence-position capitals on generic filter heads are
         // lowered; subtype heads ("Knights you control") keep their case.
         if matches!(
             first.to_ascii_lowercase().as_str(),
-            "you" | "this" | "that" | "other" | "each" | "all" | "creatures" | "permanents"
-                | "artifacts" | "enchantments" | "lands" | "planeswalkers" | "battles" | "tokens"
+            "you"
+                | "this"
+                | "that"
+                | "other"
+                | "each"
+                | "all"
+                | "creatures"
+                | "permanents"
+                | "artifacts"
+                | "enchantments"
+                | "lands"
+                | "planeswalkers"
+                | "battles"
+                | "tokens"
         ) {
             lowercase_first(subject)
         } else {
@@ -826,14 +890,78 @@ pub(super) fn merge_during_your_turn_subject_union_lines(lines: Vec<String>) -> 
                 (union_half(&lines[idx]), union_half(&lines[idx + 1]))
             && left.predicate.eq_ignore_ascii_case(&right.predicate)
             && is_union_left_subject(&left.subject)
+            && source_union_halves_are_disjoint(&left.subject, &right.subject)
             && !right.subject.trim().eq_ignore_ascii_case("you")
-            && !left.subject.trim().eq_ignore_ascii_case(right.subject.trim())
+            && !left
+                .subject
+                .trim()
+                .eq_ignore_ascii_case(right.subject.trim())
         {
             merged.push(format!(
                 "During your turn, {} and {} have {}.",
                 normalize_union_subject_case(&left.subject),
                 normalize_union_subject_case(&right.subject),
                 left.predicate
+            ));
+            idx += 2;
+            continue;
+        }
+        merged.push(lines[idx].clone());
+        idx += 1;
+    }
+    merged
+}
+
+/// Rejoins the two typed statics produced for an authored player/object
+/// subject union such as Shalai's:
+///
+/// "You have hexproof." + "Planeswalkers and other creatures you control
+/// have hexproof." => "You, planeswalkers you control, and other creatures
+/// you control have hexproof."
+///
+/// The `other ... you control` arm is the structural evidence that the two
+/// lines came from one disjoint subject union. Plain adjacent grants to the
+/// player and to a population remain separate.
+pub(super) fn merge_player_object_subject_union_lines(lines: Vec<String>) -> Vec<String> {
+    fn authored_object_union(subject: &str) -> Option<(String, String)> {
+        let subject = subject.trim();
+        let lower = subject.to_ascii_lowercase();
+        let marker = " and other ";
+        let marker_idx = lower.find(marker)?;
+        if lower[marker_idx + marker.len()..].contains(marker) || !lower.ends_with(" you control") {
+            return None;
+        }
+
+        let first = subject[..marker_idx].trim();
+        let other = subject[marker_idx + " and ".len()..].trim();
+        if first.is_empty()
+            || !subject_is_plural(first)
+            || first.contains(',')
+            || first.to_ascii_lowercase().contains(" and ")
+        {
+            return None;
+        }
+
+        let first = if first.to_ascii_lowercase().ends_with(" you control") {
+            lowercase_first(first)
+        } else {
+            format!("{} you control", lowercase_first(first))
+        };
+        Some((first, lowercase_first(other)))
+    }
+
+    let mut merged = Vec::with_capacity(lines.len());
+    let mut idx = 0usize;
+    while idx < lines.len() {
+        if idx + 1 < lines.len()
+            && let Some((left_subject, left_keyword)) = split_have_clause(&lines[idx])
+            && left_subject.eq_ignore_ascii_case("you")
+            && let Some((right_subject, right_keyword)) = split_have_clause(&lines[idx + 1])
+            && left_keyword.eq_ignore_ascii_case(&right_keyword)
+            && let Some((first_object, other_object)) = authored_object_union(&right_subject)
+        {
+            merged.push(format!(
+                "You, {first_object}, and {other_object} have {left_keyword}."
             ));
             idx += 2;
             continue;
@@ -1051,6 +1179,110 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
     let mut idx = 0usize;
 
     while idx < lines.len() {
+        // A legendary source name can contain a comma. The generic
+        // conditional splitter must not mistake that punctuation for the
+        // condition/body boundary and merge mutually exclusive source states
+        // such as Archelos's tapped and untapped entry rules.
+        if idx + 1 < lines.len()
+            && have_opposed_leading_tap_state_conditions(&lines[idx], &lines[idx + 1])
+        {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+
+        // An earlier static-keyword compaction may have attached the first
+        // half of a separately authored grant to a count anthem:
+        //
+        //   enchanted creature gets ... for each ... and has vigilance
+        //   enchanted creature has {W}, {T}: ...
+        //
+        // The typed count surface and keyword/activated pair let us recover
+        // the authored boundary without conflating the anthem with the grant.
+        if idx + 1 < lines.len()
+            && let Some((left_subject, left_verb, left_predicate)) =
+                split_subject_predicate_clause(&lines[idx])
+            && let Some((right_subject, right_verb, right_predicate)) =
+                split_subject_predicate_clause(&lines[idx + 1])
+            && matches!(left_verb, "gets" | "get")
+            && matches!(right_verb, "has" | "have" | "gains" | "gain")
+            && right_predicate.contains(':')
+            && conditioned_subjects_equivalent(left_subject, right_subject)
+        {
+            let grant_marker = if left_verb == "gets" {
+                " and has "
+            } else {
+                " and have "
+            };
+            let left_predicate = left_predicate.trim_end_matches('.');
+            if let Some((count_predicate, keyword)) = left_predicate.rsplit_once(grant_marker)
+                && count_predicate.to_ascii_lowercase().contains(" for each ")
+                && is_keyword_phrase(keyword.trim_end_matches('.'))
+            {
+                let period = if lines[idx].trim().ends_with('.') {
+                    "."
+                } else {
+                    ""
+                };
+                let activated = quote_granted_triggered_ability(&normalize_keyword_predicate_case(
+                    right_predicate,
+                ));
+                merged.push(format!(
+                    "{left_subject} {left_verb} {count_predicate}{period}"
+                ));
+                merged.push(format!(
+                    "{left_subject} {} {} and {activated}",
+                    have_verb_for_subject(left_subject),
+                    normalize_keyword_predicate_case(keyword.trim_end_matches('.'))
+                ));
+                idx += 2;
+                continue;
+            }
+        }
+        // A separately authored grant can lower into adjacent keyword and
+        // activated-ability predicates.  Keep a preceding count anthem on its
+        // own line so the two pieces of that grant can recombine with each
+        // other first.
+        if idx + 2 < lines.len()
+            && let Some((left_subject, left_verb, left_predicate)) =
+                split_subject_predicate_clause(&lines[idx])
+            && let Some((middle_subject, middle_verb, middle_predicate)) =
+                split_subject_predicate_clause(&lines[idx + 1])
+            && let Some((right_subject, right_verb, right_predicate)) =
+                split_subject_predicate_clause(&lines[idx + 2])
+            && matches!(left_verb, "gets" | "get")
+            && left_predicate.to_ascii_lowercase().contains(" for each ")
+            && matches!(middle_verb, "has" | "have" | "gains" | "gain")
+            && is_keyword_phrase(middle_predicate)
+            && matches!(right_verb, "has" | "have" | "gains" | "gain")
+            && right_predicate.contains(':')
+            && conditioned_subjects_equivalent(left_subject, middle_subject)
+            && conditioned_subjects_equivalent(left_subject, right_subject)
+        {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
+        if idx + 1 < lines.len()
+            && let Some((left_subject, left_verb, left_predicate)) =
+                split_subject_predicate_clause(&lines[idx])
+            && let Some((right_subject, right_verb, right_predicate)) =
+                split_subject_predicate_clause(&lines[idx + 1])
+            && matches!(left_verb, "gets" | "get")
+            && left_predicate.to_ascii_lowercase().contains(" for each ")
+            && matches!(right_verb, "has" | "have" | "gains" | "gain")
+            && conditioned_subjects_equivalent(left_subject, right_subject)
+            && right_predicate.find(':').is_some_and(|colon| {
+                right_predicate[..colon]
+                    .split(" and ")
+                    .map(|part| part.trim().trim_matches('"'))
+                    .any(is_keyword_phrase)
+            })
+        {
+            merged.push(lines[idx].clone());
+            idx += 1;
+            continue;
+        }
         if idx + 1 < lines.len() {
             let left = lines[idx].trim().trim_end_matches('.');
             let right = lines[idx + 1].trim().trim_end_matches('.');
@@ -1085,6 +1317,26 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 }
             }
         }
+        // A global grant can author the direct combat restriction before its
+        // keyword ("All creatures ... attack ... and have double strike"),
+        // while the canonical oracle surface puts the trait first. Keep the
+        // two typed grants structural and compact either ordering here.
+        if idx + 1 < lines.len()
+            && let Some((restriction_subject, restriction_tail)) =
+                split_attack_or_block_restriction_clause(&lines[idx])
+            && let Some((trait_subject, trait_verb, trait_rest)) =
+                split_subject_predicate_clause(&lines[idx + 1])
+            && matches!(trait_verb, "has" | "have" | "gains" | "gain")
+            && conditioned_subjects_equivalent(restriction_subject, trait_subject)
+        {
+            let trait_rest =
+                normalize_keyword_predicate_case(trait_rest.trim().trim_end_matches('.'));
+            merged.push(format!(
+                "{trait_subject} {trait_verb} {trait_rest} and {restriction_tail}"
+            ));
+            idx += 2;
+            continue;
+        }
         // "Enchanted creature gets +1/+0." + "Enchanted creature can't be
         // blocked." → "Enchanted creature gets +1/+0 and can't be blocked."
         if idx + 1 < lines.len()
@@ -1116,15 +1368,9 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 idx += 2;
                 continue;
             }
-            let subject_prefix = format!("{left_subject} ");
-            if let Some(restriction_tail) = right.strip_prefix(&subject_prefix)
-                && matches!(
-                    restriction_tail,
-                    "attacks each combat if able"
-                        | "attacks each turn if able"
-                        | "blocks each combat if able"
-                        | "attacks or blocks each combat if able"
-                )
+            if let Some((restriction_subject, restriction_tail)) =
+                split_attack_or_block_restriction_clause(right)
+                && conditioned_subjects_equivalent(left_subject, restriction_subject)
                 && plain(left_rest)
             {
                 let left_line = lines[idx].trim().trim_end_matches('.');
@@ -1309,9 +1555,42 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 quote_granted_triggered_ability(&normalize_keyword_predicate_case(left_raw));
             let right_rest =
                 quote_granted_triggered_ability(&normalize_keyword_predicate_case(right_raw));
+            let singular = have_verb_for_subject(left_subject) == "has";
+            let right_verb = match right_verb {
+                "has" | "have" => {
+                    if singular {
+                        "has"
+                    } else {
+                        "have"
+                    }
+                }
+                "gains" | "gain" => {
+                    if singular {
+                        "gains"
+                    } else {
+                        "gain"
+                    }
+                }
+                "gets" | "get" => {
+                    if singular {
+                        "gets"
+                    } else {
+                        "get"
+                    }
+                }
+                "is" | "are" => {
+                    if singular {
+                        "is"
+                    } else {
+                        "are"
+                    }
+                }
+                other => other,
+            }
+            .to_string();
             if is_trait(left_verb)
-                && is_trait(right_verb)
-                && left_verb.eq_ignore_ascii_case(right_verb)
+                && is_trait(&right_verb)
+                && left_verb.eq_ignore_ascii_case(&right_verb)
                 && let (Some(left_quote), Some(right_quote)) = (
                     trim_quoted_ability_sentence_end(&left_rest),
                     quoted_ability_text(&right_rest),
@@ -1324,8 +1603,8 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 continue;
             }
             if is_trait(left_verb)
-                && is_trait(right_verb)
-                && left_verb.eq_ignore_ascii_case(right_verb)
+                && is_trait(&right_verb)
+                && left_verb.eq_ignore_ascii_case(&right_verb)
             {
                 merged.push(format!(
                     "{left_subject} {left_verb} {left_rest} and {right_rest}"
@@ -1358,6 +1637,15 @@ fn quote_granted_triggered_ability(text: &str) -> String {
     let trimmed = text.trim();
     if quoted_ability_text(trimmed).is_some() {
         return trimmed.to_string();
+    }
+    if trimmed.contains(':') {
+        let body = trimmed.trim_end_matches('.');
+        let terminal = if body.ends_with('?') || body.ends_with('!') {
+            ""
+        } else {
+            "."
+        };
+        return format!("\"{body}{terminal}\"");
     }
     let lower = trimmed.to_ascii_lowercase();
     if lower.starts_with("whenever ")
@@ -1392,6 +1680,19 @@ pub(super) fn merge_blockability_lines(lines: Vec<String>) -> Vec<String> {
                 || (left_no_period == "Can't block" && right_no_period == "Can't be blocked")
             {
                 merged.push("This creature can't block and can't be blocked".to_string());
+                idx += 2;
+                continue;
+            }
+            if let Some(subject) = left_no_period.strip_suffix(" can't block")
+                && !subject.is_empty()
+                && let Some(blocker_qualification) = right_no_period
+                    .strip_prefix(subject)
+                    .and_then(|tail| tail.strip_prefix(" can't be blocked"))
+                && !blocker_qualification.is_empty()
+            {
+                merged.push(format!(
+                    "{subject} can't block or be blocked{blocker_qualification}"
+                ));
                 idx += 2;
                 continue;
             }
@@ -2185,7 +2486,15 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
                 seen_colors.push(color);
                 consumed += 1;
             }
-            if consumed >= 2 {
+            // This reconstruction is the five-arm WUBRG static authored as
+            // one sentence (for example, Scion of Draco). A shorter run can
+            // instead be multiple independent source lines, as on Righteous
+            // War, and must retain those boundaries.
+            if seen_colors
+                .iter()
+                .map(String::as_str)
+                .eq(["white", "blue", "black", "red", "green"])
+            {
                 merged.push(format!("Each {subject} has {}", join_with_and(&predicates)));
                 idx += consumed;
                 continue;
@@ -2194,6 +2503,11 @@ pub(super) fn merge_subject_has_keyword_lines(lines: Vec<String>) -> Vec<String>
         if idx + 1 < lines.len() {
             let left = lines[idx].trim();
             let right = lines[idx + 1].trim();
+            if have_opposed_leading_tap_state_conditions(left, right) {
+                merged.push(lines[idx].clone());
+                idx += 1;
+                continue;
+            }
             if let Some(compact) = merge_complementary_turn_keyword_grants(left, right) {
                 merged.push(compact);
                 idx += 2;
@@ -3076,9 +3390,9 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
     }
     let lower = trimmed.to_ascii_lowercase();
     // Haunt is a standalone keyword line whose structural ability includes a
-    // target choice. It uses keyword punctuation, but must not merge into an
-    // adjacent intrinsic list such as "Flying, haunt".
-    if lower == "haunt" {
+    // target choice. Spree is a standalone typed modal-block header. Both use
+    // keyword punctuation rather than sentence punctuation.
+    if matches!(lower.as_str(), "haunt" | "spree") {
         return true;
     }
     if is_keyword_phrase(&lower) || normalize_keyword_list_phrase(&lower).is_some() {
@@ -3129,6 +3443,41 @@ mod tests {
     use super::*;
 
     #[test]
+    fn player_and_disjoint_object_subjects_rejoin_as_an_authored_union() {
+        let merged = merge_player_object_subject_union_lines(vec![
+            "You have hexproof.".to_string(),
+            "Planeswalkers and other creatures you control have hexproof.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "You, planeswalkers you control, and other creatures you control have hexproof."
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn player_and_independent_object_grants_remain_separate() {
+        for lines in [
+            vec![
+                "You have hexproof.".to_string(),
+                "Creatures you control have hexproof.".to_string(),
+            ],
+            vec![
+                "You have flying.".to_string(),
+                "Planeswalkers and other creatures you control have hexproof.".to_string(),
+            ],
+        ] {
+            assert_eq!(
+                merge_player_object_subject_union_lines(lines.clone()),
+                lines
+            );
+        }
+    }
+
+    #[test]
     fn merge_blockability_lines_compacts_punctuated_adjacent_pair() {
         let merged = merge_blockability_lines(vec![
             "This creature can't block.".to_string(),
@@ -3138,6 +3487,36 @@ mod tests {
         assert_eq!(
             merged,
             vec!["This creature can't block and can't be blocked".to_string()]
+        );
+    }
+
+    #[test]
+    fn merge_blockability_lines_preserves_a_qualified_blocker_tail() {
+        let merged = merge_blockability_lines(vec![
+            "This creature can't block.".to_string(),
+            "This creature can't be blocked by creatures with power 2 or greater.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "This creature can't block or be blocked by creatures with power 2 or greater"
+                    .to_string()
+            ]
+        );
+
+        let different_subjects = merge_blockability_lines(vec![
+            "This creature can't block.".to_string(),
+            "Target creature can't be blocked by creatures with power 2 or greater.".to_string(),
+        ]);
+        assert_eq!(
+            different_subjects,
+            vec![
+                "This creature can't block.".to_string(),
+                "Target creature can't be blocked by creatures with power 2 or greater."
+                    .to_string()
+            ],
+            "unrelated restrictions must remain separate"
         );
     }
 
@@ -3253,6 +3632,30 @@ mod tests {
     }
 
     #[test]
+    fn merge_subject_has_keyword_lines_keeps_partial_color_runs_separate() {
+        let lines = vec![
+            "Each white creature you control has protection from black.".to_string(),
+            "Each black creature you control has protection from white.".to_string(),
+        ];
+
+        assert_eq!(merge_subject_has_keyword_lines(lines.clone()), lines);
+        assert_eq!(merge_subject_predicate_surface_lines(lines.clone()), lines);
+    }
+
+    #[test]
+    fn adjacent_subject_merge_conjugates_for_the_retained_each_subject() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "Each creature you control gets +1/+0.".to_string(),
+            "Creatures you control have haste.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec!["Each creature you control gets +1/+0 and has haste".to_string()]
+        );
+    }
+
+    #[test]
     fn merge_adjacent_subject_predicate_lines_does_not_merge_otherwise_branch() {
         let merged = merge_adjacent_subject_predicate_lines(vec![
             "Equipped creature gets +1/+1.".to_string(),
@@ -3289,6 +3692,100 @@ mod tests {
         assert_eq!(
             merged,
             vec!["This creature gains reach and deathtouch".to_string()]
+        );
+    }
+
+    #[test]
+    fn opposed_tapped_conditions_with_a_comma_name_stay_separate() {
+        let lines = vec![
+            "As long as Archelos, Lagoon Mystic is tapped, other permanents enter tapped."
+                .to_string(),
+            "As long as Archelos, Lagoon Mystic is untapped, other permanents enter untapped."
+                .to_string(),
+        ];
+
+        assert_eq!(merge_adjacent_subject_predicate_lines(lines.clone()), lines);
+        assert_eq!(merge_subject_predicate_surface_lines(lines.clone()), lines);
+    }
+
+    #[test]
+    fn global_combat_restriction_before_keyword_compacts_to_one_oracle_line() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "All creatures attack each combat if able.".to_string(),
+            "All creatures have double strike.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec!["All creatures have double strike and attack each combat if able".to_string()]
+        );
+    }
+
+    #[test]
+    fn count_anthem_stays_separate_from_a_compound_granted_ability_line() {
+        let lines = vec![
+            "Enchanted creature gets +1/+1 for each counter on another creature.".to_string(),
+            "Enchanted creature has vigilance.".to_string(),
+            "Enchanted creature has {W}, {T}: Bolster 1.".to_string(),
+        ];
+        let merged = merge_subject_predicate_surface_lines(lines);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Enchanted creature gets +1/+1 for each counter on another creature.".to_string(),
+                "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\"".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn count_anthem_recovers_a_keyword_precompacted_into_the_wrong_line() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "Enchanted creature gets +1/+1 for each counter on another creature and has vigilance."
+                .to_string(),
+            "Enchanted creature has {W}, {T}: Bolster 1.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Enchanted creature gets +1/+1 for each counter on another creature.".to_string(),
+                "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\"".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn count_anthem_merges_with_a_lone_granted_activated_ability() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "Equipped creature gets +1/+0 for each blood counter on this Equipment.".to_string(),
+            "Equipped creature has {T}, Sacrifice a creature: Put a blood counter on this Equipment."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Equipped creature gets +1/+0 for each blood counter on this Equipment and has \"{T}, Sacrifice a creature: Put a blood counter on this Equipment.\""
+                    .to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn relative_characteristic_copula_stays_inside_the_merged_subject() {
+        let merged = merge_adjacent_subject_predicate_lines(vec![
+            "Creatures you control that are Zombies and/or tokens get +1/+1.".to_string(),
+            "Creatures you control that are Zombies and/or tokens have flying.".to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "Creatures you control that are Zombies and/or tokens get +1/+1 and have flying"
+                    .to_string()
+            ]
         );
     }
 

@@ -590,24 +590,15 @@ pub(super) fn parse_full_god_eternal_rhonas_oracle_and_compiled_text() {
             && abilities_debug.contains("MoveToLibraryNthFromTopEffect"),
         "expected Rhonas ETB and dies/exile trigger structures, got {abilities_debug}"
     );
+    assert!(
+        abilities_debug.matches("FullName(").count() >= 3,
+        "the ETB trigger and both dies-or-exile branches should retain the named source surface: {abilities_debug}"
+    );
 
-    let rendered = compiled_text_lines(&def).join(" ");
-    assert!(
-        rendered.contains("double the power of each other creature you control until end of turn"),
-        "expected double-power clause in compiled text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("Other creatures you control gain vigilance until end of turn"),
-        "expected same-creature vigilance clause in compiled text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("dies or") && rendered.contains("put into exile from the battlefield"),
-        "expected dies-or-exile marker in compiled text, got {rendered}"
-    );
-    assert!(
-        rendered.contains("third from the top"),
-        "expected third-from-top library placement, got {rendered}"
-    );
+    let oracle = oracle_text_by_name()
+        .get("God-Eternal Rhonas")
+        .expect("God-Eternal Rhonas oracle text");
+    assert_eq!(unprocessed_compiled_lines(&def).join("\n"), oracle.as_str());
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3015,6 +3006,30 @@ pub(super) fn parse_fixed_attack_tax_line() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_resolving_attack_tax_as_a_source_independent_temporary_restriction() {
+    let oracle = "When this creature enters, until your next turn, creatures can't attack you or planeswalkers you control unless their controller pays {2} for each of those creatures.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Forbidding Spirit Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("a triggered temporary per-attacker tax should parse");
+
+    assert_eq!(unprocessed_compiled_lines(&def), vec![oracle.to_string()]);
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("AttackYouUnlessControllerPaysPerAttacker")
+            && debug.contains("2,")
+            && debug.contains("duration: YourNextTurn")
+            && debug.contains("LeadingUntilYourNextTurn"),
+        "expected a typed temporary attack-tax restriction with its authored duration: {debug}"
+    );
+    assert!(
+        !debug.contains("UnlessPaysEffect") && !debug.contains("ApplyContinuousEffect"),
+        "the attack tax is a resolving rule, not a payment made during the ETB trigger or an ability granted to its source: {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_orzhov_advokist_strictly_and_renders_attack_defender_clause() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Orzhov Advokist")
         .mana_cost(ManaCost::from_pips(vec![
@@ -3407,17 +3422,19 @@ pub(super) fn parse_loses_all_abilities_and_becomes_static_lowers_all_characteri
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_each_player_exile_sacrifice_return_this_way_fails_instead_of_partial_parse() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Living Death Variant")
-            .parse_text(
-                "Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield.",
-            )
-            .expect_err("unsupported each-player exile/sacrifice/return should fail parse");
-    let message = format!("{err:?}");
+pub(super) fn parse_each_player_exile_sacrifice_return_this_way_keeps_exact_result_set() {
+    let oracle = "Each player exiles all creature cards from their graveyard, then sacrifices all creatures they control, then puts all cards they exiled this way onto the battlefield.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Living Death Variant")
+        .parse_text(oracle)
+        .expect("each-player exile/sacrifice/return should parse");
+    let debug = format!("{:?}", def.spell_effect);
     assert!(
-        message.contains("unsupported each-player exile/sacrifice/return-this-way clause"),
-        "expected strict each-player exile/sacrifice/return parse error, got {message}"
+        debug.contains("TaggedEffect")
+            && debug.contains("PutOntoBattlefieldEffect")
+            && debug.matches("__sentence_helper_exiled_this_way").count() >= 2,
+        "the return must consume the exact tagged exile result, got {debug}"
     );
+    assert_eq!(unprocessed_compiled_lines(&def).join(" "), oracle);
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

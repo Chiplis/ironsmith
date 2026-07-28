@@ -1,5 +1,48 @@
 use super::*;
 
+fn compact_repeated_counter_recipient_damage_source(line: &str) -> Option<String> {
+    let lower = line.to_ascii_lowercase();
+    for marker in [" counter on ", " counters on "] {
+        let Some(marker_idx) = lower.find(marker) else {
+            continue;
+        };
+        let recipient_start = marker_idx + marker.len();
+        let Some(relative_deals_idx) = lower[recipient_start..].find(" deals ") else {
+            continue;
+        };
+        let deals_idx = recipient_start + relative_deals_idx;
+        let Some(relative_conjunction_idx) = lower[recipient_start..deals_idx].rfind(" and ")
+        else {
+            continue;
+        };
+        let conjunction_idx = recipient_start + relative_conjunction_idx;
+        let source_start = conjunction_idx + " and ".len();
+        let recipient = line[recipient_start..conjunction_idx].trim();
+        let repeated_source = line[source_start..deals_idx].trim();
+        let singular_source_surface = recipient.chars().next().is_some_and(char::is_uppercase)
+            || [
+                "this creature",
+                "this permanent",
+                "this artifact",
+                "this enchantment",
+                "this land",
+                "that creature",
+                "that permanent",
+            ]
+            .iter()
+            .any(|surface| recipient.eq_ignore_ascii_case(surface));
+        if recipient.is_empty()
+            || !singular_source_surface
+            || !recipient.eq_ignore_ascii_case(repeated_source)
+        {
+            continue;
+        }
+
+        return Some(format!("{}it{}", &line[..source_start], &line[deals_idx..]));
+    }
+    None
+}
+
 pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     let mut normalized = line.trim().to_string();
     // Optional action branches can acquire the subject twice while composing
@@ -86,6 +129,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             );
     }
     if let Some(compact) = compact_same_subject_pt_then_gain_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_repeated_counter_recipient_damage_source(&normalized) {
         normalized = compact;
     }
     if normalized.trim_end_matches('.')
@@ -182,9 +228,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = compact_domain_dynamic_mana_value_return_surface(&normalized) {
         normalized = compact;
     }
-    if let Some(compact) = compact_coward_polymorph_surface(&normalized) {
-        normalized = compact;
-    }
     if let Some(compact) = compact_choose_graveyard_return_with_counter_surface(&normalized) {
         normalized = compact;
     }
@@ -221,6 +264,9 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(compact) = compact_top_card_type_match_counter_cast_surface(&normalized) {
         normalized = compact;
     }
+    if let Some(compact) = compact_shared_type_reveal_copy_draw_surface(&normalized) {
+        normalized = compact;
+    }
     if let Some(compact) = compact_opponent_attack_pump_surface(&normalized) {
         normalized = compact;
     }
@@ -237,9 +283,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = compact;
     }
     if let Some(compact) = compact_colored_creature_destroy_surface(&normalized) {
-        normalized = compact;
-    }
-    if let Some(compact) = compact_dice_even_odd_results_surface(&normalized) {
         normalized = compact;
     }
     if let Some(compact) = compact_dragon_reveal_additional_cost_surface(&normalized) {
@@ -270,6 +313,15 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
         normalized = compact;
     }
     if let Some(compact) = compact_colored_permanent_sacrifice_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_historical_spell_half_damage_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = normalize_attack_group_total_power_trigger_surface(&normalized) {
+        normalized = compact;
+    }
+    if let Some(compact) = compact_face_down_return_then_turn_surface(&normalized) {
         normalized = compact;
     }
     if let Some(compact) = compact_revealed_top_cards_choose_graveyard_surface(&normalized) {
@@ -1154,6 +1206,7 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     if let Some(rewritten) = normalize_sacrifice_implied_choice(&normalized) {
         normalized = rewritten;
     }
+    normalized = normalize_one_or_more_colors_surface(&normalized);
     if let Some(compact) = compact_colored_permanent_sacrifice_surface(&normalized) {
         normalized = compact;
     }
@@ -2040,6 +2093,10 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             "You may put a creature card from your hand onto the battlefield. That creature gains haste. Sacrifice the creature at the beginning of the next end step.",
         )
         .replace(
+            "put an artifact card from your hand onto the battlefield. It gains haste.",
+            "put an artifact card from your hand onto the battlefield. That artifact gains haste.",
+        )
+        .replace(
             "it gains Haste until end of turn. At the beginning of the next end step, you sacrifice it.",
             "That creature gains haste until end of turn. At the beginning of the next end step, sacrifice that creature.",
         )
@@ -2293,11 +2350,6 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if lower_normalized == "enchant opponent's creature" {
         return "Enchant creature an opponent controls".to_string();
-    }
-    if lower_normalized.starts_with(
-        "at the beginning of each player's upkeep, that player chooses a non-auran artifact, creature, land, or enchantment on the battlefield, then phase out all nontoken non-auran artifacts, creatures, lands, or enchantments of the chosen type that shares a permanent type with that object",
-    ) {
-        return "At the beginning of each player's upkeep, that player chooses artifact, creature, land, or non-Aura enchantment. All nontoken permanents of that type phase out".to_string();
     }
     if lower_normalized.contains(
         "create a 1/1 colorless robot artifact creature token for each +1/+1 counter on it",
@@ -4742,10 +4794,7 @@ fn normalize_choose_target_player_search_scaffold(line: &str) -> String {
     let mut normalized = line.to_string();
     for (upper, lower, possessive) in FORMS {
         loop {
-            let Some(idx) = normalized
-                .find(upper)
-                .or_else(|| normalized.find(lower))
-            else {
+            let Some(idx) = normalized.find(upper).or_else(|| normalized.find(lower)) else {
                 break;
             };
             let sentence_start =

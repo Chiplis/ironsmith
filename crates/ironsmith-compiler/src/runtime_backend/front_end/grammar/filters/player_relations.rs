@@ -38,11 +38,63 @@ const PUT_ONTO_BATTLEFIELD_WITH_SOURCE_PHRASES: &[&[&str]] = &[
     &["put", "onto", "battlefield", "with", "this", "source"],
 ];
 const CREATED_WITH_SOURCE_PHRASES: &[&[&str]] = &[
+    &["created", "with", "it"],
     &["created", "with", "this", "artifact"],
     &["created", "with", "this", "creature"],
     &["created", "with", "this", "enchantment"],
     &["created", "with", "this", "permanent"],
     &["created", "with", "this", "source"],
+];
+const DIDNT_ATTACK_OR_ENTER_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["didn't", "attack", "or", "enter", "this", "turn"],
+    &["didnt", "attack", "or", "enter", "this", "turn"],
+    &["did", "not", "attack", "or", "enter", "this", "turn"],
+];
+const DIDNT_ENTER_BATTLEFIELD_THIS_TURN_PHRASES: &[&[&str]] = &[
+    &["didn't", "enter", "this", "turn"],
+    &["didnt", "enter", "this", "turn"],
+    &["did", "not", "enter", "this", "turn"],
+    &["didn't", "enter", "the", "battlefield", "this", "turn"],
+    &["didnt", "enter", "the", "battlefield", "this", "turn"],
+    &["did", "not", "enter", "the", "battlefield", "this", "turn"],
+];
+const TARGET_PLAYER_OR_PLANESWALKER_CONTROLLER_CONTROL_PHRASES: &[&[&str]] = &[
+    &[
+        "that",
+        "player",
+        "or",
+        "that",
+        "planeswalkers",
+        "controller",
+        "control",
+    ],
+    &[
+        "that",
+        "player",
+        "or",
+        "that",
+        "planeswalkers",
+        "controller",
+        "controls",
+    ],
+    &[
+        "that",
+        "opponent",
+        "or",
+        "that",
+        "planeswalkers",
+        "controller",
+        "control",
+    ],
+    &[
+        "that",
+        "opponent",
+        "or",
+        "that",
+        "planeswalkers",
+        "controller",
+        "controls",
+    ],
 ];
 
 fn relation_phrase<'a>(
@@ -94,7 +146,26 @@ fn parse_relation_subject_word_slice(
 ) -> WResult<PlayerFilter> {
     alt((
         alt((
-            relation_phrase(&["your", "team"]).value(PlayerFilter::You),
+            alt((
+                relation_phrase(&[
+                    "that",
+                    "player",
+                    "or",
+                    "that",
+                    "planeswalkers",
+                    "controller",
+                ]),
+                relation_phrase(&[
+                    "that",
+                    "opponent",
+                    "or",
+                    "that",
+                    "planeswalkers",
+                    "controller",
+                ]),
+            ))
+            .value(PlayerFilter::TargetPlayerOrControllerOfTarget),
+            relation_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
             relation_phrase(&["your", "opponents"]).value(PlayerFilter::Opponent),
             relation_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
             relation_phrase(&["target", "player"]).map(|()| PlayerFilter::target_player()),
@@ -103,13 +174,12 @@ fn parse_relation_subject_word_slice(
             relation_phrase(&["attacking", "player"]).value(PlayerFilter::Attacking),
             relation_phrase(&["its", "controller"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
-            relation_phrase(&["its", "controllers"])
-                .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
         )),
         alt((
-            relation_phrase(&["enchanted", "player"]).map(|()| {
-                PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"))
-            }),
+            relation_phrase(&["its", "controllers"])
+                .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
+            relation_phrase(&["enchanted", "player"])
+                .map(|()| PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"))),
             relation_phrase(&["their", "controller"])
                 .map(|()| PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target)),
             relation_phrase(&["their", "controllers"])
@@ -119,8 +189,10 @@ fn parse_relation_subject_word_slice(
             relation_phrase(&["you"]).value(PlayerFilter::You),
             relation_phrase(&["opponent"]).value(PlayerFilter::Opponent),
             relation_phrase(&["opponents"]).value(PlayerFilter::Opponent),
-            relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
-            relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
+            alt((
+                relation_phrase(&["voter"]).value(PlayerFilter::IteratedPlayer),
+                relation_phrase(&["they"]).map(|()| pronoun_player_filter.clone()),
+            )),
         )),
     ))
     .parse_next(input)
@@ -382,6 +454,17 @@ fn parse_was_dealt_damage_this_turn_shape(words: &[&str]) -> Option<usize> {
         .map(|phrase| phrase.len())
 }
 
+fn parse_put_there_this_turn_shape(words: &[&str]) -> Option<usize> {
+    const PHRASES: &[&[&str]] = &[
+        &["that", "was", "put", "there", "this", "turn"],
+        &["that", "were", "put", "there", "this", "turn"],
+    ];
+    PHRASES
+        .iter()
+        .find(|phrase| words.starts_with(phrase))
+        .map(|phrase| phrase.len())
+}
+
 impl SpellFilterComparisonAxis {
     pub(super) fn as_str(self) -> &'static str {
         match self {
@@ -572,6 +655,21 @@ pub(super) fn drain_segment_phrase_variants(
     }
 }
 
+fn drain_segment_matching_phrase(segment_tokens: &mut Vec<OwnedLexToken>, phrases: &[&[&str]]) {
+    let segment_words_view = GrammarFilterNormalizedWords::new(segment_tokens.as_slice());
+    let segment_words = segment_words_view.to_word_refs();
+    let matched = phrases
+        .iter()
+        .find_map(|phrase| relation_phrase_word_span(&segment_words, phrase));
+
+    if let Some((start_word_idx, end_word_idx)) = matched
+        && let Some(token_range) =
+            segment_words_view.token_span_for_words(start_word_idx, end_word_idx)
+    {
+        segment_tokens.drain(token_range);
+    }
+}
+
 fn relation_phrase_word_span(words: &[&str], phrase: &[&str]) -> Option<(usize, usize)> {
     let mut input: primitives::WordSliceInput<'_> = words;
     let initial_len = input.len();
@@ -640,6 +738,9 @@ pub(super) fn try_apply_put_there_from_battlefield_this_turn_clause(
     };
     filter.entered_graveyard_this_turn = true;
     filter.entered_graveyard_from_battlefield_this_turn = true;
+    filter.set_graveyard_entry_history_surface(Some(
+        crate::filter::GraveyardEntryHistorySurface::PutThereFromBattlefieldThisTurn,
+    ));
     all_words.drain(word_start..word_start + consumed);
     drain_segment_phrase_variants(
         segment_tokens,
@@ -715,6 +816,9 @@ pub(super) fn try_apply_put_there_from_anywhere_this_turn_clause(
         return false;
     };
     filter.entered_graveyard_this_turn = true;
+    filter.set_graveyard_entry_history_surface(Some(
+        crate::filter::GraveyardEntryHistorySurface::PutThereFromAnywhereThisTurn,
+    ));
     all_words.drain(word_start..word_start + consumed);
     drain_segment_phrase_variants(
         segment_tokens,
@@ -729,6 +833,37 @@ pub(super) fn try_apply_put_there_from_anywhere_this_turn_clause(
                 words: &[
                     "that", "were", "put", "there", "from", "anywhere", "this", "turn",
                 ],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
+pub(super) fn try_apply_put_there_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, consumed)) = all_words.iter().enumerate().find_map(|(idx, _)| {
+        parse_put_there_this_turn_shape(&all_words[idx..]).map(|consumed| (idx, consumed))
+    }) else {
+        return false;
+    };
+    filter.entered_graveyard_this_turn = true;
+    filter.set_graveyard_entry_history_surface(Some(
+        crate::filter::GraveyardEntryHistorySurface::PutThereThisTurn,
+    ));
+    all_words.drain(word_start..word_start + consumed);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["that", "was", "put", "there", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["that", "were", "put", "there", "this", "turn"],
                 drain_start_offset: 0,
             },
         ],
@@ -897,6 +1032,100 @@ pub(super) fn try_apply_entered_battlefield_this_turn_clause(
     true
 }
 
+pub(super) fn try_apply_didnt_enter_battlefield_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let combined_match = DIDNT_ATTACK_OR_ENTER_THIS_TURN_PHRASES
+        .iter()
+        .find_map(|phrase| relation_phrase_word_span(all_words, phrase));
+    let standalone_match = DIDNT_ENTER_BATTLEFIELD_THIS_TURN_PHRASES
+        .iter()
+        .find_map(|phrase| relation_phrase_word_span(all_words, phrase));
+    let Some((word_start, word_end, also_didnt_attack)) = combined_match
+        .map(|(start, end)| (start, end, true))
+        .or_else(|| standalone_match.map(|(start, end)| (start, end, false)))
+    else {
+        return false;
+    };
+
+    filter.didnt_enter_battlefield_this_turn = true;
+    filter.zone = Some(Zone::Battlefield);
+    if also_didnt_attack {
+        filter.didnt_attack_this_turn = true;
+        filter.attacked_this_turn = false;
+    }
+    all_words.drain(word_start..word_end);
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[
+            SegmentPhraseVariant {
+                words: &["didn't", "attack", "or", "enter", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["didnt", "attack", "or", "enter", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["did", "not", "attack", "or", "enter", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["didn't", "enter", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["didnt", "enter", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["did", "not", "enter", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["didn't", "enter", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["didnt", "enter", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+            SegmentPhraseVariant {
+                words: &["did", "not", "enter", "the", "battlefield", "this", "turn"],
+                drain_start_offset: 0,
+            },
+        ],
+    );
+    true
+}
+
+/// Preserve the controller selected by a preceding player-or-planeswalker
+/// target. The `planeswalker` noun belongs to the target reference, not to the
+/// counted object filter, so consume the complete relation before the ordinary
+/// type-union pass sees its embedded `or`.
+pub(super) fn try_apply_target_player_or_planeswalker_controller_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    let Some((word_start, word_end)) = TARGET_PLAYER_OR_PLANESWALKER_CONTROLLER_CONTROL_PHRASES
+        .iter()
+        .find_map(|phrase| relation_phrase_word_span(all_words, phrase))
+    else {
+        return false;
+    };
+
+    filter.controller = Some(PlayerFilter::TargetPlayerOrControllerOfTarget);
+    all_words.drain(word_start..word_end);
+    drain_segment_matching_phrase(
+        segment_tokens,
+        TARGET_PLAYER_OR_PLANESWALKER_CONTROLLER_CONTROL_PHRASES,
+    );
+    true
+}
+
 pub(super) fn try_apply_put_onto_battlefield_with_source_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -987,8 +1216,12 @@ pub(super) fn try_apply_created_with_source_clause(
     };
 
     let source_words = &phrase[2..];
-    let source_surface = this_source_surface_for_words(source_words)
-        .or_else(|| source_reference_surface_for_words(source_words));
+    let source_surface = if source_words == ["it"] {
+        Some(SourceReferenceSurface::ThisPermanentType("it".to_string()))
+    } else {
+        this_source_surface_for_words(source_words)
+            .or_else(|| source_reference_surface_for_words(source_words))
+    };
     let Some(source_surface) = source_surface else {
         return false;
     };
@@ -999,6 +1232,10 @@ pub(super) fn try_apply_created_with_source_clause(
     drain_segment_phrase_variants(
         segment_tokens,
         &[
+            SegmentPhraseVariant {
+                words: &["created", "with", "it"],
+                drain_start_offset: 0,
+            },
             SegmentPhraseVariant {
                 words: &["created", "with", "this", "artifact"],
                 drain_start_offset: 0,
@@ -1113,6 +1350,8 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
     all_words: &mut Vec<&str>,
 ) -> bool {
     if all_words.len() >= 2 && LEADING_TAGGED_REFERENCE_WORDS.contains(&all_words[0]) {
+        let plural_demonstrative = all_words[0] == "those";
+        let demonstrative_reference = matches!(all_words[0], "that" | "those");
         let noun_idx = if all_words.get(1).is_some_and(|word| *word == "other") {
             2
         } else {
@@ -1120,9 +1359,15 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
         };
         if all_words
             .get(noun_idx)
-            .is_some_and(|word| is_demonstrative_object_head(word))
+            .is_some_and(|word| {
+                is_demonstrative_object_head(word)
+                    || (demonstrative_reference && parse_subtype_flexible(word).is_some())
+            })
         {
             push_it_tagged_object_constraint(filter);
+            if plural_demonstrative {
+                filter.set_plural_object_noun_surface(true);
+            }
             all_words.remove(0);
             return true;
         }
@@ -1266,7 +1511,37 @@ mod tests {
     fn parses_player_relation_subjects_directly() {
         let pronoun = PlayerFilter::ChosenPlayer;
         for (words, expected, consumed) in [
-            (&["your", "team", "controls"][..], PlayerFilter::You, 2),
+            (
+                &[
+                    "that",
+                    "opponent",
+                    "or",
+                    "that",
+                    "planeswalkers",
+                    "controller",
+                    "controls",
+                ][..],
+                PlayerFilter::TargetPlayerOrControllerOfTarget,
+                6,
+            ),
+            (
+                &[
+                    "that",
+                    "player",
+                    "or",
+                    "that",
+                    "planeswalkers",
+                    "controller",
+                    "controls",
+                ][..],
+                PlayerFilter::TargetPlayerOrControllerOfTarget,
+                6,
+            ),
+            (
+                &["your", "team", "controls"][..],
+                PlayerFilter::your_team(),
+                2,
+            ),
             (
                 &["your", "opponents", "control"][..],
                 PlayerFilter::Opponent,
@@ -1303,6 +1578,32 @@ mod tests {
             assert_eq!(
                 parse_player_relation_subject(words, &pronoun),
                 Some((expected, consumed))
+            );
+        }
+    }
+
+    #[test]
+    fn player_or_planeswalker_controller_reference_does_not_expand_counted_object_types() {
+        for subject in [
+            "that opponent or that planeswalker's controller",
+            "that player or that planeswalker's controller",
+        ] {
+            let tokens =
+                crate::runtime_backend::lex_line(&format!("creatures {subject} controls"), 0)
+                    .expect("controller-relative object filter should lex");
+            let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false)
+                .expect("controller-relative object filter should parse");
+
+            assert_eq!(filter.card_types, vec![CardType::Creature], "{subject}");
+            assert_eq!(
+                filter.controller,
+                Some(PlayerFilter::TargetPlayerOrControllerOfTarget),
+                "{subject}"
+            );
+            assert_eq!(filter.zone, Some(Zone::Battlefield), "{subject}");
+            assert!(
+                !filter.card_types.contains(&CardType::Planeswalker),
+                "{subject}: {filter:#?}"
             );
         }
     }
@@ -1554,5 +1855,22 @@ mod tests {
                     && constraint.tag.as_str() == expected_tag
             }));
         }
+    }
+
+    #[test]
+    fn plural_demonstrative_reference_preserves_plural_noun_surface() {
+        let mut words = vec!["those", "creature", "cards"];
+        let mut filter = ObjectFilter::default();
+
+        assert!(try_apply_leading_tagged_reference_prefix(
+            &mut filter,
+            &mut words,
+        ));
+        assert_eq!(words, ["creature", "cards"]);
+        assert!(filter.has_plural_object_noun_surface());
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == IT_TAG
+        }));
     }
 }

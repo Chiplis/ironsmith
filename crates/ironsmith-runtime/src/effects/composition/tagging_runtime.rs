@@ -53,16 +53,19 @@ pub(crate) fn capture_all_effect_target_snapshots(
     effect: &Effect,
     ctx: &ExecutionContext,
 ) -> Vec<ObjectSnapshot> {
-    let mut snapshots = capture_target_object_snapshots(game, ctx);
-    if !snapshots.is_empty() {
-        return snapshots;
+    let explicit_target_spec = effect.0.get_target_spec();
+    if explicit_target_spec.is_some() {
+        let snapshots = capture_target_object_snapshots(game, ctx);
+        if !snapshots.is_empty() {
+            return snapshots;
+        }
     }
-
     let mut seen = HashSet::new();
-    let specs = effect.0.get_target_spec().map_or_else(
+    let specs = explicit_target_spec.map_or_else(
         || effect.0.decision_related_object_specs(),
         |spec| vec![spec.clone()],
     );
+    let mut snapshots = Vec::new();
     for spec in specs {
         if let crate::target::ChooseSpec::Tagged(tag) = spec.base() {
             for snapshot in ctx.get_tagged_all(tag).into_iter().flatten() {
@@ -83,6 +86,9 @@ pub(crate) fn capture_all_effect_target_snapshots(
                 snapshots.push(snapshot);
             }
         }
+    }
+    if snapshots.is_empty() && explicit_target_spec.is_none() {
+        snapshots = capture_target_object_snapshots(game, ctx);
     }
     snapshots
 }
@@ -142,6 +148,25 @@ pub(crate) fn apply_tagged_runtime_state(
             .iter()
             .filter(|snapshot| moved_stable_ids.contains(&snapshot.stable_id))
             .cloned()
+            .collect::<Vec<_>>();
+        if !snapshots.is_empty() {
+            ctx.set_tagged_objects(tag, snapshots);
+            return;
+        }
+    }
+
+    // A composition wrapper such as `ForPlayersEffect` may not expose its
+    // children's object specs before execution, but its aggregate outcome
+    // still carries exact last-known affected-object memories. Prefer those
+    // memories before looking up the old IDs in current state; a replacement
+    // can leave an object with that ID present but with a different controller
+    // or characteristics.
+    if state.pre_snapshots.is_empty()
+        && let Some(memory) = outcome.affected_object_memory()
+    {
+        let snapshots = memory
+            .iter()
+            .map(|memory| memory.to_snapshot(game))
             .collect::<Vec<_>>();
         if !snapshots.is_empty() {
             ctx.set_tagged_objects(tag, snapshots);
@@ -363,14 +388,15 @@ mod tests {
     }
 
     #[test]
-    fn test_capture_mass_continuous_filter_as_affected_set() {
+    fn test_capture_non_target_mass_continuous_filter_precedes_ambient_target() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
         let first = create_creature(&mut game, alice);
         let second = create_creature(&mut game, alice);
-        let _opposing = create_creature(&mut game, PlayerId::from_index(1));
+        let opposing = create_creature(&mut game, PlayerId::from_index(1));
         let source = game.new_object_id();
-        let ctx = ExecutionContext::new_default(source, alice);
+        let ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(opposing)]);
 
         let mut controlled_creature = crate::target::ObjectFilter::creature();
         controlled_creature.controller = Some(crate::target::PlayerFilter::You);
@@ -389,6 +415,37 @@ mod tests {
             .collect::<HashSet<_>>();
 
         assert_eq!(ids, HashSet::from([first, second]));
+    }
+
+    #[test]
+    fn test_capture_explicit_target_precedes_non_target_affected_set_metadata() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let explicit_target = create_creature(&mut game, PlayerId::from_index(1));
+        let _other_creature = create_creature(&mut game, alice);
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(explicit_target)]);
+
+        let effect = Effect::new(crate::effects::ApplyContinuousEffect::with_spec_runtime(
+            crate::target::ChooseSpec::target(crate::target::ChooseSpec::Object(
+                crate::target::ObjectFilter::creature(),
+            )),
+            crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                power: crate::effect::Value::Fixed(1),
+                toughness: crate::effect::Value::Fixed(1),
+            },
+            crate::effect::Until::EndOfTurn,
+        ));
+        let snapshots = capture_all_effect_target_snapshots(&game, &effect, &ctx);
+
+        assert_eq!(
+            snapshots
+                .iter()
+                .map(|snapshot| snapshot.object_id)
+                .collect::<Vec<_>>(),
+            vec![explicit_target]
+        );
     }
 
     #[test]
@@ -430,6 +487,54 @@ mod tests {
     }
 
     #[test]
+    fn test_composed_tag_uses_affected_memory_when_no_target_prelude_exists() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = create_creature(&mut game, alice);
+        let second = create_creature(&mut game, bob);
+        game.set_current_controller(first, bob);
+        game.set_current_controller(second, alice);
+        let source = game.new_object_id();
+        let first_snapshot = ObjectSnapshot::from_object(game.object(first).unwrap(), &game);
+        let second_snapshot = ObjectSnapshot::from_object(game.object(second).unwrap(), &game);
+        let first_memory = crate::effect::OutcomeObjectMemory::from_snapshot(&first_snapshot);
+        let second_memory = crate::effect::OutcomeObjectMemory::from_snapshot(&second_snapshot);
+        game.set_current_controller(first, alice);
+        game.set_current_controller(second, bob);
+        let outcome = EffectOutcome::aggregate_summing_counts([
+            EffectOutcome::count(1).with_affected_object_memory(vec![first_memory]),
+            EffectOutcome::count(1).with_affected_object_memory(vec![second_memory]),
+        ]);
+        let mut ctx = ExecutionContext::new_default(source, alice);
+
+        apply_tagged_runtime_state(
+            &game,
+            &mut ctx,
+            TagKey::new("sacrificed"),
+            &outcome,
+            TaggedRuntimeState::default(),
+        );
+
+        let tagged = ctx
+            .get_tagged_all("sacrificed")
+            .expect("complete sacrifice LKI result set");
+        assert_eq!(tagged.len(), 2);
+        let tagged_first = tagged
+            .iter()
+            .find(|snapshot| snapshot.object_id == first)
+            .expect("first sacrificed permanent");
+        let tagged_second = tagged
+            .iter()
+            .find(|snapshot| snapshot.object_id == second)
+            .expect("second sacrificed permanent");
+        assert_eq!(tagged_first.controller, bob);
+        assert_eq!(tagged_second.controller, alice);
+        assert_eq!(tagged_first.zone, Zone::Battlefield);
+        assert_eq!(tagged_second.zone, Zone::Battlefield);
+    }
+
+    #[test]
     fn test_apply_tagged_runtime_state_ignores_objects_outside_expected_zone() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -466,6 +571,18 @@ mod tests {
         let bob = PlayerId::from_index(1);
         let creature = create_creature(&mut game, alice);
         game.set_current_controller(creature, bob);
+        let equipment = crate::card::CardBuilder::new(crate::ids::CardId::new(), "LKI Equipment")
+            .card_types(vec![crate::types::CardType::Artifact])
+            .subtypes(vec![crate::types::Subtype::Equipment])
+            .build();
+        let attachment = game.create_object_from_card(&equipment, alice, Zone::Battlefield);
+        assert!(
+            crate::effects::permanents::attach_battlefield_object_to_target(
+                &mut game,
+                attachment,
+                crate::object::AttachmentTarget::Object(creature),
+            )
+        );
         let source = game.new_object_id();
         let mut ctx = ExecutionContext::new_default(source, alice)
             .with_targets(vec![ResolvedTarget::Object(creature)]);
@@ -489,5 +606,10 @@ mod tests {
         assert_eq!(tagged.controller, bob);
         assert_eq!(tagged.zone, Zone::Battlefield);
         assert_eq!(tagged.stable_id, game.object(hand_id).unwrap().stable_id);
+        assert_eq!(
+            tagged.attachments,
+            vec![attachment],
+            "zone-change tags must retain the complete pre-move attachment set"
+        );
     }
 }

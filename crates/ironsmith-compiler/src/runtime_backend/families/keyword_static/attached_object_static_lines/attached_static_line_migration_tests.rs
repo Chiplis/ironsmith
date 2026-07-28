@@ -43,6 +43,78 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
 }
 
 #[test]
+fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature has indestructible and is goaded.",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_attached_has_keywords_and_is_goaded_line(&tokens)
+        .unwrap()
+        .expect("attached keyword-plus-goaded clause should parse");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 2, "{debug}");
+    assert!(debug.contains("Indestructible"), "{debug}");
+    assert!(
+        debug.contains("AttachedGoadedBySourceController"),
+        "{debug}"
+    );
+
+    let dispatched = parse_static_ability_ast_line_lexed(&tokens)
+        .unwrap()
+        .expect("the static line dispatcher should retain both continuous abilities");
+    assert_eq!(dispatched.len(), 2, "{dispatched:#?}");
+
+    let ordinary =
+        crate::runtime_backend::lexer::lex_line("Enchanted creature has indestructible.", 0)
+            .unwrap();
+    assert!(
+        parse_attached_has_keywords_and_is_goaded_line(&ordinary)
+            .unwrap()
+            .is_none(),
+        "an ordinary keyword grant must remain owned by the general attached-grant rule"
+    );
+}
+
+#[test]
+fn attached_restrictions_with_ignore_clause_become_static_special_action_semantics() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn.",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_attached_restrictions_with_ignore_special_action_line(&tokens)
+        .unwrap()
+        .expect("attached restriction plus ignore permission should parse");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 3, "{debug}");
+    assert!(debug.contains("AttackOrBlock"), "{debug}");
+    assert!(debug.contains("ActivateAbilitiesOf"), "{debug}");
+    assert!(
+        debug.contains("AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn"),
+        "{debug}"
+    );
+
+    let dispatched = parse_static_ability_ast_line_lexed(&tokens)
+        .unwrap()
+        .expect("static dispatcher should preserve the complete typed shape");
+    assert_eq!(dispatched.len(), 3, "{dispatched:#?}");
+
+    for unsupported in [
+        "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a creature of their choice for that player to ignore this effect until end of turn.",
+        "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of combat.",
+    ] {
+        let tokens = crate::runtime_backend::lexer::lex_line(unsupported, 0).unwrap();
+        assert!(
+            parse_attached_restrictions_with_ignore_special_action_line(&tokens)
+                .unwrap()
+                .is_none(),
+            "altered cost or duration must not be claimed: {unsupported}"
+        );
+    }
+}
+
+#[test]
 fn attached_pt_compounds_preserve_both_characteristic_effects() {
     for (line, expected_secondary) in [
         (
@@ -71,10 +143,7 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
             .expect("static rule dispatch should retain both characteristic effects");
         let routed_debug = format!("{routed:#?}");
         assert_eq!(routed.len(), 2, "{line}: {routed_debug}");
-        assert!(
-            routed_debug.contains("Anthem"),
-            "{line}: {routed_debug}"
-        );
+        assert!(routed_debug.contains("Anthem"), "{line}: {routed_debug}");
         assert!(
             routed_debug.contains(expected_secondary),
             "{line}: {routed_debug}"
@@ -86,9 +155,7 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
                     return None;
                 };
                 match &ability.payload {
-                    ironsmith_core::StaticAbilityPayload::Anthem(anthem) => {
-                        anthem.filter.as_ref()
-                    }
+                    ironsmith_core::StaticAbilityPayload::Anthem(anthem) => anthem.filter.as_ref(),
                     ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(filter)
                     | ironsmith_core::StaticAbilityPayload::SetColors { filter, .. } => {
                         Some(filter)
@@ -97,11 +164,7 @@ fn attached_pt_compounds_preserve_both_characteristic_effects() {
                 }
             })
             .collect::<Vec<_>>();
-        assert_eq!(
-            filters.len(),
-            2,
-            "{line}: {routed_debug}"
-        );
+        assert_eq!(filters.len(), 2, "{line}: {routed_debug}");
         assert_eq!(filters[0], filters[1], "{line}: {routed_debug}");
         assert!(
             filters[0]

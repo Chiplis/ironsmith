@@ -101,6 +101,17 @@ pub(crate) fn parse_token_reminder_sentence_kind_tokens(
     Some(kind)
 }
 
+/// Distinguish the authored outer grant verb from words inside a quoted token
+/// ability. For example, `They have "When this token dies, you gain 1 life"`
+/// uses `have` even though the quoted rule contains `gain`.
+pub(crate) fn token_ability_sentence_uses_gain_verb(tokens: &[OwnedLexToken]) -> bool {
+    let words = parser_token_word_refs(tokens);
+    words.starts_with(&["it", "gains"])
+        || words.starts_with(&["they", "gain"])
+        || words.starts_with(&["that", "token", "gains"])
+        || words.starts_with(&["those", "tokens", "gain"])
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct TokenReminderFacts {
     pub(crate) dynamic_power_toughness: Option<(Value, Value)>,

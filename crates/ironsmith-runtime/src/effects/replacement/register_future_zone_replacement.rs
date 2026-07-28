@@ -5,6 +5,20 @@ use crate::replacement::{ReplacementAction, ReplacementEffect};
 
 pub type RegisterFutureZoneReplacementEffect = ironsmith_core::RegisterFutureZoneReplacementEffect;
 
+fn freeze_tagged_filter_context(
+    filter: &crate::target::ObjectFilter,
+    ctx: &ExecutionContext<'_>,
+) -> std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>> {
+    let mut frozen = std::collections::HashMap::new();
+    for constraint in &filter.tagged_constraints {
+        let Some(snapshots) = ctx.get_tagged_all(constraint.tag.as_str()) else {
+            continue;
+        };
+        frozen.insert(constraint.tag.clone(), snapshots.clone());
+    }
+    frozen
+}
+
 impl EffectExecutor for RegisterFutureZoneReplacementEffect {
     fn execute(
         &self,
@@ -15,7 +29,8 @@ impl EffectExecutor for RegisterFutureZoneReplacementEffect {
             self.filter.clone(),
             self.from_zone,
             self.to_zone,
-        );
+        )
+        .with_frozen_tagged_objects(freeze_tagged_filter_context(&self.filter, ctx));
         if let Some(cause_filter) = self.cause_filter.clone() {
             matcher = matcher.with_cause_filter(cause_filter);
         }
@@ -74,6 +89,13 @@ mod tests {
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
         game.create_object_from_card(&card, owner, Zone::Battlefield)
+    }
+
+    fn create_spell(game: &mut GameState, owner: PlayerId, name: &str) -> crate::ids::ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        game.create_object_from_card(&card, owner, Zone::Stack)
     }
 
     fn move_to_graveyard(
@@ -181,5 +203,87 @@ mod tests {
             &game.effect_store.replacement_effects.effects()[0].replacement,
             ReplacementAction::ExileWithSourceLink
         ));
+    }
+
+    #[test]
+    fn tagged_future_replacement_freezes_the_exact_stack_object() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, "Cast Replacement Source");
+        let cast_spell = create_spell(&mut game, alice, "Spell Cast This Way");
+        let other_spell = create_spell(&mut game, alice, "Unrelated Spell");
+        let cast_stable = game.object(cast_spell).unwrap().stable_id;
+        let other_stable = game.object(other_spell).unwrap().stable_id;
+
+        let tag = crate::tag::TagKey::from("cast_this_way");
+        let cast_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(cast_spell).unwrap(), &game);
+        let effect = RegisterFutureZoneReplacementEffect::new(
+            ObjectFilter::tagged(tag.clone()).in_zone(Zone::Stack),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ReplacementApplyMode::OneShot,
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.set_tagged_objects(tag, vec![cast_snapshot]);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("tagged future replacement should register");
+
+        move_to_graveyard(&mut game, &mut ctx, other_spell);
+        let other_after = game.find_object_by_stable_id(other_stable).unwrap();
+        assert_eq!(game.object(other_after).unwrap().zone, Zone::Graveyard);
+        assert_eq!(game.effect_store.replacement_effects.effects().len(), 1);
+
+        move_to_graveyard(&mut game, &mut ctx, cast_spell);
+        let cast_after = game.find_object_by_stable_id(cast_stable).unwrap();
+        assert_eq!(game.object(cast_after).unwrap().zone, Zone::Exile);
+        assert!(game.effect_store.replacement_effects.effects().is_empty());
+    }
+
+    #[test]
+    fn tagged_future_replacement_tracks_stable_identity_through_a_later_cast() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature(&mut game, alice, "Delayed Cast Replacement Source");
+        let card = CardBuilder::new(CardId::new(), "Chosen Graveyard Spell")
+            .card_types(vec![CardType::Sorcery])
+            .build();
+        let graveyard_id = game.create_object_from_card(&card, alice, Zone::Graveyard);
+        let chosen_stable = game.object(graveyard_id).unwrap().stable_id;
+        let chosen_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(graveyard_id).unwrap(), &game);
+        let unrelated = create_spell(&mut game, alice, "Unrelated Stack Spell");
+        let unrelated_stable = game.object(unrelated).unwrap().stable_id;
+
+        let tag = crate::tag::TagKey::from("chosen_graveyard_card");
+        let effect = RegisterFutureZoneReplacementEffect::new(
+            ObjectFilter::tagged(tag.clone()).in_zone(Zone::Stack),
+            Some(Zone::Stack),
+            Some(Zone::Graveyard),
+            Zone::Exile,
+            ReplacementApplyMode::UntilEndOfTurn,
+        );
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm);
+        ctx.set_tagged_objects(tag, vec![chosen_snapshot]);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("delayed tagged replacement should register");
+
+        let stack_id = game
+            .move_object_by_effect(graveyard_id, Zone::Stack)
+            .expect("chosen card should become a new stack object");
+        assert_ne!(graveyard_id, stack_id);
+
+        move_to_graveyard(&mut game, &mut ctx, unrelated);
+        let unrelated_after = game.find_object_by_stable_id(unrelated_stable).unwrap();
+        assert_eq!(game.object(unrelated_after).unwrap().zone, Zone::Graveyard);
+
+        move_to_graveyard(&mut game, &mut ctx, stack_id);
+        let chosen_after = game.find_object_by_stable_id(chosen_stable).unwrap();
+        assert_eq!(game.object(chosen_after).unwrap().zone, Zone::Exile);
     }
 }

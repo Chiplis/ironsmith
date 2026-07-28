@@ -1,4 +1,4 @@
-use winnow::combinator::alt;
+use winnow::combinator::{alt, opt};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 
@@ -52,9 +52,11 @@ enum SimpleObjectFilterAtom {
     Other,
     Token,
     Nontoken,
+    Foretold,
     Historic,
     Nonhistoric,
     Modified,
+    Suspected,
     Colorless,
     Multicolored,
     Monocolored,
@@ -189,6 +191,7 @@ pub(crate) fn preserve_branch_scoped_card_type_union(
     filter.all_card_types.clear();
     filter.excluded_card_types.clear();
     filter.subtypes.clear();
+    filter.all_subtypes.clear();
     filter.type_or_subtype_union = false;
     filter.excluded_subtypes.clear();
     filter.supertypes.clear();
@@ -309,6 +312,34 @@ fn infer_card_type_union_branches(
 }
 
 fn split_card_type_union_segments(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> {
+    if tokens.iter().any(|token| token.kind == TokenKind::Comma) {
+        let mut segments = Vec::new();
+        let mut start = 0usize;
+        for (idx, token) in tokens.iter().enumerate() {
+            if token.kind == TokenKind::Comma {
+                if start < idx {
+                    segments.push(&tokens[start..idx]);
+                }
+                start = idx + 1;
+                continue;
+            }
+
+            // An Oxford-list conjunction immediately after a comma introduces
+            // the next selector rather than belonging to it. Internal
+            // conjunctions later in the selector (for example, "owned and
+            // controlled") remain part of that branch.
+            if idx == start
+                && (token.is_word("and") || token.is_word("or") || token.is_word("and/or"))
+            {
+                start = idx + 1;
+            }
+        }
+        if start < tokens.len() {
+            segments.push(&tokens[start..]);
+        }
+        return segments;
+    }
+
     if !tokens.iter().any(|token| token.is_word("and/or")) {
         return primitives::split_lexed_slices_on_or(tokens);
     }
@@ -430,8 +461,11 @@ fn parse_simple_filter_body(
     let mut saw_type_list_conjunction = initial_type_list_separator;
     let mut pending_type_separator = None;
     let mut last_type_atom_is_card_type = None;
+    let mut first_type_atom_is_card_type = None;
+    let mut terminal_noun_follows_last_characteristic = false;
     let mut saw_type_subtype_disjunction = false;
     let mut saw_and_or_union = false;
+    let mut saw_inclusive_subtype_bundle = false;
 
     while !input.is_empty() {
         let atom = parse_simple_object_filter_atom
@@ -453,17 +487,28 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Other => filter.other = true,
             SimpleObjectFilterAtom::Token => filter.token = true,
             SimpleObjectFilterAtom::Nontoken => filter.nontoken = true,
+            SimpleObjectFilterAtom::Foretold => filter.foretold = true,
             SimpleObjectFilterAtom::Historic => filter.historic = true,
             SimpleObjectFilterAtom::Nonhistoric => filter.nonhistoric = true,
             SimpleObjectFilterAtom::Modified => filter.modified = true,
+            SimpleObjectFilterAtom::Suspected => filter.suspected = true,
             SimpleObjectFilterAtom::Colorless => filter.colorless = true,
             SimpleObjectFilterAtom::Multicolored => filter.multicolored = true,
             SimpleObjectFilterAtom::Monocolored => filter.monocolored = true,
-            SimpleObjectFilterAtom::CardMarker => saw_card = true,
+            SimpleObjectFilterAtom::CardMarker => {
+                saw_card = true;
+                terminal_noun_follows_last_characteristic = last_type_atom_is_card_type.is_some();
+            }
             SimpleObjectFilterAtom::PermanentMarker => saw_permanent = true,
-            SimpleObjectFilterAtom::SpellMarker => saw_spell = true,
+            SimpleObjectFilterAtom::SpellMarker => {
+                saw_spell = true;
+                terminal_noun_follows_last_characteristic = last_type_atom_is_card_type.is_some();
+            }
             SimpleObjectFilterAtom::Named(atom) => apply_named_atom(&mut filter, atom),
             SimpleObjectFilterAtom::CardType(card_type) => {
+                filter.set_explicit_card_type_noun(Some(card_type));
+                first_type_atom_is_card_type.get_or_insert(true);
+                terminal_noun_follows_last_characteristic = false;
                 if pending_type_separator.is_some_and(TypeListSeparator::is_disjunction)
                     && last_type_atom_is_card_type == Some(false)
                 {
@@ -478,6 +523,8 @@ fn parse_simple_filter_body(
                 push_unique(&mut filter.excluded_card_types, card_type);
             }
             SimpleObjectFilterAtom::Subtype(subtype) => {
+                first_type_atom_is_card_type.get_or_insert(false);
+                terminal_noun_follows_last_characteristic = false;
                 if pending_type_separator.is_some_and(TypeListSeparator::is_disjunction)
                     && last_type_atom_is_card_type == Some(true)
                 {
@@ -503,7 +550,10 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::ExcludedColor(color) => {
                 filter.excluded_colors = filter.excluded_colors.union(color);
             }
-            SimpleObjectFilterAtom::Outlaw => push_outlaw_subtypes(&mut filter.subtypes),
+            SimpleObjectFilterAtom::Outlaw => {
+                push_outlaw_subtypes(&mut filter.subtypes);
+                saw_inclusive_subtype_bundle = true;
+            }
             SimpleObjectFilterAtom::NonOutlaw => {
                 push_outlaw_subtypes(&mut filter.excluded_subtypes);
             }
@@ -514,7 +564,22 @@ fn parse_simple_filter_body(
     {
         filter.all_card_types = std::mem::take(&mut filter.card_types);
     }
+    if filter.subtypes.len() > 1
+        && filter.all_subtypes.is_empty()
+        && !saw_type_list_conjunction
+        && !saw_inclusive_subtype_bundle
+    {
+        filter.all_subtypes = std::mem::take(&mut filter.subtypes);
+    }
     filter.type_or_subtype_union = saw_type_subtype_disjunction;
+    if saw_type_subtype_disjunction {
+        filter.set_subtype_before_card_type_union_surface(
+            first_type_atom_is_card_type == Some(false),
+        );
+        filter.set_terminal_noun_after_type_subtype_union_surface(
+            terminal_noun_follows_last_characteristic,
+        );
+    }
     if saw_and_or_union {
         filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }
@@ -609,9 +674,11 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "other" | "another" => SimpleObjectFilterAtom::Other,
         "token" | "tokens" => SimpleObjectFilterAtom::Token,
         "nontoken" | "non-token" => SimpleObjectFilterAtom::Nontoken,
+        "foretold" => SimpleObjectFilterAtom::Foretold,
         "historic" => SimpleObjectFilterAtom::Historic,
         "nonhistoric" | "non-historic" => SimpleObjectFilterAtom::Nonhistoric,
         "modified" => SimpleObjectFilterAtom::Modified,
+        "suspected" => SimpleObjectFilterAtom::Suspected,
         "colorless" => SimpleObjectFilterAtom::Colorless,
         "multicolored" | "multicolour" | "multicoloured" => SimpleObjectFilterAtom::Multicolored,
         "monocolored" | "monocolour" | "monocoloured" => SimpleObjectFilterAtom::Monocolored,
@@ -663,6 +730,18 @@ fn parse_typed_word_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilte
     } else if let Some(card_type) = parse_non_type(word) {
         SimpleObjectFilterAtom::ExcludedCardType(card_type)
     } else if let Some(subtype) = parse_subtype_flexible(word) {
+        SimpleObjectFilterAtom::Subtype(subtype)
+    } else if let Some(subtype) =
+        super::super::leaf::classify_token_definition_subtype(word).filter(|_| {
+            input
+                .first()
+                .and_then(|next| parse_subtype_flexible(next))
+                .is_some()
+        })
+    {
+        // Ambiguous English nouns such as "Sand" are rejected by the broad
+        // subtype parser, but become unambiguous when immediately followed by
+        // another subtype in a compound type phrase ("Sand Warriors").
         SimpleObjectFilterAtom::Subtype(subtype)
     } else if let Some(subtype) = parse_non_subtype(word) {
         SimpleObjectFilterAtom::ExcludedSubtype(subtype)
@@ -862,7 +941,7 @@ fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilt
             return Some((suffix, suffix_len));
         }
     }
-    for suffix_len in (2..=3).rev() {
+    for suffix_len in (2..=5).rev() {
         let Some(tail) = suffix_tail(words, suffix_len) else {
             continue;
         };
@@ -870,7 +949,7 @@ fn parse_simple_object_filter_suffix(words: &[&str]) -> Option<(SimpleObjectFilt
             return Some((suffix, suffix_len));
         }
     }
-    for suffix_len in (2..=3).rev() {
+    for suffix_len in (2..=7).rev() {
         let Some(tail) = suffix_tail(words, suffix_len) else {
             continue;
         };
@@ -948,14 +1027,42 @@ fn parse_owner_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSu
 
 fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<PlayerFilter> {
     alt((
-        word_phrase(&["target", "opponent"]).value(PlayerFilter::target_opponent()),
-        word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
-        word_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
-        primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
-        primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
-        primitives::word_slice_exact("you").value(PlayerFilter::You),
+        parse_target_player_or_planeswalker_controller,
+        alt((
+            word_phrase(&["target", "opponent"]).value(PlayerFilter::target_opponent()),
+            word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
+            word_phrase(&["the", "chosen", "player"]).value(PlayerFilter::ChosenPlayer),
+            word_phrase(&["chosen", "player"]).value(PlayerFilter::ChosenPlayer),
+            word_phrase(&["that", "player"]).value(PlayerFilter::IteratedPlayer),
+            word_phrase(&["your", "team"]).map(|()| PlayerFilter::your_team()),
+            primitives::word_slice_exact("opponents").value(PlayerFilter::Opponent),
+            primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
+            primitives::word_slice_exact("you").value(PlayerFilter::You),
+        )),
     ))
     .parse_next(input)
+}
+
+fn parse_target_player_or_planeswalker_controller(
+    input: &mut WordInput<'_>,
+) -> WResult<PlayerFilter> {
+    let checkpoint = *input;
+    let Some((player, consumed)) =
+        super::parse_player_relation_subject(input, &PlayerFilter::IteratedPlayer)
+    else {
+        return Err(primitives::backtrack_err(
+            "simple object filter controller",
+            "player-or-planeswalker target reference",
+        ));
+    };
+    if player != PlayerFilter::TargetPlayerOrControllerOfTarget {
+        return Err(primitives::backtrack_err(
+            "simple object filter controller",
+            "player-or-planeswalker target reference",
+        ));
+    }
+    *input = &checkpoint[consumed..];
+    Ok(player)
 }
 
 fn parse_control_action(input: &mut WordInput<'_>) -> WResult<()> {
@@ -987,6 +1094,7 @@ fn parse_control_negation(input: &mut WordInput<'_>) -> WResult<()> {
 
 fn parse_location(input: &mut WordInput<'_>) -> WResult<(Option<PlayerFilter>, Zone)> {
     alt((
+        parse_chosen_player_location,
         word_phrase(&["your", "graveyard"]).value((Some(PlayerFilter::You), Zone::Graveyard)),
         word_phrase(&["your", "hand"]).value((Some(PlayerFilter::You), Zone::Hand)),
         word_phrase(&["your", "library"]).value((Some(PlayerFilter::You), Zone::Library)),
@@ -997,6 +1105,30 @@ fn parse_location(input: &mut WordInput<'_>) -> WResult<(Option<PlayerFilter>, Z
         primitives::word_slice_exact("exile").value((None, Zone::Exile)),
     ))
     .parse_next(input)
+}
+
+fn parse_chosen_player_location(
+    input: &mut WordInput<'_>,
+) -> WResult<(Option<PlayerFilter>, Zone)> {
+    opt(primitives::word_slice_exact("the"))
+        .void()
+        .parse_next(input)?;
+    primitives::word_slice_exact("chosen")
+        .void()
+        .parse_next(input)?;
+    alt((
+        primitives::word_slice_exact("player"),
+        primitives::word_slice_exact("players"),
+    ))
+    .void()
+    .parse_next(input)?;
+    let zone = alt((
+        primitives::word_slice_exact("graveyard").value(Zone::Graveyard),
+        primitives::word_slice_exact("hand").value(Zone::Hand),
+        primitives::word_slice_exact("library").value(Zone::Library),
+    ))
+    .parse_next(input)?;
+    Ok((Some(PlayerFilter::ChosenPlayer), zone))
 }
 
 fn apply_simple_object_filter_suffix(filter: &mut ObjectFilter, suffix: SimpleObjectFilterSuffix) {

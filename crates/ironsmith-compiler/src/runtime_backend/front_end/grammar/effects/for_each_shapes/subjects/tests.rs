@@ -13,6 +13,30 @@ fn parses_object_and_target_player_subjects() {
     let players = lex_line("two target players each draw a card", 0).unwrap();
     let shape = parse_for_each_target_players_shape(&players).unwrap();
     assert_eq!(shape.count, ChoiceCount::exactly(2));
+
+    let opponents = lex_line("any number of target opponents each draw a card", 0).unwrap();
+    let shape = parse_for_each_target_players_shape(&opponents).unwrap();
+    assert_eq!(shape.count, ChoiceCount::any_number());
+    assert_eq!(
+        TokenWordView::new(shape.target_tokens).to_word_refs(),
+        vec!["target", "opponents"]
+    );
+}
+
+#[test]
+fn target_player_each_shape_requires_a_targeted_participant_set_and_each_actor() {
+    for text in [
+        "target opponent draws a card for each creature you control",
+        "any number of opponents each draw a card",
+        "any number of target creatures each get +1/+1",
+        "any number of target opponents draw a card",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(
+            parse_for_each_target_players_shape(&tokens).is_none(),
+            "the target-participant fanout parser must not claim {text:?}"
+        );
+    }
 }
 
 #[test]
@@ -41,6 +65,19 @@ fn captures_object_filter_and_effect_around_comma() {
     assert_eq!(
         TokenWordView::new(spent.source_tokens).to_word_refs(),
         ["a", "desert"]
+    );
+
+    let symbol_spent = lex_line("For each {U}{U} spent to cast it, draw a card.", 0).unwrap();
+    let symbol_spent = parse_for_each_mana_symbol_spent_effect_shape(&symbol_spent).unwrap();
+    assert_eq!(symbol_spent.symbol, crate::mana::ManaSymbol::Blue);
+    assert_eq!(symbol_spent.group_size, 2);
+    assert_eq!(
+        symbol_spent.reference,
+        ironsmith_core::ManaSpentCastReferenceSurface::It
+    );
+    assert_eq!(
+        TokenWordView::new(symbol_spent.effect_tokens).to_word_refs(),
+        ["draw", "a", "card"]
     );
 
     let dynamic_targets = lex_line(

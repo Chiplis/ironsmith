@@ -69,6 +69,7 @@ fn retarget_it_restriction_for_counter_followup(
         | Restriction::BeCountered(filter)
         | Restriction::Transform(filter)
         | Restriction::PhaseOut(filter)
+        | Restriction::PhaseIn(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::AttackOrBlockAlone(filter)
         | Restriction::ActivateAbilitiesOf(filter)
@@ -201,12 +202,24 @@ fn lower_counter_placements(
 ) -> Result<Vec<EffectAst>, CardTextError> {
     let mut effects = Vec::with_capacity(placements.len());
     for placement in placements {
-        let target = parse_target_phrase(placement.target_tokens)?;
+        let (target, target_count) = if let Some((target_count, used)) =
+            parse_counter_target_count_prefix(placement.target_tokens)?
+        {
+            let target_tokens = placement.target_tokens.get(used..).unwrap_or_default();
+            if target_tokens.is_empty() {
+                return Err(CardTextError::ParseError(
+                    "missing target after counter-placement count".to_string(),
+                ));
+            }
+            (parse_target_phrase(target_tokens)?, Some(target_count))
+        } else {
+            (parse_target_phrase(placement.target_tokens)?, None)
+        };
         effects.push(EffectAst::subject_verb_put_counters(
             placement.descriptor.counter_type,
             Value::Fixed(placement.descriptor.count as i32),
             target,
-            None,
+            target_count,
             false,
         ));
     }
@@ -674,6 +687,46 @@ pub(crate) fn parse_tagged_enters_with_additional_counter_sentence(
         None,
         false,
     )]))
+}
+
+pub(crate) fn parse_tagged_conditional_entry_counters_sentence(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) =
+        counter_shapes::parse_tagged_conditional_entry_counters_tokens(clause.tokens())
+    else {
+        return Ok(None);
+    };
+
+    let effects = shape
+        .arms
+        .into_iter()
+        .map(|arm| {
+            let put_counter = EffectAst::subject_verb_put_counters(
+                arm.descriptor.counter_type,
+                Value::Fixed(arm.descriptor.count as i32)
+                    .with_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter,
+                    )
+                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+                    .with_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
+                    ),
+                TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
+                None,
+                false,
+            );
+            EffectAst::Conditional {
+                predicate: PredicateAst::ItMatches(
+                    ObjectFilter::default().with_type(arm.object_type),
+                ),
+                if_true: vec![put_counter],
+                if_false: Vec::new(),
+            }
+        })
+        .collect();
+
+    Ok(Some(effects))
 }
 
 pub(crate) fn parse_put_onto_battlefield_with_additional_counters_sentence(

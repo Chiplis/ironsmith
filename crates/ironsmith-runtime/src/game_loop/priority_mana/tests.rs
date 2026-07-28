@@ -2007,6 +2007,156 @@ fn u078_transaction_predicates_cover_cumulative_upkeep_and_costs_containing_x() 
 }
 
 #[test]
+fn typed_mana_spend_predicates_preserve_negative_cast_and_source_activation_semantics() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let mana_source_definition = CardDefinitionBuilder::new(CardId::new(), "Restricted Source")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let mana_source =
+        game.create_object_from_definition(&mana_source_definition, alice, Zone::Battlefield);
+
+    let artifact_definition = CardDefinitionBuilder::new(CardId::new(), "Artifact Payment")
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let creature_definition = CardDefinitionBuilder::new(CardId::new(), "Creature Payment")
+        .card_types(vec![CardType::Creature])
+        .build();
+    let artifact_spell =
+        game.create_object_from_definition(&artifact_definition, alice, Zone::Stack);
+    let creature_spell =
+        game.create_object_from_definition(&creature_definition, alice, Zone::Stack);
+    let artifact_permanent =
+        game.create_object_from_definition(&artifact_definition, alice, Zone::Battlefield);
+    let creature_permanent =
+        game.create_object_from_definition(&creature_definition, alice, Zone::Battlefield);
+
+    let nonartifact_cast_forbidden = RestrictedManaUnit {
+        symbol: ManaSymbol::Blue,
+        source: mana_source,
+        source_chosen_creature_type: None,
+        restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::Not(Box::new(
+                ManaPaymentPredicate::All(vec![
+                    ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+                    ManaPaymentPredicate::SourceMatches(
+                        crate::target::ObjectFilter::default().without_type(CardType::Artifact),
+                    ),
+                ]),
+            ))),
+            on_spend: Vec::new(),
+        }],
+    };
+    assert!(game.restricted_mana_unit_is_payable_for_reason(
+        &nonartifact_cast_forbidden,
+        Some(artifact_spell),
+        crate::costs::PaymentReason::CastSpell,
+    ));
+    assert!(!game.restricted_mana_unit_is_payable_for_reason(
+        &nonartifact_cast_forbidden,
+        Some(creature_spell),
+        crate::costs::PaymentReason::CastSpell,
+    ));
+    assert!(
+        game.restricted_mana_unit_is_payable_for_reason(
+            &nonartifact_cast_forbidden,
+            Some(creature_permanent),
+            crate::costs::PaymentReason::ActivateAbility,
+        ),
+        "a negative nonartifact-spell restriction must not forbid non-cast payments"
+    );
+
+    let hand_card = game.create_object_from_definition(&creature_definition, alice, Zone::Hand);
+    let hand_origin =
+        ObjectSnapshot::from_object(game.object(hand_card).expect("hand card"), &game);
+    let hand_spell = game
+        .move_object_by_effect(hand_card, Zone::Stack)
+        .expect("hand card should move to the stack");
+    game.set_cast_origin_snapshot(hand_spell, hand_origin);
+
+    let graveyard_card =
+        game.create_object_from_definition(&creature_definition, alice, Zone::Graveyard);
+    let graveyard_origin =
+        ObjectSnapshot::from_object(game.object(graveyard_card).expect("graveyard card"), &game);
+    let graveyard_spell = game
+        .move_object_by_effect(graveyard_card, Zone::Stack)
+        .expect("graveyard card should move to the stack");
+    game.set_cast_origin_snapshot(graveyard_spell, graveyard_origin);
+
+    let hand_cast_forbidden = RestrictedManaUnit {
+        symbol: ManaSymbol::Colorless,
+        source: mana_source,
+        source_chosen_creature_type: None,
+        restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::Not(Box::new(
+                ManaPaymentPredicate::All(vec![
+                    ManaPaymentPredicate::Purpose(ManaPaymentPurpose::CastSpell),
+                    ManaPaymentPredicate::SourceMatches(
+                        crate::target::ObjectFilter::default()
+                            .in_zone(Zone::Hand)
+                            .owned_by(crate::target::PlayerFilter::You),
+                    ),
+                ]),
+            ))),
+            on_spend: Vec::new(),
+        }],
+    };
+    assert!(!game.restricted_mana_unit_is_payable_for_reason(
+        &hand_cast_forbidden,
+        Some(hand_spell),
+        crate::costs::PaymentReason::CastSpell,
+    ));
+    assert!(game.restricted_mana_unit_is_payable_for_reason(
+        &hand_cast_forbidden,
+        Some(graveyard_spell),
+        crate::costs::PaymentReason::CastSpell,
+    ));
+    assert!(game.restricted_mana_unit_is_payable_for_reason(
+        &hand_cast_forbidden,
+        Some(creature_permanent),
+        crate::costs::PaymentReason::ActivateAbility,
+    ));
+
+    let artifact_source_activations_only = RestrictedManaUnit {
+        symbol: ManaSymbol::Blue,
+        source: mana_source,
+        source_chosen_creature_type: None,
+        restrictions: vec![ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(ManaPaymentPredicate::All(vec![
+                ManaPaymentPredicate::AnyOf(vec![
+                    ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateAbility),
+                    ManaPaymentPredicate::Purpose(ManaPaymentPurpose::ActivateManaAbility),
+                ]),
+                ManaPaymentPredicate::SourceMatches(
+                    crate::target::ObjectFilter::default().with_type(CardType::Artifact),
+                ),
+            ])),
+            on_spend: Vec::new(),
+        }],
+    };
+    assert!(game.restricted_mana_unit_is_payable_for_reason(
+        &artifact_source_activations_only,
+        Some(artifact_permanent),
+        crate::costs::PaymentReason::ActivateAbility,
+    ));
+    assert!(game.restricted_mana_unit_is_payable_for_reason(
+        &artifact_source_activations_only,
+        Some(artifact_permanent),
+        crate::costs::PaymentReason::ActivateManaAbility,
+    ));
+    assert!(!game.restricted_mana_unit_is_payable_for_reason(
+        &artifact_source_activations_only,
+        Some(creature_permanent),
+        crate::costs::PaymentReason::ActivateAbility,
+    ));
+    assert!(!game.restricted_mana_unit_is_payable_for_reason(
+        &artifact_source_activations_only,
+        Some(artifact_spell),
+        crate::costs::PaymentReason::CastSpell,
+    ));
+}
+
+#[test]
 fn u078_each_doubled_mana_unit_publishes_an_event_and_queues_its_own_payload() {
     use crate::effects::{DoubleManaPoolEffect, EffectExecutor, ExecutionContext};
 

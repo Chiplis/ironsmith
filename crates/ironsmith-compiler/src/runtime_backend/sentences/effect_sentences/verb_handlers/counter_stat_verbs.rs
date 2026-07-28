@@ -595,6 +595,21 @@ pub(crate) fn parse_reveal(
                         ));
                     }
                 }
+                if let Some((count_value, _used)) = parse_value(tokens)
+                    && matches!(
+                        count_value.unhinted(),
+                        Value::EventValue(EventValueSpec::Amount)
+                    )
+                    && counter_grammar::find_word(&words, REVEAL_CARDS_WORDS).is_some()
+                    && counter_grammar::find_reveal_hand_source(tokens).is_some()
+                {
+                    return Ok(EffectAst::subject_verb_reveal_cards_from_hand(
+                        player,
+                        ChoiceCount::dynamic_x(),
+                        Some(count_value),
+                        TagKey::from(IT_TAG),
+                    ));
+                }
                 if matches!(parse_value(tokens), Some((Value::X, _)))
                     && counter_grammar::find_word(&words, REVEAL_CARDS_WORDS).is_some()
                     && counter_grammar::find_reveal_hand_source(tokens).is_some()
@@ -1061,6 +1076,8 @@ fn player_filter_for_life_reference(player: PlayerAst) -> Option<PlayerFilter> {
         PlayerAst::Active => Some(PlayerFilter::Active),
         PlayerAst::Any => Some(PlayerFilter::Any),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
+        PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
@@ -1140,5 +1157,71 @@ mod counter_spell_target_kind_tests {
     fn qualified_counter_targets_remain_spells() {
         assert_typed_spell_target("target creature spell with mana value 4 or less");
         assert_typed_spell_target("target spell with mana value 3 or less");
+    }
+}
+
+#[cfg(test)]
+mod reveal_hand_count_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn that_many_cards_from_hand_keeps_the_prior_effect_amount() {
+        let tokens = lex_line("that many cards from their hand", 0)
+            .expect("dependent hand-reveal count should lex");
+        let parsed = parse_reveal(
+            &tokens,
+            Some(SubjectAst::Player(PlayerAst::TargetOpponent)),
+        )
+        .expect("dependent hand-reveal count should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            subject:
+                SubjectVerbSubjectAst {
+                    player: PlayerAst::TargetOpponent,
+                    ..
+                },
+            action:
+                SubjectVerbActionAst::RevealCardsFromHand {
+                    count,
+                    count_value: Some(count_value),
+                    ..
+                },
+        }) = parsed
+        else {
+            panic!("expected a typed dependent hand reveal, got {parsed:#?}");
+        };
+
+        assert!(count.dynamic_x);
+        assert!(matches!(
+            count_value.unhinted(),
+            Value::EventValue(EventValueSpec::Amount)
+        ));
+    }
+
+    #[test]
+    fn life_payment_reveal_choose_exile_pipeline_stays_typed() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::CardId::new(),
+            "Life-Payment Confessor",
+        )
+        .card_types(vec![crate::CardType::Creature])
+        .parse_text(
+            "When this creature enters, pay any amount of life. Target opponent reveals that many cards from their hand. You choose one of them and exile it.",
+        )
+        .expect("life-payment hand-selection pipeline should parse");
+        let debug = format!("{:#?}", definition.abilities);
+
+        assert!(debug.contains("PayAnyLifeEffect"), "{debug}");
+        assert!(
+            debug.contains("ChooseObjectsEffect")
+                && debug.contains("reveal: true")
+                && debug.contains("count_value: Some"),
+            "{debug}"
+        );
+        assert!(
+            debug.contains("MoveToZoneEffect") && debug.contains("zone: Exile"),
+            "{debug}"
+        );
+        assert!(!debug.contains("RevealTaggedEffect"), "{debug}");
     }
 }

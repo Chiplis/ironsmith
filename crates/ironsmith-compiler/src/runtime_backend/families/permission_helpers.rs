@@ -42,6 +42,7 @@ pub(crate) enum PermissionClauseSpec {
         without_paying_mana_cost: bool,
         lifetime: PermissionLifetime,
         filter: Option<ObjectFilter>,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     },
     GrantBySpec {
         player: PlayerAst,
@@ -60,13 +61,7 @@ struct PermissionLead {
 struct TaggedPermissionTarget {
     tag: TagKey,
     as_copy: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum TaggedPermissionTargetSurface {
-    SingleTaggedObject,
-    PluralTaggedCards,
-    Other,
+    surface: Option<ironsmith_core::GrantPlayTaggedObjectSurface>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -166,17 +161,38 @@ struct TaggedPermissionTail<'a> {
     tail_tokens: &'a [OwnedLexToken],
 }
 
-fn tagged_permission_target_surface(tokens: &[OwnedLexToken]) -> TaggedPermissionTargetSurface {
-    match permission_tagged_facts::parse_tagged_permission_target_surface_tokens(tokens) {
-        permission_tagged_facts::TaggedPermissionTargetSurface::SingleTaggedObject => {
-            TaggedPermissionTargetSurface::SingleTaggedObject
+fn tagged_permission_target_surface(
+    tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::GrantPlayTaggedObjectSurface> {
+    tagged_permission_object_surface(
+        permission_tagged_facts::parse_tagged_permission_target_surface_tokens(tokens),
+    )
+}
+
+fn tagged_permission_object_surface(
+    surface: permission_tagged_facts::TaggedPermissionTargetSurface,
+) -> Option<ironsmith_core::GrantPlayTaggedObjectSurface> {
+    match surface {
+        permission_tagged_facts::TaggedPermissionTargetSurface::It => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::It)
         }
-        permission_tagged_facts::TaggedPermissionTargetSurface::PluralTaggedCards => {
-            TaggedPermissionTargetSurface::PluralTaggedCards
+        permission_tagged_facts::TaggedPermissionTargetSurface::ThatCard => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
         }
-        permission_tagged_facts::TaggedPermissionTargetSurface::Other => {
-            TaggedPermissionTargetSurface::Other
+        permission_tagged_facts::TaggedPermissionTargetSurface::ThatSpell => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell)
         }
+        permission_tagged_facts::TaggedPermissionTargetSurface::ThoseCards => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards)
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::SpellsFromAmongThoseCards => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseCards)
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards => {
+            Some(ironsmith_core::GrantPlayTaggedObjectSurface::SpellsFromAmongThoseExiledCards)
+        }
+        permission_tagged_facts::TaggedPermissionTargetSurface::SpellFromAmongSourceExiledCards
+        | permission_tagged_facts::TaggedPermissionTargetSurface::Other => None,
     }
 }
 
@@ -337,6 +353,7 @@ fn parse_permanent_spells_from_among_tagged_tokens<'a>(
         TaggedPermissionTarget {
             tag: TagKey::from(IT_TAG),
             as_copy: false,
+            surface: None,
         },
         fact.tail_tokens,
         permission_subject_facts::permanent_spell_filter(),
@@ -364,6 +381,15 @@ fn parse_spell_from_among_source_exiled_tokens<'a>(
         TaggedPermissionTarget {
             tag: TagKey::from(crate::tag::SOURCE_EXILED_TAG),
             as_copy: false,
+            surface: Some(
+                ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
+                    creature_spell: matches!(
+                        fact.kind,
+                        permission_source_exiled_facts::SourceExiledSpellKind::Creature
+                    ),
+                    source: fact.reference.surface,
+                },
+            ),
         },
         fact.tail_tokens,
         filter,
@@ -439,6 +465,39 @@ fn strip_allow_any_color_for_cast_suffix_tokens<'a>(
     permission_tagged_facts::parse_allow_any_color_for_cast_suffix_tokens(tokens)
 }
 
+fn mana_spend_reference_surface(
+    reference: permission_tagged_facts::ManaSpendCastReference,
+) -> ironsmith_core::GrantPlayTaggedManaReferenceSurface {
+    match reference {
+        permission_tagged_facts::ManaSpendCastReference::It => {
+            ironsmith_core::GrantPlayTaggedManaReferenceSurface::It
+        }
+        permission_tagged_facts::ManaSpendCastReference::ThatSpell => {
+            ironsmith_core::GrantPlayTaggedManaReferenceSurface::ThatSpell
+        }
+        permission_tagged_facts::ManaSpendCastReference::Them => {
+            ironsmith_core::GrantPlayTaggedManaReferenceSurface::Them
+        }
+        permission_tagged_facts::ManaSpendCastReference::ThoseSpells => {
+            ironsmith_core::GrantPlayTaggedManaReferenceSurface::ThoseSpells
+        }
+    }
+}
+
+fn with_mana_reference_surface(
+    surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
+    reference: Option<permission_tagged_facts::ManaSpendCastReference>,
+) -> Option<ironsmith_core::GrantPlayTaggedSurface> {
+    match reference {
+        Some(reference) => Some(
+            surface
+                .unwrap_or_default()
+                .with_mana_reference(mana_spend_reference_surface(reference)),
+        ),
+        None => surface,
+    }
+}
+
 fn parse_permission_duration_prefix_tokens<'a>(
     tokens: &'a [OwnedLexToken],
 ) -> (Option<PermissionLifetime>, &'a [OwnedLexToken]) {
@@ -498,9 +557,43 @@ fn parse_tagged_cast_or_play_target_tokens<'a>(
         TaggedPermissionTarget {
             tag,
             as_copy: fact.as_copy,
+            surface: tagged_permission_object_surface(fact.surface),
         },
         fact.rest_tokens,
     ))
+}
+
+fn parse_until_source_exiles_another_permission(tokens: &[OwnedLexToken]) -> Option<EffectAst> {
+    let fact =
+        permission_tagged_facts::parse_until_source_exiles_another_permission_tokens(tokens)?;
+    let player = match fact.actor {
+        permission_tagged_facts::PermissionActor::You => PlayerAst::You,
+        permission_tagged_facts::PermissionActor::Implicit => PlayerAst::Implicit,
+        permission_tagged_facts::PermissionActor::AnyPlayer
+        | permission_tagged_facts::PermissionActor::ItsOwner => return None,
+    };
+    let tag = match fact.reference {
+        permission_tagged_facts::TaggedPermissionReference::LastTagged => TagKey::from(IT_TAG),
+        permission_tagged_facts::TaggedPermissionReference::SourceExiled => {
+            TagKey::from(crate::tag::SOURCE_EXILED_TAG)
+        }
+        permission_tagged_facts::TaggedPermissionReference::LastRevealed => {
+            TagKey::from("__last_revealed__")
+        }
+    };
+    let object_surface = tagged_permission_object_surface(fact.target_surface)?;
+    let source_words = token_word_refs(fact.source_reference_tokens);
+    let source_surface = super::util::source_reference_surface_for_words(&source_words)
+        .or_else(|| super::util::this_source_surface_for_words(&source_words))?;
+    Some(
+        EffectAst::subject_verb_grant_play_tagged_until_source_exiles_another(
+            tag,
+            player,
+            fact.verb.allows_land(),
+            source_surface,
+            object_surface,
+        ),
+    )
 }
 
 fn parse_tagged_permission_tail_tokens<'a>(
@@ -883,7 +976,10 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(None);
         };
 
-        let target_surface = tagged_permission_target_surface(target_tokens);
+        let target_surface = target_ref
+            .surface
+            .clone()
+            .or_else(|| tagged_permission_target_surface(target_tokens));
         if matches!(
             lifetime,
             PermissionLifetime::ThisTurn
@@ -914,9 +1010,16 @@ pub(crate) fn parse_permission_clause_spec_lexed(
                 PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn
             )
             && !matches!(
-                target_surface,
-                TaggedPermissionTargetSurface::SingleTaggedObject
-                    | TaggedPermissionTargetSurface::PluralTaggedCards
+                target_surface.as_ref(),
+                Some(
+                    ironsmith_core::GrantPlayTaggedObjectSurface::It
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::ThatSpell
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::ThoseCards
+                        | ironsmith_core::GrantPlayTaggedObjectSurface::SpellFromAmongCardsExiledWithSource {
+                            ..
+                        }
+                )
             )
         {
             return Err(CardTextError::ParseError(format!(
@@ -941,6 +1044,16 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             )));
         }
 
+        let leading_duration = prefixed_lifetime.is_some();
+        let surface = (leading_duration || target_surface.is_some()).then(|| {
+            let mut surface = ironsmith_core::GrantPlayTaggedSurface::default()
+                .with_leading_duration(leading_duration);
+            if let Some(object) = target_surface {
+                surface = surface.with_object(object);
+            }
+            surface
+        });
+
         return Ok(Some(PermissionClauseSpec::Tagged {
             tag: target_ref.tag,
             player,
@@ -949,6 +1062,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             without_paying_mana_cost,
             lifetime,
             filter,
+            surface,
         }));
     }
 
@@ -1149,7 +1263,16 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }
     }
 
-    if prefixed_lifetime.is_none() && !allow_land {
+    if !allow_land
+        && matches!(
+            prefixed_lifetime,
+            None | Some(
+                PermissionLifetime::ThisTurn
+                    | PermissionLifetime::UntilEndOfTurn
+                    | PermissionLifetime::UntilYourNextTurn
+            )
+        )
+    {
         if let Some(spec) = parse_static_hand_free_cast_grant_spec_from_rest(rest_tokens)? {
             if rest_is_singular_free_cast_from_hand(rest_tokens) {
                 return Ok(None);
@@ -1157,7 +1280,7 @@ pub(crate) fn parse_permission_clause_spec_lexed(
             return Ok(Some(PermissionClauseSpec::GrantBySpec {
                 player,
                 spec,
-                lifetime: PermissionLifetime::Static,
+                lifetime: prefixed_lifetime.unwrap_or(PermissionLifetime::Static),
             }));
         }
     }
@@ -1200,9 +1323,12 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<EffectAst>, CardTextError> {
     let trimmed = trim_commas(tokens);
-    let mana_spend_mode = strip_allow_any_color_for_cast_suffix_tokens(&trimmed)
+    let mana_suffix = strip_allow_any_color_for_cast_suffix_tokens(&trimmed);
+    let mana_spend_mode = mana_suffix
+        .as_ref()
         .map(|fact| fact.mana_spend_mode)
         .unwrap_or_default();
+    let mana_reference = mana_suffix.map(|fact| fact.reference);
     match parse_permission_clause_spec(tokens)? {
         Some(PermissionClauseSpec::Tagged {
             tag,
@@ -1211,14 +1337,16 @@ pub(crate) fn parse_until_end_of_turn_may_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::UntilEndOfTurn,
+            surface,
             ..
         }) if player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
                 tag,
                 player,
                 allow_land,
                 without_paying_mana_cost,
                 mana_spend_mode,
+                with_mana_reference_surface(surface, mana_reference),
             ),
         )),
         _ => Ok(None),
@@ -1359,6 +1487,52 @@ fn clause_is_singular_free_cast_from_hand(tokens: &[OwnedLexToken]) -> bool {
     !lead.allow_land
         && matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
         && rest_is_singular_free_cast_from_hand(rest_tokens)
+}
+
+fn rest_is_any_number_free_cast_from_hand(rest_tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(rest_tokens);
+    words
+        .windows(3)
+        .any(|window| window == ["any", "number", "of"])
+        && parse_free_cast_from_your_zone_rest_tokens(rest_tokens)
+            .is_some_and(|parsed| parsed.zone == Zone::Hand)
+}
+
+fn parse_any_number_free_cast_from_hand_clause(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<EffectAst>, CardTextError> {
+    let Some((lead, rest_tokens)) = parse_permission_lead_tokens(tokens) else {
+        return Ok(None);
+    };
+    if lead.allow_land
+        || !matches!(lead.player, PlayerAst::Implicit | PlayerAst::You)
+        || !rest_is_any_number_free_cast_from_hand(rest_tokens)
+    {
+        return Ok(None);
+    }
+    let Some(spec) = parse_hand_free_cast_grant_spec_from_rest(rest_tokens, false)? else {
+        return Ok(None);
+    };
+
+    // "Cast any number" is a choice of an arbitrary subset, not a one-shot
+    // cast permission. Iterate the eligible hand cards and offer each cast
+    // independently; this keeps both zero and multiple casts executable.
+    let mut filter = spec.filter;
+    filter.zone = Some(Zone::Hand);
+    filter.owner = Some(crate::target::PlayerFilter::You);
+    Ok(Some(EffectAst::ForEachObject {
+        filter,
+        effects: vec![EffectAst::May {
+            effects: vec![EffectAst::subject_verb_cast_tagged(
+                TagKey::from(IT_TAG),
+                lead.player,
+                false,
+                false,
+                true,
+                None,
+            )],
+        }],
+    }))
 }
 
 fn mana_value_filter_comparison(
@@ -1616,6 +1790,10 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
     let trimmed_tokens = trim_commas(tokens);
     let mut trimmed = strip_leading_token_words_any(&trimmed_tokens, &["then", "and"]).to_vec();
 
+    if let Some(effect) = parse_until_source_exiles_another_permission(&trimmed) {
+        return Ok(Some(effect));
+    }
+
     if let Some(shape) = super::grammar::effects::clause_dispatch_shapes::parse_cast_target_from_your_graveyard_this_turn_shape(&trimmed)
     {
         let target = parse_target_phrase(shape.target_tokens)?;
@@ -1650,15 +1828,23 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
         }));
     }
 
-    let mana_spend_mode = if let Some((body_len, mode)) =
-        strip_allow_any_color_for_cast_suffix_tokens(&trimmed)
-            .map(|parsed| (parsed.body_tokens.len(), parsed.mana_spend_mode))
-    {
+    let (mana_spend_mode, mana_reference) = if let Some((body_len, mode, reference)) =
+        strip_allow_any_color_for_cast_suffix_tokens(&trimmed).map(|parsed| {
+            (
+                parsed.body_tokens.len(),
+                parsed.mana_spend_mode,
+                parsed.reference,
+            )
+        }) {
         trimmed.truncate(body_len);
-        mode
+        (mode, Some(reference))
     } else {
-        ironsmith_core::value_model::ManaSpendMode::Normal
+        (ironsmith_core::value_model::ManaSpendMode::Normal, None)
     };
+
+    if let Some(effect) = parse_any_number_free_cast_from_hand_clause(&trimmed)? {
+        return Ok(Some(effect));
+    }
 
     if let Some(effect) = parse_cast_with_tagged_mana_value_limit_clause(&trimmed)? {
         return Ok(Some(effect));
@@ -1754,14 +1940,16 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ThisTurn | PermissionLifetime::UntilEndOfTurn,
+            surface,
             ..
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
-            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+            EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
                 tag,
                 PlayerAst::Implicit,
                 allow_land,
                 without_paying_mana_cost,
                 mana_spend_mode,
+                with_mana_reference_surface(surface, mana_reference),
             ),
         )),
         Some(PermissionClauseSpec::Tagged {
@@ -1836,6 +2024,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             without_paying_mana_cost,
             lifetime: PermissionLifetime::ForAsLongAsExiled,
             filter,
+            ..
         }) if matches!(
             player,
             PlayerAst::Implicit | PlayerAst::You | PlayerAst::ItsOwner
@@ -1869,5 +2058,45 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             ),
         )),
         _ => Ok(conditional_tagged_permission),
+    }
+}
+
+#[cfg(test)]
+mod source_exile_duration_tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::lex_line;
+
+    #[test]
+    fn event_bounded_play_permission_stays_typed_through_family_parsing() {
+        let cases = [
+            (
+                "You may play that card until you exile another card with this enchantment",
+                "this enchantment",
+            ),
+            (
+                "You may play it until you exile another card with this artifact",
+                "this artifact",
+            ),
+            (
+                "You may play that card until you exile another card with this creature",
+                "this creature",
+            ),
+        ];
+        for (text, source_surface) in cases {
+            let tokens = lex_line(text, 0).expect("permission should lex");
+            let effect = parse_cast_or_play_tagged_clause(&tokens)
+                .expect("permission parsing should not error")
+                .expect("permission should parse");
+            let debug = format!("{effect:#?}");
+            assert!(
+                debug.contains("until_source_exiles_another: true"),
+                "{text}: {debug}"
+            );
+            assert!(debug.contains(source_surface), "{text}: {debug}");
+            assert!(
+                debug.contains("allow_land: true"),
+                "play permission must include lands: {debug}"
+            );
+        }
     }
 }

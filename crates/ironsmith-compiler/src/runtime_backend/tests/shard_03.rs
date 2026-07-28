@@ -6,6 +6,7 @@ use super::shard_04::*;
 use super::shard_05::*;
 use super::shard_06::*;
 use super::*;
+use crate::target::PlayerFilter;
 
 #[test]
 pub(super) fn rewrite_keyword_craft_line_uses_supported_activated_keyword_lowering() {
@@ -67,6 +68,74 @@ pub(super) fn rewrite_keyword_static_as_enters_choice_parsers_share_subject_tabl
         Some(ability)
             if ability.id() == crate::static_abilities::StaticAbilityId::ChoosePlayerAsEnters
     ));
+}
+
+#[test]
+pub(super) fn rewrite_as_enters_combined_color_and_creature_type_choice_is_typed() {
+    let tokens = lex_line(
+        "As this artifact enters, choose a color and a creature type.",
+        0,
+    )
+    .expect("combined choice should lex");
+    let abilities =
+        super::super::keyword_static::parse_choose_color_and_creature_type_as_enters_line(&tokens)
+            .expect("combined choice parser should not error")
+            .expect("combined choice should parse");
+
+    assert_eq!(abilities.len(), 2, "{abilities:#?}");
+    assert_eq!(
+        abilities[0].id(),
+        crate::static_abilities::StaticAbilityId::ChooseColorAsEnters
+    );
+    assert_eq!(
+        abilities[1].id(),
+        crate::static_abilities::StaticAbilityId::ChooseCreatureTypeAsEnters
+    );
+}
+
+#[test]
+pub(super) fn rewrite_as_enters_color_creature_pairs_keep_correlated_options() {
+    let tokens = lex_line(
+        "As this artifact enters, choose white Citizen, blue Camarid, black Thrull, red Goblin, or green Saproling.",
+        0,
+    )
+    .expect("paired choices should lex");
+    let ability =
+        super::super::keyword_static::parse_choose_color_creature_type_pairs_as_enters_line(
+            &tokens,
+        )
+        .expect("paired choice parser should not error")
+        .expect("paired choices should parse");
+
+    assert!(matches!(
+        ability.payload,
+        crate::static_abilities::StaticAbilityPayload::ChooseNamedOptionAsEnters {
+            ref options,
+            ..
+        } if options
+            == &[
+                "white Citizen",
+                "blue Camarid",
+                "black Thrull",
+                "red Goblin",
+                "green Saproling",
+            ]
+    ));
+}
+
+#[test]
+pub(super) fn create_token_keeps_source_chosen_characteristics_outside_compact_blueprint() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chosen Token Characteristics")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Create a 2/2 creature token of the chosen color and type.")
+        .expect("chosen token characteristics should compile");
+    let debug = format!("{:#?}", definition.spell_effect);
+
+    assert!(debug.contains("use_source_chosen_color: true"), "{debug}");
+    assert!(
+        debug.contains("use_source_chosen_creature_type: true"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -3117,6 +3186,27 @@ pub(super) fn rewrite_lexed_triggered_line_lifts_intervening_if_with_multisenten
 }
 
 #[test]
+pub(super) fn rewrite_lexed_triggered_line_keeps_source_exiled_move_then_damage_body() {
+    let text = "At the beginning of your end step, if there are cards exiled with this enchantment, put them into their owner's graveyard, then this enchantment deals that much damage to each opponent.";
+    let tokens =
+        lex_line(text, 0).expect("rewrite lexer should classify source-exiled end-step trigger");
+
+    let (parsed, trace) = crate::parse_trace::capture(|| {
+        super::super::clause_support::parse_triggered_line_lexed(&tokens)
+            .expect("source-exiled move-then-damage trigger should parse")
+    });
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("ValueComparison"),
+        "{debug}\n{}",
+        trace.render()
+    );
+    assert!(debug.contains("MoveToZone"), "{debug}\n{}", trace.render());
+    assert!(debug.contains("DealDamage"), "{debug}\n{}", trace.render());
+}
+
+#[test]
 pub(super) fn rewrite_lexed_triggered_line_parses_double_sweep_body() {
     let tokens = lex_line(
         "At the beginning of each combat, double the power and toughness of each creature you control until end of turn.",
@@ -3578,6 +3668,20 @@ pub(super) fn rewrite_lexed_swindlers_scheme_trigger_keeps_opponent_hand_reveal_
 
     let parsed = super::super::clause_support::parse_triggered_line_lexed(&tokens)
         .expect("Swindler's Scheme trigger line should parse");
+    let crate::cards::builders::LineAst::Triggered { trigger, .. } = &parsed else {
+        panic!("expected Swindler's Scheme to remain a triggered line: {parsed:#?}");
+    };
+    let crate::cards::builders::TriggerSpec::SpellCast {
+        filter: Some(filter),
+        caster,
+        ..
+    } = trigger
+    else {
+        panic!("expected a typed spell-cast trigger: {trigger:#?}");
+    };
+    assert_eq!(caster, &PlayerFilter::Opponent);
+    assert_eq!(filter.zone, Some(Zone::Hand), "{filter:#?}");
+    assert_eq!(filter.owner, None, "{filter:#?}");
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("SpellCast"), "{debug}");

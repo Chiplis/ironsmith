@@ -39,6 +39,51 @@ pub(crate) fn parse_sentence_each_opponent_loses_x_and_you_gain_x(
     ]))
 }
 
+pub(crate) fn parse_sentence_relative_opponent_damage_difference(
+    clause: SubjectVerbPrimitiveClause<'_>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) =
+        choice_shapes::parse_relative_opponent_damage_difference_shape(clause.tokens())
+    else {
+        return Ok(None);
+    };
+    let mut base_filter = parse_object_filter(shape.filter_tokens, false)?;
+    if base_filter.controller.is_some() || base_filter.owner.is_some() {
+        return Ok(None);
+    }
+
+    let mut iterated_filter = base_filter.clone();
+    iterated_filter.controller = Some(PlayerFilter::IteratedPlayer);
+    let mut your_filter = base_filter.clone();
+    your_filter.controller = Some(PlayerFilter::You);
+    let amount = Value::Add(
+        Box::new(Value::Count(iterated_filter)),
+        Box::new(Value::Scaled(Box::new(Value::Count(your_filter)), -1)),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::Difference);
+
+    // The authored source phrase is deliberately validated by the grammar
+    // shape but lowered to the ordinary source reference. This keeps named
+    // self-references and "this spell/source" reusable without embedding a
+    // card name in the AST.
+    let _source_surface = shape.source_tokens;
+    base_filter.zone = None;
+    Ok(Some(vec![EffectAst::ForEachOpponent {
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::PlayerControlsMoreThanYou {
+                player: PlayerAst::That,
+                filter: base_filter,
+            },
+            if_true: vec![EffectAst::subject_verb_damage_with_source(
+                TargetAst::Source(None),
+                amount,
+                TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            )],
+            if_false: Vec::new(),
+        }],
+    }]))
+}
+
 pub(crate) fn parse_sentence_same_name_target_fanout(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
@@ -454,15 +499,16 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
     if effects.len() != 1 {
         return Ok(None);
     }
-    let Some(main_damage) = effects.first() else {
+    let Some(main_effect) = effects.first() else {
         return Ok(None);
     };
-    let (main_amount, main_target) = if let EffectAst::SubjectVerb(subject_verb) = main_damage
-        && let SubjectVerbActionAst::DealDamage { amount, target, .. } = &subject_verb.action
-    {
-        (amount, target)
-    } else {
-        return Ok(None);
+    let main_target = match main_effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::DealDamage { target, .. }
+            | SubjectVerbActionAst::Destroy { target, .. } => target,
+            _ => return Ok(None),
+        },
+        _ => return Ok(None),
     };
     if !matches!(
         main_target,
@@ -492,25 +538,39 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
         return Ok(None);
     };
     let deal_tail = deal_tail_clause.tokens();
-    let Some((alt_amount, used)) = parse_value(deal_tail) else {
-        return Ok(None);
-    };
-    if !deal_tail
-        .get(used)
-        .and_then(|token| token.as_word())
-        .is_some_and(choice_shapes::is_damage_word)
-    {
-        return Ok(None);
-    }
+    let deal_words = deal_tail_clause.word_refs();
+    let alt_amount = if deal_words.starts_with(&["damage", "to", "them", "equal", "to"]) {
+        let amount_tokens = deal_tail.get(5..).unwrap_or_default();
+        let Some((amount, used)) = parse_value(amount_tokens) else {
+            return Ok(None);
+        };
+        if used != amount_tokens.len() {
+            return Ok(None);
+        }
+        amount.with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
+    } else {
+        let Some((amount, used)) = parse_value(deal_tail) else {
+            return Ok(None);
+        };
+        if !deal_tail
+            .get(used)
+            .and_then(|token| token.as_word())
+            .is_some_and(choice_shapes::is_damage_word)
+        {
+            return Ok(None);
+        }
 
-    let mut alt_target_clause = deal_tail_clause.from(used + 1).trimmed();
-    if choice_shapes::has_leading_to_shape(&alt_target_clause.word_refs()) {
-        alt_target_clause = alt_target_clause.from(1).trimmed();
-    }
-    if choice_shapes::parse_alternate_damage_target_shape(&alt_target_clause.word_refs()).is_none()
-    {
-        return Ok(None);
-    }
+        let mut alt_target_clause = deal_tail_clause.from(used + 1).trimmed();
+        if choice_shapes::has_leading_to_shape(&alt_target_clause.word_refs()) {
+            alt_target_clause = alt_target_clause.from(1).trimmed();
+        }
+        if choice_shapes::parse_alternate_damage_target_shape(&alt_target_clause.word_refs())
+            .is_none()
+        {
+            return Ok(None);
+        }
+        amount
+    };
 
     let alternative = EffectAst::subject_verb_damage(
         alt_amount,
@@ -520,10 +580,7 @@ pub(crate) fn parse_sentence_damage_unless_controller_has_source_deal_damage(
         ),
     );
     let unless = EffectAst::UnlessAction {
-        effects: vec![EffectAst::subject_verb_damage(
-            main_amount.clone(),
-            main_target.clone(),
-        )],
+        effects,
         alternative: vec![alternative],
         player: PlayerAst::ItsController,
     };
@@ -582,6 +639,12 @@ pub(crate) fn parse_sentence_damage_to_that_player_unless_enchanted_attacked(
 pub(crate) fn parse_sentence_unless_pays(
     clause: SubjectVerbPrimitiveClause<'_>,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    // This causative alternative is an action choice, not a payment. Keep it
+    // ahead of the broad unless parser even when a caller reaches this rule
+    // through a generic conditional-dispatch path.
+    if let Some(effects) = parse_sentence_damage_unless_controller_has_source_deal_damage(clause)? {
+        return Ok(Some(effects));
+    }
     let Some(shape) = choice_shapes::parse_unless_sentence_shape(clause.tokens()) else {
         return Ok(None);
     };

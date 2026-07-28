@@ -365,11 +365,38 @@ impl CopyTriggeredAbilities {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct CostReductionCharacteristicIntersection {
+    pub characteristic: crate::ObjectCharacteristic,
+    pub comparison: ObjectFilter,
+    /// Authored comparison-set surface, such as
+    /// "cards exiled with this creature".
+    pub comparison_surface: Option<String>,
+}
+
+impl CostReductionCharacteristicIntersection {
+    pub fn new(characteristic: crate::ObjectCharacteristic, comparison: ObjectFilter) -> Self {
+        Self {
+            characteristic,
+            comparison,
+            comparison_surface: None,
+        }
+    }
+
+    pub fn with_comparison_surface(mut self, surface: impl Into<String>) -> Self {
+        self.comparison_surface = Some(surface.into());
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct CostReduction {
     pub filter: ObjectFilter,
     pub amount: Value,
     pub condition: Option<Condition>,
     pub per_target: bool,
+    /// Count distinct values of one characteristic shared by the candidate
+    /// spell and the comparison set, then reduce by `amount` for each.
+    pub characteristic_intersection: Option<CostReductionCharacteristicIntersection>,
 }
 
 impl CostReduction {
@@ -379,6 +406,7 @@ impl CostReduction {
             amount,
             condition: None,
             per_target: false,
+            characteristic_intersection: None,
         }
     }
 
@@ -392,6 +420,14 @@ impl CostReduction {
 
     pub fn with_per_target(mut self) -> Self {
         self.per_target = true;
+        self
+    }
+
+    pub fn with_characteristic_intersection(
+        mut self,
+        intersection: CostReductionCharacteristicIntersection,
+    ) -> Self {
+        self.characteristic_intersection = Some(intersection);
         self
     }
 }

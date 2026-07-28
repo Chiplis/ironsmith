@@ -129,6 +129,21 @@ pub(crate) fn parse_become_target_subject_shape<'a>(
     BecomeTargetSubjectShape::Parsed(target_tokens)
 }
 
+pub(crate) fn become_subject_set_quantifier_surface(
+    target_tokens: &[OwnedLexToken],
+) -> Option<ironsmith_core::SetQuantifierSurface> {
+    let words = parser_token_word_refs(trim_lexed_commas(target_tokens));
+    match words.first().copied() {
+        Some("they" | "theyre" | "they're" | "them") => {
+            Some(ironsmith_core::SetQuantifierSurface::They)
+        }
+        Some("those") => Some(ironsmith_core::SetQuantifierSurface::Those),
+        Some("each") => Some(ironsmith_core::SetQuantifierSurface::Each),
+        Some("all") => Some(ironsmith_core::SetQuantifierSurface::All),
+        _ => None,
+    }
+}
+
 pub(crate) fn become_subject_has_life_total(tokens: &[OwnedLexToken]) -> bool {
     permission_shapes::contains_tokens(tokens, &["life"])
         && permission_shapes::contains_tokens(tokens, &["total"])
@@ -172,6 +187,11 @@ mod tests {
             parse_become_target_subject_shape(&tagged, &body),
             BecomeTargetSubjectShape::Tagged
         ));
+        assert_eq!(
+            become_subject_set_quantifier_surface(&lex("they")),
+            Some(ironsmith_core::SetQuantifierSurface::They)
+        );
+        assert_eq!(become_subject_set_quantifier_surface(&lex("it")), None);
 
         let duration = lex("until end of turn, target artifact");
         assert_eq!(

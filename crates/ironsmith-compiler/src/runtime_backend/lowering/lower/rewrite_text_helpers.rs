@@ -12,6 +12,10 @@ pub(crate) struct RewriteLoweredCardState {
     )>,
     pub(crate) pending_backups: Vec<PendingBackup>,
     pub(crate) pending_cipher: bool,
+    /// Last source line that contributed a top-level statement program.
+    /// Used only to retain authored line boundaries when adjacent spell
+    /// instructions are appended to one resolution program.
+    pub(crate) latest_statement_line_index: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -235,6 +239,25 @@ pub(crate) fn extract_previous_replacement_target(
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyEffect>() {
         return Some(destroy.spec.clone());
     }
+    if let Some(return_to_hand) = effect.downcast_ref::<crate::effects::ReturnToHandEffect>() {
+        return Some(return_to_hand.spec.clone());
+    }
+    if let Some(exile) = effect.downcast_ref::<crate::effects::ExileEffect>() {
+        return Some(exile.spec.clone());
+    }
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return Some(move_to_zone.target.clone());
+    }
+    if let Some(return_to_hand) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToHandEffect>()
+    {
+        return Some(return_to_hand.target.clone());
+    }
+    if let Some(return_to_battlefield) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        return Some(return_to_battlefield.target.clone());
+    }
     if let Some(destroy) = effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>() {
         #[cfg(not(feature = "serialization"))]
         {
@@ -316,6 +339,15 @@ pub(crate) fn rewrite_replacement_effect_target(
         && let crate::continuous::EffectTarget::Filter(replacement_filter) = &continuous.target
         && let Some(previous_filter) = replacement_choose_spec_object_filter(previous_target)
     {
+        // "Those ..." is an explicit reference to the entire set affected by
+        // the default branch. The noun parsed in the replacement clause only
+        // describes that antecedent; it must not become a fresh, broader
+        // runtime filter.
+        if continuous.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Those) {
+            let mut rewritten = continuous.clone();
+            rewritten.target = crate::continuous::EffectTarget::Filter(previous_filter.clone());
+            return Some(crate::effect::Effect::new(rewritten));
+        }
         // A separately lowered "those creatures get ... instead" branch can
         // lose the antecedent's controller while keeping the same typed set.
         // Restore only that exact provenance loss; an explicitly different
@@ -475,5 +507,40 @@ mod tests {
         ));
 
         assert!(uses_spell_only_functional_zones(&conditional));
+    }
+
+    #[test]
+    fn demonstrative_replacement_reuses_the_entire_previous_set() {
+        let previous_filter = ObjectFilter::creature().you_control().other();
+        let previous_target = ChooseSpec::Object(previous_filter.clone());
+        let replacement_filter = ObjectFilter::creature().match_tagged(
+            "triggering",
+            crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        let replacement = crate::effect::Effect::new(
+            crate::effects::ApplyContinuousEffect::new_runtime(
+                crate::continuous::EffectTarget::Filter(replacement_filter),
+                crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+                    power: crate::effect::Value::Fixed(2),
+                    toughness: crate::effect::Value::Fixed(0),
+                },
+                crate::effect::Until::EndOfTurn,
+            )
+            .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Those)),
+        );
+
+        let rewritten = rewrite_replacement_effect_target(&replacement, &previous_target)
+            .expect("explicit those-set should reuse its antecedent");
+        let continuous = rewritten
+            .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+            .expect("continuous replacement");
+        assert_eq!(
+            continuous.target,
+            crate::continuous::EffectTarget::Filter(previous_filter)
+        );
+        assert_eq!(
+            continuous.set_quantifier_surface,
+            Some(ironsmith_core::SetQuantifierSurface::Those)
+        );
     }
 }

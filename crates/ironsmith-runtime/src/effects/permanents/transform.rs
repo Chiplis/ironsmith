@@ -144,6 +144,18 @@ fn execute_transform_like_action(
         return Ok(EffectOutcome::resolved());
     }
 
+    if matches!(action, TransformLikeAction::Transform) {
+        let controller = game
+            .current_controller(target_id)
+            .ok_or(ExecutionError::ObjectNotFound(target_id))?;
+        game.execute_as_transforms_effect_programs(target_id, controller, ctx.decision_maker)
+            .map_err(|error| {
+                ExecutionError::InternalError(format!(
+                    "failed to execute an as-transforms replacement program: {error}"
+                ))
+            })?;
+    }
+
     Ok(EffectOutcome::resolved().with_event(action.event(target_id, ctx.provenance)))
 }
 
@@ -372,6 +384,60 @@ mod tests {
         assert_eq!(object.name, "Trail Scout");
         assert_eq!(object.subtypes, vec![Subtype::Human, Subtype::Scout]);
         assert_eq!(object.compiled_card_text.as_ref(), "Vigilance");
+    }
+
+    #[test]
+    #[cfg(ironsmith_runtime_parser_tests)]
+    fn as_transforms_program_executes_immediately_and_remembers_its_choice() {
+        let _guard = runtime_custom_registry_test_guard();
+        crate::cards::clear_runtime_custom_cards();
+
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let front = register_transform_pair(
+            CardId::from_raw(79_102),
+            "Mortal Rival",
+            CardId::from_raw(79_103),
+            "Transcendent Rival",
+            vec![CardType::Creature],
+            "Burning Chains — As this creature transforms into Transcendent Rival, choose an opponent.",
+        );
+        let source = game.create_object_from_definition(&front, alice, Zone::Battlefield);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let outcome = TransformEffect::source()
+            .execute(&mut game, &mut ctx)
+            .expect("transform and its immediate replacement program should execute");
+
+        assert_eq!(outcome.events.len(), 1);
+        assert_eq!(
+            game.chosen_player(source),
+            Some(bob),
+            "the choice made during transformation must persist on the permanent"
+        );
+        let object = game
+            .object(source)
+            .expect("transformed source permanent should still exist");
+        assert_eq!(
+            object.compiled_card_text.as_ref(),
+            "Burning Chains — As this creature transforms into Transcendent Rival, choose an opponent."
+        );
+        assert!(object.abilities.iter().any(|ability| {
+            matches!(
+                ability.kind,
+                crate::ability::AbilityKind::Static(ref static_ability)
+                    if matches!(
+                        static_ability.compiled_model().map(|model| &model.payload),
+                        Some(
+                            ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+                                transforms_into: Some(destination),
+                                ..
+                            }
+                        ) if destination == "Transcendent Rival"
+                    )
+            )
+        }));
     }
 
     #[test]

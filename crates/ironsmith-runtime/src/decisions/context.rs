@@ -1119,6 +1119,8 @@ pub struct CountersContext {
     pub target: ObjectId,
     /// Display name of the target.
     pub target_name: String,
+    /// Minimum total counters that must be removed.
+    pub min_total: u32,
     /// Maximum total counters that can be removed.
     pub max_total: u32,
     /// Available counters: (counter_type, count_available).
@@ -1132,6 +1134,7 @@ impl CountersContext {
         source: Option<ObjectId>,
         target: ObjectId,
         target_name: impl Into<String>,
+        min_total: u32,
         max_total: u32,
         available_counters: Vec<(CounterType, u32)>,
     ) -> Self {
@@ -1140,6 +1143,7 @@ impl CountersContext {
             source,
             target,
             target_name: target_name.into(),
+            min_total,
             max_total,
             available_counters,
         }

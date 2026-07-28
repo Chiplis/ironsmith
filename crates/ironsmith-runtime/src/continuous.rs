@@ -905,11 +905,16 @@ impl ContinuousEffectManager {
         removed
     }
 
-    /// Remove all effects with duration UntilEndOfTurn.
+    /// Remove all effects whose outer duration ends with the current turn.
     pub fn cleanup_end_of_turn(&mut self) {
         let effects = Arc::make_mut(&mut self.effects);
         let before = effects.len();
-        effects.retain(|e| !matches!(e.duration, Until::EndOfTurn));
+        effects.retain(|effect| {
+            !matches!(
+                effect.duration,
+                Until::EndOfTurn | Until::EndOfTurnOrAnyPlayerRolls { .. }
+            )
+        });
         if effects.len() != before {
             self.revision += 1;
         }
@@ -3252,6 +3257,8 @@ fn player_filter_source_independent(filter: &PlayerFilter) -> bool {
         | PlayerFilter::NotYou
         | PlayerFilter::Opponent
         | PlayerFilter::Teammate
+        | PlayerFilter::PlayerToYourLeft
+        | PlayerFilter::PlayerToYourRight
         | PlayerFilter::Active
         | PlayerFilter::Defending
         | PlayerFilter::Attacking
@@ -3293,6 +3300,21 @@ fn continuous_effect_duration_is_active(
         Until::YourNextTurn => {
             !(game.turn.turn_number > effect.expires_end_of_turn
                 && game.is_active_player(effect.controller))
+        }
+        Until::EndOfTurnOrAnyPlayerRolls {
+            result,
+            matching_rolls_observed,
+        } => {
+            game.turn.turn_number <= effect.expires_end_of_turn
+                && game
+                    .turn_store
+                    .turn_history
+                    .die_rolls_this_turn
+                    .values()
+                    .flatten()
+                    .filter(|rolled| **rolled == result)
+                    .count() as u32
+                    == matching_rolls_observed
         }
         Until::YourNextTurnEnd => game.turn.turn_number <= effect.expires_end_of_turn,
         Until::YourNextUpkeep => {
@@ -3730,6 +3752,9 @@ fn filter_matches_layered_fast(
     {
         return Some(false);
     }
+    if filter.foretold && !game.is_foretold(object.id) {
+        return Some(false);
+    }
     if filter.other
         && filter_ctx.target_objects.is_empty()
         && let Some(source_id) = filter_ctx.source
@@ -3792,6 +3817,7 @@ pub(crate) fn filter_requires_layered_clone_fallback_for_dependency(filter: &Obj
 
 fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
     filter.cast_by.is_some()
+        || !filter.characteristic_relations.is_empty()
         || filter.cast_this_turn
         || filter.first_spell_cast_each_turn
         || filter.single_graveyard
@@ -3816,6 +3842,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.modified
         || filter.attacking
         || filter.attacked_this_turn
+        || filter.didnt_attack_this_turn
         || filter
             .attacking_player_or_planeswalker_controlled_by
             .is_some()
@@ -3826,10 +3853,12 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.blocked
         || filter.blocked_by.is_some()
         || filter.blocked_by_source
+        || filter.blocked_or_was_blocked_by_this_turn.is_some()
         || filter.attached_to_object.is_some()
         || filter.unblocked
         || filter.in_combat_with_source
         || filter.entered_since_your_last_turn_ended
+        || filter.didnt_enter_battlefield_this_turn
         || filter.entered_battlefield_this_turn
         || filter.entered_battlefield_controller.is_some()
         || filter.entered_graveyard_this_turn
@@ -3849,6 +3878,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.distinct_names
         || filter.distinct_powers
         || filter.distinct_creature_types
+        || filter.one_per_card_type
         || !filter.any_of.is_empty()
         || filter.source_surface.is_some()
 }

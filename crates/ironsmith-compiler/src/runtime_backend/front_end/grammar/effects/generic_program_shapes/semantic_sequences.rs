@@ -1,5 +1,6 @@
 use super::{PermissionCaptureKind, PermissionCaptureRole, PermissionSequence, permission_shapes};
 use crate::runtime_backend::front_end::lexer::{LexedClause, OwnedLexToken};
+use crate::target::PlayerFilter;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ExileReferenceBinding {
@@ -64,20 +65,24 @@ pub(crate) fn parse_exile_reference_action_shape(
     .then_some(ExileReferenceBinding::SourceExiled)
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct AnyPlayerMaySacrificeShape<'a> {
+    pub(crate) players: PlayerFilter,
     pub(crate) action_tokens: &'a [OwnedLexToken],
 }
 
-/// "Any player may" offers are made in turn order beginning with the active
-/// player and stop after the first player who accepts the offer.
+/// "Any player/opponent may" offers are made in turn order beginning with the
+/// active player and stop after the first eligible player who accepts.
 pub(crate) fn parse_any_player_may_sacrifice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AnyPlayerMaySacrificeShape<'_>> {
     let atoms = [
         PermissionSequence::subject(
             "player",
-            PermissionCaptureKind::OneOfPhrase(&[&["any", "player", "may"]]),
+            PermissionCaptureKind::OneOfPhrase(&[
+                &["any", "player", "may"],
+                &["any", "opponent", "may"],
+            ]),
         ),
         PermissionSequence::action("sacrifice", PermissionCaptureKind::OneOf(&["sacrifice"])),
         PermissionSequence::object(
@@ -88,12 +93,21 @@ pub(crate) fn parse_any_player_may_sacrifice_shape(
     ];
     let clause = LexedClause::new(tokens).trimmed();
     let parsed = PermissionSequence::new(&atoms).parse_full(clause)?;
+    let player = parsed.capture_clause_by_role(PermissionCaptureRole::Subject, clause)?;
+    let players = match player.word_refs().as_slice() {
+        ["any", "player", "may"] => PlayerFilter::Any,
+        ["any", "opponent", "may"] => PlayerFilter::Opponent,
+        _ => return None,
+    };
     let objects = parsed.capture_clause_by_role(PermissionCaptureRole::Object, clause)?;
     if objects.word_refs().is_empty() {
         return None;
     }
     let action_tokens = clause.from_word(3)?.trimmed().tokens();
-    Some(AnyPlayerMaySacrificeShape { action_tokens })
+    Some(AnyPlayerMaySacrificeShape {
+        players,
+        action_tokens,
+    })
 }
 
 #[cfg(test)]
@@ -122,9 +136,21 @@ mod tests {
         let tokens =
             lex_line("Any player may sacrifice two creatures of their choice.", 0).unwrap();
         let shape = parse_any_player_may_sacrifice_shape(&tokens).unwrap();
+        assert_eq!(shape.players, PlayerFilter::Any);
         assert_eq!(
             TokenWordView::new(shape.action_tokens).to_word_refs(),
             ["sacrifice", "two", "creatures", "of", "their", "choice"]
+        );
+    }
+
+    #[test]
+    fn any_opponent_sacrifice_offer_returns_the_filtered_result_set() {
+        let tokens = lex_line("Any opponent may sacrifice a creature of their choice.", 0).unwrap();
+        let shape = parse_any_player_may_sacrifice_shape(&tokens).unwrap();
+        assert_eq!(shape.players, PlayerFilter::Opponent);
+        assert_eq!(
+            TokenWordView::new(shape.action_tokens).to_word_refs(),
+            ["sacrifice", "a", "creature", "of", "their", "choice"]
         );
     }
 }

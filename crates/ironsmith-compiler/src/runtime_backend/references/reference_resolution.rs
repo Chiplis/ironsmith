@@ -8,7 +8,7 @@ use crate::filter::TaggedOpbjectRelation;
 use crate::target::ChooseSpec;
 use crate::target::ObjectRef;
 use crate::{ObjectFilter, PlayerFilter, Value};
-use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction};
+use ironsmith_core::{EffectMetric, EffectMetricSource, PriorEffectAction, ValueSurfaceHint};
 
 #[cfg(test)]
 use crate::TagKey;
@@ -61,6 +61,13 @@ pub(crate) struct EffectReferenceResolutionConfig {
 struct EffectReferenceResolutionState {
     last_effect_id: Option<EffectId>,
     last_library_search_effect_id: Option<EffectId>,
+    /// Index of the object-set tag exported by a sacrifice activation cost.
+    ///
+    /// Cost effects execute before the resolution program and therefore do
+    /// not have a resolution-program EffectId. Their tagged snapshots are the
+    /// durable producer for phrases such as “the total power of the creatures
+    /// sacrificed this way.”
+    last_sacrifice_cost_tag_index: Option<u32>,
     allow_life_event_value: bool,
     bind_unbound_x_to_last_effect: bool,
 }
@@ -76,6 +83,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
             matches!(
                 trigger,
                 TriggerSpec::YouGainLife
+                    | TriggerSpec::YouGainLifeCausedBy(_)
                     | TriggerSpec::YouGainLifeDuringTurn(_)
                     | TriggerSpec::PlayerLosesLife(_)
                     | TriggerSpec::PlayersLoseLifeOneOrMore(_)
@@ -537,6 +545,19 @@ fn advance_effects_preserving_last_effect(
     Ok(())
 }
 
+fn advance_delayed_effects_preserving_antecedents(
+    effects: &[EffectAst],
+    id_gen: &mut IdGenContext,
+    frame: &mut ReferenceFrame,
+) -> Result<(), CardTextError> {
+    let saved_last_effect = frame.last_effect_id;
+    let saved_last_object = frame.last_object_tag.clone();
+    advance_reference_frames(effects, id_gen, frame)?;
+    frame.last_effect_id = saved_last_effect;
+    frame.last_object_tag = saved_last_object;
+    Ok(())
+}
+
 fn advance_effects_in_iterated_player_context(
     effects: &[EffectAst],
     id_gen: &mut IdGenContext,
@@ -580,7 +601,8 @@ fn advance_reference_frame_for_effect(
             advance_effects_in_iterated_player_context(nonwinner_effects, id_gen, frame, None)?;
         }
         EffectAst::Sequence { effects }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. } => {
             advance_reference_frames(effects, id_gen, frame)?;
         }
@@ -648,7 +670,35 @@ fn advance_reference_frame_for_effect(
                     }
                 }
                 SubjectVerbActionAst::DealDamageEqualToPower { source, target, .. } => {
-                    if matches!(target, TargetAst::Source(_)) {
+                    let source_is_explicit_object_target = {
+                        let refs = lowering_reference_frame(frame);
+                        let (spec, _) = resolve_target_spec_with_choices(source, &refs)?;
+                        spec.is_target() && choose_spec_targets_object(&spec)
+                    };
+                    if source_is_explicit_object_target {
+                        // Lowering always gives an explicitly targeted damage
+                        // source a stable tag so ExecuteWithSource, values such
+                        // as "its mana value", controller references, and
+                        // later pronouns can share one object. Reserve the same
+                        // tag during annotation even when no later sibling
+                        // effect requests ordinary auto-tagging (an unless
+                        // cost is owned by the enclosing node, not this inner
+                        // effect sequence).
+                        let previous_auto_tag = frame.auto_tag_object_targets;
+                        frame.auto_tag_object_targets = true;
+                        maybe_tag_target(source, frame, id_gen, "damage_source")?;
+                        frame.auto_tag_object_targets = previous_auto_tag;
+                        if source != target && !matches!(target, TargetAst::Source(_)) {
+                            // The recipient can still establish the player
+                            // antecedent ("to its controller unless that
+                            // player ...") without replacing the concrete
+                            // object antecedent established by the source.
+                            maybe_tag_target(target, frame, id_gen, "damaged")?;
+                            if target_is_any_damage_target(target) {
+                                frame.last_player_filter = Some(PlayerFilter::DamagedPlayer);
+                            }
+                        }
+                    } else if matches!(target, TargetAst::Source(_)) {
                         maybe_tag_target(source, frame, id_gen, "damage_source")?;
                     } else {
                         maybe_tag_target(target, frame, id_gen, "damaged")?;
@@ -901,6 +951,16 @@ fn advance_reference_frame_for_effect(
                     target,
                     one_of_referenced_set,
                 } => {
+                    if filter.source {
+                        // "Sacrifice this creature and it deals ..." keeps the
+                        // sacrificed source as the grammatical antecedent. A
+                        // source sacrifice does not create a runtime tag, but
+                        // it must still displace older object/player memory;
+                        // otherwise an unresolved `it` can widen to a card in
+                        // that player's hand.
+                        frame.source_object_antecedent = true;
+                        frame.last_object_tag = None;
+                    }
                     let sacrificed_tag = if target.is_some() {
                         Some(next_reference_tag(id_gen, "sacrificed"))
                     } else if filter.source {
@@ -1072,6 +1132,11 @@ fn advance_reference_frame_for_effect(
                 | SubjectVerbActionAst::CopySpellForEachTarget { target, player, .. } => {
                     let _ = target;
                     track_effect_player(player.clone(), frame, true, true)?;
+                    // Copying does not change the ordinary pronoun
+                    // antecedent: in “copy target spell, then return it,”
+                    // `it` is still the original targeted spell. Explicit
+                    // copy-result clauses use the dedicated copied-stack
+                    // object tag instead.
                 }
                 SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary { player, .. } => {
                     track_effect_player(*player, frame, true, true)?;
@@ -1095,10 +1160,13 @@ fn advance_reference_frame_for_effect(
                     track_effect_player(*player, frame, true, true)?;
                 }
                 SubjectVerbActionAst::RevealHand => {
-                    frame.last_object_tag = None;
-                    // Reveal-hand execution owns the canonical public tag.
-                    // Drop any older consult snapshot so it cannot shadow it.
-                    remember_public_revealed_alias(frame, None);
+                    // A whole-hand reveal produces an exact runtime object set.
+                    // Preserve that producer across sentence/conditional
+                    // boundaries so "choose ... from it" cannot widen into an
+                    // owner-only hand filter.
+                    let tag = crate::tag::REVEALED_THIS_WAY_TAG;
+                    frame.last_object_tag = Some(tag.to_string());
+                    remember_public_revealed_alias(frame, Some(tag));
                 }
                 SubjectVerbActionAst::RevealTop => {
                     let tag = next_reference_tag(id_gen, "revealed");
@@ -1146,7 +1214,12 @@ fn advance_reference_frame_for_effect(
                         tag.as_str().to_string()
                     });
                 }
-                SubjectVerbActionAst::MoveToZone { target, zone, .. } => {
+                SubjectVerbActionAst::MoveToZone {
+                    target,
+                    zone,
+                    attached_to,
+                    ..
+                } => {
                     let refs = lowering_reference_frame(frame);
                     let (spec, _) = resolve_target_spec_with_choices(target, &refs)?;
                     if *zone == crate::zone::Zone::Battlefield
@@ -1163,7 +1236,12 @@ fn advance_reference_frame_for_effect(
                     {
                         next_reference_tag(id_gen, "chosen");
                     }
-                    if frame.auto_tag_object_targets {
+                    // Move lowering tags returned objects whenever a following
+                    // attachment needs their exact identities, even if no
+                    // ordinary later pronoun enabled auto-tagging. Reserve the
+                    // same tag here so delayed "those objects" references and
+                    // the lowering ID stream stay aligned.
+                    if frame.auto_tag_object_targets || attached_to.is_some() {
                         let tag = if matches!(spec.base(), ChooseSpec::Source) {
                             Some(next_reference_tag(id_gen, "moved"))
                         } else {
@@ -1404,7 +1482,11 @@ fn advance_reference_frame_for_effect(
                     chosen_tag.as_str(),
                 )));
             }
-            frame.last_object_tag = Some(chosen_tag);
+            if tag.as_str()
+                != crate::runtime_backend::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG
+            {
+                frame.last_object_tag = Some(chosen_tag);
+            }
             frame.last_it_choice_is_set = tag.as_str() == IT_TAG;
             remember_chosen_object_alias(frame, tag.as_str());
         }
@@ -1467,15 +1549,18 @@ fn advance_reference_frame_for_effect(
             remember_chosen_object_alias(frame, tag.as_str());
         }
         EffectAst::MayCastMatchingSpellWithoutPayingManaCost { .. } => {}
-        EffectAst::May { effects }
-        | EffectAst::DelayedUntilNextEndStep { effects, .. }
+        EffectAst::May { effects } => {
+            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+        }
+        EffectAst::DelayedUntilNextEndStep { effects, .. }
+        | EffectAst::DelayedUntilNextCleanupStep { effects, .. }
         | EffectAst::DelayedUntilNextMainPhase { effects, .. }
         | EffectAst::DelayedUntilEndOfCombat { effects }
         | EffectAst::DelayedTriggerThisTurn { effects, .. }
         | EffectAst::DelayedTriggerForDuration { effects, .. }
         | EffectAst::DelayedWhenLastObjectDiesThisTurn { effects, .. }
         | EffectAst::DelayedWhenLastObjectLeavesBattlefield { effects, .. } => {
-            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            advance_delayed_effects_preserving_antecedents(&effects, id_gen, frame)?;
         }
         EffectAst::MayByPlayer { player, effects } => {
             // The named decider is also the actor for references inside the
@@ -1486,10 +1571,11 @@ fn advance_reference_frame_for_effect(
             advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
             track_effect_player(player.clone(), frame, true, true)?;
         }
-        EffectAst::DelayedUntilNextUpkeep { player, effects }
+        EffectAst::DelayedUntilNextUntapStep { player, effects }
+        | EffectAst::DelayedUntilNextUpkeep { player, effects }
         | EffectAst::DelayedUntilNextDrawStep { player, effects }
         | EffectAst::DelayedUntilEndStepOfExtraTurn { player, effects } => {
-            advance_effects_preserving_last_effect(&effects, id_gen, frame)?;
+            advance_delayed_effects_preserving_antecedents(&effects, id_gen, frame)?;
             track_effect_player(player.clone(), frame, true, true)?;
         }
         EffectAst::Conditional {
@@ -1695,6 +1781,11 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
     EffectReferenceResolutionState {
         last_effect_id: env.last_effect_id.clone().into_option(),
         last_library_search_effect_id: env.last_library_search_effect_id.clone().into_option(),
+        last_sacrifice_cost_tag_index: env.known_last_object_tag().and_then(|tag| {
+            tag.as_str()
+                .strip_prefix("sacrifice_cost_")
+                .and_then(|index| index.parse().ok())
+        }),
         allow_life_event_value: env.allow_life_event_value,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
     }
@@ -1937,7 +2028,8 @@ fn maybe_assign_effect_result_id(
                 | EffectAst::WhenResult { .. }
                 | EffectAst::ResolvedIfResult { .. }
                 | EffectAst::ResolvedWhenResult { .. }
-        );
+        )
+        && result_gate_accepts_producer(&effects[idx + 1], &effects[idx]);
     let next_is_if_result_with_opponent_doesnt = next_is_result_gate
         && idx + 2 < effects.len()
         && matches!(effects[idx + 2], EffectAst::ForEachOpponentDoesNot { .. });
@@ -1971,6 +2063,12 @@ fn maybe_assign_effect_result_id(
         && effects[idx + 1..]
             .iter()
             .any(effect_is_searched_library_gate);
+    let later_needs_typed_result = idx + 1 < effects.len()
+        && effects[idx + 1..].iter().any(|later| {
+            typed_result_gate_action(later).is_some_and(|action| {
+                effect_can_supply_object_memory_for_action(&effects[idx], action)
+            })
+        });
     let force_export_last_memory_effect_id = config.force_export_last_memory_effect_id
         && idx + 1 == effects.len()
         && effect_can_supply_prior_effect_memory(&effects[idx]);
@@ -1984,6 +2082,7 @@ fn maybe_assign_effect_result_id(
         || later_needs_event_derived_amount
         || next_needs_prior_effect_value
         || later_needs_library_search_result
+        || later_needs_typed_result
         || force_export_last_memory_effect_id)
     {
         return None;
@@ -1992,6 +2091,25 @@ fn maybe_assign_effect_result_id(
     let id = EffectId(id_gen.next_effect_id);
     id_gen.next_effect_id += 1;
     Some(id)
+}
+
+fn typed_result_gate_action(effect: &EffectAst) -> Option<PriorEffectAction> {
+    let predicate = match effect {
+        EffectAst::IfResult { predicate, .. }
+        | EffectAst::WhenResult { predicate, .. }
+        | EffectAst::ResolvedIfResult { predicate, .. }
+        | EffectAst::ResolvedWhenResult { predicate, .. } => predicate,
+        _ => return None,
+    };
+    match predicate {
+        IfResultPredicate::PriorEffectResult(surface) => Some(surface.action),
+        _ => None,
+    }
+}
+
+fn result_gate_accepts_producer(gate: &EffectAst, producer: &EffectAst) -> bool {
+    typed_result_gate_action(gate)
+        .is_none_or(|action| effect_can_supply_object_memory_for_action(producer, action))
 }
 
 /// A typed `... this way` gate followed by `otherwise` makes the gate itself,
@@ -2152,7 +2270,8 @@ fn effect_can_supply_prior_effect_memory(effect: &EffectAst) -> bool {
                 || otherwise.iter().any(effect_can_supply_prior_effect_memory)
         }
         EffectAst::Sequence { effects }
-        | EffectAst::SourceSentence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
         | EffectAst::Coordinated { effects, .. } => {
             effects.iter().any(effect_can_supply_prior_effect_memory)
         }
@@ -2246,6 +2365,16 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
                     action: SubjectVerbActionAst::TargetOnly { .. },
                     ..
                 })
+        );
+    }
+    if action == PriorEffectAction::Searched {
+        return matches!(
+            effect,
+            EffectAst::ChooseObjectsAcrossZones {
+                zones,
+                search_mode: Some(_),
+                ..
+            } if zones.contains(&crate::zone::Zone::Library)
         );
     }
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2481,6 +2610,9 @@ fn visit_filter_values(filter: &ObjectFilter, visit: &mut impl FnMut(&Value)) {
     if let Some(attached_to) = filter.attached_to_object.as_deref() {
         visit_filter_values(attached_to, visit);
     }
+    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_deref() {
+        visit_filter_values(combat_partner, visit);
+    }
     for child in &filter.any_of {
         visit_filter_values(child, visit);
     }
@@ -2669,6 +2801,7 @@ fn resolve_effect_references_in_effect(
             EffectReferenceResolutionState {
                 last_effect_id: Some(condition),
                 last_library_search_effect_id: state.last_library_search_effect_id,
+                last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
             },
@@ -2690,6 +2823,7 @@ fn resolve_effect_references_in_effect(
             EffectReferenceResolutionState {
                 last_effect_id: Some(condition),
                 last_library_search_effect_id: state.last_library_search_effect_id,
+                last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: true,
             },
@@ -2707,17 +2841,23 @@ fn resolve_effect_references_in_effect(
             toughness,
             target,
             duration,
+            includes_this_way,
         } = &subject_verb.action
         && let Some(id) = state.last_effect_id
     {
+        let basis = Value::EffectValue(id).with_surface_hint(if *includes_this_way {
+            ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
+        } else {
+            ironsmith_core::ValueSurfaceHint::CountersRemoved
+        });
+        let scale = |multiplier: i32| match multiplier {
+            0 => Value::Fixed(0),
+            1 => basis.clone(),
+            _ => Value::Scaled(Box::new(basis.clone()), multiplier),
+        };
         return Ok(EffectAst::subject_verb_pump(
-            if *power == 1 {
-                Value::EffectValue(id)
-                    .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay)
-            } else {
-                Value::Fixed(*power)
-            },
-            Value::Fixed(*toughness),
+            scale(*power),
+            scale(*toughness),
             target.clone(),
             duration.clone(),
             None,
@@ -2734,6 +2874,7 @@ fn resolve_effect_references_in_effect(
         let nested_state = EffectReferenceResolutionState {
             last_effect_id: state.last_effect_id,
             last_library_search_effect_id: state.last_library_search_effect_id,
+            last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
             allow_life_event_value: trigger_supports_event_amount(trigger),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
         };
@@ -3009,10 +3150,16 @@ fn resolve_effect_result_values_in_fields(
                 resolve_effect_result_values_in_total_cost(cost, state)?;
             }
             SubjectVerbActionAst::PayMana {
-                x_value: Some(value),
+                x_value,
+                x_maximum,
                 ..
             } => {
-                resolve_effect_result_value(value, state)?;
+                if let Some(value) = x_value {
+                    resolve_effect_result_value(value, state)?;
+                }
+                if let Some(value) = x_maximum {
+                    resolve_effect_result_value(value, state)?;
+                }
             }
             SubjectVerbActionAst::PreventDamageToTargetPutCounters {
                 amount: Some(amount),
@@ -3048,7 +3195,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
-            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
             | SubjectVerbActionAst::ChooseCardType { .. }
@@ -3074,6 +3221,7 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::RevealTagged { .. }
             | SubjectVerbActionAst::RevealCardsFromHand { .. }
             | SubjectVerbActionAst::AddManaColorsAmong { .. }
+            | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -3099,7 +3247,6 @@ fn resolve_effect_result_values_in_fields(
             | SubjectVerbActionAst::WinGame
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
-            | SubjectVerbActionAst::PayMana { x_value: None, .. }
             | SubjectVerbActionAst::DiscardHand
             | SubjectVerbActionAst::Detain { .. }
             | SubjectVerbActionAst::Goad { .. }
@@ -3396,8 +3543,19 @@ fn resolve_effect_result_value(
         | Value::HalfRoundedDown(inner) => {
             resolve_effect_result_value(inner, state)?;
         }
-        Value::SurfaceHinted { value, .. } => {
-            resolve_effect_result_value(value, state)?;
+        Value::SurfaceHinted { value, hints } => {
+            if hints.contains(&ValueSurfaceHint::PriorEffectResult)
+                && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
+            {
+                let id = state.last_effect_id.ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "prior-effect result requires a compatible prior effect".to_string(),
+                    )
+                })?;
+                **value = Value::EffectValue(id);
+            } else {
+                resolve_effect_result_value(value, state)?;
+            }
         }
         Value::PendingEffectMetric { source, metric } => {
             let id = state.last_effect_id.ok_or_else(|| {
@@ -3429,16 +3587,22 @@ fn resolve_effect_result_value(
             };
         }
         Value::PendingPriorEffectMetric(query) => {
-            let id = state.last_effect_id.ok_or_else(|| {
-                CardTextError::ParseError(
+            if let Some(id) = state.last_effect_id {
+                *value = Value::PriorEffectMetric {
+                    effect_id: id,
+                    query: query.clone(),
+                };
+            } else if let Some(index) = state.last_sacrifice_cost_tag_index
+                && let Some(tagged_metric) =
+                    resolve_sacrifice_cost_tagged_metric(query, index)
+            {
+                *value = tagged_metric;
+            } else {
+                return Err(CardTextError::ParseError(
                     "pending filtered effect metric requires a prior memory-producing effect"
                         .to_string(),
-                )
-            })?;
-            *value = Value::PriorEffectMetric {
-                effect_id: id,
-                query: query.clone(),
-            };
+                ));
+            }
         }
         Value::EventValue(EventValueSpec::Amount) if !state.allow_life_event_value => {
             let id = state.last_effect_id.ok_or_else(|| {
@@ -3492,6 +3656,43 @@ fn resolve_effect_result_value(
         _ => {}
     }
     Ok(())
+}
+
+fn resolve_sacrifice_cost_tagged_metric(
+    query: &ironsmith_core::PriorEffectMetricQuery,
+    tag_index: u32,
+) -> Option<Value> {
+    if query.action != Some(PriorEffectAction::Sacrificed)
+        || query.player.is_some()
+        || !matches!(
+            query.source,
+            EffectMetricSource::AffectedObjects | EffectMetricSource::ChosenObjects
+        )
+    {
+        return None;
+    }
+    let filter = query
+        .filter
+        .clone()
+        .unwrap_or_default()
+        .match_tagged(
+            crate::TagKey::from(format!("sacrifice_cost_{tag_index}")),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+    match query.metric {
+        EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount => {
+            Some(Value::Count(filter))
+        }
+        EffectMetric::TotalPower => Some(Value::TotalPower(filter)),
+        EffectMetric::TotalToughness => Some(Value::TotalToughness(filter)),
+        EffectMetric::TotalManaValue => Some(Value::TotalManaValue(filter)),
+        EffectMetric::GreatestPower => Some(Value::GreatestPower(filter)),
+        EffectMetric::GreatestToughness => Some(Value::GreatestToughness(filter)),
+        EffectMetric::GreatestManaValue => Some(Value::GreatestManaValue(filter)),
+        EffectMetric::ColorsAmong => Some(Value::ColorsAmong(filter)),
+        EffectMetric::CardTypesAmong => Some(Value::CardTypesAmong(filter)),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -3587,7 +3788,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
-            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
             | SubjectVerbActionAst::ChooseCardType { .. }
@@ -3596,6 +3797,7 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::ChooseLandType { .. }
             | SubjectVerbActionAst::NoteLifeTotal
             | SubjectVerbActionAst::AddManaColorsAmong { .. }
+            | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -3618,9 +3820,18 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
             | SubjectVerbActionAst::PayAnyEnergy { .. }
             | SubjectVerbActionAst::PayAnyLife { .. }
             | SubjectVerbActionAst::DiscardHand => 0,
-            SubjectVerbActionAst::PayMana { x_value, .. } => x_value
-                .as_mut()
-                .map_or(0, |value| bind_unresolved_it_in_value(value, seed_tag)),
+            SubjectVerbActionAst::PayMana {
+                x_value,
+                x_maximum,
+                ..
+            } => {
+                x_value
+                    .as_mut()
+                    .map_or(0, |value| bind_unresolved_it_in_value(value, seed_tag))
+                    + x_maximum
+                        .as_mut()
+                        .map_or(0, |value| bind_unresolved_it_in_value(value, seed_tag))
+            }
             SubjectVerbActionAst::LoseLife { amount }
             | SubjectVerbActionAst::PayLife { amount }
             | SubjectVerbActionAst::GainLife { amount }
@@ -4109,8 +4320,18 @@ fn bind_unresolved_it_in_effect_fields(effect: &mut EffectAst, seed_tag: &TagKey
                         .map(|value| bind_unresolved_it_in_value(value, seed_tag))
                         .unwrap_or(0)
             }
-            SubjectVerbActionAst::ExileUntilSourceLeaves { target, .. }
-            | SubjectVerbActionAst::TargetOnly { target, .. }
+            SubjectVerbActionAst::ExileUntilSourceLeaves {
+                target,
+                leave_watcher,
+                ..
+            } => {
+                bind_unresolved_it_in_target(target, seed_tag)
+                    + leave_watcher
+                        .as_mut()
+                        .map(|watcher| bind_unresolved_it_in_target(watcher, seed_tag))
+                        .unwrap_or(0)
+            }
+            SubjectVerbActionAst::TargetOnly { target, .. }
             | SubjectVerbActionAst::Pump { target, .. }
             | SubjectVerbActionAst::SetBasePowerToughness { target, .. }
             | SubjectVerbActionAst::BecomeBasePtCreature { target, .. }
@@ -4570,6 +4791,7 @@ fn bind_unresolved_it_in_restriction(
         | Restriction::BeCountered(filter)
         | Restriction::Transform(filter)
         | Restriction::PhaseOut(filter)
+        | Restriction::PhaseIn(filter)
         | Restriction::AttackOrBlock(filter)
         | Restriction::ActivateAbilitiesOf(filter)
         | Restriction::ActivateTapAbilitiesOf(filter)
@@ -4598,6 +4820,40 @@ mod tests {
     use crate::cards::TextSpan;
     use crate::cards::builders::IfResultPredicate;
     use crate::*;
+    use ironsmith_core::{
+        PriorEffectResultActor, PriorEffectResultQuantifier, PriorEffectResultSurface,
+    };
+
+    #[test]
+    fn binding_tagged_past_control_preserves_lki_mode_and_authored_noun() {
+        let mut filter = ObjectFilter::default();
+        filter.set_demonstrative_antecedent_surface(Some(
+            ironsmith_core::DemonstrativeAntecedentSurface::Permanent,
+        ));
+        let mut predicate = PredicateAst::PlayerTaggedObjectMatches {
+            player: PlayerAst::You,
+            tag: TagKey::from(IT_TAG),
+            filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
+        };
+
+        assert_eq!(
+            bind_unresolved_it_in_predicate(&mut predicate, &TagKey::from("returned_0")),
+            1
+        );
+        let PredicateAst::PlayerTaggedObjectMatches {
+            tag, filter, mode, ..
+        } = predicate
+        else {
+            unreachable!("the binder must preserve the predicate variant");
+        };
+        assert_eq!(tag.as_str(), "returned_0");
+        assert_eq!(mode, ironsmith_core::TaggedObjectMatchMode::LastKnown);
+        assert_eq!(
+            filter.demonstrative_antecedent_surface(),
+            Some(ironsmith_core::DemonstrativeAntecedentSurface::Permanent)
+        );
+    }
 
     #[test]
     fn binding_reports_typed_unresolved_it_counts() {
@@ -4679,6 +4935,69 @@ mod tests {
             }
             other => panic!("expected resolved if-result, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn typed_reveal_result_skips_intervening_cleanup_for_its_condition_id() {
+        let all_tag = TagKey::from("__revealed");
+        let match_tag = TagKey::from("__matched");
+        let reveal = EffectAst::subject_verb_consult_top_of_library(
+            PlayerAst::You,
+            LibraryConsultModeAst::Reveal,
+            ObjectFilter::creature(),
+            LibraryConsultStopRuleAst::FirstMatch,
+            all_tag.clone(),
+            match_tag.clone(),
+        );
+        let move_match = EffectAst::subject_verb_move_to_zone(
+            TargetAst::Tagged(match_tag.clone(), None),
+            Zone::Hand,
+            false,
+            ReturnControllerAst::Preserve,
+            false,
+            None,
+        );
+        let cleanup = EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+            all_tag,
+            Some(match_tag),
+            LibraryBottomOrderAst::Random,
+            PlayerAst::You,
+        );
+        let surface = PriorEffectResultSurface::new(
+            PriorEffectAction::Revealed,
+            ObjectFilter::creature(),
+            PriorEffectResultActor::You,
+            PriorEffectResultQuantifier::One,
+        );
+        let gate = EffectAst::WhenResult {
+            predicate: IfResultPredicate::PriorEffectResult(surface),
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            )],
+        };
+
+        let annotated = annotate_effect_sequence(
+            &[reveal, move_match, cleanup, gate],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate reveal result across cleanup");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        assert_eq!(annotated.effects[1].assigned_effect_id, None);
+        assert_eq!(annotated.effects[2].assigned_effect_id, None);
+        assert!(matches!(
+            annotated.effects[3].effect,
+            EffectAst::ResolvedWhenResult {
+                condition: EffectId(0),
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -4796,6 +5115,61 @@ mod tests {
     }
 
     #[test]
+    fn explicit_prior_result_binds_to_roll_even_when_trigger_has_an_ambient_amount() {
+        let result_count = Value::EventValue(EventValueSpec::Amount)
+            .with_surface_hint(ValueSurfaceHint::PriorEffectResult)
+            .with_surface_hint(ValueSurfaceHint::EqualTo);
+        let effects = vec![
+            EffectAst::subject_verb_roll_die(PlayerAst::You, 20),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: result_count,
+                },
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig {
+                allow_life_event_value: true,
+                ..Default::default()
+            },
+            IdGenContext::default(),
+        )
+        .expect("annotate explicit prior-result draw");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        match &annotated.effects[1].effect {
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Draw { count },
+                ..
+            }) => {
+                assert_eq!(count.unhinted(), &Value::EffectValue(EffectId(0)));
+                assert!(count.has_surface_hint(ValueSurfaceHint::PriorEffectResult));
+                assert!(count.has_surface_hint(ValueSurfaceHint::EqualTo));
+            }
+            other => panic!("expected draw effect, got {other:?}"),
+        }
+
+        let mut ambient = Value::EventValue(EventValueSpec::Amount);
+        resolve_effect_result_value(
+            &mut ambient,
+            EffectReferenceResolutionState {
+                last_effect_id: Some(EffectId(7)),
+                last_library_search_effect_id: None,
+                last_sacrifice_cost_tag_index: None,
+                allow_life_event_value: true,
+                bind_unbound_x_to_last_effect: false,
+            },
+        )
+        .expect("ambient trigger amount remains valid");
+        assert_eq!(ambient, Value::EventValue(EventValueSpec::Amount));
+    }
+
+    #[test]
     fn annotates_followup_effect_with_explicit_object_reference_frame() {
         let effects = vec![
             EffectAst::subject_verb_destroy(TargetAst::Object(
@@ -4823,6 +5197,93 @@ mod tests {
         assert_eq!(
             annotated.effects[1].in_env.last_object_tag,
             ModelRefState::Known(TagKey::from("destroyed_0"))
+        );
+    }
+
+    #[test]
+    fn reveal_hand_exports_its_typed_result_set_to_a_from_it_choice() {
+        let mut revealed_nonland = ObjectFilter::tagged(TagKey::from(IT_TAG));
+        revealed_nonland.zone = Some(Zone::Hand);
+        revealed_nonland.excluded_card_types.push(CardType::Land);
+        let effects = vec![
+            EffectAst::subject_verb_reveal_hand(PlayerAst::Target),
+            EffectAst::ChooseObjects {
+                filter: revealed_nonland,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: TagKey::from(IT_TAG),
+            },
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate reveal-hand result-set choice");
+
+        assert_eq!(
+            annotated.effects[1].in_env.last_object_tag,
+            ModelRefState::Known(TagKey::from(crate::tag::REVEALED_THIS_WAY_TAG))
+        );
+        let EffectAst::ChooseObjects { filter, .. } = &annotated.effects[1].effect else {
+            panic!(
+                "the followup should remain a typed object choice: {:#?}",
+                annotated.effects[1].effect
+            );
+        };
+        assert!(
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    && constraint.tag.as_str() == crate::tag::REVEALED_THIS_WAY_TAG
+            }),
+            "the followup choice must consume the reveal's exact object set: {filter:#?}"
+        );
+    }
+
+    #[test]
+    fn source_sacrifice_establishes_source_for_followup_it_damage() {
+        let effects = vec![
+            EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::source(), 1, None),
+            EffectAst::subject_verb_damage_with_source(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                Value::Fixed(6),
+                TargetAst::Player(PlayerFilter::You, None),
+            ),
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports {
+                last_player_filter: Some(PlayerFilter::You),
+                ..Default::default()
+            },
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("annotate source-sacrifice follow-up");
+
+        assert!(
+            annotated.effects[1].in_env.source_object_antecedent,
+            "the source sacrifice must establish the source before resolving `it`"
+        );
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
+            ..
+        }) = &annotated.effects[1].effect
+        else {
+            panic!(
+                "expected an explicit-source damage follow-up: {:#?}",
+                annotated.effects[1].effect
+            );
+        };
+        let (resolved, _) = resolve_target_spec_with_choices(source, &annotated.effects[1].in_env)
+            .expect("resolve follow-up damage source");
+        assert!(
+            matches!(resolved.base(), ChooseSpec::Source),
+            "`it` must resolve to the sacrificed source, not a player-owned hand card: {resolved:#?}"
         );
     }
 
@@ -5186,6 +5647,53 @@ mod tests {
         }
     }
 
+    #[test]
+    fn typed_searched_result_accepts_optional_multi_zone_search_producer() {
+        let search = EffectAst::MayByPlayer {
+            player: PlayerAst::You,
+            effects: vec![EffectAst::ChooseObjectsAcrossZones {
+                filter: ObjectFilter::default(),
+                count: ChoiceCount::up_to(1),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: TagKey::from("searched_0"),
+                zones: vec![Zone::Library, Zone::Graveyard],
+                search_mode: Some(crate::effect::SearchSelectionMode::Optional),
+            }],
+        };
+        let searched = PriorEffectResultSurface::new(
+            PriorEffectAction::Searched,
+            ObjectFilter::default(),
+            PriorEffectResultActor::You,
+            PriorEffectResultQuantifier::ActionOnly,
+        );
+        let gate = EffectAst::IfResult {
+            predicate: IfResultPredicate::PriorEffectResult(searched),
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::ShuffleLibrary,
+            )],
+        };
+
+        let annotated = annotate_effect_sequence(
+            &[search, gate],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("typed searched result should bind the optional multi-zone search");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        assert!(matches!(
+            annotated.effects[1].effect,
+            EffectAst::ResolvedIfResult {
+                condition: EffectId(0),
+                ..
+            }
+        ));
+    }
+
     fn event_amount_subject_verb_library_search() -> EffectAst {
         EffectAst::subject_verb_search_library(
             ObjectFilter::land(),
@@ -5390,6 +5898,46 @@ mod tests {
         )
         .expect_err("destroy producer must not satisfy a tapped metric");
         assert!(error.to_string().contains("prior memory-producing effect"));
+    }
+
+    #[test]
+    fn sacrifice_activation_cost_metric_uses_the_imported_snapshot_set() {
+        let total_power = Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                EffectMetricSource::AffectedObjects,
+                EffectMetric::TotalPower,
+            )
+            .with_filter(ObjectFilter::creature())
+            .with_action(PriorEffectAction::Sacrificed),
+        );
+        let consumer = EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw { count: total_power },
+        );
+
+        let annotated = annotate_effect_sequence(
+            &[consumer],
+            &ModelReferenceImports::with_last_object_tag("sacrifice_cost_3"),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("an activation cost's tagged snapshots should satisfy the aggregate");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) = &annotated.effects[0].effect
+        else {
+            panic!("expected draw consumer");
+        };
+        let Value::TotalPower(filter) = count else {
+            panic!("expected a tagged total-power value, got {count:#?}");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "sacrifice_cost_3"
+        }));
     }
 
     #[test]

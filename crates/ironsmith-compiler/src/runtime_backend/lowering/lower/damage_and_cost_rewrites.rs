@@ -1,4 +1,78 @@
 use super::*;
+
+fn static_ability_uses_persistent_chosen_player(
+    ability: &crate::static_abilities::StaticAbility,
+) -> bool {
+    let filter_uses_chosen_player = |filter: &ObjectFilter| {
+        filter.attacking_player_or_planeswalker_controlled_by
+            == Some(crate::target::PlayerFilter::ChosenPlayer)
+    };
+
+    match &ability.payload {
+        crate::static_abilities::StaticAbilityPayload::Anthem(anthem) => anthem
+            .filter
+            .as_ref()
+            .is_some_and(filter_uses_chosen_player),
+        crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+            filter_uses_chosen_player(&grant.filter)
+        }
+        crate::static_abilities::StaticAbilityPayload::Conditional { ability, .. } => {
+            static_ability_uses_persistent_chosen_player(ability)
+        }
+        _ => false,
+    }
+}
+
+fn remember_single_cross_ability_player_choice(builder: &mut CardDefinitionBuilder) {
+    let has_persistent_reference = builder.abilities.iter().any(|ability| {
+        matches!(
+            &ability.kind,
+            AbilityKind::Static(static_ability)
+                if static_ability_uses_persistent_chosen_player(static_ability)
+        )
+    });
+    if !has_persistent_reference {
+        return;
+    }
+
+    let choices = builder
+        .abilities
+        .iter()
+        .enumerate()
+        .flat_map(|(ability_index, ability)| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return Vec::new().into_iter();
+            };
+            triggered
+                .effects
+                .segments
+                .iter()
+                .enumerate()
+                .flat_map(move |(segment_index, segment)| {
+                    segment.default_effects.iter().enumerate().filter_map(
+                        move |(effect_index, effect)| {
+                            effect
+                                .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+                                .map(|choice| {
+                                    (ability_index, segment_index, effect_index, choice.clone())
+                                })
+                        },
+                    )
+                })
+                .collect::<Vec<_>>()
+                .into_iter()
+        })
+        .collect::<Vec<_>>();
+    let [(ability_index, segment_index, effect_index, choice)] = choices.as_slice() else {
+        return;
+    };
+    let AbilityKind::Triggered(triggered) = &mut builder.abilities[*ability_index].kind else {
+        return;
+    };
+    triggered.effects.segments[*segment_index].default_effects[*effect_index] =
+        crate::effect::Effect::new(choice.clone().remember_as_chosen_player());
+}
+
 pub(crate) fn lower_normalized_card_ast_with_facts(
     ast: NormalizedCardAst,
 ) -> Result<LoweredCardDocument, CardTextError> {
@@ -75,6 +149,7 @@ pub(crate) fn lower_normalized_card_ast_with_facts(
         )?;
     }
 
+    remember_single_cross_ability_player_choice(&mut builder);
     builder = rewrite_finalize_lowered_card(builder, &mut state);
     if let Some(overload_ast) = overload_ast {
         let overloaded = lower_normalized_card_ast_with_facts(overload_ast)?;

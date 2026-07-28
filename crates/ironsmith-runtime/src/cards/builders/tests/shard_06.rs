@@ -1804,7 +1804,7 @@ pub(super) fn search_reveal_conditional_that_card_preserves_condition_without_ta
         "expected compact search/reveal/shuffle text, got {rendered}"
     );
     assert!(
-        rendered.contains("if you control an assassin, put that card into your hand"),
+        rendered.contains("put that card into your hand if you control an assassin"),
         "expected the condition to govern the hand move, got {rendered}"
     );
     assert!(
@@ -1814,6 +1814,32 @@ pub(super) fn search_reveal_conditional_that_card_preserves_condition_without_ta
     assert!(
         !rendered.contains("tagged object") && !rendered.contains("tags it as"),
         "expected compiled text to hide internal tag plumbing, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn repeated_payment_count_drives_counters_and_dynamic_phase_out_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Repeated Payment Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Flash\n\
+             Flying\n\
+             When this creature enters, you may pay {1}{U} any number of times. \
+             When you pay this cost one or more times, put that many +1/+1 counters on this creature, then up to that many other target artifacts, creatures, and/or enchantments phase out.",
+        )
+        .expect("parse repeated-payment adversary-like trigger");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered.contains(
+            "you may pay {1}{u} any number of times. when you pay this cost one or more times, \
+             put that many +1/+1 counters on this creature, then up to that many other target \
+             artifacts, creatures, and/or enchantments phase out"
+        ),
+        "expected counted repeat provenance to preserve the oracle surface, got {rendered}"
     );
 }
 

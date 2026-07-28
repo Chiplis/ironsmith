@@ -372,6 +372,7 @@ mod tests {
                     crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
                     vec![Effect::add_mana(vec![ManaSymbol::Green])],
                 )],
+                starts_new_source_line: false,
             }]);
         let ability = Ability::activated(
             crate::cost::TotalCost::from_costs(vec![crate::costs::Cost::tap()]),
@@ -436,6 +437,7 @@ mod tests {
                     crate::effect::Condition::YouControl(crate::filter::ObjectFilter::creature()),
                     vec![Effect::add_mana(vec![ManaSymbol::Blue])],
                 )],
+                starts_new_source_line: false,
             }]);
 
         assert!(effects_could_add_mana(&game, source, alice, &program,));

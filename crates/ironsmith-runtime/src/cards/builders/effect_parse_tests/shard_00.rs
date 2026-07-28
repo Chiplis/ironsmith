@@ -2,6 +2,7 @@
 use super::shard_01::*;
 use super::shard_02::*;
 use super::*;
+use crate::ConditionExpr;
 
 #[test]
 fn parse_yawgmoths_will_from_text() {
@@ -1210,6 +1211,163 @@ fn parse_exchange_life_total_with_toughness_from_text() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+fn parse_named_source_power_exchange_from_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Evra, Halcyon Witness")
+        .card_types(vec![CardType::Creature])
+        .parse_text("Lifelink\n{4}: Exchange your life total with Evra's power.")
+        .expect("parse named source power exchange");
+
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected exchange activated ability");
+    let exchange = activated
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<ExchangeValuesEffect>())
+        .expect("ability should lower to ExchangeValuesEffect");
+
+    assert!(matches!(
+        exchange.left,
+        crate::effects::ExchangeValueOperand::LifeTotal(PlayerFilter::You)
+    ));
+    assert!(matches!(
+        &exchange.right,
+        crate::effects::ExchangeValueOperand::Power(target)
+            if matches!(target.base(), ChooseSpec::Source)
+    ));
+    assert_eq!(exchange.duration, crate::effect::Until::Forever);
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Exchange your life total with Evra's power."),
+        "named life/stat exchange should use 'with' and omit a forever suffix, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_not_your_turn_source_type_identity_from_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Midnight Mangler")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Vehicle])
+        .parse_text("During turns other than yours, this Vehicle is an artifact creature.\nCrew 2")
+        .expect("parse conditioned source type identity");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("SetCardTypes"), "{debug}");
+    assert!(
+        debug.contains("Not(") && debug.contains("YourTurn"),
+        "{debug}"
+    );
+    assert!(
+        !debug.contains("other: true"),
+        "turn-prefix words must not be recovered as an 'other Vehicles' subject: {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("Other Vehicles are artifact creatures"),
+        "conditioned source identity must not render as a global Vehicle rule: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_kicked_source_spell_keyword_from_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Molten Disaster")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Kicker {R}\nIf this spell was kicked, it has split second.\nMolten Disaster deals X damage to each creature without flying and each player.",
+        )
+        .expect("parse kicked source spell keyword");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("SplitSecond"), "{debug}");
+    assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
+    assert!(
+        !debug.contains("other: true"),
+        "if-prefix words must not be recovered as a spell filter: {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("Spells have split second"),
+        "conditional source keyword must not render as a global grant: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_contracted_source_animation_with_keyword_from_text() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Idol of False Gods")
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Eldrazi])
+        .parse_text(
+            "As long as this artifact has eight or more +1/+1 counters on it, it's a 0/0 creature in addition to its other types and it has annihilator 2.",
+        )
+        .expect("parse contracted conditioned source animation");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("AddCardTypes"), "{debug}");
+    assert!(debug.contains("SetBasePowerToughness"), "{debug}");
+    assert!(debug.contains("Annihilator"), "{debug}");
+    assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+    assert!(
+        !debug.contains("other: true"),
+        "contracted source pronoun must not become an 'other' filter: {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("other creatures with power and toughness 0/0"),
+        "source animation must not render as a global creature grant: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_conditional_copy_exception_stays_in_trigger_resolution() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Vesuvan Drifter")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of each combat, you may reveal the top card of your library. If you reveal a creature card this way, this creature becomes a copy of that card until end of turn, except it has flying.",
+        )
+        .expect("parse conditional copy exception trigger");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("CopyOf"), "{debug}");
+    assert!(debug.contains("Flying"), "{debug}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("All cards have flying"),
+        "copy exception must not split into a global static tail: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_carried_copy_exception_stays_in_trigger_resolution() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Kaya, Spirits' Justice")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "Whenever one or more creatures you control and/or creature cards in your graveyard are put into exile, you may choose a creature card from among them. Until end of turn, target token you control becomes a copy of it, except it has flying.",
+        )
+        .expect("parse carried copy exception trigger");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(debug.contains("CopyOf"), "{debug}");
+    assert!(debug.contains("Flying"), "{debug}");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        !rendered.contains("All permanents have flying"),
+        "copy exception must not split into a global static tail: {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 fn parse_exchange_power_with_target_power_until_end_of_combat_from_text() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Serene Master")
             .parse_text("Exchange its power and the power of target creature it's blocking until end of combat.")
@@ -1227,6 +1385,13 @@ fn parse_exchange_power_with_target_power_until_end_of_combat_from_text() {
     assert!(
         debug.contains("EndOfCombat"),
         "expected end-of-combat duration, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Exchange this creature's power and the power of target creature it's blocking until end of combat."
+        ),
+        "stat/stat exchange should retain 'and' plus a spaced finite duration, got {rendered}"
     );
 }
 
@@ -2395,12 +2560,10 @@ fn parse_played_by_your_opponents_enter_tapped_preserves_controller_filter() {
         .parse_text("Creatures played by your opponents enter tapped.")
         .expect("should parse played-by-opponents enters tapped line");
 
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" | ")
-        .to_ascii_lowercase();
-    assert!(
-        rendered.contains("opponent"),
-        "expected rendered line to preserve opponents controller filter, got {rendered}"
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered, "Creatures played by your opponents enter tapped",
+        "expected rendered line to preserve the typed played-by-opponents surface"
     );
 }
 
@@ -3116,8 +3279,9 @@ fn parse_add_any_combination_with_unbound_x_without_definition_fails() {
 #[test]
 fn parse_add_any_combination_with_named_self_where_tail_keeps_source_power() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Vivi Ornitier")
+            .card_types(vec![CardType::Creature])
             .parse_text(
-                "{0}: Add X mana in any combination of {U} and/or {R}, where X is Vivi Ornitier's power.",
+                "{0}: Add X mana in any combination of {U} and/or {R}, where X is Vivi Ornitier's power. Activate only during your turn and only once each turn.",
             )
             .expect("named self-reference where-tail should parse");
 
@@ -3142,6 +3306,65 @@ fn parse_add_any_combination_with_named_self_where_tail_keeps_source_power() {
         .expect("expected restricted colors");
     assert!(colors.contains(&crate::color::Color::Blue));
     assert!(colors.contains(&crate::color::Color::Red));
+    assert_eq!(mana_ability.timing, ActivationTiming::OncePerTurn);
+    assert_eq!(
+        mana_ability.activation_condition,
+        Some(ConditionExpr::ActivationTiming(
+            ActivationTiming::DuringYourTurn
+        ))
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_conditional_quoted_token_rule_stays_inside_trigger_resolution() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Digsite Engineer Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you cast an artifact spell, you may pay {2}. If you do, create a 0/0 colorless Construct artifact creature token with \"This token gets +1/+1 for each artifact you control.\"",
+        )
+        .expect("conditional quoted token creation should parse");
+
+    assert_eq!(
+        def.abilities.len(),
+        1,
+        "the token's quoted rule must not become a second source static ability: {:#?}",
+        def.abilities
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("If you do, create a 0/0 colorless Construct artifact creature token")
+            && rendered.contains("\"This token gets +1/+1 for each artifact you control.\""),
+        "expected the conditional create and quoted token rule to remain together, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_source_spell_cast_trigger_stays_as_stack_ability() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Malicious Affliction Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Morbid — When you cast this spell, if a creature died this turn, you may copy this spell and may choose a new target for the copy.\nDestroy target nonblack creature.",
+        )
+        .expect("source spell-cast trigger should parse as a stack ability");
+
+    let abilities_debug = format!("{:#?}", def.abilities);
+    assert!(
+        abilities_debug.contains("YouCastThisSpellTrigger")
+            && abilities_debug.contains("CopySpellEffect")
+            && abilities_debug.contains("ChooseNewTargetsEffect"),
+        "expected an executable source-cast copy trigger, got {abilities_debug}"
+    );
+    assert!(
+        abilities_debug.contains("Died"),
+        "the morbid intervening condition must remain structural: {abilities_debug}"
+    );
+    let spell_debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        spell_debug.contains("DestroyEffect"),
+        "the ordinary spell resolution must remain separate: {spell_debug}"
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -3333,5 +3556,40 @@ fn parse_spell_cost_increase_per_target_beyond_first_line() {
         has_target_cost_increase,
         "expected additional-target cost increase ability, got {:?}",
         def.abilities
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_spell_tax_except_during_controller_turn_preserves_semantics_and_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Defense Grid Variant")
+        .parse_text("Each spell costs {3} more to cast except during its controller's turn.")
+        .expect("controller-turn spell tax should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(
+        rendered,
+        "Each spell costs {3} more to cast except during its controller's turn"
+    );
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("Excluding") && debug.contains("excluded: Active"),
+        "expected the tax to exclude spells cast by the active player, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_destroy_target_blocked_creature_keeps_targeting_legality() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Smite Variant")
+        .parse_text("Destroy target blocked creature.")
+        .expect("blocked-creature removal should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join("\n");
+    assert_eq!(rendered, "Destroy target blocked creature");
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("blocked: true") && !debug.contains("TargetIsBlocked"),
+        "expected blocked to remain part of target legality, got {debug}"
     );
 }

@@ -14,6 +14,7 @@ const ADD_MANA_ONE_THAT_COLOR_PREFIX: &[&str] = &["one", "mana", "of", "that", "
 const MANA_OF_CHOSEN_COLOR_SUFFIXES: &[&[&str]] = &[&["mana", "of", "the"], &["mana", "of"]];
 const FOR_EACH_COLOR_AMONG_PHRASE: &[&str] = &["for", "each", "color", "among"];
 const ADD_ONE_MANA_OF_THAT_COLOR_PHRASE: &[&str] = &["add", "one", "mana", "of", "that", "color"];
+const ONE_MANA_OF_ANY_COLOR_AMONG_PHRASE: &[&str] = &["one", "mana", "of", "any", "color", "among"];
 const ANY_COMBINATION_OF_PHRASE: &[&str] = &["any", "combination", "of"];
 const CHOSEN_COLOR_PHRASE: &[&str] = &["chosen", "color"];
 const FOR_EACH_PREFIX: &[&str] = &["for", "each"];
@@ -82,6 +83,11 @@ pub(crate) enum FixedManaTailKind {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ColorsAmongSpan<'a> {
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct AnyColorAmongSpan<'a> {
     pub(crate) filter_tokens: &'a [OwnedLexToken],
 }
 
@@ -189,6 +195,20 @@ pub(crate) fn parse_colors_among_span(tokens: &[OwnedLexToken]) -> Option<Colors
     Some(ColorsAmongSpan {
         filter_tokens: trim_commas(&tokens[among_token + 1..add_token]),
     })
+}
+
+pub(crate) fn parse_any_color_among_span(
+    tokens: &[OwnedLexToken],
+) -> Option<AnyColorAmongSpan<'_>> {
+    let view = TokenWordView::new(tokens);
+    let words = view.word_refs();
+    if !phrase_is_prefix(&words, ONE_MANA_OF_ANY_COLOR_AMONG_PHRASE) {
+        return None;
+    }
+    let filter_word = ONE_MANA_OF_ANY_COLOR_AMONG_PHRASE.len();
+    let filter_token = view.token_start_indices().get(filter_word).copied()?;
+    let filter_tokens = trim_commas(&tokens[filter_token..]);
+    (!filter_tokens.is_empty()).then_some(AnyColorAmongSpan { filter_tokens })
 }
 
 pub(crate) fn parse_or_mana_color_choices(tokens: &[OwnedLexToken]) -> Option<Vec<Color>> {
@@ -577,5 +597,22 @@ mod tests {
         let output = parse_fixed_mana_output(&fixed);
         assert_eq!(output.mana, vec![ManaSymbol::White, ManaSymbol::Blue]);
         assert_eq!(output.first_for_each_token, Some(2));
+    }
+
+    #[test]
+    fn any_color_among_parser_returns_the_dynamic_filter_span() {
+        let tokens = lex_line(
+            "one mana of any color among legendary permanents you control",
+            0,
+        )
+        .unwrap();
+        let span = parse_any_color_among_span(&tokens).expect("expected any-color-among span");
+        assert_eq!(
+            TokenWordView::new(span.filter_tokens).word_refs(),
+            ["legendary", "permanents", "you", "control"]
+        );
+
+        let unrestricted = lex_line("one mana of any color", 0).unwrap();
+        assert!(parse_any_color_among_span(&unrestricted).is_none());
     }
 }

@@ -1,6 +1,7 @@
 pub use ironsmith_core::{
-    AlternativeCastKind, CounterConstraint, FilterComparison as Comparison, ObjectFilter,
-    ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef, ParityRequirement,
-    PlayerFilter, PowerToughnessRelation, PtReference, SourcePowerRelation, StackObjectKind,
-    TaggedObjectConstraint, TaggedOpbjectRelation,
+    AlternativeCastKind, CounterConstraint, ExcludedNameSurface, FilterComparison as Comparison,
+    GraveyardEntryHistorySurface, ObjectFilter, ObjectFilterUnionConnective,
+    ObjectFilterUnionSurface, ObjectRef, ParityRequirement, PlayerFilter, PowerToughnessRelation,
+    PtReference, SourcePowerRelation, StackObjectKind, TaggedObjectConstraint,
+    TaggedOpbjectRelation,
 };

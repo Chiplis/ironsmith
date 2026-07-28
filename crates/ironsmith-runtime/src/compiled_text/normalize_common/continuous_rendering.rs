@@ -276,7 +276,10 @@ pub(crate) fn describe_dynamic_runtime_pt_scale_action(
     toughness: &Value,
     until_text: &str,
 ) -> Option<String> {
-    if plural_target {
+    if plural_target
+        || power.has_surface_hint(ValueSurfaceHint::WhereXIs)
+        || toughness.has_surface_hint(ValueSurfaceHint::WhereXIs)
+    {
         return None;
     }
 
@@ -326,6 +329,12 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
     toughness: &Value,
     until: &Until,
 ) -> Option<String> {
+    if let Some(text) =
+        describe_unhinted_matching_count_pt_for_each(target, plural_target, power, toughness, until)
+    {
+        return Some(text);
+    }
+
     if matches!(until, Until::Forever) {
         return None;
     }
@@ -334,19 +343,33 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
         return None;
     }
 
-    if let Some(text) =
-        describe_unhinted_matching_count_pt_for_each(target, plural_target, power, toughness, until)
-    {
-        return Some(text);
-    }
-
     if matches!(toughness.unhinted(), Value::Fixed(0))
         && let Some(multiplier) = counters_removed_this_way_multiplier(power)
         && multiplier > 0
     {
+        fn contains_surface_hint(value: &Value, hint: ValueSurfaceHint) -> bool {
+            if value.has_surface_hint(hint) {
+                return true;
+            }
+            match value {
+                Value::SurfaceHinted { value, .. }
+                | Value::Scaled(value, _)
+                | Value::DividedRoundedDown(value, _)
+                | Value::HalfRoundedDown(value) => contains_surface_hint(value, hint),
+                Value::Add(left, right) | Value::Min(left, right) => {
+                    contains_surface_hint(left, hint) || contains_surface_hint(right, hint)
+                }
+                _ => false,
+            }
+        }
         let gets = if plural_target { "get" } else { "gets" };
+        let result_reference = if contains_surface_hint(power, ValueSurfaceHint::CountersRemoved) {
+            "counter removed"
+        } else {
+            "counter removed this way"
+        };
         return Some(format!(
-            "For each counter removed this way, {target} {gets} +{multiplier}/+0 {until_text}"
+            "For each {result_reference}, {target} {gets} +{multiplier}/+0 {until_text}"
         ));
     }
 
@@ -430,27 +453,73 @@ pub(crate) fn describe_dynamic_runtime_pt_with_where_x(
     if matches!((power, toughness), (Value::XTimes(-1), Value::XTimes(-1))) {
         return Some(format!("{target} {gets} -X/-X {until_text}"));
     }
-    if let (Value::Scaled(power_inner, -1), Value::Scaled(toughness_inner, -1)) = (power, toughness)
-        && power_inner == toughness_inner
+    let negative_where_x_basis = |value: &Value| -> Option<String> {
+        let Value::Scaled(inner, multiplier) = value.unhinted() else {
+            return None;
+        };
+        if *multiplier >= 0 {
+            return None;
+        }
+        let magnitude = multiplier.checked_abs()?;
+        if magnitude == 0 {
+            return None;
+        }
+        let basis = if magnitude == 1 {
+            inner.as_ref().clone()
+        } else {
+            Value::Scaled(inner.clone(), magnitude)
+        };
+        Some(
+            describe_explicit_where_x_surface(&basis)
+                .map(str::to_string)
+                .unwrap_or_else(|| describe_value_with_enclosing_target(&basis, target_spec)),
+        )
+    };
+    let negative_power_basis = negative_where_x_basis(power);
+    let negative_toughness_basis = negative_where_x_basis(toughness);
+    if let (Some(power_basis), Some(toughness_basis)) =
+        (&negative_power_basis, &negative_toughness_basis)
+        && power_basis == toughness_basis
     {
-        let basis = describe_explicit_where_x_surface(power_inner)
-            .map(str::to_string)
-            .unwrap_or_else(|| describe_value(power_inner));
         return Some(format!(
-            "{target} {gets} -X/-X {until_text}, where X is {basis}"
+            "{target} {gets} -X/-X {until_text}, where X is {power_basis}"
+        ));
+    }
+    if let Some(power_basis) = &negative_power_basis
+        && matches!(toughness.unhinted(), Value::Fixed(0))
+    {
+        return Some(format!(
+            "{target} {gets} -X/-0 {until_text}, where X is {power_basis}"
+        ));
+    }
+    if let Some(toughness_basis) = &negative_toughness_basis
+        && matches!(power.unhinted(), Value::Fixed(0))
+    {
+        return Some(format!(
+            "{target} {gets} -0/-X {until_text}, where X is {toughness_basis}"
+        ));
+    }
+    if let Some(power_basis) = &negative_power_basis
+        && negative_toughness_basis.is_none()
+        && toughness_is_variable
+        && toughness_text == power_basis.as_str()
+    {
+        return Some(format!(
+            "{target} {gets} -X/+X {until_text}, where X is {power_basis}"
+        ));
+    }
+    if let Some(toughness_basis) = &negative_toughness_basis
+        && negative_power_basis.is_none()
+        && power_is_variable
+        && power_text == toughness_basis.as_str()
+    {
+        return Some(format!(
+            "{target} {gets} +X/-X {until_text}, where X is {toughness_basis}"
         ));
     }
     if power_is_variable && toughness_is_variable && power_text == toughness_text {
         return Some(format!(
             "{target} {gets} +X/+X {until_text}, where X is {power_text}"
-        ));
-    }
-    if power_is_variable
-        && let Value::Scaled(toughness_inner, -1) = toughness
-        && toughness_inner.as_ref() == power
-    {
-        return Some(format!(
-            "{target} {gets} +X/-X {until_text}, where X is {power_text}"
         ));
     }
     if power_is_variable && matches!(toughness, Value::Fixed(0)) {
@@ -477,14 +546,18 @@ fn describe_unhinted_matching_count_pt_for_each(
     let (Value::Count(power_filter), Value::Count(toughness_filter)) = (power, toughness) else {
         return None;
     };
-    if power_filter != toughness_filter || !matches!(until, Until::EndOfTurn) {
+    if power_filter != toughness_filter {
         return None;
     }
     let each_text = describe_create_for_each_count(power)?;
     let gets = if plural_target { "get" } else { "gets" };
-    Some(format!(
-        "Until end of turn, {target} {gets} +1/+1 for each {each_text}"
-    ))
+    match until {
+        Until::Forever => Some(format!("{target} {gets} +1/+1 for each {each_text}")),
+        Until::EndOfTurn => Some(format!(
+            "Until end of turn, {target} {gets} +1/+1 for each {each_text}"
+        )),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -516,6 +589,17 @@ mod unhinted_count_pt_for_each_tests {
                 "Until end of turn, this creature gets +1/+1 for each permanent card in your graveyard"
             )
         );
+        assert_eq!(
+            describe_unhinted_matching_count_pt_for_each(
+                "Umbris",
+                false,
+                &count,
+                &count,
+                &Until::Forever,
+            )
+            .as_deref(),
+            Some("Umbris gets +1/+1 for each permanent card in your graveyard")
+        );
     }
 
     #[test]
@@ -546,6 +630,74 @@ mod unhinted_count_pt_for_each_tests {
                 .is_none()
             );
         }
+    }
+
+    #[test]
+    fn negative_dynamic_axes_keep_the_sign_out_of_the_where_x_basis() {
+        let count = Value::Count(
+            ObjectFilter::artifact()
+                .in_zone(Zone::Battlefield)
+                .controlled_by(PlayerFilter::You),
+        )
+        .with_surface_hint(ValueSurfaceHint::WhereXIs);
+        let negative_count = Value::Scaled(Box::new(count.clone()), -1);
+
+        assert_eq!(
+            describe_dynamic_runtime_pt_with_where_x(
+                "target creature",
+                false,
+                None,
+                &negative_count,
+                &Value::Fixed(0),
+                &Until::EndOfTurn,
+            )
+            .as_deref(),
+            Some(
+                "target creature gets -X/-0 until end of turn, where X is the number of artifacts you control"
+            )
+        );
+        assert_eq!(
+            describe_dynamic_runtime_pt_with_where_x(
+                "target creature",
+                false,
+                None,
+                &Value::Fixed(0),
+                &negative_count,
+                &Until::EndOfTurn,
+            )
+            .as_deref(),
+            Some(
+                "target creature gets -0/-X until end of turn, where X is the number of artifacts you control"
+            )
+        );
+        assert_eq!(
+            describe_dynamic_runtime_pt_with_where_x(
+                "target creature",
+                false,
+                None,
+                &count,
+                &negative_count,
+                &Until::EndOfTurn,
+            )
+            .as_deref(),
+            Some(
+                "target creature gets +X/-X until end of turn, where X is the number of artifacts you control"
+            )
+        );
+        assert_eq!(
+            describe_dynamic_runtime_pt_with_where_x(
+                "target creature",
+                false,
+                None,
+                &negative_count,
+                &count,
+                &Until::EndOfTurn,
+            )
+            .as_deref(),
+            Some(
+                "target creature gets -X/+X until end of turn, where X is the number of artifacts you control"
+            )
+        );
     }
 }
 
@@ -712,6 +864,33 @@ pub(crate) fn describe_put_counter_phrase(count: &Value, counter_type: CounterTy
     }
 }
 
+fn describe_those_continuous_noun(filter: &ObjectFilter) -> String {
+    // The antecedent filter may retain controller, "other", or other
+    // qualifiers from the default branch. A demonstrative set repeats only
+    // its grammatical head ("those creatures"), not the full selector.
+    if filter.card_types.contains(&CardType::Creature) {
+        return "creatures".to_string();
+    }
+    if filter.card_types.contains(&CardType::Land) {
+        return "lands".to_string();
+    }
+    if let [card_type] = filter.card_types.as_slice() {
+        return card_type.plural_name().to_ascii_lowercase();
+    }
+    if filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && let [subtype] = filter.subtypes.as_slice()
+    {
+        return pluralize_noun_phrase(&subtype.to_string());
+    }
+    if filter.zone.is_some_and(|zone| zone != Zone::Battlefield) || filter.has_explicit_card_noun()
+    {
+        "cards".to_string()
+    } else {
+        "permanents".to_string()
+    }
+}
+
 pub(crate) fn describe_apply_continuous_target(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> (String, bool) {
@@ -811,6 +990,18 @@ pub(crate) fn describe_apply_continuous_target(
                 };
                 target = format!("Each {description}");
                 plural = false;
+            }
+        }
+        Some(ironsmith_core::SetQuantifierSurface::They) => {
+            target = "They".to_string();
+            plural = true;
+        }
+        Some(ironsmith_core::SetQuantifierSurface::Those) => {
+            if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
+                target = format!("Those {}", describe_those_continuous_noun(filter));
+                plural = true;
+            } else if plural {
+                target = format!("Those {target}");
             }
         }
         None => {}
@@ -915,6 +1106,35 @@ pub(crate) fn granted_ability_self_subject_for_apply_continuous(
             effect.source_reference_surface.as_ref()
     {
         return text;
+    }
+    if let Some(crate::target::SourceReferenceSurface::ThisPermanentType(text)) =
+        effect.source_reference_surface.as_ref()
+    {
+        let lower = text.to_ascii_lowercase();
+        if lower.ends_with(" creature") {
+            return "this creature";
+        }
+        if lower.ends_with(" artifact") {
+            return "this artifact";
+        }
+        if lower.ends_with(" enchantment") {
+            return "this enchantment";
+        }
+        if lower.ends_with(" land") {
+            return "this land";
+        }
+        if lower.ends_with(" planeswalker") {
+            return "this planeswalker";
+        }
+        if lower.ends_with(" battle") {
+            return "this battle";
+        }
+        if lower.ends_with(" token") {
+            return "this token";
+        }
+        if lower.ends_with(" permanent") {
+            return "this permanent";
+        }
     }
     if let Some(spec) = &effect.target_spec {
         return granted_ability_self_subject_for_choose_spec(spec);
@@ -1212,10 +1432,7 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
             clauses.push(format!("{verb} {descriptor}"));
         }
         crate::continuous::Modification::AddSubtypes(subtypes) => {
-            let mut words: Vec<String> = subtypes
-                .iter()
-                .map(|subtype| subtype.to_string().to_ascii_lowercase())
-                .collect();
+            let mut words: Vec<String> = subtypes.iter().map(ToString::to_string).collect();
             if words.is_empty() {
                 return;
             }
@@ -1308,6 +1525,18 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     "{add_ability_verb} {}",
                     describe_inline_ability_with_self_subject(inline, self_subject)
                 ));
+            } else if ability.id() == crate::static_abilities::StaticAbilityId::RuleRestriction {
+                // A modeled rule restriction is a complete nested rules
+                // sentence, rather than an inline keyword phrase. When
+                // another object gains it, retain the quoted ability surface.
+                let mut ability_text = capitalize_first(ability.display().trim());
+                if !ability_text.ends_with('.')
+                    && !ability_text.ends_with('!')
+                    && !ability_text.ends_with('?')
+                {
+                    ability_text.push('.');
+                }
+                clauses.push(format!("{add_ability_verb} \"{ability_text}\""));
             } else {
                 clauses.push(format!(
                     "{add_ability_verb} {}",
@@ -1400,6 +1629,12 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 if matches!(effect.until, Until::EndOfTurn) {
                     ability_text =
                         normalize_temporary_granted_trigger_surface(ability_text, ability);
+                }
+                if !ability_text.ends_with('.')
+                    && !ability_text.ends_with('!')
+                    && !ability_text.ends_with('?')
+                {
+                    ability_text.push('.');
                 }
                 let grant_verb = add_ability_verb;
                 clauses.push(format!("{grant_verb} \"{ability_text}\""));
@@ -1565,11 +1800,26 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                 .iter()
                 .map(|clause| clause[shared_gain_prefix.len()..].to_string())
                 .collect::<Vec<_>>();
-            return vec![format!("{shared_gain_prefix}{}", join_with_and(&gained))];
+            return vec![format!(
+                "{shared_gain_prefix}{}",
+                join_granted_ability_list(&gained)
+            )];
         }
     }
 
     clauses
+}
+
+pub(super) fn join_granted_ability_list(parts: &[String]) -> String {
+    // Oracle puts a list separator inside the closing quotation mark and
+    // replaces a nonfinal quoted ability's terminal period with that comma.
+    // Start with the ordinary list join so keyword and unquoted ability
+    // items retain the usual conjunction behavior, then relocate only the
+    // separators immediately following a complete quoted rules sentence.
+    join_with_and(parts)
+        .replace(".\", and ", ",\" and ")
+        .replace(".\" and ", ",\" and ")
+        .replace(".\", ", ",\" ")
 }
 
 pub(crate) fn describe_becomes_aura_enchantment_clause(
@@ -1896,20 +2146,90 @@ fn fixed_pt_indefinite_article(power: &Value) -> Option<&'static str> {
     Some(if starts_with_vowel_sound { "an" } else { "a" })
 }
 
+fn exact_tagged_filter_has_prefix(filter: &ObjectFilter, prefix: &str) -> bool {
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return false;
+    };
+    if constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+        || !constraint.tag.as_str().starts_with(prefix)
+    {
+        return false;
+    }
+    let mut remainder = filter.clone();
+    remainder.tagged_constraints.clear();
+    remainder == ObjectFilter::default()
+}
+
+fn choose_spec_is_returned_result_set(spec: &ChooseSpec) -> bool {
+    match spec.base() {
+        ChooseSpec::Tagged(tag) => tag.as_str().starts_with("returned_"),
+        ChooseSpec::Object(filter) => {
+            if filter.any_of.is_empty() {
+                return exact_tagged_filter_has_prefix(filter, "returned_");
+            }
+            let mut remainder = filter.clone();
+            let branches = std::mem::take(&mut remainder.any_of);
+            remainder == ObjectFilter::default()
+                && branches
+                    .iter()
+                    .all(|branch| exact_tagged_filter_has_prefix(branch, "returned_"))
+        }
+        _ => false,
+    }
+}
+
+fn object_result_tag(tag: &TagKey) -> bool {
+    ["returned_", "moved_", "created_"]
+        .iter()
+        .any(|prefix| tag.as_str().starts_with(prefix))
+}
+
+fn exact_object_result_filter(filter: &ObjectFilter) -> bool {
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return false;
+    };
+    if constraint.relation != TaggedOpbjectRelation::IsTaggedObject
+        || !object_result_tag(&constraint.tag)
+    {
+        return false;
+    }
+    let mut remainder = filter.clone();
+    remainder.tagged_constraints.clear();
+    remainder == ObjectFilter::default()
+}
+
+fn choose_spec_is_object_result_set(spec: &ChooseSpec) -> bool {
+    match spec.base() {
+        ChooseSpec::Tagged(tag) => object_result_tag(tag),
+        ChooseSpec::Object(filter) => {
+            if filter.any_of.is_empty() {
+                return exact_object_result_filter(filter);
+            }
+            let mut remainder = filter.clone();
+            let branches = std::mem::take(&mut remainder.any_of);
+            remainder == ObjectFilter::default() && branches.iter().all(exact_object_result_filter)
+        }
+        _ => false,
+    }
+}
+
 pub(crate) fn describe_returned_object_animation_effect(
     effect: &crate::effects::ApplyContinuousEffect,
     returned_collection_is_plural: bool,
 ) -> Option<String> {
-    let target = if returned_collection_is_plural {
-        "each of them"
-    } else {
-        "it"
-    };
+    let (target, plural_target) =
+        if effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::They) {
+            ("They", true)
+        } else if returned_collection_is_plural {
+            ("each of them", false)
+        } else {
+            ("it", false)
+        };
     describe_apply_continuous_animation_effect_with_returned_subject(
         effect,
         target,
-        false,
-        Some((target, false)),
+        plural_target,
+        Some((target, plural_target)),
     )
 }
 
@@ -2000,12 +2320,19 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         }
     }
 
+    let authored_plural_result_animation = effect.until == Until::Forever
+        && effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::They)
+        && effect
+            .target_spec
+            .as_ref()
+            .is_some_and(choose_spec_is_object_result_set);
     let returned_permanent_animation = returned_subject.is_some()
+        || authored_plural_result_animation
         || (effect.until == Until::Forever
-            && matches!(
-                effect.target_spec.as_ref(),
-                Some(ChooseSpec::Tagged(tag)) if tag.as_str().starts_with("returned_")
-            ));
+            && effect
+                .target_spec
+                .as_ref()
+                .is_some_and(choose_spec_is_returned_result_set));
     let returned_artifact_creature_animation = returned_permanent_animation
         && !replaces_other_types
         && effect.type_retention_surface.is_none()
@@ -2038,6 +2365,8 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         (target_text.to_string(), plural_target)
     } else if let Some(target_text) = plural_non_target_land_animation_target(effect) {
         (target_text, true)
+    } else if effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::They) {
+        ("They".to_string(), true)
     } else if returned_artifact_creature_animation {
         ("they".to_string(), true)
     } else if returned_permanent_animation {
@@ -2055,14 +2384,7 @@ fn describe_apply_continuous_animation_effect_with_returned_subject(
         descriptor.push(
             subtypes
                 .iter()
-                .map(|subtype| {
-                    let subtype = subtype.to_string();
-                    if returned_permanent_animation {
-                        subtype
-                    } else {
-                        subtype.to_ascii_lowercase()
-                    }
-                })
+                .map(std::string::ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(" "),
         );
@@ -2369,12 +2691,61 @@ fn is_source_controlled_and_tapped_duration(until: &Until) -> bool {
             .any(|predicate| matches!(predicate, Predicate::ObjectTapped(ObjectRef::Source)))
 }
 
+fn describe_triggered_creature_entry_replacement_grant(
+    effect: &crate::effects::ApplyContinuousEffect,
+) -> Option<String> {
+    if effect.condition.is_some()
+        || !effect.additional_modifications.is_empty()
+        || !effect.runtime_modifications.is_empty()
+        || !matches!(effect.until, Until::Forever)
+        || !effect
+            .target_spec
+            .as_ref()
+            .is_some_and(|spec| choose_spec_references_tag(spec, "triggering"))
+    {
+        return None;
+    }
+    let Some(crate::continuous::Modification::AddAbility(ability)) = &effect.modification else {
+        return None;
+    };
+    let model = ability.compiled_model()?;
+    let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+        filter, ..
+    } = &model.payload
+    else {
+        return None;
+    };
+    let is_that_creature_filter = filter.card_types.as_slice() == [CardType::Creature]
+        && filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == "__it__"
+                && matches!(
+                    constraint.relation,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                )
+        });
+    if !is_that_creature_filter {
+        return None;
+    }
+
+    let display = ability.display();
+    let (_, tail) = display
+        .split_once(" enter with ")
+        .or_else(|| display.split_once(" enters with "))?;
+    let tail = tail
+        .replace(" on them", " on it")
+        .replace(" to cast this spell", " to cast it");
+    Some(format!("That creature enters with {tail}"))
+}
+
 pub(crate) fn describe_apply_continuous_effect(
     effect: &crate::effects::ApplyContinuousEffect,
 ) -> Option<String> {
     let (mut target, plural_target) = describe_apply_continuous_target(effect);
     if let Some(surface) = source_generic_ability_grant_target_surface(effect) {
         target = surface;
+    }
+    if let Some(text) = describe_triggered_creature_entry_replacement_grant(effect) {
+        return Some(text);
     }
     if effect.condition.is_none()
         && effect.additional_modifications.is_empty()
@@ -2630,8 +3001,14 @@ pub(crate) fn describe_apply_continuous_effect(
     {
         text.push_str(&where_clause);
     }
-    let text = if effect.set_quantifier_surface == Some(ironsmith_core::SetQuantifierSurface::Each)
-    {
+    let text = if matches!(
+        effect.set_quantifier_surface,
+        Some(
+            ironsmith_core::SetQuantifierSurface::Each
+                | ironsmith_core::SetQuantifierSurface::They
+                | ironsmith_core::SetQuantifierSurface::Those
+        )
+    ) {
         text
     } else {
         normalize_each_other_continuous_subject(text)
@@ -3355,6 +3732,9 @@ pub(crate) fn describe_until(until: &Until) -> String {
     match until {
         Until::Forever => "forever".to_string(),
         Until::EndOfTurn => "until end of turn".to_string(),
+        Until::EndOfTurnOrAnyPlayerRolls { result, .. } => format!(
+            "until end of turn, or until any player rolls a {result}, whichever comes first"
+        ),
         Until::YourNextTurn => "until your next turn".to_string(),
         Until::YourNextTurnEnd => "until the end of your next turn".to_string(),
         Until::YourNextUpkeep => "until your next upkeep".to_string(),
@@ -3818,6 +4198,22 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 )
             }
         }
+        crate::effect::Restriction::NoMaximumHandSize(filter) => {
+            let subject = describe_player_set_filter(filter);
+            let verb = if matches!(
+                filter,
+                PlayerFilter::You
+                    | PlayerFilter::Opponent
+                    | PlayerFilter::Any
+                    | PlayerFilter::NotYou
+                    | PlayerFilter::Teammate
+            ) {
+                "have"
+            } else {
+                "has"
+            };
+            format!("{subject} {verb} no maximum hand size")
+        }
         crate::effect::Restriction::GainLife(filter) => {
             format!("{} can't gain life", describe_player_set_filter(filter))
         }
@@ -4006,6 +4402,11 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 planeswalker_controller
             )
         }
+        crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(generic_mana) => {
+            format!(
+                "Creatures can't attack you or planeswalkers you control unless their controller pays {{{generic_mana}}} for each of those creatures"
+            )
+        }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())
         }
@@ -4116,6 +4517,9 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
         crate::effect::Restriction::PhaseOut(filter) => {
             format!("{} can't phase out", filter.description())
         }
+        crate::effect::Restriction::PhaseIn(filter) => {
+            format!("{} can't phase in", filter.description())
+        }
         crate::effect::Restriction::AttackOrBlock(filter) => {
             format!("{} can't attack or block", filter.description())
         }
@@ -4175,7 +4579,9 @@ pub(crate) fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .unwrap_or(description.as_str());
     // A bare type noun reads as a class: "hexproof from planeswalkers".
     if filter.card_types.len() == 1
-        && filter.card_types[0].to_string().eq_ignore_ascii_case(fragment)
+        && filter.card_types[0]
+            .to_string()
+            .eq_ignore_ascii_case(fragment)
     {
         return format!("{fragment}s");
     }
@@ -4464,9 +4870,49 @@ fn describe_prior_effect_result_surface(
             && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject)
     });
     filter.set_prior_effect_action_surface(None);
-    let base = strip_leading_article(&filter.description())
-        .trim()
-        .to_string();
+    let base = if filter.stack_kind == Some(crate::filter::StackObjectKind::Spell)
+        && filter.zone.is_none()
+        && filter.card_types.is_empty()
+        && filter.all_card_types.is_empty()
+        && filter.excluded_card_types.is_empty()
+    {
+        "spell".to_string()
+    } else {
+        strip_leading_article(&filter.description())
+            .trim()
+            .to_string()
+    };
+    if let Some(required_count) = surface.required_count {
+        let count = small_number_word(required_count).unwrap_or_else(|| required_count.to_string());
+        let mut object = format!(
+            "{count} {}",
+            pluralize_relative_object_phrase(base.as_str())
+        );
+        if let Some(characteristic) = surface.shared_characteristic {
+            object.push_str(&format!(" that share {}", characteristic.sharing_phrase()));
+        }
+        if surface.actor != crate::effect::PriorEffectResultActor::Passive {
+            let actor = match surface.actor {
+                crate::effect::PriorEffectResultActor::You => "you",
+                crate::effect::PriorEffectResultActor::ThatPlayer => "that player",
+                crate::effect::PriorEffectResultActor::It => "it",
+                crate::effect::PriorEffectResultActor::Passive => unreachable!(),
+            };
+            return format!(
+                "{actor} {} {object} this way",
+                describe_prior_result_active_action(surface.action)
+            );
+        }
+        let copula = if surface.action == crate::effect::PriorEffectAction::PutOntoBattlefield {
+            "are"
+        } else {
+            "were"
+        };
+        return format!(
+            "{object} {copula} {} this way",
+            describe_prior_effect_action(surface.action)
+        );
+    }
     let object = match surface.quantifier {
         crate::effect::PriorEffectResultQuantifier::One => with_indefinite_article(&base),
         crate::effect::PriorEffectResultQuantifier::OneOrMore => {
@@ -4754,12 +5200,67 @@ pub(crate) fn describe_player_relative_condition(condition: &Condition) -> Optio
                 "had {count_text} or more lands enter the battlefield under their control this turn"
             ))
         }
+        Condition::ValueComparison {
+            left: Value::Count(controlled),
+            operator,
+            right: Value::Fixed(count),
+        } if controlled.controller == Some(PlayerFilter::IteratedPlayer)
+            && controlled.zone.is_none_or(|zone| zone == Zone::Battlefield) =>
+        {
+            let mut object_filter = controlled.clone();
+            object_filter.controller = None;
+            object_filter.zone = None;
+            let objects = pluralize_relative_object_phrase(strip_indefinite_article(
+                &object_filter.description(),
+            ));
+            let count_text = small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
+            let threshold = match operator {
+                crate::effect::ValueComparisonOperator::GreaterThan => {
+                    format!("more than {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::GreaterThanOrEqual => {
+                    format!("{count_text} or more")
+                }
+                crate::effect::ValueComparisonOperator::Equal => {
+                    format!("exactly {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::LessThan => {
+                    format!("fewer than {count_text}")
+                }
+                crate::effect::ValueComparisonOperator::LessThanOrEqual => {
+                    format!("{count_text} or fewer")
+                }
+                crate::effect::ValueComparisonOperator::NotEqual => return None,
+            };
+            Some(format!("controls {threshold} {objects}"))
+        }
+        Condition::ValueComparison {
+            left: Value::Count(controlled),
+            operator: crate::effect::ValueComparisonOperator::LessThan,
+            right: Value::Count(yours),
+        } if controlled.controller == Some(PlayerFilter::IteratedPlayer)
+            && yours.controller == Some(PlayerFilter::You) =>
+        {
+            let mut controlled_base = controlled.clone();
+            controlled_base.controller = None;
+            let mut your_base = yours.clone();
+            your_base.controller = None;
+            (controlled_base == your_base).then(|| {
+                let objects = pluralize_relative_object_phrase(strip_indefinite_article(
+                    &controlled_base.description(),
+                ));
+                format!("controls fewer {objects} than you")
+            })
+        }
         Condition::PlayerTaggedObjectMatches {
             player,
             tag,
             filter,
+            mode,
         } => {
-            if *player != PlayerFilter::IteratedPlayer {
+            if *player != PlayerFilter::IteratedPlayer
+                || *mode != crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown
+            {
                 return None;
             }
             let action = tag_action_from_name(tag.as_str())?;
@@ -5014,6 +5515,9 @@ pub(crate) fn pluralize_relative_object_phrase(phrase: &str) -> String {
     } else {
         pluralize_noun_phrase(phrase)
     };
+    if let Some(rest) = plural.strip_prefix("another ") {
+        plural = format!("other {rest}");
+    }
     for (singular, plural_noun) in [
         ("artifact", "artifacts"),
         ("battle", "battles"),

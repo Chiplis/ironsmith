@@ -415,6 +415,28 @@ pub(crate) fn is_explicit_revealed_cards_not_put_onto_battlefield_complement(
             ))
 }
 
+/// Retains the authored wording for a looked/revealed-set complement while
+/// leaving its execution semantics unchanged.
+pub(crate) fn looked_remainder_surface(
+    tokens: &[OwnedLexToken],
+) -> ironsmith_core::LibraryRemainderSurface {
+    if is_explicit_revealed_cards_not_put_onto_battlefield_complement(tokens) {
+        return ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield;
+    }
+    if contains_sequence_phrase(
+        tokens,
+        &[
+            &[
+                "the", "rest", "of", "the", "cards", "revealed", "this", "way",
+            ],
+            &["the", "rest", "of", "cards", "revealed", "this", "way"],
+        ],
+    ) {
+        return ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay;
+    }
+    ironsmith_core::LibraryRemainderSurface::Rest
+}
+
 /// Recognizes an optional deployment whose legal candidate must share a name
 /// with some permanent on the battlefield.  The comparison set is modeled by
 /// the sequence parser rather than treating the trailing `if` as a gate on an

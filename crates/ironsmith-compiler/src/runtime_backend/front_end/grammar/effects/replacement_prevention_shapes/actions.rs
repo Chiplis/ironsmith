@@ -15,6 +15,7 @@ pub(crate) struct MonstrosityShape {
 pub(crate) struct CounterRemovedPumpShape {
     pub(crate) power: i32,
     pub(crate) toughness: i32,
+    pub(crate) includes_this_way: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,10 +68,18 @@ fn fixed_modifier(token: &OwnedLexToken) -> Option<(i32, i32)> {
 pub(crate) fn parse_counter_removed_pump_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CounterRemovedPumpShape> {
-    let (_, body) = primitives::parse_prefix(
+    let (includes_this_way, body) = if let Some((_, body)) = primitives::parse_prefix(
         tokens,
         primitives::phrase(&["for", "each", "counter", "removed", "this", "way"]),
-    )?;
+    ) {
+        (true, body)
+    } else {
+        let (_, body) = primitives::parse_prefix(
+            tokens,
+            primitives::phrase(&["for", "each", "counter", "removed"]),
+        )?;
+        (false, body)
+    };
     let (subject_tokens, modifier_tokens) =
         primitives::split_lexed_once_on_separator(body, || {
             alt((primitives::kw("get"), primitives::kw("gets"))).void()
@@ -80,7 +89,11 @@ pub(crate) fn parse_counter_removed_pump_shape(
     }
     let modifier_tokens = trim_lexed_commas(modifier_tokens);
     let (power, toughness) = fixed_modifier(modifier_tokens.first()?)?;
-    Some(CounterRemovedPumpShape { power, toughness })
+    Some(CounterRemovedPumpShape {
+        power,
+        toughness,
+        includes_this_way,
+    })
 }
 
 fn token_end_combat<'a>(input: &mut LexStream<'a>) -> WResult<TokenEndCombatActionShape> {

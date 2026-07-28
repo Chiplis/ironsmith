@@ -134,9 +134,9 @@ fn store_cached_parse(key: ParseCacheKey, result: CachedParseResult) -> CachedPa
 fn finalize_definition(
     definition: CardDefinition,
     original_builder: &CardDefinitionBuilder,
-    original_text: &str,
+    _original_text: &str,
 ) -> Result<CardDefinition, CardTextError> {
-    let _ = (original_builder, original_text);
+    let _ = original_builder;
     Ok(finalize_nonpermanent_delayed_triggered_abilities(
         definition,
     ))
@@ -397,7 +397,9 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .unwrap_or(description.as_str());
     // A bare type noun reads as a class: "hexproof from planeswalkers".
     if filter.card_types.len() == 1
-        && filter.card_types[0].to_string().eq_ignore_ascii_case(fragment)
+        && filter.card_types[0]
+            .to_string()
+            .eq_ignore_ascii_case(fragment)
     {
         return format!("{fragment}s");
     }
@@ -3831,7 +3833,7 @@ impl CardDefinitionBuilder {
                         0,
                         Effect::copy_spell_n(
                             ChooseSpec::Source,
-                            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(
+                            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(
                                 ObjectFilter::default(),
                             )),
                         ),

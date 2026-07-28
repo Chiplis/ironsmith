@@ -19,22 +19,22 @@ pub type ExileUntilDuration = ironsmith_core::ExileUntilDuration;
 /// Exile objects with an associated duration.
 pub type ExileUntilEffect = ironsmith_core::ExileUntilEffect;
 
-fn source_known_and_not_on_battlefield(
+fn object_known_and_not_on_battlefield(
     game: &GameState,
-    source: ObjectId,
-    source_snapshot: Option<&ObjectSnapshot>,
+    object_id: ObjectId,
+    snapshot: Option<&ObjectSnapshot>,
 ) -> bool {
-    if let Some(source) = game.object(source) {
-        return source.zone != Zone::Battlefield;
+    if let Some(object) = game.object(object_id) {
+        return object.zone != Zone::Battlefield;
     }
 
-    let Some(snapshot) = source_snapshot else {
+    let Some(snapshot) = snapshot else {
         return false;
     };
 
     game.find_object_by_stable_id(snapshot.stable_id)
         .and_then(|current_id| game.object(current_id))
-        .is_none_or(|source| source.zone != Zone::Battlefield)
+        .is_none_or(|object| object.zone != Zone::Battlefield)
 }
 
 impl EffectExecutor for ExileUntilEffect {
@@ -43,11 +43,39 @@ impl EffectExecutor for ExileUntilEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        if self.duration == ExileUntilDuration::SourceLeavesBattlefield
-            && source_known_and_not_on_battlefield(game, ctx.source, ctx.source_snapshot.as_ref())
-        {
-            return Ok(EffectOutcome::count(0));
-        }
+        let leave_watcher = if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
+            if let Some(watcher_spec) = &self.leave_watcher {
+                let watchers = match resolve_objects_for_effect(game, ctx, watcher_spec) {
+                    Ok(watchers) => watchers,
+                    Err(ExecutionError::InvalidTarget) => {
+                        return Ok(EffectOutcome::count(0));
+                    }
+                    Err(error) => return Err(error),
+                };
+                let Some(&watcher) = watchers.first() else {
+                    return Ok(EffectOutcome::count(0));
+                };
+                if object_known_and_not_on_battlefield(
+                    game,
+                    watcher,
+                    ctx.target_snapshots.get(&watcher),
+                ) {
+                    return Ok(EffectOutcome::count(0));
+                }
+                watcher
+            } else {
+                if object_known_and_not_on_battlefield(
+                    game,
+                    ctx.source,
+                    ctx.source_snapshot.as_ref(),
+                ) {
+                    return Ok(EffectOutcome::count(0));
+                }
+                ctx.source
+            }
+        } else {
+            ctx.source
+        };
 
         let objects = resolve_objects_for_effect(game, ctx, &self.spec)?;
         let mut exiled_count = 0_i32;
@@ -77,7 +105,9 @@ impl EffectExecutor for ExileUntilEffect {
                     }
                     if self.duration == ExileUntilDuration::SourceLeavesBattlefield {
                         game.add_exiled_with_source_link_returning_to(
-                            ctx.source, new_id, from_zone,
+                            leave_watcher,
+                            new_id,
+                            from_zone,
                         );
                     } else {
                         game.add_exiled_with_source_link(ctx.source, new_id);
@@ -88,7 +118,7 @@ impl EffectExecutor for ExileUntilEffect {
         }
 
         if exiled_count > 0 && self.duration == ExileUntilDuration::SourceLeavesBattlefield {
-            game.mark_return_exiled_when_source_leaves(ctx.source);
+            game.mark_return_exiled_when_source_leaves(leave_watcher);
         }
         Ok(EffectOutcome::count(exiled_count))
     }
@@ -148,6 +178,21 @@ mod tests {
     ) -> ObjectId {
         let id = game.new_object_id();
         let card = make_creature_card(id.0 as u32, name);
+        let obj = Object::from_card(id, &card, owner, Zone::Battlefield);
+        game.add_object(obj);
+        id
+    }
+
+    fn create_enchantment_on_battlefield(
+        game: &mut GameState,
+        name: &str,
+        owner: PlayerId,
+    ) -> ObjectId {
+        let id = game.new_object_id();
+        let card = CardBuilder::new(CardId::from_raw(id.0 as u32), name)
+            .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::White]]))
+            .card_types(vec![CardType::Enchantment])
+            .build();
         let obj = Object::from_card(id, &card, owner, Zone::Battlefield);
         game.add_object(obj);
         id
@@ -231,6 +276,66 @@ mod tests {
             game.object(*id)
                 .is_some_and(|object| object.name == "Elite Vanguard")
         }));
+    }
+
+    #[test]
+    fn distinct_leave_watcher_owns_the_return_link() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature_on_battlefield(&mut game, "Ability Source", alice);
+        let watcher = create_enchantment_on_battlefield(&mut game, "Watched Enchantment", alice);
+        let unrelated = create_creature_on_battlefield(&mut game, "Unrelated Permanent", alice);
+        let creature_id = create_creature_on_battlefield(&mut game, "Exiled Creature", alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let effect = ExileUntilEffect::source_leaves(ChooseSpec::SpecificObject(creature_id))
+            .with_leave_watcher(ChooseSpec::SpecificObject(watcher));
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(1));
+        assert_eq!(game.get_exiled_with_source_links(source).len(), 0);
+        assert_eq!(game.get_exiled_with_source_links(watcher).len(), 1);
+
+        let mut trigger_queue = crate::triggers::TriggerQueue::new();
+        game.move_object_by_effect(source, Zone::Graveyard);
+        game.move_object_by_effect(unrelated, Zone::Graveyard);
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        assert!(game.exile.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Exiled Creature")
+        }));
+
+        game.move_object_by_effect(watcher, Zone::Graveyard);
+        crate::game_loop::drain_pending_trigger_events(&mut game, &mut trigger_queue);
+        assert!(game.exile.is_empty());
+        assert!(game.battlefield.iter().any(|id| {
+            game.object(*id)
+                .is_some_and(|object| object.name == "Exiled Creature")
+        }));
+    }
+
+    #[test]
+    fn distinct_leave_watcher_lki_noops_after_watcher_already_left() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = create_creature_on_battlefield(&mut game, "Ability Source", alice);
+        let watcher = create_enchantment_on_battlefield(&mut game, "Watched Enchantment", alice);
+        let creature_id = create_creature_on_battlefield(&mut game, "Exiled Creature", alice);
+        let watcher_snapshot =
+            ObjectSnapshot::from_object(game.object(watcher).expect("watcher should exist"), &game);
+        game.move_object_by_effect(watcher, Zone::Graveyard);
+
+        let watcher_spec = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::enchantment()));
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![crate::effects::ResolvedTarget::Object(watcher)]);
+        ctx.target_snapshots.insert(watcher, watcher_snapshot);
+        let effect = ExileUntilEffect::source_leaves(ChooseSpec::SpecificObject(creature_id))
+            .with_leave_watcher(watcher_spec);
+        let result = effect.execute(&mut game, &mut ctx).unwrap();
+
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert!(game.exile.is_empty());
+        assert!(game.battlefield.contains(&creature_id));
     }
 
     #[test]

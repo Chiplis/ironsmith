@@ -51,6 +51,26 @@ fn countable_effects_render_amount_backrefs_as_that_many() {
 }
 
 #[test]
+fn typed_prior_exile_count_renders_for_each_object_kind() {
+    let query = ironsmith_core::PriorEffectMetricQuery::new(
+        crate::effect::EffectMetricSource::AffectedObjects,
+        crate::effect::EffectMetric::Count,
+    )
+    .with_action(crate::effect::PriorEffectAction::Exiled)
+    .with_filter(ObjectFilter::permanent());
+    let count = Value::PriorEffectMetric {
+        effect_id: crate::effect::EffectId(7),
+        query,
+    }
+    .with_surface_hint(ValueSurfaceHint::ForEach);
+
+    assert_eq!(
+        describe_create_for_each_count(&count).as_deref(),
+        Some("permanent exiled this way")
+    );
+}
+
+#[test]
 fn scalar_damage_and_life_keep_that_much_surface() {
     for amount in [
         Value::EventValue(EventValueSpec::Amount),

@@ -1,4 +1,5 @@
 use super::*;
+use crate::runtime_backend::lexer::{TokenKind, parser_token_word_positions, render_token_slice};
 use winnow::error::{ContextError, ErrMode};
 
 const ENTERED_SINCE_LAST_TURN_WITH_THAT_PREFIX: &[&str] =
@@ -86,7 +87,6 @@ fn shared_type_relation(words: &[&str]) -> TaggedOpbjectRelation {
         TaggedOpbjectRelation::SharesCardType
     }
 }
-const SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS: &[&str] = &["shares", "color", "it"];
 const CREATURE_TYPE_PHRASES: &[&[&str]] = &[&["creature", "type"], &["creature", "types"]];
 const TAPPED_THIS_WAY_PHRASE: &[&str] = &["tapped", "this", "way"];
 const EACH_CREATURE_TAPPED_THIS_WAY_PHRASE: &[&str] =
@@ -180,6 +180,12 @@ const ATTACKING_TARGET_PLAYER_PHRASES: &[&[&str]] = &[
 const ATTACKING_TARGET_OPPONENT_PHRASES: &[&[&str]] = &[
     &["attacking", "target", "opponent"],
     &["attacking", "target", "opponents"],
+];
+const ATTACKING_CHOSEN_PLAYER_PHRASES: &[&[&str]] = &[
+    &["attacking", "the", "last", "chosen", "player"],
+    &["attacking", "last", "chosen", "player"],
+    &["attacking", "the", "chosen", "player"],
+    &["attacking", "chosen", "player"],
 ];
 const ATTACKING_YOU_PHRASE: &[&str] = &["attacking", "you"];
 const ATTACKING_THEM_PHRASE: &[&str] = &["attacking", "them"];
@@ -391,12 +397,51 @@ pub(super) fn remove_word_range(words: &mut Vec<&str>, start: usize, end: usize)
     *words = remaining;
 }
 
+fn normalized_literal_name_key(name: &str) -> String {
+    name.chars()
+        .filter(|ch| ch.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+fn literal_name_surface_after_marker(tokens: &[OwnedLexToken], marker: &[&str]) -> Option<String> {
+    let positions = parser_token_word_positions(tokens);
+    let marker_start = positions.windows(marker.len()).position(|window| {
+        window
+            .iter()
+            .map(|(_, word)| *word)
+            .eq(marker.iter().copied())
+    })?;
+    let name_start = marker_start + marker.len();
+    let start_token = positions.get(name_start)?.0;
+    let name_end = ((name_start + 1)..positions.len())
+        .find(|&idx| is_name_clause_boundary(positions[idx].1))
+        .unwrap_or(positions.len());
+    let mut end_token = positions
+        .get(name_end)
+        .map(|(token_idx, _)| *token_idx)
+        .unwrap_or(tokens.len());
+    while end_token > start_token
+        && matches!(
+            tokens[end_token - 1].kind,
+            TokenKind::Period | TokenKind::Semicolon
+        )
+    {
+        end_token -= 1;
+    }
+    let surface = render_token_slice(&tokens[start_token..end_token])
+        .trim()
+        .to_string();
+    (!surface.is_empty()).then_some(surface)
+}
+
 pub(super) fn try_apply_not_named_clause<'a, F, G>(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&'a str>,
     all_words_with_articles: &[&'a str],
     map_non_article_index: &F,
     map_non_article_end: &G,
+    source_tokens: &[OwnedLexToken],
 ) -> Result<bool, CardTextError>
 where
     F: Fn(usize) -> Option<usize>,
@@ -414,7 +459,17 @@ where
         map_non_article_end,
         "not-named",
     )?;
+    let parsed_surface = literal_name_surface_after_marker(source_tokens, NOT_NAMED_PHRASE);
+    let exact_source_name =
+        crate::runtime_backend::front_end::shared::util::current_source_reference_name().filter(
+            |source_name| {
+                normalized_literal_name_key(source_name) == normalized_literal_name_key(&name)
+            },
+        );
     filter.excluded_name = Some(name);
+    if let Some(surface) = exact_source_name.or(parsed_surface) {
+        filter.set_excluded_name_surface(surface);
+    }
     remove_word_range(all_words, not_named_idx, name_end);
     Ok(true)
 }
@@ -1159,6 +1214,9 @@ pub(super) fn attacking_player_filter_from_words(
     if find_any_phrase_start(words, ATTACKING_TARGET_OPPONENT_PHRASES).is_some() {
         return Some(PlayerFilter::target_opponent());
     }
+    if find_any_phrase_start(words, ATTACKING_CHOSEN_PLAYER_PHRASES).is_some() {
+        return Some(PlayerFilter::ChosenPlayer);
+    }
     if find_phrase_start(words, ATTACKING_YOU_PHRASE).is_some() {
         return Some(PlayerFilter::You);
     }
@@ -1327,6 +1385,14 @@ pub(super) fn apply_reference_and_tag_stage(
             words_start_with_any_phrase(attached_to_words, ATTACHED_TO_TAGGED_OBJECT_PREFIXES)
                 .is_some();
         if references_it {
+            let relation = if attached_idx >= 2
+                && all_words[attached_idx - 2] == THAT_WORD
+                && matches!(all_words[attached_idx - 1], "was" | "were")
+            {
+                TaggedOpbjectRelation::WasAttachedToTaggedObject
+            } else {
+                TaggedOpbjectRelation::AttachedToTaggedObject
+            };
             let trim_start = if attached_idx >= 2
                 && all_words[attached_idx - 2] == THAT_WORD
                 && word_is_any(all_words[attached_idx - 1], BE_VERB_WORDS)
@@ -1338,7 +1404,7 @@ pub(super) fn apply_reference_and_tag_stage(
             all_words.truncate(trim_start);
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: IT_TAG.into(),
-                relation: TaggedOpbjectRelation::AttachedToTaggedObject,
+                relation,
             });
         }
     }
@@ -1533,7 +1599,9 @@ pub(super) fn apply_reference_and_tag_stage(
         && words_contain_any_word(all_words, SHARE_WORDS)
         && (words_contain_any_word(all_words, IT_OR_THEM_WORDS)
             || references_additional_cost_object);
-    let has_share_color = words_contain_all(all_words, SHARES_COLOR_WITH_TAGGED_REQUIRED_WORDS)
+    let has_share_color = (words_contain_any_word(all_words, SHARE_WORDS)
+        && words_contain_any_word(all_words, COLOR_OR_COLORS_WORDS)
+        && words_contain_any_word(all_words, IT_OR_THEM_WORDS))
         || (references_additional_cost_object
             && words_contain_any_word(all_words, SHARE_WORDS)
             && words_contain_any_word(all_words, COLOR_OR_COLORS_WORDS));
@@ -1678,9 +1746,26 @@ pub(super) fn apply_reference_and_tag_stage(
             relation: TaggedOpbjectRelation::IsTaggedObject,
         });
     }
+    if let Some(became_creature_idx) = find_any_phrase_start(
+        all_words,
+        &[
+            &["that", "became", "a", "creature", "this", "way"],
+            &["that", "became", "creature", "this", "way"],
+            &["that", "became", "creatures", "this", "way"],
+            &["which", "became", "a", "creature", "this", "way"],
+            &["which", "became", "creature", "this", "way"],
+            &["which", "became", "creatures", "this", "way"],
+        ],
+    ) {
+        filter.tagged_constraints.push(TaggedObjectConstraint {
+            tag: IT_TAG.into(),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+        all_words.truncate(became_creature_idx);
+    }
     if !references_each_tapped_cost_object
         && let Some(this_way_idx) = find_phrase_start(all_words, &["this", "way"])
-        && let Some((action, _)) =
+        && let Some((action, action_start)) =
             crate::runtime_backend::front_end::grammar::shared_util::value_helper_shapes::parse_prior_effect_action(
                 &all_words[..this_way_idx],
             )
@@ -1692,9 +1777,34 @@ pub(super) fn apply_reference_and_tag_stage(
             filter.zone.get_or_insert(Zone::Battlefield);
         }
         filter.set_prior_effect_action_surface(Some(action));
+        let relation = if action_start
+            .checked_sub(1)
+            .and_then(|idx| all_words.get(idx))
+            .is_some_and(|word| {
+                matches!(
+                    *word,
+                    "not"
+                        | "isnt"
+                        | "isn't"
+                        | "arent"
+                        | "aren't"
+                        | "wasnt"
+                        | "wasn't"
+                        | "werent"
+                        | "weren't"
+                        | "doesnt"
+                        | "doesn't"
+                        | "didnt"
+                        | "didn't"
+                )
+            }) {
+            TaggedOpbjectRelation::IsNotTaggedObject
+        } else {
+            TaggedOpbjectRelation::IsTaggedObject
+        };
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: IT_TAG.into(),
-            relation: TaggedOpbjectRelation::IsTaggedObject,
+            relation,
         });
     }
 

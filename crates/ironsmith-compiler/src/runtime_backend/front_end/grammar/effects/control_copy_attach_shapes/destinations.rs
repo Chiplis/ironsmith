@@ -367,6 +367,17 @@ pub(crate) fn parse_onto_clause_shape(tokens: &[OwnedLexToken]) -> Option<OntoCl
     if target_tokens.is_empty() {
         return None;
     }
+    // A trailing where-X clause binds values in the moved object's filter; it
+    // is not part of the zone destination. The sentence-level binding pass
+    // applies it after this typed move has been lowered.
+    let destination_tokens = if let Some((where_index, (), _)) =
+        primitives::find_prefix(destination_tokens, || {
+            primitives::phrase(&["where", "x", "is"]).void()
+        }) {
+        destination_tokens.get(..where_index)?
+    } else {
+        destination_tokens
+    };
     Some(OntoClauseShape {
         target_tokens,
         destination_tokens: trim_lexed_commas(destination_tokens),
@@ -444,6 +455,12 @@ pub(crate) fn parse_onto_battlefield_destination_shape(
     }
     destination_tail = cleaned;
 
+    let mut controller = None;
+    if let Some(parsed) = parse_battlefield_controller_prefix(&destination_tail) {
+        controller = Some(parsed.controller);
+        destination_tail = parsed.rest.to_vec();
+    }
+
     let mut attached_to_tokens = None;
     if let Some((_, rest)) = primitives::parse_prefix(
         &destination_tail,
@@ -472,9 +489,13 @@ pub(crate) fn parse_onto_battlefield_destination_shape(
         destination_tail.clear();
     }
 
-    let parsed_controller = parse_battlefield_controller_prefix(&destination_tail);
-    let controller = parsed_controller.map(|shape| shape.controller);
-    let supported_tail = destination_tail.is_empty() || parsed_controller.is_some();
+    if controller.is_none()
+        && let Some(parsed) = parse_battlefield_controller_prefix(&destination_tail)
+    {
+        controller = Some(parsed.controller);
+        destination_tail = parsed.rest.to_vec();
+    }
+    let supported_tail = destination_tail.is_empty();
     Some(OntoBattlefieldDestinationShape {
         tapped,
         attacking,
@@ -516,6 +537,40 @@ mod tests {
         assert!(destination.tapped);
         assert!(destination.attacking);
         assert!(destination.supported_tail);
+    }
+
+    #[test]
+    fn onto_destination_excludes_a_trailing_where_x_binding() {
+        let tokens = lex_line(
+            "an artifact card with mana value X or less from your hand onto the battlefield, where X is the number of ingenuity counters on this creature",
+            0,
+        )
+        .unwrap();
+        let clause = parse_onto_clause_shape(&tokens).expect("onto clause");
+
+        assert_eq!(
+            crate::runtime_backend::token_word_refs(clause.destination_tokens),
+            ["the", "battlefield"]
+        );
+    }
+
+    #[test]
+    fn battlefield_controller_prefix_preserves_attached_to_suffix() {
+        let destination = lex_line(
+            "battlefield under your control attached to target creature",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_onto_battlefield_destination_shape(&destination).unwrap();
+        assert_eq!(parsed.controller, Some(BattlefieldControllerShape::You));
+        assert!(parsed.supported_tail);
+        let attached = parsed
+            .attached_to_tokens
+            .expect("attachment suffix should survive controller parsing");
+        assert_eq!(
+            crate::runtime_backend::front_end::lexer::TokenWordView::new(&attached).to_word_refs(),
+            vec!["target", "creature"]
+        );
     }
 
     #[test]

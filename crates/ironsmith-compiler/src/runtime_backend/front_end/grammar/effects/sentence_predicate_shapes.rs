@@ -25,6 +25,11 @@ pub(crate) struct TappedThisWayBindingShape {
     pub(crate) damage_to_active_player: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct AttackingDoesntTapIfSourceUntappedShape<'a> {
+    pub(crate) affected_tokens: &'a [OwnedLexToken],
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct AuraEnchantmentShape<'a> {
     pub(crate) attachment_tokens: &'a [OwnedLexToken],
@@ -92,6 +97,9 @@ pub(crate) enum SacrificeCostObjectKindShape {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum WhereXValueShape {
     CommanderManaValueChoice,
+    ChosenObjectsPowerDifference {
+        object_kind: String,
+    },
     ReferenceMetric {
         reference: WhereXReferenceShape,
         metric: WhereXMetricShape,
@@ -262,6 +270,47 @@ pub(crate) fn parse_power_damage_self_tokens(
         tokens,
         parse_power_damage_self_lexed,
         "power damage to another target and self",
+    )
+    .ok()
+}
+
+fn parse_attacking_doesnt_tap_if_source_untapped_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<AttackingDoesntTapIfSourceUntappedShape<'a>> {
+    primitives::kw("attacking").parse_next(input)?;
+    alt((
+        primitives::kw("doesnt").void(),
+        primitives::kw("doesn't").void(),
+        primitives::phrase(&["does", "not"]),
+    ))
+    .parse_next(input)?;
+    primitives::kw("cause").parse_next(input)?;
+    let affected_tokens = repeat_till::<_, _, (), _, _, _, _>(
+        1..,
+        any.void(),
+        peek(primitives::phrase(&["to", "tap", "this", "combat"])),
+    )
+    .map(|((), _)| ())
+    .take()
+    .parse_next(input)?;
+    primitives::phrase(&["to", "tap", "this", "combat", "if", "this"]).parse_next(input)?;
+    opt(alt((
+        primitives::kw("creature"),
+        primitives::kw("permanent"),
+    )))
+    .parse_next(input)?;
+    primitives::phrase(&["is", "untapped"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(AttackingDoesntTapIfSourceUntappedShape { affected_tokens })
+}
+
+pub(crate) fn parse_attacking_doesnt_tap_if_source_untapped_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<AttackingDoesntTapIfSourceUntappedShape<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_attacking_doesnt_tap_if_source_untapped_lexed,
+        "attacking does not tap while source is untapped",
     )
     .ok()
 }
@@ -993,6 +1042,35 @@ fn parse_two_plus_sacrificed_where_lexed<'a>(
     Ok(WhereXValueShape::TwoPlusSacrificedManaValue)
 }
 
+fn parse_chosen_objects_power_difference_where_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<WhereXValueShape> {
+    where_x_prefix.parse_next(input)?;
+    primitives::phrase(&["the", "difference", "between", "the", "chosen"]).parse_next(input)?;
+    let object_kind_token = primitives::word_text.parse_next(input)?;
+    let object_kind = match leaf::parse_leaf_demonstrative_object_head_complete(
+        leaf::strip_leaf_source_possessive_suffix(object_kind_token),
+    ) {
+        Ok(leaf::LeafDemonstrativeObjectHead::CardType(card_type)) => card_type.name(),
+        Ok(leaf::LeafDemonstrativeObjectHead::Permanent) => "permanent",
+        Ok(leaf::LeafDemonstrativeObjectHead::Card) => "card",
+        Ok(leaf::LeafDemonstrativeObjectHead::Spell) => "spell",
+        Ok(leaf::LeafDemonstrativeObjectHead::Source) => "source",
+        Ok(leaf::LeafDemonstrativeObjectHead::Token) => "token",
+        Err(_) => {
+            return Err(primitives::backtrack_err(
+                "chosen-object power difference",
+                "possessive chosen object kind",
+            ));
+        }
+    };
+    alt((primitives::kw("power"), primitives::kw("powers"))).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(WhereXValueShape::ChosenObjectsPowerDifference {
+        object_kind: object_kind.to_string(),
+    })
+}
+
 fn chosen_memory_marker<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::kw("chosen").parse_next(input)?;
     let mut probe = input.clone();
@@ -1228,6 +1306,13 @@ pub(crate) fn parse_where_x_value_shape_tokens(
         where_tokens,
         parse_tap_cost_power_where_lexed,
         "where X tap cost power",
+    ) {
+        return Some(shape);
+    }
+    if let Ok(shape) = primitives::parse_all(
+        where_tokens,
+        parse_chosen_objects_power_difference_where_lexed,
+        "where X chosen-object power difference",
     ) {
         return Some(shape);
     }

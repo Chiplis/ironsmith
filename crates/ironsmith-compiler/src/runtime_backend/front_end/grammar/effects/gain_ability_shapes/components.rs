@@ -60,22 +60,44 @@ pub(crate) fn parse_ability_choice_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<AbilityChoiceShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
-    let (_, option_tokens) = primitives::parse_prefix(
+    let explicit_choice_prefix = primitives::parse_prefix(
         tokens,
         alt((
             primitives::phrase(&["your", "choice", "of"]),
             primitives::phrase(&["your", "choice", "from"]),
         )),
-    )?;
+    );
+    let option_tokens = explicit_choice_prefix
+        .as_ref()
+        .map(|(_, option_tokens)| *option_tokens)
+        .unwrap_or(tokens);
     let option_tokens = trim_lexed_commas(option_tokens);
     if option_tokens.is_empty() {
         return None;
     }
+    let mut inside_quotes = false;
+    let has_top_level_or = option_tokens.iter().any(|token| {
+        if token.is_quote() {
+            inside_quotes = !inside_quotes;
+            false
+        } else {
+            !inside_quotes && token.is_word("or")
+        }
+    });
+    if explicit_choice_prefix.is_none() && !has_top_level_or {
+        return None;
+    }
+    let or_segments = primitives::split_lexed_slices_on_or(option_tokens);
+    if or_segments.len() < 2 {
+        return None;
+    }
     let mut options = Vec::new();
-    for segment in primitives::split_lexed_slices_on_or(option_tokens) {
-        let segment = trim_lexed_commas(segment);
-        if !segment.is_empty() {
-            options.push(segment);
+    for or_segment in or_segments {
+        for comma_segment in primitives::split_lexed_slices_on_comma(or_segment) {
+            let segment = trim_lexed_commas(comma_segment);
+            if !segment.is_empty() {
+                options.push(segment);
+            }
         }
     }
     (options.len() >= 2).then_some(AbilityChoiceShape { options })
@@ -152,6 +174,13 @@ mod tests {
                 .options
                 .len(),
             2
+        );
+        assert_eq!(
+            parse_ability_choice_shape(&lex_line("flying, first strike, or trample", 0).unwrap())
+                .unwrap()
+                .options
+                .len(),
+            3
         );
         let source_tokens =
             lex_line("This creature gains {T}: Draw a card until end of turn.", 0).unwrap();

@@ -39,32 +39,35 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
     }
 
     fn display(&self) -> String {
+        let describe_characteristic_value = |value: &Value| {
+            describe_value(value).replace(" counters on this source", " counters on it")
+        };
         if self.power == self.toughness {
             format!(
                 "This creature's power and toughness are each equal to {}",
-                describe_value(&self.power)
+                describe_characteristic_value(&self.power)
             )
         } else if let Some(offset) = toughness_is_power_plus_fixed(&self.power, &self.toughness) {
             format!(
                 "This creature's power is equal to {} and its toughness is equal to that number plus {}",
-                describe_value(&self.power),
+                describe_characteristic_value(&self.power),
                 offset
             )
         } else if matches!(self.power, Value::SourcePower) {
             format!(
                 "This creature's toughness is equal to {}",
-                describe_value(&self.toughness)
+                describe_characteristic_value(&self.toughness)
             )
         } else if matches!(self.toughness, Value::SourceToughness) {
             format!(
                 "This creature's power is equal to {}",
-                describe_value(&self.power)
+                describe_characteristic_value(&self.power)
             )
         } else {
             format!(
                 "This creature's power is {}, and its toughness is {}",
-                describe_value(&self.power),
-                describe_value(&self.toughness)
+                describe_characteristic_value(&self.power),
+                describe_characteristic_value(&self.toughness)
             )
         }
     }
@@ -154,6 +157,17 @@ mod tests {
         assert_eq!(
             ability.display(),
             "This creature's power and toughness are each equal to 2 plus the number of creatures you control"
+        );
+    }
+
+    #[test]
+    fn test_display_uses_self_pronoun_for_counters_on_source() {
+        let value = Value::CountersOnSource(crate::object::CounterType::Time);
+        let ability = CharacteristicDefiningPT::new(value.clone(), value);
+
+        assert_eq!(
+            ability.display(),
+            "This creature's power and toughness are each equal to the number of time counters on it"
         );
     }
 

@@ -15,6 +15,32 @@ fn predicate_tokens_after_if(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
 }
 
 #[test]
+fn parse_past_control_predicate_preserves_lki_mode_and_authored_noun() -> Result<(), CardTextError>
+{
+    let tokens = lex_line("If you controlled that permanent", 0)?;
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+    let parsed = parse_predicate(&predicate_tokens)?;
+
+    let PredicateAst::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+        mode,
+    } = parsed
+    else {
+        panic!("expected a tagged-object player predicate");
+    };
+    assert_eq!(player, PlayerAst::You);
+    assert_eq!(tag.as_str(), IT_TAG);
+    assert_eq!(mode, ironsmith_core::TaggedObjectMatchMode::LastKnown);
+    assert_eq!(
+        filter.demonstrative_antecedent_surface(),
+        Some(ironsmith_core::DemonstrativeAntecedentSurface::Permanent)
+    );
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_paid_cost_labels_use_capture_parser() -> Result<(), CardTextError> {
     for (text, expected) in [
         (
@@ -359,6 +385,25 @@ fn parse_predicate_demonstrative_permanent_card_strips_article() -> Result<(), C
     assert_eq!(
         parsed,
         PredicateAst::ItMatches(ObjectFilter::permanent_card())
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_demonstrative_permanent_spell_keeps_stack_domain()
+-> Result<(), CardTextError> {
+    let tokens = lex_line("If it's a permanent spell", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::ItMatches(filter) = parsed else {
+        panic!("expected a typed demonstrative match predicate");
+    };
+
+    assert_eq!(filter.zone, Some(Zone::Stack));
+    assert_eq!(filter.stack_kind, Some(StackObjectKind::Spell));
+    assert_eq!(
+        filter.card_types,
+        crate::runtime_backend::front_end::grammar::permission_facts::subject_filters::permanent_spell_filter()
+            .card_types
     );
     Ok(())
 }
@@ -871,6 +916,36 @@ fn parse_predicate_each_global_greatest_power_compares_the_complete_set()
 }
 
 #[test]
+fn parse_predicate_control_of_a_global_greatest_power_creature_preserves_both_scopes()
+-> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If you control a creature with the greatest power among creatures on the battlefield",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+
+    let PredicateAst::PlayerControls {
+        player: PlayerAst::You,
+        filter: controlled,
+    } = parsed
+    else {
+        panic!("expected a typed greatest-power control predicate, got {parsed:?}");
+    };
+    assert_eq!(controlled.controller, Some(PlayerFilter::You));
+    assert_eq!(controlled.card_types, vec![CardType::Creature]);
+    assert_eq!(controlled.zone, Some(Zone::Battlefield));
+    assert!(matches!(
+        &controlled.power,
+        Some(crate::filter::Comparison::EqualExpr(value))
+            if matches!(value.as_ref(), Value::GreatestPower(domain)
+                if domain.controller.is_none()
+                    && domain.card_types == vec![CardType::Creature]
+                    && domain.zone == Some(Zone::Battlefield))
+    ));
+    Ok(())
+}
+
+#[test]
 fn parse_predicate_source_attack_control_gate_uses_capture_parser() -> Result<(), CardTextError> {
     for text in [
         "If this creature didn't attack or come under your control this turn",
@@ -1130,6 +1205,7 @@ fn parse_predicate_supports_if_you_dont_put_card_into_your_hand() -> Result<(), 
             player: PlayerAst::You,
             tag: TagKey::from(IT_TAG),
             filter: ObjectFilter::default().in_zone(Zone::Hand),
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }))
     );
     Ok(())
@@ -1157,6 +1233,7 @@ fn parse_predicate_negative_put_tagged_object_uses_shared_capture_parser()
                 player: PlayerAst::You,
                 tag: TagKey::from(IT_TAG),
                 filter: ObjectFilter::default().in_zone(zone),
+                mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
             })),
             "{text}"
         );
@@ -1210,6 +1287,7 @@ fn parse_predicate_supports_if_you_dont_put_it_into_your_hand() -> Result<(), Ca
             player: PlayerAst::You,
             tag: TagKey::from(IT_TAG),
             filter: ObjectFilter::default().in_zone(Zone::Hand),
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }))
     );
     Ok(())
@@ -1285,6 +1363,7 @@ fn parse_predicate_supports_you_put_filtered_object_onto_battlefield_this_way()
             player: PlayerAst::You,
             tag: TagKey::from(IT_TAG),
             filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }
     );
     Ok(())
@@ -1307,6 +1386,7 @@ fn parse_predicate_supports_that_player_discards_filtered_card_this_way()
             player: PlayerAst::That,
             tag: TagKey::from(IT_TAG),
             filter: artifact_filter,
+            mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
         }
     );
     Ok(())
@@ -1383,6 +1463,7 @@ fn parse_predicate_attacking_own_control_meld_uses_capture_parser() -> Result<()
             };
             assert_eq!(player, PlayerAst::You, "{text}");
             assert_eq!(filter.controller, Some(PlayerFilter::You), "{text}");
+            assert_eq!(filter.owner, Some(PlayerFilter::You), "{text}");
             assert!(filter.attacking, "{text}");
         }
     }
@@ -1418,6 +1499,8 @@ fn parse_predicate_you_both_own_and_control_uses_capture_parser() -> Result<(), 
     assert_eq!(right_player, PlayerAst::You);
     assert_eq!(left_filter.controller, Some(PlayerFilter::You));
     assert_eq!(right_filter.controller, Some(PlayerFilter::You));
+    assert_eq!(left_filter.owner, Some(PlayerFilter::You));
+    assert_eq!(right_filter.owner, Some(PlayerFilter::You));
     Ok(())
 }
 
@@ -1579,7 +1662,10 @@ fn parse_predicate_turn_event_counts_use_shared_capture_parser() -> Result<(), C
         (
             "If that player had another land enter the battlefield under their control this turn",
             PredicateAst::ValueComparison {
-                left: Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::IteratedPlayer),
+                left: Value::LandsEnteredBattlefieldThisTurn(PlayerFilter::IteratedPlayer)
+                    .with_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::AnotherLandEnteredThisTurn,
+                    ),
                 operator: ValueComparisonOperator::GreaterThanOrEqual,
                 right: Value::Fixed(2),
             },
@@ -1681,6 +1767,7 @@ fn parse_predicate_tagged_state_uses_shared_capture_parser() -> Result<(), CardT
                 player: PlayerAst::You,
                 tag: TagKey::from(IT_TAG),
                 filter: ObjectFilter::default(),
+                mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
             },
         ),
         (
@@ -1746,6 +1833,61 @@ fn parse_predicate_attached_tagged_uses_shared_capture_parser() -> Result<(), Ca
             other => panic!("expected attached tagged predicate for {text}, got {other:?}"),
         }
     }
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_independent_control_and_hand_conditions_preserve_polarity()
+-> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If you control no permanents other than this enchantment and have no cards in hand",
+        0,
+    )?;
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+    let parsed = parse_predicate(&predicate_tokens)?;
+    let mut permanent_filter = ObjectFilter::permanent_card()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You);
+    permanent_filter.other = true;
+    permanent_filter.source_surface = Some(
+        crate::target::SourceReferenceSurface::ThisPermanentType("this enchantment".to_string()),
+    );
+
+    assert_eq!(
+        parsed,
+        PredicateAst::And(
+            Box::new(PredicateAst::PlayerControlsNo {
+                player: PlayerAst::You,
+                filter: permanent_filter,
+            }),
+            Box::new(PredicateAst::YouHaveNoCardsInHand),
+        )
+    );
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_independent_positive_control_and_hand_conditions_stay_distinct()
+-> Result<(), CardTextError> {
+    let tokens = lex_line("If you control an artifact and have a card in hand", 0)?;
+    let predicate_tokens = predicate_tokens_after_if(&tokens);
+
+    let parsed = parse_predicate(&predicate_tokens)?;
+
+    assert_eq!(
+        parsed,
+        PredicateAst::And(
+            Box::new(PredicateAst::PlayerControls {
+                player: PlayerAst::You,
+                filter: ObjectFilter::artifact().controlled_by(PlayerFilter::You),
+            }),
+            Box::new(PredicateAst::PlayerCardsInHandOrMore {
+                player: PlayerAst::You,
+                count: 1,
+            }),
+        )
+    );
     Ok(())
 }
 
@@ -1984,6 +2126,22 @@ fn parse_predicate_spell_cast_this_turn_uses_shared_capture_parser() -> Result<(
         }
     );
 
+    for text in [
+        "If you have cast two or more spells this turn",
+        "If you've cast two or more spells this turn",
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        assert_eq!(
+            parsed,
+            PredicateAst::PlayerCastSpellsThisTurnOrMore {
+                player: PlayerAst::You,
+                count: 2,
+            },
+            "{text}"
+        );
+    }
+
     let tokens = lex_line("If opponent has cast a creature spell this turn", 0)?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     let PredicateAst::ValueComparison {
@@ -2039,6 +2197,57 @@ fn parse_predicate_spell_cast_this_turn_uses_shared_capture_parser() -> Result<(
     assert_eq!(filter.zone, Some(Zone::Hand));
     assert!(!exclude_source);
 
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_preserves_cast_or_graveyard_activation_history() -> Result<(), CardTextError> {
+    let tokens = lex_line(
+        "If you've cast a spell from a graveyard or activated an ability of a card in a graveyard this turn",
+        0,
+    )?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    assert_eq!(
+        parsed,
+        PredicateAst::Or(
+            Box::new(PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerCastSpellFromZoneThisTurn {
+                    player: PlayerAst::You,
+                    zone: Zone::Graveyard,
+                },
+            )),
+            Box::new(PredicateAst::TurnHistory(
+                TurnHistoryPredicateAst::PlayerActivatedAbilityOfCardInZoneThisTurn {
+                    player: PlayerAst::You,
+                    zone: Zone::Graveyard,
+                },
+            )),
+        )
+    );
+
+    for (text, expected) in [
+        (
+            "If you've cast a spell from exile this turn",
+            TurnHistoryPredicateAst::PlayerCastSpellFromZoneThisTurn {
+                player: PlayerAst::You,
+                zone: Zone::Exile,
+            },
+        ),
+        (
+            "If you activated an ability of a card in your graveyard this turn",
+            TurnHistoryPredicateAst::PlayerActivatedAbilityOfCardInZoneThisTurn {
+                player: PlayerAst::You,
+                zone: Zone::Graveyard,
+            },
+        ),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        assert_eq!(
+            parse_predicate(&predicate_tokens_after_if(&tokens))?,
+            PredicateAst::TurnHistory(expected),
+            "{text}"
+        );
+    }
     Ok(())
 }
 
@@ -2288,7 +2497,9 @@ fn parse_predicate_battlefield_change_this_turn_uses_shared_capture_parser()
         ),
         (
             "If creatures left battlefield under your control this turn",
-            PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn,
+            PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+                surface: crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
+            },
         ),
         (
             "If lands you controlled were put into graveyard from battlefield this turn",
@@ -2600,6 +2811,30 @@ fn parse_predicate_controls_more_than_you_uses_capture_parser() -> Result<(), Ca
             "{text}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn parse_predicate_controls_fewer_than_you_uses_typed_counts() -> Result<(), CardTextError> {
+    let tokens = lex_line("If that player controls fewer creatures than you", 0)?;
+    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+    let PredicateAst::ValueComparison {
+        left: Value::Count(left),
+        operator: ValueComparisonOperator::LessThan,
+        right: Value::Count(right),
+    } = parsed
+    else {
+        panic!("expected a relative object-count predicate, got {parsed:?}");
+    };
+
+    assert_eq!(
+        left,
+        ObjectFilter::creature().controlled_by(PlayerFilter::IteratedPlayer)
+    );
+    assert_eq!(
+        right,
+        ObjectFilter::creature().controlled_by(PlayerFilter::You)
+    );
     Ok(())
 }
 
@@ -2927,6 +3162,28 @@ fn parse_predicate_source_counters_use_shared_capture_parser() -> Result<(), Car
                 right: Value::Fixed(3),
             },
         ),
+        (
+            "If it has a +1/+1 counter on it",
+            PredicateAst::ValueComparison {
+                left: Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Some(CounterType::PlusOnePlusOne),
+                ),
+                operator: ValueComparisonOperator::GreaterThanOrEqual,
+                right: Value::Fixed(1),
+            },
+        ),
+        (
+            "If it has exactly one +1/+1 counter on it",
+            PredicateAst::ValueComparison {
+                left: Value::CountersOn(
+                    Box::new(crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG))),
+                    Some(CounterType::PlusOnePlusOne),
+                ),
+                operator: ValueComparisonOperator::Equal,
+                right: Value::Fixed(1),
+            },
+        ),
     ] {
         let tokens = lex_line(text, 0)?;
         let predicate_tokens = predicate_tokens_after_if(&tokens);
@@ -3207,6 +3464,72 @@ fn explicit_additional_cost_object_predicates_use_stable_alias() -> Result<(), C
             "{text}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn explicit_demonstrative_condition_keeps_its_authored_noun() -> Result<(), CardTextError> {
+    for (text, surface, other) in [
+        (
+            "that land is a Swamp",
+            ironsmith_core::DemonstrativeAntecedentSurface::Land,
+            false,
+        ),
+        (
+            "that creature is an Ally",
+            ironsmith_core::DemonstrativeAntecedentSurface::Creature,
+            false,
+        ),
+        (
+            "that creature is another Hero",
+            ironsmith_core::DemonstrativeAntecedentSurface::Creature,
+            true,
+        ),
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let PredicateAst::ItMatches(filter) = parse_predicate(&tokens)? else {
+            panic!("expected a demonstrative identity predicate for {text}");
+        };
+        assert_eq!(
+            filter.demonstrative_antecedent_surface(),
+            Some(surface),
+            "{text}"
+        );
+        assert_eq!(filter.other, other, "{text}");
+    }
+
+    let pronoun_tokens = lex_line("it is a Swamp", 0)?;
+    let PredicateAst::ItMatches(pronoun_filter) = parse_predicate(&pronoun_tokens)? else {
+        panic!("expected a pronoun identity predicate");
+    };
+    assert_eq!(pronoun_filter.demonstrative_antecedent_surface(), None);
+    Ok(())
+}
+
+#[test]
+fn demonstrative_characteristic_predicates_keep_their_authored_noun() -> Result<(), CardTextError> {
+    let toxic_tokens = lex_line("that creature has toxic", 0)?;
+    let PredicateAst::ItMatches(toxic_filter) = parse_predicate(&toxic_tokens)? else {
+        panic!("expected a current tagged-object predicate");
+    };
+    assert_eq!(toxic_filter.ability_markers, ["toxic"]);
+    assert_eq!(
+        toxic_filter.demonstrative_antecedent_surface(),
+        Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
+    );
+
+    let power_tokens = lex_line("that creature had power 2 or less", 0)?;
+    let PredicateAst::ItMatchedLastKnown(power_filter) = parse_predicate(&power_tokens)? else {
+        panic!("expected a last-known tagged-object predicate");
+    };
+    assert!(matches!(
+        power_filter.power,
+        Some(ironsmith_core::FilterComparison::LessThanOrEqual(2))
+    ));
+    assert_eq!(
+        power_filter.demonstrative_antecedent_surface(),
+        Some(ironsmith_core::DemonstrativeAntecedentSurface::Creature)
+    );
     Ok(())
 }
 

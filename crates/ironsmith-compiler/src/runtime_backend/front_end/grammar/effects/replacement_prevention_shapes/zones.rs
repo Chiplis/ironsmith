@@ -14,6 +14,7 @@ pub(crate) enum SplitAllVerbShape {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SplitAllShape<'a> {
     pub(crate) verb: SplitAllVerbShape,
+    pub(crate) body_tokens: &'a [OwnedLexToken],
     pub(crate) filter_tokens: Vec<&'a [OwnedLexToken]>,
 }
 
@@ -140,6 +141,7 @@ pub(crate) fn parse_split_all_shape(tokens: &[OwnedLexToken]) -> Option<SplitAll
         .collect::<Vec<_>>();
     (filter_tokens.len() >= 2).then_some(SplitAllShape {
         verb,
+        body_tokens: body,
         filter_tokens,
     })
 }

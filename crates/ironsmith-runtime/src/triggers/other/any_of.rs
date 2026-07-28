@@ -12,7 +12,9 @@ pub struct AnyOfTrigger {
 
 impl TriggerMatcher for AnyOfTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        self.branches.iter().any(|branch| branch.matches(event, ctx))
+        self.branches
+            .iter()
+            .any(|branch| branch.matches(event, ctx))
     }
 
     fn uses_snapshot(&self) -> bool {
@@ -32,8 +34,42 @@ impl TriggerMatcher for AnyOfTrigger {
                 .into_iter()
                 .find_map(|prefix| display.strip_prefix(prefix).map(str::to_string))
                 .unwrap_or(display);
+            let stripped = if parts
+                .first()
+                .is_some_and(|first| first.contains("enchanted player"))
+                && let Some(tail) = stripped.strip_prefix("enchanted player attacks")
+            {
+                format!("when they attack{tail}")
+            } else {
+                stripped
+            };
             parts.push(stripped);
         }
         parts.join(" or ")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::target::{ObjectFilter, PlayerFilter};
+
+    #[test]
+    fn repeated_enchanted_player_attack_branch_uses_pronoun_and_intro() {
+        let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
+        let mut your_attack = ObjectFilter::creature().you_control();
+        your_attack.attacking_player_or_planeswalker_controlled_by = Some(enchanted.clone());
+        let their_attack = ObjectFilter::creature().controlled_by(enchanted);
+        let trigger = Trigger::new(AnyOfTrigger {
+            branches: vec![
+                Trigger::attacks_one_or_more(your_attack),
+                Trigger::attacks_you_one_or_more(their_attack),
+            ],
+        });
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack enchanted player or a planeswalker they control or when they attack you or a planeswalker you control"
+        );
     }
 }

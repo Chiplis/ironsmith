@@ -34,9 +34,9 @@ use super::subject_verb_primitives::SubjectVerbPrimitiveClause;
 use super::{Verb, find_verb, parse_effect_chain, parse_effect_sentence_lexed};
 use crate::ability::Ability;
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, IfResultPredicate, KeywordAction, LineAst,
-    ParsedAbility, PlayerAst, PredicateAst, ReferenceImports, SubjectVerbActionAst,
-    SubjectVerbEffectAst, TagKey, TargetAst, TextSpan,
+    COPIED_STACK_OBJECT_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG,
+    IfResultPredicate, KeywordAction, LineAst, ParsedAbility, PlayerAst, PredicateAst,
+    ReferenceImports, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst, TextSpan,
 };
 use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
@@ -237,6 +237,12 @@ fn coordinated_gain_surface(tokens: &[OwnedLexToken], effects: Vec<EffectAst>) -
                 words.get(gain_idx + 1..).unwrap_or_default(),
                 gain_shapes::SharedAbilityTail::Gain,
             )
+            .is_some())
+        || (gain_verb == gain_shapes::GainAbilityVerb::Lose
+            && gain_shapes::find_shared_ability_tail(
+                words.get(gain_idx + 1..).unwrap_or_default(),
+                gain_shapes::SharedAbilityTail::Has,
+            )
             .is_some());
     if !preceding_action && !following_action {
         return effects;
@@ -247,6 +253,21 @@ fn coordinated_gain_surface(tokens: &[OwnedLexToken], effects: Vec<EffectAst>) -
         leading_duration,
         result_conjunction: false,
     }]
+}
+
+fn target_word_only_qualifies_a_controller(words: &[&str]) -> bool {
+    let target_positions = words
+        .iter()
+        .enumerate()
+        .filter_map(|(index, word)| (*word == "target").then_some(index))
+        .collect::<Vec<_>>();
+    let [target_index] = target_positions.as_slice() else {
+        return false;
+    };
+    words
+        .get(*target_index + 1)
+        .is_some_and(|word| matches!(*word, "opponent" | "opponents" | "player"))
+        && gain_shapes::gain_words_include_control_verb(words)
 }
 
 fn parse_shared_subject_base_pt_from_has_tail(
@@ -491,6 +512,12 @@ fn parse_granted_ability_component_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
 ) -> Result<Option<Vec<GrantedAbilityAst>>, CardTextError> {
+    let authored_as_quoted_ability = ability_tokens
+        .first()
+        .is_some_and(|token| token.kind == TokenKind::Quote)
+        && ability_tokens
+            .last()
+            .is_some_and(|token| token.kind == TokenKind::Quote);
     let ability_tokens = trim_edge_punctuation_and_quotes(ability_tokens);
     if ability_tokens.is_empty() {
         return Ok(None);
@@ -546,6 +573,20 @@ fn parse_granted_ability_component_for_gain(
 
     if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        if authored_as_quoted_ability
+            && matches!(actions.as_slice(), [KeywordAction::Unblockable])
+        {
+            let restriction = crate::effect::Restriction::block_specific_attacker(
+                ObjectFilter::creature(),
+                ObjectFilter::source(),
+            );
+            return Ok(Some(vec![GrantedAbilityAst::StaticAbility(
+                StaticAbility::restriction(
+                    restriction,
+                    "This creature can't be blocked.".to_string(),
+                ),
+            )]));
+        }
         return Ok(Some(
             actions.into_iter().map(GrantedAbilityAst::from).collect(),
         ));
@@ -622,16 +663,33 @@ fn split_quoted_granted_ability_list<'a>(
         .skip(open + 1)
         .find_map(|(index, token)| (token.kind == TokenKind::Quote).then_some(index))?;
     let tail_start = close + 1;
-    if tokens.get(tail_start).and_then(OwnedLexToken::as_word) != Some("and") {
+    if tokens.get(tail_start).and_then(OwnedLexToken::as_word) == Some("and") {
+        let prefix = trim_lexed_commas(tokens.get(..open)?);
+        let quoted = tokens.get(open..=close)?;
+        let tail = trim_lexed_commas(tokens.get(tail_start + 1..)?);
+        if prefix.is_empty() || quoted.is_empty() || tail.is_empty() {
+            return None;
+        }
+        return Some(vec![prefix, quoted, tail]);
+    }
+
+    // The quoted ability may be the final item: `gains haste and "When ..."`
+    // or `gains vigilance, indestructible, and "This ..."`. Split at the
+    // final top-level conjunction so the ordinary keyword prefix cannot be
+    // swallowed by the more permissive quoted-ability parser.
+    if !trim_edge_punctuation(tokens.get(tail_start..)?).is_empty() {
         return None;
     }
-    let prefix = trim_lexed_commas(tokens.get(..open)?);
+    let conjunction = tokens
+        .get(..open)?
+        .iter()
+        .rposition(|token| token.is_word("and"))?;
+    let prefix = trim_lexed_commas(tokens.get(..conjunction)?);
     let quoted = tokens.get(open..=close)?;
-    let tail = trim_lexed_commas(tokens.get(tail_start + 1..)?);
-    if prefix.is_empty() || quoted.is_empty() || tail.is_empty() {
+    if prefix.is_empty() || quoted.is_empty() {
         return None;
     }
-    Some(vec![prefix, quoted, tail])
+    Some(vec![prefix, quoted])
 }
 
 pub(crate) fn parse_granted_abilities_for_gain_clause(
@@ -652,6 +710,14 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
         if !abilities.is_empty() {
             return Ok((abilities, false));
         }
+    }
+
+    if allow_choice && let Some(actions) = parse_choice_of_abilities(ability_tokens) {
+        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
+        return Ok((
+            actions.into_iter().map(GrantedAbilityAst::from).collect(),
+            true,
+        ));
     }
 
     let comma_segments = split_lexed_slices_on_comma(ability_tokens);
@@ -719,14 +785,6 @@ pub(crate) fn parse_granted_abilities_for_gain_clause(
     if let Some(abilities) = parse_granted_ability_component_for_gain(ability_tokens, clause_words)?
     {
         return Ok((abilities, false));
-    }
-
-    if allow_choice && let Some(actions) = parse_choice_of_abilities(ability_tokens) {
-        reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        return Ok((
-            actions.into_iter().map(GrantedAbilityAst::from).collect(),
-            true,
-        ));
     }
 
     if let Some(abilities) = conjunction {
@@ -1008,6 +1066,15 @@ fn subject_verb_grant_abilities_all_with_optional_condition(
     }
 }
 
+fn pronoun_set_quantifier_surface(words: &[&str]) -> Option<ironsmith_core::SetQuantifierSurface> {
+    match words.first().copied() {
+        Some("they" | "theyre" | "they're" | "they’re" | "them") => {
+            Some(ironsmith_core::SetQuantifierSurface::They)
+        }
+        _ => None,
+    }
+}
+
 fn subject_verb_remove_abilities_all_with_optional_condition(
     filter: ObjectFilter,
     abilities: Vec<GrantedAbilityAst>,
@@ -1121,6 +1188,15 @@ fn trim_trailing_also(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
 
 fn source_target_from_subject_tokens(tokens: &[OwnedLexToken]) -> Option<TargetAst> {
     let subject_words = GainAbilityWordView::new(tokens).to_word_refs();
+    if matches!(
+        subject_words.as_slice(),
+        ["the" | "that", "copy"] | ["the" | "those", "copies"]
+    ) {
+        return Some(TargetAst::Tagged(
+            TagKey::from(COPIED_STACK_OBJECT_TAG),
+            span_from_lexed_tokens(tokens),
+        ));
+    }
     if subject_words == ["the", "creature", "that", "attacked"] {
         return Some(TargetAst::Tagged(
             TagKey::from("triggering"),
@@ -1294,11 +1370,11 @@ fn parse_simple_ability_modifier_clause_lexed(
 
     let ability_word_refs = GainAbilityWordView::new(&ability_tokens).to_word_refs();
     let ability_surface = gain_shapes::classify_ability_reference_surface(&ability_word_refs);
-    let (abilities, _) =
+    let (abilities, is_choice) =
         if losing && ability_surface == gain_shapes::AbilityReferenceSurface::ThisAbility {
             (vec![GrantedAbilityAst::ThisAbility], false)
         } else {
-            parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, false)?
+            parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, !losing)?
         };
     let removes_all_abilities =
         losing && ability_surface == gain_shapes::AbilityReferenceSurface::AllAbilities;
@@ -1333,6 +1409,7 @@ fn parse_simple_ability_modifier_clause_lexed(
     let subject_shape = gain_shapes::classify_gain_subject(&subject_word_refs);
     let is_pronoun_subject = implied_it_subject || subject_shape.tagged_pronoun;
     if is_pronoun_subject {
+        let set_quantifier_surface = pronoun_set_quantifier_surface(&subject_word_refs);
         let target =
             TargetAst::Tagged(TagKey::from(IT_TAG), span_from_lexed_tokens(subject_tokens));
         if losing {
@@ -1340,9 +1417,12 @@ fn parse_simple_ability_modifier_clause_lexed(
                 target, abilities, duration,
             )));
         }
-        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
-            target, abilities, duration,
-        )));
+        return Ok(Some(if is_choice {
+            EffectAst::subject_verb_grant_abilities_choice_to_target(target, abilities, duration)
+        } else {
+            EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
+                .with_set_quantifier_surface(set_quantifier_surface)
+        }));
     }
 
     if let Some(target) = source_target_from_subject_tokens(&subject_tokens) {
@@ -1353,9 +1433,11 @@ fn parse_simple_ability_modifier_clause_lexed(
                 duration,
             )));
         }
-        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
-            target, abilities, duration,
-        )));
+        return Ok(Some(if is_choice {
+            EffectAst::subject_verb_grant_abilities_choice_to_target(target, abilities, duration)
+        } else {
+            EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
+        }));
     }
 
     let is_demonstrative_subject = subject_shape.demonstrative_object;
@@ -1370,9 +1452,11 @@ fn parse_simple_ability_modifier_clause_lexed(
                 target, abilities, duration,
             )));
         }
-        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
-            target, abilities, duration,
-        )));
+        return Ok(Some(if is_choice {
+            EffectAst::subject_verb_grant_abilities_choice_to_target(target, abilities, duration)
+        } else {
+            EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
+        }));
     }
 
     if !losing && subject_shape.player_any {
@@ -1401,9 +1485,11 @@ fn parse_simple_ability_modifier_clause_lexed(
                 target, abilities, duration,
             )));
         }
-        return Ok(Some(EffectAst::subject_verb_grant_abilities_to_target(
-            target, abilities, duration,
-        )));
+        return Ok(Some(if is_choice {
+            EffectAst::subject_verb_grant_abilities_choice_to_target(target, abilities, duration)
+        } else {
+            EffectAst::subject_verb_grant_abilities_to_target(target, abilities, duration)
+        }));
     }
 
     let filter = parse_object_filter_lexed(subject_tokens, false).map_err(|_| {
@@ -1418,9 +1504,11 @@ fn parse_simple_ability_modifier_clause_lexed(
             filter, abilities, duration,
         )));
     }
-    Ok(Some(EffectAst::subject_verb_grant_abilities_all(
-        filter, abilities, duration,
-    )))
+    Ok(Some(if is_choice {
+        EffectAst::subject_verb_grant_abilities_choice_all(filter, abilities, duration)
+    } else {
+        EffectAst::subject_verb_grant_abilities_all(filter, abilities, duration)
+    }))
 }
 
 pub(crate) fn parse_simple_gain_ability_clause(
@@ -1445,6 +1533,23 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    if let Some(player) = super::chain_carry::parse_leading_player_may_lexed(tokens) {
+        let mut stripped = super::chain_carry::remove_through_first_word(tokens);
+        if let Some(rest) =
+            crate::runtime_backend::front_end::grammar::effects::chain_carry::
+                strip_leading_have_tokens(&stripped)
+        {
+            stripped = rest.to_vec();
+        }
+        let Some(mut effects) = parse_gain_ability_sentence(&stripped)? else {
+            return Ok(None);
+        };
+        for effect in &mut effects {
+            super::chain_carry::bind_implicit_player_context(effect, player);
+        }
+        return Ok(Some(vec![EffectAst::MayByPlayer { player, effects }]));
+    }
+
     Ok(parse_gain_ability_sentence_with_subject(tokens, None)?
         .map(|effects| coordinated_gain_surface(tokens, effects)))
 }
@@ -1534,7 +1639,10 @@ fn parse_gain_ability_sentence_with_subject(
         let controller_tail_subject = subject_shape.controller_tail;
         let target_phrase_with_controller_tail = subject_shape.target && controller_tail_subject;
         let object_filter_subject = parse_object_filter(&subject_tokens, false).is_ok();
-        if !target_phrase_with_controller_tail && !controller_tail_subject && !object_filter_subject
+        if !target_phrase_with_controller_tail
+            && !controller_tail_subject
+            && !object_filter_subject
+            && !subject_shape.demonstrative_object
         {
             return Ok(None);
         }
@@ -1607,6 +1715,23 @@ fn parse_gain_ability_sentence_with_subject(
     if shared_has_tail_word_idx.is_some() && following_base_pt_effect.is_none() {
         return Ok(None);
     }
+    // A shared subject may carry three continuous actions in one clause:
+    // "<subject> loses all abilities, becomes ..., and has base P/T ...".
+    // Keep the middle `becomes` arm separate from the lost-ability payload so
+    // all three actions retain the original grammatical subject.
+    let following_become = shared_has_tail_word_idx
+        .filter(|_| losing && following_base_pt_effect.is_some())
+        .and_then(|has_separator_idx| {
+            let become_relative_idx =
+                gain_shapes::find_become_verb(&after_gain[..has_separator_idx])?;
+            let become_word_idx = gain_idx + 1 + become_relative_idx;
+            let tail_start = word_view.token_boundary_for_word_or_end(become_word_idx + 1)?;
+            let tail_end = word_view
+                .token_boundary_for_word_or_end(gain_idx + 1 + has_separator_idx)
+                .unwrap_or(tokens.len());
+            let tail = trim_commas(tokens.get(tail_start..tail_end)?);
+            (!tail.is_empty()).then(|| (become_word_idx, tail.to_vec()))
+        });
     let following_grant = if let Some(shared_idx) = shared_gain_tail_word_idx {
         let ability_start_word_idx = gain_idx + 1 + shared_idx + 2;
         let ability_end_word_idx = duration_phrase
@@ -1671,14 +1796,20 @@ fn parse_gain_ability_sentence_with_subject(
         }
     }
 
-    let ability_end_word_idx = duration_phrase
-        .as_ref()
-        .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel);
-    let ability_end_word_idx = shared_gain_tail_word_idx
-        .or(shared_get_tail_word_idx)
-        .or(shared_has_tail_word_idx)
-        .map(|idx| gain_idx + 1 + idx)
-        .or(ability_end_word_idx);
+    let ability_end_word_idx = [
+        duration_phrase
+            .as_ref()
+            .map(|(start_rel, _, _)| gain_idx + 1 + *start_rel),
+        shared_gain_tail_word_idx.map(|idx| gain_idx + 1 + idx),
+        shared_get_tail_word_idx.map(|idx| gain_idx + 1 + idx),
+        shared_has_tail_word_idx.map(|idx| gain_idx + 1 + idx),
+        following_become
+            .as_ref()
+            .map(|(become_word_idx, _)| *become_word_idx),
+    ]
+    .into_iter()
+    .flatten()
+    .min();
     let ability_end_token_idx = if let Some((end_token_idx, _)) = nested_quoted_ability {
         end_token_idx
     } else if let Some(end_word_idx) = ability_end_word_idx {
@@ -1921,6 +2052,15 @@ fn parse_gain_ability_sentence_with_subject(
     let real_subject_token_storage =
         trim_commas(typed_subject_tokens.unwrap_or(inferred_subject_tokens));
     let real_subject_tokens = trim_trailing_also(&real_subject_token_storage);
+    let following_become_effect = if let Some((_, become_tail_tokens)) = &following_become {
+        let mut effect = parse_become_clause(&real_subject_tokens, become_tail_tokens)?;
+        if has_explicit_duration {
+            apply_gain_clause_duration_to_leading_effect(&mut effect, &duration);
+        }
+        Some(effect)
+    } else {
+        None
+    };
 
     let mut effects = Vec::new();
 
@@ -1928,11 +2068,14 @@ fn parse_gain_ability_sentence_with_subject(
     let real_subject_word_view = GainAbilityWordView::new(&real_subject_tokens);
     let real_subject_words = real_subject_word_view.to_word_refs();
     let real_subject_shape = gain_shapes::classify_gain_subject(&real_subject_words);
+    let pronoun_set_quantifier_surface = pronoun_set_quantifier_surface(&real_subject_words);
+    let target_word_qualifies_controller =
+        target_word_only_qualifies_a_controller(&real_subject_words);
 
     // The typed get-then-gain shape owns the complete subject capture. Resolve an
     // explicit target before considering references embedded inside that target
     // (for example, "other than this creature" or "with a sticker on it").
-    if real_subject_shape.target {
+    if real_subject_shape.target && !target_word_qualifies_controller {
         let has_preceding_target_effect = pump_effect.is_some() || leading_become_effect.is_some();
         let target = parse_target_phrase(&real_subject_tokens)?;
         if let Some(become_effect) = &leading_become_effect {
@@ -1966,6 +2109,9 @@ fn parse_gain_ability_sentence_with_subject(
                     &duration_condition,
                 ),
             );
+        }
+        if let Some(become_effect) = &following_become_effect {
+            effects.push(become_effect.clone());
         }
         append_shared_subject_grant_to_target(
             &mut effects,
@@ -2017,8 +2163,12 @@ fn parse_gain_ability_sentence_with_subject(
                     abilities,
                     duration.clone(),
                     &duration_condition,
-                ),
+                )
+                .with_set_quantifier_surface(pronoun_set_quantifier_surface),
             );
+        }
+        if let Some(become_effect) = &following_become_effect {
+            effects.push(become_effect.clone());
         }
         append_shared_subject_grant_to_target(&mut effects, &target, &following_grant, &duration);
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
@@ -2054,6 +2204,9 @@ fn parse_gain_ability_sentence_with_subject(
                     &duration_condition,
                 ),
             );
+        }
+        if let Some(become_effect) = &following_become_effect {
+            effects.push(become_effect.clone());
         }
         append_shared_subject_grant_to_target(&mut effects, &target, &following_grant, &duration);
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
@@ -2092,6 +2245,9 @@ fn parse_gain_ability_sentence_with_subject(
                     &duration_condition,
                 ),
             );
+        }
+        if let Some(become_effect) = &following_become_effect {
+            effects.push(become_effect.clone());
         }
         append_shared_subject_grant_to_target(&mut effects, &target, &following_grant, &duration);
         append_shared_subject_pump_to_target(&mut effects, &target, &following_pump_effect);
@@ -2223,12 +2379,35 @@ fn parse_gain_ability_sentence_with_subject(
         ));
     }
     if losing {
-        effects.push(subject_verb_remove_abilities_all_with_optional_condition(
+        let mut remove = subject_verb_remove_abilities_all_with_optional_condition(
             filter.clone(),
             abilities,
             duration.clone(),
             &duration_condition,
-        ));
+        );
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::RemoveAbilitiesAll {
+                    set_quantifier_surface,
+                    ..
+                },
+            ..
+        }) = &mut remove
+        {
+            *set_quantifier_surface = match real_subject_tokens.first() {
+                Some(token) if token.is_word("all") => {
+                    Some(ironsmith_core::SetQuantifierSurface::All)
+                }
+                Some(token) if token.is_word("each") => {
+                    Some(ironsmith_core::SetQuantifierSurface::Each)
+                }
+                Some(token) if token.is_word("those") => {
+                    Some(ironsmith_core::SetQuantifierSurface::Those)
+                }
+                _ => None,
+            };
+        }
+        effects.push(remove);
     } else if grant_is_choice {
         effects.push(EffectAst::subject_verb_grant_abilities_choice_all(
             filter.clone(),
@@ -2242,6 +2421,9 @@ fn parse_gain_ability_sentence_with_subject(
             duration.clone(),
             &duration_condition,
         ));
+    }
+    if let Some(become_effect) = &following_become_effect {
+        effects.push(become_effect.clone());
     }
     if let Some((abilities, is_choice)) = &following_grant {
         if *is_choice {
@@ -2408,15 +2590,11 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
     }
 
     let display = display_text_for_tokens(&ability_tokens);
-    let parsed_ability = if has_colon {
-        let Some(parsed) = parse_activated_line(&ability_tokens)? else {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported granted activated/triggered ability clause (clause: '{}')",
-                clause_words.join(" ")
-            )));
-        };
-        parsed
-    } else {
+    // An activated ability nested inside a triggered ability can contribute a
+    // colon to the full token stream. The leading grammatical shape owns the
+    // outer ability kind; only use a colon to select activation when the
+    // ability itself does not begin with a trigger.
+    let parsed_ability = if looks_like_trigger {
         if let Some(parsed) = parse_granted_triggered_otherwise_ability(&ability_tokens, &display)?
         {
             parsed
@@ -2446,6 +2624,14 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
                 }
             }
         }
+    } else {
+        let Some(parsed) = parse_activated_line(&ability_tokens)? else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported granted activated/triggered ability clause (clause: '{}')",
+                clause_words.join(" ")
+            )));
+        };
+        parsed
     };
 
     Ok(Some(GrantedAbilityAst::ParsedObjectAbility {
@@ -2616,6 +2802,7 @@ mod tests {
     use super::super::super::util::tokenize_line;
     use super::*;
     use crate::CardId;
+    use crate::ability::AbilityKind;
     use crate::cards::builders::CardDefinitionBuilder;
 
     #[test]
@@ -2629,6 +2816,26 @@ mod tests {
         assert_eq!(
             display_text_for_tokens(&tokens),
             "whenever this creature dies, each opponent loses 1 life and you gain 2 life"
+        );
+    }
+
+    #[test]
+    fn leading_trigger_wins_over_colon_inside_nested_token_ability() {
+        let tokens = lex_line(
+            "When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'",
+            0,
+        )
+        .expect("nested token trigger should lex");
+        let words = crate::runtime_backend::token_word_refs(&tokens);
+        let parsed = parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words)
+            .expect("nested token trigger should parse")
+            .expect("nested token trigger should produce an ability");
+        let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = parsed else {
+            panic!("expected a parsed object ability");
+        };
+        assert!(
+            matches!(ability.kind(), AbilityKind::Triggered(_)),
+            "the nested activation must not become the outer ability: {ability:#?}"
         );
     }
 
@@ -2653,6 +2860,76 @@ mod tests {
             "{debug}"
         );
         assert!(debug.contains("Equip {0}"), "{debug}");
+    }
+
+    #[test]
+    fn oxford_list_with_final_quoted_ability_is_not_a_choice() {
+        let ability_tokens = lex_line(
+            "vigilance, indestructible, and \"This creature can't be blocked.\"",
+            0,
+        )
+        .expect("mixed granted-ability list should lex");
+        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let (abilities, is_choice) =
+            parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, true)
+                .expect("mixed granted-ability list should parse");
+
+        assert!(!is_choice, "{abilities:#?}");
+        assert_eq!(abilities.len(), 3, "{abilities:#?}");
+        assert!(matches!(
+            &abilities[2],
+            GrantedAbilityAst::StaticAbility(ability)
+                if ability.id() == StaticAbilityId::RuleRestriction
+        ));
+    }
+
+    #[test]
+    fn keyword_before_final_quoted_ability_is_preserved() {
+        let ability_tokens =
+            lex_line("trample and \"{G}: Regenerate this creature.\"", 0)
+                .expect("mixed granted-ability list should lex");
+        let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
+        let (abilities, is_choice) =
+            parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, true)
+                .expect("mixed granted-ability list should parse");
+        let debug = format!("{abilities:#?}");
+
+        assert!(!is_choice, "{debug}");
+        assert_eq!(abilities.len(), 2, "{debug}");
+        assert!(debug.contains("Trample"), "{debug}");
+        assert!(debug.contains("Regenerate"), "{debug}");
+    }
+
+    #[test]
+    fn become_then_oxford_grant_list_keeps_all_grants_nonmodal() {
+        let tokens = tokenize_line(
+            "Target artifact you control becomes a 9/9 Construct artifact creature and gains vigilance, indestructible, and \"This creature can't be blocked.\"",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("become-and-grant sentence should parse")
+            .expect("become-and-grant sentence should produce effects");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("BecomeBasePtCreature"), "{debug}");
+        assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
+        assert!(!debug.contains("GrantAbilitiesChoiceToTarget"), "{debug}");
+        assert!(
+            debug.contains("RuleRestriction"),
+            "quoted can't-be-blocked clause must remain a typed quoted rule: {debug}"
+        );
+    }
+
+    #[test]
+    fn explicit_copy_subject_uses_the_copy_result_tag() {
+        let tokens = tokenize_line("The copy gains haste.", 0);
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("copy-result grant should parse")
+            .expect("copy-result grant should produce effects");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains(COPIED_STACK_OBJECT_TAG), "{debug}");
+        assert!(!debug.contains(&format!("TagKey(\n                    \"{IT_TAG}\"")), "{debug}");
     }
 
     #[test]
@@ -2796,6 +3073,45 @@ mod tests {
                 && string_contains(&debug, "Fixed(2)"),
             "expected quoted combat-damage draw trigger to be granted until end of turn, got {debug}"
         );
+    }
+
+    #[test]
+    fn keyword_and_quoted_trigger_share_target_and_duration() {
+        let tokens = tokenize_line(
+            "Until end of turn, target creature you control with power 4 or greater gains trample and \"Whenever this creature deals combat damage to a player, draw a card.\"",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("mixed keyword and quoted trigger grant should parse")
+            .expect("mixed grant should produce effects");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("Trample"), "{debug}");
+        assert!(debug.contains("ThisDealsCombatDamageToPlayer"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+        assert!(debug.contains("duration: EndOfTurn"), "{debug}");
+        assert!(debug.contains("power: Some"), "{debug}");
+    }
+
+    #[test]
+    fn activated_line_keeps_mixed_keyword_and_quoted_trigger_together() {
+        let (parsed, trace) = crate::parse_trace::capture(|| {
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Test Heirloom").parse_text(
+                "{T}: Until end of turn, target creature you control with power 4 or greater gains trample and \"Whenever this creature deals combat damage to a player, draw a card.\"",
+            )
+        });
+        let def = parsed.unwrap_or_else(|error| {
+            panic!(
+                "mixed grant inside an activated line should parse: {error:?}\n{}",
+                trace.render()
+            )
+        });
+        let debug = format!("{def:#?}");
+
+        assert!(debug.contains("Trample"), "{debug}");
+        assert!(debug.contains("ThisDealsCombatDamageToPlayer"), "{debug}");
+        assert!(debug.contains("Draw"), "{debug}");
+        assert!(debug.contains("EndOfTurn"), "{debug}");
     }
 
     #[test]
@@ -3458,5 +3774,199 @@ mod tests {
                 && string_contains(&debug, "EndOfTurn"),
             "expected a player-wide temporary targeting restriction, got {debug}"
         );
+    }
+
+    #[test]
+    fn lose_become_and_base_pt_chain_keeps_one_unmodified_subject() {
+        let tokens = tokenize_line(
+            "Each creature target opponent controls loses all abilities, becomes a Coward in addition to its other types, and has base power and toughness 1/1.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("shared-subject continuous chain should parse")
+            .expect("shared-subject continuous chain should produce effects");
+        let [
+            EffectAst::Coordinated {
+                effects: coordinated,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one coordinated continuous chain, got {effects:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::RemoveAbilitiesAll {
+                        filter: remove,
+                        set_quantifier_surface: remove_quantifier,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::AddSubtypes {
+                        target: TargetAst::Object(add, ..),
+                        subtypes,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::SetBasePowerToughness {
+                        target: TargetAst::Object(set_pt, ..),
+                        power: Value::Fixed(1),
+                        toughness: Value::Fixed(1),
+                        ..
+                    },
+                ..
+            }),
+        ] = coordinated.as_slice()
+        else {
+            panic!("expected remove/add-subtype/set-P/T actions, got {coordinated:#?}");
+        };
+        assert_eq!(
+            *remove_quantifier,
+            Some(ironsmith_core::SetQuantifierSurface::Each)
+        );
+
+        for filter in [remove, add, set_pt] {
+            assert_eq!(filter.card_types, [CardType::Creature], "{filter:#?}");
+            assert_eq!(
+                filter.controller,
+                Some(PlayerFilter::Target(Box::new(PlayerFilter::Opponent))),
+                "{filter:#?}"
+            );
+            assert!(filter.subtypes.is_empty(), "{filter:#?}");
+            assert!(!filter.other, "{filter:#?}");
+        }
+        assert_eq!(subtypes, &[crate::types::Subtype::Coward]);
+    }
+
+    #[test]
+    fn sentence_dispatch_preserves_loss_become_and_base_pt_coordination() {
+        let tokens = tokenize_line(
+            "Each creature target opponent controls loses all abilities, becomes a Coward in addition to its other types, and has base power and toughness 1/1.",
+            0,
+        );
+        let effects = parse_effect_sentence_lexed(&tokens)
+            .expect("full sentence dispatch should preserve the coordinated chain");
+        assert!(
+            matches!(
+                effects.as_slice(),
+                [EffectAst::Coordinated {
+                    effects: coordinated,
+                    ..
+                }] if matches!(
+                    coordinated.as_slice(),
+                    [
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::RemoveAbilitiesAll { .. },
+                            ..
+                        }),
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::AddSubtypes { .. },
+                            ..
+                        }),
+                        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                            action: SubjectVerbActionAst::SetBasePowerToughness { .. },
+                            ..
+                        }),
+                    ]
+                )
+            ),
+            "full sentence route must not contaminate the subject filter: {effects:#?}"
+        );
+    }
+
+    #[test]
+    fn target_controller_qualifier_does_not_hide_an_explicit_object_target() {
+        let tokens = tokenize_line(
+            "Target creature an opponent controls loses all abilities and has base power and toughness 1/1 until end of turn.",
+            0,
+        );
+        let effects = parse_gain_ability_sentence(&tokens)
+            .expect("targeted continuous chain should parse")
+            .expect("targeted continuous chain should produce effects");
+        let [
+            EffectAst::Coordinated {
+                effects: coordinated,
+                ..
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one coordinated targeted chain, got {effects:#?}");
+        };
+        assert!(
+            matches!(
+                coordinated.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::RemoveAbilitiesFromTarget { .. },
+                        ..
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::SetBasePowerToughness { .. },
+                        ..
+                    })
+                ]
+            ),
+            "explicit object target must remain targeted: {coordinated:#?}"
+        );
+    }
+
+    #[test]
+    fn plural_pronoun_grant_is_typed_without_pluralizing_singular_it() {
+        let surface = |text: &str| {
+            let tokens = tokenize_line(text, 0);
+            let effects = parse_gain_ability_sentence(&tokens)
+                .expect("pronoun grant should parse")
+                .expect("pronoun grant should produce an effect");
+            let [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::GrantAbilitiesToTarget {
+                            set_quantifier_surface,
+                            ..
+                        },
+                    ..
+                }),
+            ] = effects.as_slice()
+            else {
+                panic!("expected one typed target grant, got {effects:#?}");
+            };
+            *set_quantifier_surface
+        };
+        let simple_surface = |text: &str| {
+            let tokens = tokenize_line(text, 0);
+            let effect = parse_simple_gain_ability_clause(&tokens)
+                .expect("simple pronoun grant should parse")
+                .expect("simple pronoun grant should produce an effect");
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantAbilitiesToTarget {
+                        set_quantifier_surface,
+                        ..
+                    },
+                ..
+            }) = effect
+            else {
+                panic!("expected one simple typed target grant, got {effect:#?}");
+            };
+            set_quantifier_surface
+        };
+
+        assert_eq!(
+            surface("They gain haste until end of turn."),
+            Some(ironsmith_core::SetQuantifierSurface::They)
+        );
+        assert_eq!(surface("It gains haste until end of turn."), None);
+        assert_eq!(
+            simple_surface("They gain haste until end of turn."),
+            Some(ironsmith_core::SetQuantifierSurface::They)
+        );
+        assert_eq!(simple_surface("It gains haste until end of turn."), None);
     }
 }

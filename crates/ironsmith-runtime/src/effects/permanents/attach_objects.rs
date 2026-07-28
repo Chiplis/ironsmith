@@ -1,6 +1,9 @@
 //! Attach arbitrary objects to a target object or player.
 
-use super::{attach_battlefield_object_to_target, choose_color_as_becomes_attached};
+use super::{
+    attach_battlefield_object_to_target, attachment_can_attach_to_target,
+    choose_color_as_becomes_attached,
+};
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_objects_for_effect, resolve_single_target_from_spec};
@@ -43,6 +46,88 @@ impl EffectExecutor for AttachObjectsEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
+        if self.individual_targets {
+            let object_ids = resolve_objects_for_effect(game, ctx, &self.objects)?;
+            if object_ids.is_empty() {
+                return Ok(EffectOutcome::count(0));
+            }
+
+            // Collect every choice before mutating attachments. An interactive
+            // decision maker can therefore pause on any one Aura and safely
+            // replay earlier choices without partially applying the effect.
+            let mut assignments = Vec::new();
+            for object_id in object_ids {
+                let candidate_ids =
+                    crate::effects::helpers::preview_object_ids_for_choose_spec(
+                        game,
+                        &self.target,
+                        ctx,
+                    )
+                    .unwrap_or_default();
+                let candidates = candidate_ids
+                    .into_iter()
+                    .filter(|candidate_id| {
+                        attachment_can_attach_to_target(
+                            game,
+                            object_id,
+                            AttachmentTarget::Object(*candidate_id),
+                        )
+                    })
+                    .filter_map(|candidate_id| {
+                        game.object(candidate_id).map(|object| {
+                            crate::decisions::context::SelectableObject::new(
+                                candidate_id,
+                                object.name.clone(),
+                            )
+                        })
+                    })
+                    .collect::<Vec<_>>();
+                if candidates.is_empty() {
+                    continue;
+                }
+
+                let attachment_name = game
+                    .object(object_id)
+                    .map(|object| object.name.to_string())
+                    .unwrap_or_else(|| "attachment".to_string());
+                let choice = crate::decisions::context::SelectObjectsContext::new(
+                    ctx.controller,
+                    Some(ctx.source),
+                    format!("Choose what to attach {attachment_name} to"),
+                    candidates,
+                    1,
+                    Some(1),
+                )
+                .require_explicit_choice();
+                let chosen = ctx
+                    .decision_maker
+                    .decide_objects(game, &choice)
+                    .into_iter()
+                    .next();
+                if ctx.decision_maker.awaiting_choice() {
+                    return Ok(EffectOutcome::count(0));
+                }
+                let Some(target_id) = chosen.filter(|chosen_id| {
+                    choice
+                        .candidates
+                        .iter()
+                        .any(|candidate| candidate.legal && candidate.id == *chosen_id)
+                }) else {
+                    continue;
+                };
+                assignments.push((object_id, AttachmentTarget::Object(target_id)));
+            }
+
+            let mut attached_count = 0i32;
+            for (object_id, target) in assignments {
+                if attach_battlefield_object_to_target(game, object_id, target) {
+                    choose_color_as_becomes_attached(game, ctx, object_id, target);
+                    attached_count += 1;
+                }
+            }
+            return Ok(EffectOutcome::count(attached_count));
+        }
+
         let target = match resolve_attachment_target(game, &self.target, ctx) {
             Ok(target) => target,
             Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
@@ -90,6 +175,8 @@ impl EffectExecutor for AttachObjectsEffect {
 mod tests {
     use super::*;
     use crate::card::{CardBuilder, PowerToughness};
+    use crate::decision::DecisionMaker;
+    use crate::decisions::context::SelectObjectsContext;
     use crate::effects::ResolvedTarget;
     use crate::ids::{CardId, ObjectId, PlayerId};
     use crate::mana::{ManaCost, ManaSymbol};
@@ -403,6 +490,71 @@ mod tests {
         assert_eq!(
             game.object(equipment).and_then(|object| object.attached_to),
             Some(AttachmentTarget::Object(returned_id))
+        );
+    }
+
+    #[test]
+    fn individual_targets_choose_a_legal_destination_for_each_attachment() {
+        struct OrderedChoices {
+            choices: Vec<ObjectId>,
+            next: usize,
+        }
+
+        impl DecisionMaker for OrderedChoices {
+            fn decide_objects(
+                &mut self,
+                _game: &GameState,
+                ctx: &SelectObjectsContext,
+            ) -> Vec<ObjectId> {
+                let chosen = self.choices[self.next];
+                self.next += 1;
+                assert!(
+                    ctx.candidates
+                        .iter()
+                        .any(|candidate| candidate.legal && candidate.id == chosen),
+                    "scripted attachment destination must be legal: {ctx:?}"
+                );
+                vec![chosen]
+            }
+        }
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let first_aura = create_aura(&mut game, "First Aura", alice);
+        let second_aura = create_aura(&mut game, "Second Aura", alice);
+        let first_creature = create_creature(&mut game, "First Bear", alice);
+        let second_creature = create_creature(&mut game, "Second Bear", alice);
+        let mut aura_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
+        aura_filter.subtypes.push(Subtype::Aura);
+        let destination =
+            ObjectFilter::creature().in_zone(Zone::Battlefield).controlled_by(
+                crate::target::PlayerFilter::You,
+            );
+        let effect = AttachObjectsEffect::new(
+            ChooseSpec::All(aura_filter),
+            ChooseSpec::Object(destination),
+        )
+        .with_individual_targets();
+        let mut decisions = OrderedChoices {
+            choices: vec![first_creature, second_creature],
+            next: 0,
+        };
+        let mut ctx =
+            ExecutionContext::new_default(first_aura, alice).with_decision_maker(&mut decisions);
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("individual attachment choices should resolve");
+
+        assert_eq!(outcome.count_or_zero(), 2);
+        assert_eq!(
+            game.object(first_aura).and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(first_creature))
+        );
+        assert_eq!(
+            game.object(second_aura)
+                .and_then(|object| object.attached_to),
+            Some(AttachmentTarget::Object(second_creature))
         );
     }
 }

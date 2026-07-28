@@ -1,12 +1,12 @@
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, ObjectRefAst,
-    OwnedLexToken, PlayerAst, PredicateAst, SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst,
-    TagKey, TargetAst,
+    CardTextError, ChooseOneModeAst, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction,
+    ObjectRefAst, OwnedLexToken, PlayerAst, PredicateAst, SubjectAst, SubjectVerbActionAst,
+    SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::color::ColorSet;
 use crate::effect::Value;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ObjectFilter, PlayerFilter};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
 
@@ -26,7 +26,27 @@ use super::dispatch_entry::{target_references_it, with_where_x_surface_hints};
 use creation_grammar::{CreationPhrase as CreatePhrase, CreationWordClass as CreateWord};
 
 fn parse_create_value_binding(tokens: &[OwnedLexToken]) -> Option<Value> {
-    crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(tokens)
+    crate::runtime_backend::families::keyword_static::parse_where_x_is_aggregate_filter_value(tokens)
+        .or_else(|| {
+            crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_value_binding(tokens)
+        })
+        // This is a count of qualifying players, not of the objects named at
+        // the end of the clause. Keep it ahead of the broad number-of-filter
+        // parser, which can otherwise retain only "creatures" or "lands".
+        .or_else(|| {
+            crate::runtime_backend::front_end::grammar::values::parse_players_who_control_more_than_you_value_lexed(
+                tokens,
+            )
+        })
+        // Prefer the complete typed number-of filter family before the broad
+        // value-binding dispatcher. In particular, "the number of abilities
+        // from among ... found among creatures" is a StaticAbilitiesAmong
+        // aggregate, not merely the number of creatures in its scope.
+        .or_else(|| {
+            crate::runtime_backend::families::keyword_static::parse_where_x_is_number_of_filter_value(
+                tokens,
+            )
+        })
         .or_else(|| parse_value_binding_clause(tokens))
 }
 
@@ -124,9 +144,18 @@ fn parse_create_equal_to_dynamic_count(
     let Some(spec) = creation_grammar::parse_equal_to_count_clause_tokens(tail_tokens) else {
         return Ok(None);
     };
+    let references_prior_result = spec
+        .value_tokens
+        .iter()
+        .any(|token| token.is_word("result"));
     let mut synthetic_tokens = super::super::lexer::synthetic_word_tokens(["where", "x", "is"]);
     synthetic_tokens.extend_from_slice(spec.value_tokens);
     Ok(parse_create_value_binding(&synthetic_tokens).map(|value| {
+        let value = if references_prior_result {
+            value.with_surface_hint(ValueSurfaceHint::PriorEffectResult)
+        } else {
+            value
+        };
         (
             value.with_surface_hint(ValueSurfaceHint::EqualTo),
             spec.cut_token,
@@ -150,6 +179,29 @@ fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
         }
     }
     bodies
+}
+
+fn parse_unquoted_token_dynamic_power_toughness(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, Value)> {
+    let mut in_quote = false;
+    let unquoted = tokens
+        .iter()
+        .filter_map(|token| {
+            if token.kind == TokenKind::Quote {
+                in_quote = !in_quote;
+                return None;
+            }
+            (!in_quote).then(|| token.clone())
+        })
+        .collect::<Vec<_>>();
+    token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&unquoted)
+}
+
+fn parse_quoted_token_dynamic_power_toughness(tokens: &[OwnedLexToken]) -> Option<(Value, Value)> {
+    double_quoted_rule_bodies(tokens)
+        .into_iter()
+        .find_map(token_definition_grammar::parse_token_dynamic_power_toughness_tokens)
 }
 
 fn quoted_copy_sacrifice_ability_text(tokens: &[OwnedLexToken]) -> Option<String> {
@@ -229,6 +281,114 @@ fn parse_inline_token_granted_abilities(
         }
     }
     abilities
+}
+
+fn intrinsic_token_ability_represents_dynamic_power_toughness(
+    definition: &crate::runtime_backend::token_definition::TokenDefinitionSpec,
+    granted_abilities: &[GrantedAbilityAst],
+    dynamic: &(Value, Value),
+) -> bool {
+    let same_values = |power: &Value, toughness: &Value| {
+        power.unhinted() == dynamic.0.unhinted() && toughness.unhinted() == dynamic.1.unhinted()
+    };
+    if granted_abilities.iter().any(|ability| {
+        let static_ability = match ability {
+            GrantedAbilityAst::StaticAbility(static_ability) => static_ability,
+            GrantedAbilityAst::ParsedObjectAbility { ability, .. } => {
+                let crate::ability::AbilityKind::Static(static_ability) = ability.kind() else {
+                    return false;
+                };
+                static_ability
+            }
+            _ => return false,
+        };
+        let crate::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
+            power,
+            toughness,
+        } = &static_ability.payload
+        else {
+            return false;
+        };
+        same_values(power, toughness)
+    }) {
+        return true;
+    }
+
+    let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
+        definition
+    else {
+        return false;
+    };
+    let creature_count = Value::Count(ObjectFilter::creature().you_control());
+    same_values(&creature_count, &creature_count)
+        && creature.rules.token_rules.embedded_rules.contains(
+            &crate::runtime_backend::token_definition::TokenEmbeddedRuleShape::
+                PowerToughnessEqualCreaturesYouControl,
+        )
+}
+
+fn value_references_named_source(value: &Value) -> bool {
+    match value.unhinted() {
+        Value::Add(left, right) | Value::Min(left, right) => {
+            value_references_named_source(left) || value_references_named_source(right)
+        }
+        Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_references_named_source(value),
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => {
+            matches!(spec.base(), ChooseSpec::Source)
+                && matches!(
+                    spec.source_reference_surface(),
+                    Some(
+                        SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_)
+                    )
+                )
+        }
+        Value::ManaSymbolsInManaCostOf { spec, .. } => {
+            matches!(spec.base(), ChooseSpec::Source)
+                && matches!(
+                    spec.source_reference_surface(),
+                    Some(
+                        SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_)
+                    )
+                )
+        }
+        _ => false,
+    }
+}
+
+fn reconcile_quoted_dynamic_power_toughness(
+    definition: &crate::runtime_backend::token_definition::TokenDefinitionSpec,
+    granted_abilities: &mut Vec<GrantedAbilityAst>,
+    dynamic_power_toughness: &mut Option<(Value, Value)>,
+    quoted_dynamic: (Value, Value),
+) {
+    if intrinsic_token_ability_represents_dynamic_power_toughness(
+        definition,
+        granted_abilities,
+        &quoted_dynamic,
+    ) {
+        *dynamic_power_toughness = None;
+        return;
+    }
+
+    if value_references_named_source(&quoted_dynamic.0)
+        || value_references_named_source(&quoted_dynamic.1)
+    {
+        let ability = GrantedAbilityAst::StaticAbility(StaticAbility::characteristic_defining_pt(
+            quoted_dynamic.0,
+            quoted_dynamic.1,
+        ));
+        if !granted_abilities.contains(&ability) {
+            granted_abilities.push(ability);
+        }
+        *dynamic_power_toughness = None;
+    } else {
+        *dynamic_power_toughness = Some(quoted_dynamic);
+    }
 }
 
 fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<StaticAbility> {
@@ -321,15 +481,18 @@ fn attach_inline_token_granted_abilities_to_effect(
             ..
         } = &mut subject_verb.action
     {
-        if let Some(dynamic) =
-            token_definition_grammar::parse_token_dynamic_power_toughness_tokens(tokens)
-        {
-            *dynamic_power_toughness = Some(dynamic);
-        }
         for ability in parse_inline_token_granted_abilities(definition, tokens) {
             if !granted_abilities.contains(&ability) {
                 granted_abilities.push(ability);
             }
+        }
+        if let Some(dynamic) = parse_quoted_token_dynamic_power_toughness(tokens) {
+            reconcile_quoted_dynamic_power_toughness(
+                definition,
+                granted_abilities,
+                dynamic_power_toughness,
+                dynamic,
+            );
         }
         if ability_presentation.is_none() {
             *ability_presentation = Some(ironsmith_core::TokenAbilityPresentation::InlineWith);
@@ -376,6 +539,9 @@ pub(crate) fn parse_create(
     // turn an implicit create action into the same semantic `PlayerAst::You`.
     let actor_surface_explicit = matches!(subject, Some(SubjectAst::Player(PlayerAst::You)));
     let tokens = creation_grammar::creation_body_tokens(tokens);
+    if let Some(alternative) = parse_direct_token_creation_alternative(tokens, subject) {
+        return Ok(alternative);
+    }
     let non_article_words = crate::runtime_backend::util::non_article_token_word_refs(tokens);
     if let Some(action) =
         creation_grammar::parse_delayed_combat_token_action_words(&non_article_words)
@@ -642,13 +808,18 @@ pub(crate) fn parse_create(
                             enters_tapped,
                             enters_attacking,
                             attack_target_player_or_planeswalker_controlled_by,
+                            attack_target_player_only: false,
                             half_power_toughness_round_up: half_pt,
                             has_haste,
+                            haste_followup_reference_surface: None,
                             exile_at_end_of_combat: false,
+                            exile_at_end_of_combat_reference_surface: None,
                             loses_soulbond,
                             sacrifice_at_next_end_step,
+                            sacrifice_at_next_end_step_reference_surface: None,
                             sacrifice_at_next_end_step_ability_text,
                             exile_at_next_end_step,
+                            exile_at_next_end_step_reference_surface: None,
                             next_end_step_player: next_end_step_player.clone(),
                             set_colors,
                             set_card_types,
@@ -676,13 +847,18 @@ pub(crate) fn parse_create(
                     enters_tapped,
                     enters_attacking,
                     attack_target_player_or_planeswalker_controlled_by,
+                    attack_target_player_only: false,
                     half_power_toughness_round_up: half_pt,
                     has_haste,
+                    haste_followup_reference_surface: None,
                     exile_at_end_of_combat: false,
+                    exile_at_end_of_combat_reference_surface: None,
                     loses_soulbond,
                     sacrifice_at_next_end_step,
+                    sacrifice_at_next_end_step_reference_surface: None,
                     sacrifice_at_next_end_step_ability_text,
                     exile_at_next_end_step,
+                    exile_at_next_end_step_reference_surface: None,
                     next_end_step_player,
                     set_colors,
                     set_card_types,
@@ -774,15 +950,14 @@ pub(crate) fn parse_create(
             }
         }
     }
+    // Preserve a quoted dynamic value provisionally. Once the token's quoted
+    // abilities have been parsed below, this remains only as a compatibility
+    // fallback for external references that cannot yet become an intrinsic
+    // token CDA.
     let mut dynamic_power_toughness =
-        token_definition_grammar::parse_token_dynamic_power_toughness_tokens(&definition_tokens)
-            .or_else(|| {
-                // Quoted characteristic sentences are deliberately excluded
-                // from the compact token-blueprint slice. Inspect the complete
-                // creation clause as well so their semantic value still reaches
-                // lowering.
-                token_definition_grammar::parse_token_dynamic_power_toughness_tokens(tokens)
-            });
+        parse_unquoted_token_dynamic_power_toughness(&definition_tokens)
+            .or_else(|| parse_unquoted_token_dynamic_power_toughness(tokens))
+            .or_else(|| parse_quoted_token_dynamic_power_toughness(tokens));
     let primary_definition_is_construct = name_words[..name_words_primary_len]
         .iter()
         .any(|word| *word == "construct");
@@ -838,13 +1013,51 @@ pub(crate) fn parse_create(
             .ok_or_else(|| {
                 CardTextError::ParseError(format!("unsupported token definition '{name}'"))
             })?;
+    if let Some(postnominal_colors) =
+        token_definition_grammar::parse_postnominal_token_colors_tokens(&tail_tokens)
+    {
+        match &mut definition {
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) => {
+                creature.colors = creature.colors.union(postnominal_colors);
+            }
+            crate::runtime_backend::token_definition::TokenDefinitionSpec::Artifact(artifact) => {
+                artifact.colors = artifact.colors.union(postnominal_colors);
+            }
+            _ => {}
+        }
+    }
+    if let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(shape) =
+        &mut definition
+    {
+        let (use_source_chosen_color, use_source_chosen_creature_type) =
+            token_definition_grammar::source_chosen_token_characteristics(&clause_words);
+        shape.use_source_chosen_color |= use_source_chosen_color;
+        shape.use_source_chosen_creature_type |= use_source_chosen_creature_type;
+    }
     // The token-definition slice is intentionally reconstructed and may omit
     // quoted suffixes that are not needed to identify the token blueprint.
     // Ability payloads must come from the complete create clause so every
     // quoted group remains available and in source order.
     let inline_ability_presentation = (!double_quoted_rule_bodies(tokens).is_empty())
         .then_some(ironsmith_core::TokenAbilityPresentation::InlineWith);
-    let inline_granted_abilities = parse_inline_token_granted_abilities(&mut definition, tokens);
+    let mut inline_granted_abilities =
+        parse_inline_token_granted_abilities(&mut definition, tokens);
+    if let Some(quoted_dynamic) = parse_quoted_token_dynamic_power_toughness(tokens) {
+        reconcile_quoted_dynamic_power_toughness(
+            &definition,
+            &mut inline_granted_abilities,
+            &mut dynamic_power_toughness,
+            quoted_dynamic,
+        );
+    } else if dynamic_power_toughness.as_ref().is_some_and(|dynamic| {
+        intrinsic_token_ability_represents_dynamic_power_toughness(
+            &definition,
+            &inline_granted_abilities,
+            dynamic,
+        )
+    }) {
+        dynamic_power_toughness = None;
+    }
     if dynamic_power_toughness.is_some()
         && let crate::runtime_backend::token_definition::TokenDefinitionSpec::Vehicle(vehicle) =
             &mut definition
@@ -935,6 +1148,77 @@ pub(crate) fn parse_create(
     Ok(wrap_for_each_player_condition(wrap_delayed_create(
         wrap_for_each_when_needed(create, references_iterated_object),
     )))
+}
+
+/// Parse an authored resolution choice between two complete token-creation
+/// instructions, such as "create a Food token or a Treasure token".
+///
+/// This deliberately requires both sides of the top-level `or` to parse as
+/// complete direct token creations. It therefore does not reinterpret
+/// disjunctions inside token characteristics, copy sources, or quoted rules
+/// text as modal choices.
+fn parse_direct_token_creation_alternative(
+    tokens: &[OwnedLexToken],
+    subject: Option<SubjectAst>,
+) -> Option<EffectAst> {
+    let mut inside_quotes = false;
+    let mut separator = None;
+    for (idx, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote {
+            inside_quotes = !inside_quotes;
+            continue;
+        }
+        if !inside_quotes && token.kind == TokenKind::Word && token.parser_text() == "or" {
+            if separator.replace(idx).is_some() {
+                return None;
+            }
+        }
+    }
+
+    let separator = separator?;
+    let left_tokens = trim_commas(&tokens[..separator]);
+    let right_tokens = trim_commas(&tokens[separator + 1..]);
+    if left_tokens.is_empty()
+        || right_tokens.is_empty()
+        || ![left_tokens.as_slice(), right_tokens.as_slice()]
+            .iter()
+            .all(|branch| {
+                branch.iter().any(|token| {
+                    token.kind == TokenKind::Word
+                        && matches!(token.parser_text(), "token" | "tokens")
+                })
+            })
+    {
+        return None;
+    }
+
+    let parse_branch = |branch: &[OwnedLexToken]| {
+        let parsed = parse_create(branch, subject).ok()?;
+        matches!(
+            &parsed,
+            EffectAst::SubjectVerb(subject_verb)
+                if matches!(
+                    &subject_verb.action,
+                    SubjectVerbActionAst::CreateTokenWithMods { .. }
+                )
+        )
+        .then_some(parsed)
+    };
+    let first = parse_branch(&left_tokens)?;
+    let second = parse_branch(&right_tokens)?;
+
+    Some(EffectAst::ChooseOneOf {
+        modes: vec![
+            ChooseOneModeAst {
+                description: String::new(),
+                effects: vec![first],
+            },
+            ChooseOneModeAst {
+                description: String::new(),
+                effects: vec![second],
+            },
+        ],
+    })
 }
 
 fn parse_create_for_each_player_condition(
@@ -1152,6 +1436,59 @@ mod tests {
     }
 
     #[test]
+    fn direct_token_creation_or_lowers_to_two_complete_choice_modes() {
+        let tokens = lex_line("Create a Food token or a Treasure token.", 0)
+            .expect("token alternative should lex");
+        let parsed = parse_create(&tokens, None).expect("token creation alternative should parse");
+        let EffectAst::ChooseOneOf { modes } = parsed else {
+            panic!("expected a typed token-creation choice, got {parsed:#?}");
+        };
+        assert_eq!(modes.len(), 2);
+
+        let names = modes
+            .iter()
+            .map(|mode| {
+                let [EffectAst::SubjectVerb(effect)] = mode.effects.as_slice() else {
+                    panic!("expected one direct create effect per mode: {mode:#?}");
+                };
+                let SubjectVerbActionAst::CreateTokenWithMods { name, .. } = &effect.action else {
+                    panic!("expected a named token creation: {effect:#?}");
+                };
+                name.as_str()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(names, ["Food", "Treasure"]);
+        assert!(modes.iter().all(|mode| mode.description.is_empty()));
+    }
+
+    #[test]
+    fn postnominal_token_colors_preserve_compound_subtypes_and_colors() {
+        let tokens = lex_line(
+            "Create a 1/1 Sand Warrior creature token that is red, green, and white.",
+            0,
+        )
+        .expect("Sand Warrior creation should lex");
+        let effect = parse_create(&tokens, None).expect("Sand Warrior creation should parse");
+        let EffectAst::SubjectVerb(effect) = effect else {
+            panic!("expected a subject-verb token creation");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = effect.action else {
+            panic!("expected a token creation with modifiers");
+        };
+        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
+            definition
+        else {
+            panic!("expected a creature token definition");
+        };
+
+        assert_eq!(creature.subtypes, vec![Subtype::Sand, Subtype::Warrior]);
+        assert_eq!(
+            creature.colors,
+            ColorSet::RED.union(ColorSet::GREEN).union(ColorSet::WHITE)
+        );
+    }
+
+    #[test]
     fn inline_artifact_token_rules_parse_each_quoted_ability() {
         let tokens = lex_line(
             "Create Tamiyo's Notebook, a legendary colorless Book artifact token with \"Spells you cast cost {2} less to cast\" and \"{T}: Draw a card.\"",
@@ -1320,7 +1657,7 @@ mod tests {
     }
 
     #[test]
-    fn quoted_dynamic_token_pt_survives_the_compact_definition_slice() {
+    fn quoted_dynamic_token_pt_is_represented_once_as_an_intrinsic_ability() {
         let tokens = lex_line(
             "Create a green Ooze creature token with \"This token's power and toughness are each equal to the number of slime counters on this enchantment.\"",
             0,
@@ -1333,18 +1670,225 @@ mod tests {
         };
         let SubjectVerbActionAst::CreateTokenWithMods {
             dynamic_power_toughness,
+            granted_abilities,
             ..
         } = effect.action
         else {
             panic!("expected a token creation with modifiers");
         };
-        assert!(matches!(
+        assert_eq!(dynamic_power_toughness, None);
+        assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
+        assert!(
+            format!("{granted_abilities:#?}").contains("CharacteristicDefining"),
+            "{granted_abilities:#?}"
+        );
+    }
+
+    #[test]
+    fn quoted_external_dynamic_pt_becomes_one_creator_bound_intrinsic_cda() {
+        let tokens = lex_line(
+            "Create a green Ooze creature token with \"This token's power and toughness are each equal to the number of slime counters on Gutter Grime.\"",
+            0,
+        )
+        .expect("quoted external dynamic token creation should lex");
+        let effect =
+            crate::runtime_backend::util::with_source_reference_context("Gutter Grime", || {
+                parse_create(&tokens, None)
+            })
+            .expect("quoted external dynamic token creation should parse");
+        let lowered_ast = effect.clone();
+        let EffectAst::SubjectVerb(effect) = effect else {
+            panic!("expected a subject-verb token creation");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods {
             dynamic_power_toughness,
-            Some((
-                Value::CountersOnSource(crate::CounterType::Named("slime")),
-                Value::CountersOnSource(crate::CounterType::Named("slime")),
+            granted_abilities,
+            ..
+        } = effect.action
+        else {
+            panic!("expected a token creation with modifiers");
+        };
+        assert_eq!(dynamic_power_toughness, None);
+        let [GrantedAbilityAst::StaticAbility(static_ability)] = granted_abilities.as_slice()
+        else {
+            panic!("expected one intrinsic token CDA: {granted_abilities:#?}");
+        };
+        let crate::static_abilities::StaticAbilityPayload::CharacteristicDefiningPt {
+            power,
+            toughness,
+        } = &static_ability.payload
+        else {
+            panic!("expected a characteristic-defining P/T ability: {static_ability:#?}");
+        };
+        assert_eq!(power, toughness);
+        let Value::CountersOn(spec, Some(crate::CounterType::Named("slime"))) = power.unhinted()
+        else {
+            panic!("expected a named-source counter value: {power:#?}");
+        };
+        assert!(matches!(spec.base(), ChooseSpec::Source));
+        assert_eq!(
+            spec.source_reference_surface(),
+            Some(&SourceReferenceSurface::FullName(
+                "Gutter Grime".to_string()
             ))
-        ));
+        );
+
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effect(
+            &lowered_ast,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("creator-bound token CDA should lower");
+        assert!(
+            !format!("{effects:#?}").contains("SetBasePowerToughnessEffect"),
+            "{effects:#?}"
+        );
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("lowered create-token effect");
+        assert_eq!(
+            create
+                .token
+                .abilities
+                .iter()
+                .filter(|ability| matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT
+                ))
+                .count(),
+            1,
+            "{:#?}",
+            create.token.abilities
+        );
+
+        let sentence_effects =
+            crate::runtime_backend::util::with_source_reference_context("Gutter Grime", || {
+                super::super::parse_effect_sentences_lexed(&tokens)
+            })
+            .expect("creator-bound token sentence should parse through production dispatch");
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+            &sentence_effects,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("production creator-bound token sentence should lower");
+        assert!(
+            !format!("{effects:#?}").contains("SetBasePowerToughnessEffect"),
+            "production dispatch duplicated the creator-bound CDA: {effects:#?}"
+        );
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("production lowered create-token effect");
+        assert_eq!(
+            create
+                .token
+                .abilities
+                .iter()
+                .filter(|ability| matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT
+                ))
+                .count(),
+            1,
+            "{:#?}",
+            create.token.abilities
+        );
+    }
+
+    #[test]
+    fn quoted_union_count_cda_lowers_once_without_an_outer_base_pt_effect() {
+        let tokens = lex_line(
+            "Create a white Gnome Soldier artifact creature token with \"This token's power and toughness are each equal to the number of artifacts and/or creatures you control.\"",
+            0,
+        )
+        .expect("quoted dynamic token creation should lex");
+        let ast = parse_create(&tokens, None).expect("quoted dynamic token creation should parse");
+        let EffectAst::SubjectVerb(subject_verb) = &ast else {
+            panic!("expected a subject-verb token creation");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods {
+            definition,
+            dynamic_power_toughness,
+            granted_abilities,
+            ..
+        } = &subject_verb.action
+        else {
+            panic!("expected a token creation with modifiers");
+        };
+        assert_eq!(dynamic_power_toughness, &None);
+        assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
+        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
+            definition
+        else {
+            panic!("expected a creature token definition");
+        };
+        assert!(
+            creature.rules.token_rules.embedded_rules.is_empty(),
+            "{:#?}",
+            creature.rules.token_rules
+        );
+
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effect(
+            &ast,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("create AST should lower");
+        assert!(
+            !format!("{effects:#?}").contains("SetBasePowerToughnessEffect"),
+            "{effects:#?}"
+        );
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("lowered create-token effect");
+        let characteristic_abilities = create
+            .token
+            .abilities
+            .iter()
+            .filter(|ability| {
+                matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT
+                )
+            })
+            .count();
+        assert_eq!(characteristic_abilities, 1, "{:#?}", create.token.abilities);
+
+        // Production sentence dispatch strips the quoted rule before parsing
+        // the outer create action, then reattaches it as a parsed object
+        // ability. That representation must suppress the same compatibility
+        // fallback as the direct create parser above.
+        let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
+            .expect("quoted dynamic token sentence should parse through production dispatch");
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+            &sentence_effects,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("production token sentence should lower");
+        assert!(
+            !format!("{effects:#?}").contains("SetBasePowerToughnessEffect"),
+            "production sentence dispatch duplicated the intrinsic token CDA: {effects:#?}"
+        );
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("production lowered create-token effect");
+        let characteristic_abilities = create
+            .token
+            .abilities
+            .iter()
+            .filter(|ability| {
+                matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::CharacteristicDefiningPT
+                )
+            })
+            .count();
+        assert_eq!(characteristic_abilities, 1, "{:#?}", create.token.abilities);
     }
 
     #[test]
@@ -1372,6 +1916,11 @@ mod tests {
                 filter,
             } if filter.card_types == [CardType::Creature]
         ));
+
+        let prior_result =
+            parse_token_count("Create a number of Treasure tokens equal to the result.");
+        assert!(prior_result.has_surface_hint(ValueSurfaceHint::EqualTo));
+        assert!(prior_result.has_surface_hint(ValueSurfaceHint::PriorEffectResult));
 
         let hornbeetle = parse_token_count(
             "Create a 1/1 green Insect creature token for each +1/+1 counter you've put on creatures under your control this turn.",

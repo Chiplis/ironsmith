@@ -75,6 +75,88 @@ fn add_dynamic_base_pt(
 }
 
 #[test]
+fn dynamic_pt_uses_greatest_mana_value_from_matching_spell_cast_history() {
+    use crate::events::spells::SpellCastEvent;
+    use crate::provenance::ProvNodeId;
+    use crate::snapshot::ObjectSnapshot;
+    use crate::triggers::TriggerEvent;
+
+    fn stage_spell(
+        game: &mut GameState,
+        id: ObjectId,
+        caster: PlayerId,
+        card_type: CardType,
+        mana_value: u8,
+    ) {
+        let mut snapshot = ObjectSnapshot::for_testing(id, caster, "Historical Spell")
+            .with_card_types(vec![card_type]);
+        snapshot.zone = Zone::Stack;
+        snapshot.mana_cost =
+            Some(ManaCost::from_pips(vec![vec![ManaSymbol::Generic(mana_value)]]).into());
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new_with_snapshot(id, caster, Zone::Hand, snapshot),
+            ProvNodeId::default(),
+        );
+        game.stage_turn_history_event(&event);
+    }
+
+    let mut game = dynamic_value_test_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    stage_spell(
+        &mut game,
+        ObjectId::from_raw(92_001),
+        alice,
+        CardType::Instant,
+        3,
+    );
+    stage_spell(
+        &mut game,
+        ObjectId::from_raw(92_002),
+        alice,
+        CardType::Sorcery,
+        7,
+    );
+    stage_spell(
+        &mut game,
+        ObjectId::from_raw(92_003),
+        alice,
+        CardType::Creature,
+        9,
+    );
+    stage_spell(
+        &mut game,
+        ObjectId::from_raw(92_004),
+        bob,
+        CardType::Instant,
+        11,
+    );
+
+    let token = CardBuilder::new(CardId::from_raw(92_010), "History Elemental")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(0, 0))
+        .build();
+    let token_id = game.create_object_from_card(&token, alice, Zone::Battlefield);
+
+    let mut spell_history = ObjectFilter {
+        zone: Some(Zone::Stack),
+        cast_by: Some(PlayerFilter::You),
+        cast_this_turn: true,
+        any_of: vec![
+            ObjectFilter::default().with_type(CardType::Instant),
+            ObjectFilter::default().with_type(CardType::Sorcery),
+        ],
+        ..ObjectFilter::default()
+    };
+    spell_history.set_conjunctive_set_surface(true);
+    let amount = Value::GreatestManaValue(spell_history);
+    add_dynamic_base_pt(&mut game, token_id, alice, amount.clone(), amount);
+
+    assert_eq!(game.calculated_power(token_id), Some(7));
+    assert_eq!(game.calculated_toughness(token_id), Some(7));
+}
+
+#[test]
 fn dynamic_hand_size_characteristic_updates_before_state_based_actions() {
     let mut game = dynamic_value_test_game();
     let alice = PlayerId::from_index(0);

@@ -18,6 +18,7 @@ use crate::cards::builders::{
 };
 use crate::effect::Value;
 use crate::runtime_backend::front_end::grammar::effects as effect_grammar;
+use crate::target::TaggedOpbjectRelation;
 use crate::zone::Zone;
 
 pub(crate) fn parse_exile_top_library_prefix(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
@@ -41,7 +42,7 @@ pub(crate) fn parse_consult_traversal_sentence(
         return Ok(None);
     };
     let prefix_tokens = shape.prefix.unwrap_or_default();
-    let prefix_effects = if prefix_tokens.is_empty() {
+    let mut prefix_effects = if prefix_tokens.is_empty() {
         Vec::new()
     } else {
         let effects = parse_exile_top_library_prefix(&prefix_tokens)
@@ -53,9 +54,10 @@ pub(crate) fn parse_consult_traversal_sentence(
         }
         effects
     };
+    let inferred_prefix_player = infer_consult_player_from_prefix(&prefix_tokens);
     let player = match shape.player {
         effect_grammar::ConsultTraversalPlayerShape::ImpliedByPrefixOrYou => {
-            infer_consult_player_from_prefix(&prefix_tokens).unwrap_or(PlayerAst::You)
+            inferred_prefix_player.unwrap_or(PlayerAst::You)
         }
         effect_grammar::ConsultTraversalPlayerShape::ThatPlayer => PlayerAst::That,
         effect_grammar::ConsultTraversalPlayerShape::Subject(subject) => {
@@ -65,6 +67,9 @@ pub(crate) fn parse_consult_traversal_sentence(
             }
         }
     };
+    if let Some(prefix_player) = inferred_prefix_player {
+        apply_consult_prefix_player_surface(&mut prefix_effects, prefix_player);
+    }
     let mode = shape.mode;
     let where_x = shape.where_x;
     let effect_grammar::ConsultTraversalStopShape {
@@ -96,6 +101,7 @@ pub(crate) fn parse_consult_traversal_sentence(
     };
     normalize_search_library_filter(&mut filter);
     filter.zone = None;
+    bind_consult_it_relation_to_prefix_affected_object(tokens, &mut prefix_effects, &mut filter);
 
     let all_tag = helper_tag_for_tokens(
         tokens,
@@ -134,12 +140,121 @@ pub(crate) fn parse_consult_traversal_sentence(
     }))
 }
 
+/// Parse a consult traversal whose comma-delimited tail continues with one or
+/// more actions in the same sentence.
+///
+/// The traversal grammar deliberately separates the stop condition from that
+/// tail. Keep the narrow `parse_consult_traversal_sentence` API focused on the
+/// traversal itself for callers that compose specialized dispositions, while
+/// this entry point preserves a generic authored continuation such as damage
+/// followed by moving the revealed collection.
+pub(crate) fn parse_consult_traversal_with_inline_followup(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = effect_grammar::parse_consult_traversal_shape(tokens) else {
+        return Ok(None);
+    };
+    if shape.trailing_effect.is_empty() {
+        return Ok(None);
+    }
+    let Some(parts) = parse_consult_traversal_sentence(tokens)? else {
+        return Ok(None);
+    };
+    let mut trailing = parse_effect_chain(&shape.trailing_effect)?;
+    if trailing.is_empty() {
+        return Ok(None);
+    }
+    let mut effects = parts.effects;
+    effects.append(&mut trailing);
+    Ok(Some(effects))
+}
+
+/// In a sentence such as “that player exiles it, then exiles cards … until
+/// they exile a card that shares a card type with it,” both occurrences of
+/// “it” name the object affected by the prefix. Keep that antecedent stable
+/// across the prefix's zone change instead of letting the consult's generic
+/// prior-result resolution rebind it to a broader source-exiled collection.
+fn bind_consult_it_relation_to_prefix_affected_object(
+    tokens: &[OwnedLexToken],
+    prefix_effects: &mut [EffectAst],
+    filter: &mut ObjectFilter,
+) {
+    let relation_uses_it = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag.as_str() == crate::cards::builders::IT_TAG
+            && matches!(
+                constraint.relation,
+                TaggedOpbjectRelation::SharesCardType
+                    | TaggedOpbjectRelation::SharesPermanentType
+                    | TaggedOpbjectRelation::SharesSubtypeWithTagged
+                    | TaggedOpbjectRelation::SharesColorWithTagged
+                    | TaggedOpbjectRelation::SameManaValueAsTagged
+                    | TaggedOpbjectRelation::SameNameAsTagged
+            )
+    });
+    if !relation_uses_it {
+        return;
+    }
+
+    let Some(prefix_effect) = prefix_effects.last_mut() else {
+        return;
+    };
+    if !matches!(
+        prefix_effect,
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action: crate::cards::builders::SubjectVerbActionAst::Exile { .. }
+                | crate::cards::builders::SubjectVerbActionAst::MoveToZone { .. },
+            ..
+        })
+    ) {
+        return;
+    }
+
+    let antecedent_tag = helper_tag_for_tokens(tokens, "consult_antecedent");
+    let affected = prefix_effect.clone();
+    *prefix_effect = EffectAst::TagAffected {
+        effect: Box::new(affected),
+        tag: antecedent_tag.clone(),
+    };
+    for constraint in &mut filter.tagged_constraints {
+        if constraint.tag.as_str() == crate::cards::builders::IT_TAG {
+            constraint.tag = antecedent_tag.clone();
+        }
+    }
+}
+
 fn infer_consult_player_from_prefix(tokens: &[OwnedLexToken]) -> Option<PlayerAst> {
     let prefix_tokens = trim_commas(tokens);
     let (_, verb_idx) = find_verb(&prefix_tokens)?;
     match parse_subject(&prefix_tokens[..verb_idx]) {
         SubjectAst::Player(player) => Some(player),
         _ => None,
+    }
+}
+
+/// Preserve the authored player subject on a zone-change prefix.
+///
+/// Standalone tagged-object exile can leave its actor implicit because that
+/// does not change the zone transition. A consult sentence immediately
+/// reuses the same player for its traversal, so retaining the prefix actor is
+/// useful provenance and renders the authored “that player exiles it”.
+fn apply_consult_prefix_player_surface(effects: &mut [EffectAst], player: PlayerAst) {
+    for effect in effects {
+        match effect {
+            EffectAst::SubjectVerb(subject_verb)
+                if subject_verb.subject.player == PlayerAst::Implicit
+                    && matches!(
+                        &subject_verb.action,
+                        crate::cards::builders::SubjectVerbActionAst::Exile { .. }
+                            | crate::cards::builders::SubjectVerbActionAst::MoveToZone { .. }
+                    ) =>
+            {
+                subject_verb.subject.player = player;
+            }
+            EffectAst::Sequence { effects } => {
+                apply_consult_prefix_player_surface(effects, player);
+            }
+            _ => {}
+        }
     }
 }
 
@@ -299,6 +414,7 @@ pub(crate) fn parse_consult_cast_clause(tokens: &[OwnedLexToken]) -> Option<Cons
         allow_land: shape.allow_land,
         timing,
         cost,
+        surface: shape.surface,
         mana_value_condition: shape.mana_value_condition.map(|condition| {
             ConsultCastManaValueCondition {
                 operator: condition.operator,
@@ -361,17 +477,19 @@ pub(crate) fn consult_cast_effects(
                         false,
                     )
                 } else {
-                    EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+                    EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
                         match_tag.clone(),
                         clause.caster,
                         clause.allow_land,
                         without_paying_mana_cost,
                         false,
+                        Some(clause.surface.clone()),
                     )
                 };
                 vec![grant]
             } else {
-                vec![EffectAst::May {
+                vec![EffectAst::MayByPlayer {
+                    player: clause.caster,
                     effects: vec![EffectAst::subject_verb_cast_tagged(
                         match_tag.clone(),
                         clause.caster,
@@ -390,7 +508,14 @@ pub(crate) fn consult_cast_effects(
                 ));
             }
             vec![
-                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(match_tag.clone(), clause.caster, false, false, false),
+                EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+                    match_tag.clone(),
+                    clause.caster,
+                    false,
+                    false,
+                    false,
+                    Some(clause.surface.clone()),
+                ),
                 EffectAst::subject_verb_grant_tagged_spell_alternative_cost_pay_life_by_mana_value_until_end_of_turn(match_tag.clone(), clause.caster),
             ]
         }
@@ -559,5 +684,78 @@ mod tests {
             constraint.tag.as_str() == "sacrificed_0"
                 && constraint.relation == crate::target::TaggedOpbjectRelation::SharesCardType
         }));
+    }
+
+    #[test]
+    fn prefixed_zone_change_keeps_shared_type_it_bound_to_affected_object() {
+        let tokens = lex_line(
+            "that player exiles it, then exiles cards from the top of their library until they exile a card that shares a card type with it",
+            0,
+        )
+        .expect("consult sentence should lex");
+        let parsed = parse_consult_traversal_sentence(&tokens)
+            .expect("consult sentence should parse")
+            .expect("consult traversal shape");
+        let [
+            EffectAst::TagAffected {
+                tag: antecedent_tag,
+                effect: prefix,
+            },
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { filter, .. },
+                ..
+            }),
+        ] = parsed.effects.as_slice()
+        else {
+            panic!(
+                "expected tagged prefix followed by consult: {:#?}",
+                parsed.effects
+            );
+        };
+        assert!(matches!(
+            prefix.as_ref(),
+            EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                subject: crate::cards::builders::SubjectVerbSubjectAst {
+                    player: PlayerAst::That,
+                    ..
+                },
+                ..
+            })
+        ));
+
+        assert!(
+            filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag == *antecedent_tag
+                    && constraint.relation == TaggedOpbjectRelation::SharesCardType
+            }),
+            "expected consult relation to use the prefix's stable affected-object tag: {filter:#?}"
+        );
+    }
+
+    #[test]
+    fn immediate_consult_cast_keeps_the_authored_player_as_decider() {
+        let tokens = lex_line(
+            "That player may cast that card without paying its mana cost.",
+            0,
+        )
+        .expect("consult cast clause should lex");
+        let clause = parse_consult_cast_clause(&tokens).expect("consult cast clause should parse");
+        let effects = consult_cast_effects(&clause, TagKey::from("consult_match"))
+            .expect("consult cast clause should lower");
+
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::MayByPlayer {
+                player: PlayerAst::That,
+                effects,
+            }] if matches!(
+                effects.as_slice(),
+                [EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: crate::cards::builders::SubjectVerbActionAst::CastTagged { .. },
+                    ..
+                })]
+            )
+        ));
     }
 }

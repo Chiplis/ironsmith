@@ -10,6 +10,77 @@ use crate::types::{CardType, Subtype, Supertype};
 use crate::zone::Zone;
 
 #[test]
+fn shared_characteristic_cost_reduction_uses_candidate_spell_and_linked_exile_set() {
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let mut comparison = ObjectFilter::default().in_zone(Zone::Exile);
+    comparison
+        .tagged_constraints
+        .push(crate::target::TaggedObjectConstraint {
+            tag: crate::tag::SOURCE_EXILED_TAG.into(),
+            relation: crate::target::TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let intersection = ironsmith_core::CostReductionCharacteristicIntersection::new(
+        crate::ObjectCharacteristic::CardType,
+        comparison,
+    );
+    let mut spell_filter = ObjectFilter::default();
+    spell_filter.cast_by = Some(PlayerFilter::You);
+    let reduction =
+        crate::static_abilities::CostReduction::new(spell_filter, crate::effect::Value::Fixed(1))
+            .with_characteristic_intersection(intersection);
+    let source = CardDefinitionBuilder::new(CardId::new(), "Intersection Source")
+        .card_types(vec![CardType::Creature])
+        .with_ability(crate::ability::Ability::static_ability(
+            crate::static_abilities::StaticAbility::new(reduction.clone()),
+        ))
+        .build();
+    let source_id = game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let base_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(4)]);
+    let spell = CardDefinitionBuilder::new(CardId::new(), "Artifact Creature Spell")
+        .card_types(vec![CardType::Artifact, CardType::Creature])
+        .mana_cost(base_cost.clone())
+        .build();
+    let spell_id = game.create_object_from_definition(&spell, alice, Zone::Stack);
+
+    for (name, card_types) in [
+        ("Exiled Artifact", vec![CardType::Artifact]),
+        ("Exiled Creature", vec![CardType::Creature]),
+        ("Duplicate Artifact", vec![CardType::Artifact]),
+        ("Exiled Land", vec![CardType::Land]),
+    ] {
+        let card = CardBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source_id, card_id);
+    }
+
+    let spell = game.object(spell_id).expect("candidate spell should exist");
+
+    assert_eq!(
+        resolve_cost_reduction_amount(&game, spell, source_id, alice, &reduction),
+        2,
+        "the duplicate artifact and unrelated land must not inflate the two shared spell card types"
+    );
+    let adjusted =
+        calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+            &game,
+            alice,
+            spell,
+            &base_cost,
+            &[],
+            &CastingMethod::Normal,
+            Zone::Hand,
+        );
+    assert_eq!(
+        adjusted.to_oracle(),
+        "{2}",
+        "the battlefield source should apply one generic reduction for each of the two shared card types"
+    );
+}
+
+#[test]
 fn i006_available_mana_sources_require_a_snow_source_for_snow_pips() {
     let mut game = crate::tests::test_helpers::setup_two_player_game();
     let alice = PlayerId::from_index(0);
@@ -324,6 +395,65 @@ fn payment_cost_matching_threads_the_authoritative_cast_origin() {
         );
 
     assert_eq!(cost.to_oracle(), "{1}");
+}
+
+#[test]
+fn play_from_permission_spell_tax_applies_only_for_its_casting_method() {
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source = crate::ids::ObjectId::from_raw(801);
+    let base_cost = ManaCost::from_symbols(vec![ManaSymbol::Generic(2)]);
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Permission-Taxed Spell")
+        .card_types(vec![CardType::Sorcery])
+        .mana_cost(base_cost.clone())
+        .build();
+    let spell_id = game.create_object_from_definition(&definition, alice, Zone::Exile);
+    game.effect_store
+        .grant_registry
+        .grant_play_from_to_card(
+            spell_id,
+            Zone::Exile,
+            alice,
+            crate::grant_registry::PlayFromConstraints {
+                spell_cost_increase: Some(ManaCost::from_symbols(vec![
+                    ManaSymbol::Generic(1),
+                ])),
+                lands_enter_tapped: false,
+            },
+            crate::grant_registry::GrantSource::Effect {
+                source_id: source,
+                expires_end_of_turn: u32::MAX,
+            },
+        );
+    let spell = game.object(spell_id).expect("exiled spell should exist");
+
+    let through_permission =
+        calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+            &game,
+            alice,
+            spell,
+            &base_cost,
+            &[],
+            &CastingMethod::PlayFrom {
+                source,
+                zone: Zone::Exile,
+                use_alternative: None,
+            },
+            Zone::Exile,
+        );
+    let ordinary =
+        calculate_effective_mana_cost_for_payment_with_chosen_targets_for_casting_method_from_zone(
+            &game,
+            alice,
+            spell,
+            &base_cost,
+            &[],
+            &CastingMethod::Normal,
+            Zone::Exile,
+        );
+
+    assert_eq!(through_permission.to_oracle(), "{3}");
+    assert_eq!(ordinary.to_oracle(), "{2}");
 }
 
 #[test]

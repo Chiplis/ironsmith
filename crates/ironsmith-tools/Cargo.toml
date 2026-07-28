@@ -101,6 +101,11 @@ path = "src/bin/sync_registry_db.rs"
 test = false
 
 [[bin]]
+name = "verify_frozen_temp"
+path = "../../.codex/tmp/strict-floor-099/agent-verification/verify_frozen.rs"
+test = false
+
+[[bin]]
 name = "import_card_tags"
 path = "src/bin/import_card_tags.rs"
 test = false

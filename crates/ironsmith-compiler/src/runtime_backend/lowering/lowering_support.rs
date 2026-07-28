@@ -1,13 +1,14 @@
 use crate::ability::{Ability, AbilityKind, TriggeredAbility};
 use crate::cards::builders::{
     CardDefinitionBuilder, CardTextError, EffectAst, IT_TAG, KeywordAction, ParsedAbility,
-    PredicateAst, StaticAbilityAst, SubjectVerbActionAst, TagKey, TargetAst, TriggerSpec,
+    PredicateAst, StaticAbilityAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey, TargetAst,
+    TriggerSpec,
 };
 use crate::effect::{Condition, Effect, EffectMode, EventValueSpec, Value};
 use crate::filter::{ObjectFilter, ObjectRef};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::static_abilities::StaticAbility;
-use crate::target::{ChooseSpec, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{ChooseSpec, PlayerFilter, SourceReferenceSurface, TaggedOpbjectRelation};
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
@@ -38,7 +39,7 @@ use super::effect_ast_traversal::{for_each_nested_effects, for_each_nested_effec
 use super::effect_pipeline::{
     EffectPreludeTag, NormalizedAdditionalCostChoiceOptionAst, NormalizedParsedAbility,
     NormalizedPreparedAbility, PreparedEffectsForLowering, PreparedPredicateForLowering,
-    PreparedTriggeredEffectsForLowering,
+    PreparedTriggeredEffectsForLowering, SourceSentenceSegment,
 };
 use super::reference_model::{LoweredEffects, ReferenceEnv, ReferenceExports, ReferenceImports};
 use super::reference_resolution::{EffectReferenceResolutionConfig, annotate_effect_sequence};
@@ -106,7 +107,9 @@ fn predicate_counts_creature_deaths(predicate: &PredicateAst) -> bool {
                 match value {
                     Value::CreaturesDiedThisTurn
                     | Value::CreaturesDiedThisTurnControlledBy(_)
-                    | Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(_)) => true,
+                    | Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died { .. }) => {
+                        true
+                    }
                     Value::SurfaceHinted { value, .. }
                     | Value::Scaled(value, _)
                     | Value::DividedRoundedDown(value, _)
@@ -726,13 +729,21 @@ pub(crate) fn default_trigger_last_object_tag(trigger: &TriggerSpec) -> Option<&
         return None;
     }
     if match trigger {
-        TriggerSpec::ThisBecomesBlockedByObject(_) => true,
+        TriggerSpec::ThisBecomesBlockedByObject(_)
+        | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => true,
         TriggerSpec::WithIntro { trigger, .. } => {
-            matches!(**trigger, TriggerSpec::ThisBecomesBlockedByObject(_))
+            matches!(
+                **trigger,
+                TriggerSpec::ThisBecomesBlockedByObject(_)
+                    | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. }
+            )
         }
         _ => false,
     } {
         return Some("blocking");
+    }
+    if matches!(trigger, TriggerSpec::BlocksObjectWithLesserPower { .. }) {
+        return Some("blocked");
     }
     if matches!(
         trigger,
@@ -776,6 +787,9 @@ fn default_trigger_last_object_prelude(
         TriggerSpec::ThisBecomesBlockedByObject(filter) => Some(
             EffectPreludeTag::TriggeringBlockers(tag.clone(), filter.clone()),
         ),
+        TriggerSpec::BecomesBlockedByObjectWithLesserPower { blocker, .. } => Some(
+            EffectPreludeTag::TriggeringBlockers(tag.clone(), blocker.clone()),
+        ),
         TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::ManifestDread,
             ..
@@ -805,6 +819,85 @@ fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
         TriggerSpec::SpellCast { .. } => true,
         _ => false,
+    }
+}
+
+fn triggering_stack_object_kind(trigger: &TriggerSpec) -> Option<crate::filter::StackObjectKind> {
+    use crate::filter::StackObjectKind;
+
+    match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => triggering_stack_object_kind(trigger),
+        TriggerSpec::SpellCast { .. }
+        | TriggerSpec::SpellCopied { .. }
+        | TriggerSpec::SpellCountered { .. } => Some(StackObjectKind::Spell),
+        TriggerSpec::AbilityActivated { .. } | TriggerSpec::AbilityTriggered { .. } => {
+            Some(StackObjectKind::Ability)
+        }
+        TriggerSpec::Either(left, right) => {
+            let left = triggering_stack_object_kind(left)?;
+            let right = triggering_stack_object_kind(right)?;
+            if left == right {
+                Some(left)
+            } else if matches!(
+                (left, right),
+                (StackObjectKind::Spell, StackObjectKind::Ability)
+                    | (StackObjectKind::Ability, StackObjectKind::Spell)
+                    | (StackObjectKind::SpellOrAbility, _)
+                    | (_, StackObjectKind::SpellOrAbility)
+            ) {
+                Some(StackObjectKind::SpellOrAbility)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn copy_target_is_triggering_stack_object(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::Tagged(tag, _) => matches!(tag.as_str(), "triggering" | IT_TAG),
+        TargetAst::WithCount(target, _) | TargetAst::WithCountValue(target, _, _) => {
+            copy_target_is_triggering_stack_object(target)
+        }
+        _ => false,
+    }
+}
+
+fn preserve_copy_reference_kind_from_trigger(effects: &mut [EffectAst], trigger: &TriggerSpec) {
+    let trigger_kind = triggering_stack_object_kind(trigger);
+    for effect in effects {
+        match effect {
+            EffectAst::DelayedTriggerThisTurn {
+                trigger, effects, ..
+            }
+            | EffectAst::DelayedTriggerForDuration {
+                trigger, effects, ..
+            } => {
+                preserve_copy_reference_kind_from_trigger(effects, trigger);
+                continue;
+            }
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CopySpell {
+                        target,
+                        target_reference_kind,
+                        ..
+                    },
+                ..
+            }) if target_reference_kind.is_none()
+                && copy_target_is_triggering_stack_object(target) =>
+            {
+                *target_reference_kind = trigger_kind;
+            }
+            _ => {}
+        }
+
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| preserve_copy_reference_kind_from_trigger(nested, trigger),
+        );
     }
 }
 
@@ -841,6 +934,30 @@ fn retarget_spell_cast_mana_spent_predicate(
             Box::new(retarget_spell_cast_mana_spent_predicate(trigger, *right)),
         ),
         other => other,
+    }
+}
+
+fn retarget_spell_cast_mana_spent_predicates_in_effects(
+    trigger: &TriggerSpec,
+    effects: &mut [EffectAst],
+) {
+    if !trigger_is_spell_cast(trigger) {
+        return;
+    }
+
+    for effect in effects {
+        match effect {
+            EffectAst::Conditional { predicate, .. }
+            | EffectAst::TrailingIf { predicate, .. }
+            | EffectAst::TrailingUnless { predicate, .. }
+            | EffectAst::SelfReplacement { predicate, .. } => {
+                *predicate = retarget_spell_cast_mana_spent_predicate(trigger, predicate.clone());
+            }
+            _ => {}
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            retarget_spell_cast_mana_spent_predicates_in_effects(trigger, nested);
+        });
     }
 }
 
@@ -1076,7 +1193,7 @@ fn rewrite_prepare_effects_from_normalized(
     default_last_object_prelude: Option<EffectPreludeTag>,
     include_trigger_prelude: bool,
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
-    let (flattened_effects, source_sentence_effect_counts) =
+    let (flattened_effects, source_sentence_segments) =
         flatten_top_level_source_sentences(semantic_effects);
     // Source-sentence flattening can expose a cross-sentence construct that
     // was not visible when the individual sentence wrappers were normalized
@@ -1084,7 +1201,7 @@ fn rewrite_prepare_effects_from_normalized(
     // lowering paths return no sentence counts, so normalize those flattened
     // sequences again without disturbing the counts used by ordinary source
     // sentence segmentation.
-    semantic_effects = if source_sentence_effect_counts.is_empty() {
+    semantic_effects = if source_sentence_segments.is_empty() {
         normalize_effects_ast(&flattened_effects)
     } else {
         flattened_effects
@@ -1174,7 +1291,7 @@ fn rewrite_prepare_effects_from_normalized(
 
     Ok(PreparedEffectsForLowering {
         effects: semantic_effects,
-        source_sentence_effect_counts,
+        source_sentence_segments,
         imports,
         initial_env,
         annotated,
@@ -1292,7 +1409,36 @@ fn source_sentence_boundary_splits_hand_pipeline(effects: &[EffectAst], boundary
     })
 }
 
-fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst>, Vec<usize>) {
+fn flatten_top_level_source_sentences(
+    effects: Vec<EffectAst>,
+) -> (Vec<EffectAst>, Vec<SourceSentenceSegment>) {
+    fn preserve_participant_order_on_first_effect(effects: &mut [EffectAst]) {
+        let Some(first) = effects.first_mut() else {
+            return;
+        };
+        match first {
+            EffectAst::VoteStart {
+                starting_with_controller,
+                ..
+            }
+            | EffectAst::VoteStartObjects {
+                starting_with_controller,
+                ..
+            }
+            | EffectAst::VoteStartPlayers {
+                starting_with_controller,
+                ..
+            } => *starting_with_controller = true,
+            EffectAst::Sequence { effects }
+            | EffectAst::CommaThen { effects }
+            | EffectAst::Coordinated { effects, .. }
+            | EffectAst::SourceSentence { effects, .. } => {
+                preserve_participant_order_on_first_effect(effects);
+            }
+            _ => {}
+        }
+    }
+
     let has_source_sentence = effects
         .iter()
         .any(|effect| matches!(effect, EffectAst::SourceSentence { .. }));
@@ -1304,11 +1450,27 @@ fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst
         .iter()
         .all(|effect| matches!(effect, EffectAst::SourceSentence { .. }));
     let mut flattened = Vec::new();
-    let mut counts = Vec::new();
+    let mut source_segments = Vec::new();
     for effect in effects {
         match effect {
-            EffectAst::SourceSentence { effects } => {
-                counts.push(effects.len());
+            EffectAst::SourceSentence {
+                mut effects,
+                leading_then,
+                starting_with_controller,
+            } => {
+                if starting_with_controller {
+                    // Source-sentence grouping may be flattened when later
+                    // vote-option sentences must lower with the vote start.
+                    // Retain the ordering on the typed vote itself so that
+                    // semantic execution and rendering do not depend on the
+                    // provenance wrapper surviving that cross-sentence join.
+                    preserve_participant_order_on_first_effect(&mut effects);
+                }
+                source_segments.push(SourceSentenceSegment {
+                    effect_count: effects.len(),
+                    leading_then,
+                    starting_with_controller,
+                });
                 flattened.extend(effects);
             }
             effect => flattened.push(effect),
@@ -1322,13 +1484,18 @@ fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst
         return (flattened, Vec::new());
     }
 
-    if all_source_sentences && counts.len() > 1 && counts.iter().all(|count| *count > 0) {
+    if all_source_sentences
+        && source_segments.len() > 1
+        && source_segments
+            .iter()
+            .all(|segment| segment.effect_count > 0)
+    {
         let mut boundary = 0usize;
         let mut splits_shared_lowering_followup = false;
         let mut splits_hand_pipeline = false;
         let mut continues_repeat_process = false;
-        for count in &counts[..counts.len() - 1] {
-            boundary += *count;
+        for segment in &source_segments[..source_segments.len() - 1] {
+            boundary += segment.effect_count;
             splits_shared_lowering_followup |= flattened
                 .get(boundary)
                 .is_some_and(source_sentence_followup_requires_shared_lowering);
@@ -1356,7 +1523,7 @@ fn flatten_top_level_source_sentences(effects: Vec<EffectAst>) -> (Vec<EffectAst
             // followup into an orphan at a source-sentence segment boundary.
             return (flattened, Vec::new());
         }
-        return (flattened, counts);
+        return (flattened, source_segments);
     }
 
     (flattened, Vec::new())
@@ -1412,6 +1579,9 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
 ) -> Result<PreparedEffectsForLowering, CardTextError> {
     let imports = imports.into();
     let mut normalized = normalize_effects_ast(effects);
+    if let Some(trigger) = trigger {
+        preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
+    }
     if effects_have_creature_death_gate(&normalized) {
         replace_creature_death_event_amounts(&mut normalized);
     }
@@ -1584,6 +1754,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     ensure_concrete_trigger_spec(&trigger)?;
 
     let mut normalized = normalize_effects_ast(effects);
+    preserve_copy_reference_kind_from_trigger(&mut normalized, &trigger);
     if let Some(antecedent_tag) = default_trigger_last_object_tag(&trigger) {
         bind_trigger_antecedent_after_top_library_observation(
             &mut normalized,
@@ -1636,6 +1807,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
             &trigger, predicate,
         ));
     }
+    retarget_spell_cast_mana_spent_predicates_in_effects(&trigger, &mut body_effects);
     if discard_one_or_more_trigger_uses_event_count(&trigger) {
         for effect in &mut body_effects {
             replace_it_count_with_event_count(effect);
@@ -2314,12 +2486,76 @@ fn rewrite_object_abilities_grant(
     Ok(StaticAbility::new(grant))
 }
 
+fn direct_named_granting_source_spec(effect: &Effect) -> Option<ChooseSpec> {
+    if let Some(spec) = effect.target_spec()
+        && matches!(spec.base(), ChooseSpec::Source)
+        && matches!(
+            spec.source_reference_surface(),
+            Some(SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_))
+        )
+    {
+        return Some(spec.clone());
+    }
+
+    None
+}
+
+fn preserve_named_granting_source_in_effect(effect: Effect) -> Effect {
+    // Keep source rebinding as narrow as the runtime composition permits.
+    // A quoted ability may refer both to its granting Aura by proper name and
+    // to `this creature`, meaning the object that received the ability. If a
+    // coordinated sequence were rebound wholesale, both references would
+    // incorrectly resolve to the Aura.
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut sequence = sequence.clone();
+        sequence.effects = sequence
+            .effects
+            .into_iter()
+            .map(preserve_named_granting_source_in_effect)
+            .collect();
+        return Effect::new(sequence);
+    }
+
+    let Some(source) = direct_named_granting_source_spec(&effect) else {
+        return effect;
+    };
+    Effect::new(crate::effects::ExecuteWithSourceEffect::new(source, effect))
+}
+
+/// A proper-name reference inside a quoted attached-object ability names the
+/// granting attachment, not the object receiving the ability. Keep that
+/// distinction through lowering by executing the source sentence with the
+/// named source. `AttachedAbilityGrant` materializes this marker to the
+/// concrete attachment object when it generates its continuous effect.
+fn preserve_named_granting_source(mut ability: Ability) -> Ability {
+    fn wrap_effects(effects: &mut [Effect]) {
+        for effect in effects {
+            *effect = preserve_named_granting_source_in_effect(effect.clone());
+        }
+    }
+
+    let program = match &mut ability.kind {
+        AbilityKind::Triggered(triggered) => &mut triggered.effects,
+        AbilityKind::Activated(activated) => &mut activated.effects,
+        AbilityKind::Static(_) => return ability,
+    };
+    let mut segments = std::mem::take(&mut program.segments);
+    for segment in &mut segments {
+        wrap_effects(&mut segment.default_effects);
+        for replacement in &mut segment.self_replacements {
+            wrap_effects(&mut replacement.replacement_effects);
+        }
+    }
+    *program = crate::resolution::ResolutionProgram::new(segments);
+    ability
+}
+
 fn rewrite_attached_object_abilities_grant(
     abilities: Vec<Ability>,
     display: String,
     condition: Option<crate::ConditionExpr>,
 ) -> Result<StaticAbility, CardTextError> {
-    let mut abilities = abilities.into_iter();
+    let mut abilities = abilities.into_iter().map(preserve_named_granting_source);
     let first = abilities.next().ok_or_else(|| {
         CardTextError::InvariantViolation(
             "attached keyword grant produced no abilities".to_string(),
@@ -2672,11 +2908,7 @@ pub(crate) fn rewrite_lower_static_ability_ast(
             condition,
         } => {
             let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
-            let mut grant = crate::static_abilities::AttachedAbilityGrant::new(lowered, display);
-            if let Some(condition) = condition {
-                grant = grant.with_condition(condition);
-            }
-            Ok(StaticAbility::new(grant))
+            rewrite_attached_object_abilities_grant(vec![lowered], display, condition)
         }
         StaticAbilityAst::SoulbondSharedObjectAbility { ability } => {
             let lowered = rewrite_lower_parsed_ability(ability)?.into_runtime();
@@ -3137,6 +3369,58 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
 mod tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn flattened_vote_followups_keep_starting_with_controller_order() {
+        let effects = vec![
+            EffectAst::SourceSentence {
+                effects: vec![EffectAst::VoteStart {
+                    options: vec!["time".to_string(), "money".to_string()],
+                    secret: false,
+                    starting_with_controller: false,
+                }],
+                leading_then: false,
+                starting_with_controller: true,
+            },
+            EffectAst::SourceSentence {
+                effects: vec![EffectAst::VoteOption {
+                    option: "time".to_string(),
+                    effects: vec![EffectAst::Sequence {
+                        effects: Vec::new(),
+                    }],
+                }],
+                leading_then: false,
+                starting_with_controller: false,
+            },
+        ];
+
+        let (flattened, _) = flatten_top_level_source_sentences(effects.clone());
+        assert!(matches!(
+            flattened.first(),
+            Some(EffectAst::VoteStart {
+                starting_with_controller: true,
+                ..
+            })
+        ));
+
+        let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
+            .expect("prepare vote with cross-sentence option");
+        let lowered = materialize_prepared_statement_effects(&prepared)
+            .expect("lower vote with cross-sentence option");
+        let vote_starts_with_controller = lowered
+            .effects
+            .flattened_default_effects()
+            .into_iter()
+            .any(|effect| {
+                effect
+                    .downcast_ref::<crate::effects::VoteEffect>()
+                    .is_some_and(|vote| vote.starting_with_controller)
+            });
+        assert!(
+            vote_starts_with_controller,
+            "typed vote lost participant order"
+        );
+    }
 
     #[test]
     fn repeated_optional_exiles_prepare_plural_return_with_aggregate_tag() {

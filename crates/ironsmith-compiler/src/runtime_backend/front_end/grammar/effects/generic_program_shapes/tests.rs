@@ -37,3 +37,15 @@ fn parses_damage_and_choice_program_shapes() {
         ["draw", "a", "card"]
     );
 }
+
+#[test]
+fn parses_and_coordinated_counted_choice_complement_clause() {
+    let tokens = lex_line(
+        "Each player chooses five lands they control and sacrifices the rest.",
+        0,
+    )
+    .expect("counted choice complement");
+    let choice = parse_choice_complement_clause(&tokens).expect("choice complement shape");
+
+    assert_eq!(choice.word_refs(), ["five", "lands", "they", "control"]);
+}

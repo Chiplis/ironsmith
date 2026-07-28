@@ -149,7 +149,7 @@ impl ReplacementMatcher for WouldKeywordActionMatcher {
         let Some(keyword_event) = downcast_event::<KeywordActionEvent>(event) else {
             return false;
         };
-        if keyword_event.action != self.action {
+        if !self.action.matches_performed_action(keyword_event.action) {
             return false;
         }
 

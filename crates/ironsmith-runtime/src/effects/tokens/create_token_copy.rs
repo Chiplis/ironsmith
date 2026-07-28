@@ -46,6 +46,7 @@ use super::lifecycle::{
 /// ```
 pub type CopyPtAdjustment = ironsmith_core::CopyPtAdjustment;
 pub type CopyAttackTargetMode = ironsmith_core::CopyAttackTargetMode;
+pub type TokenCopyReferenceSurface = ironsmith_core::TokenCopyReferenceSurface;
 pub type CreateTokenCopyEffect = ironsmith_core::CreateTokenCopyEffect<StaticAbility>;
 
 fn attack_targets_for_player(game: &GameState, player_id: PlayerId) -> Vec<AttackTarget> {
@@ -311,11 +312,15 @@ impl EffectExecutor for CreateTokenCopyEffect {
         if target_object.is_none() && copy_snapshot.is_none() {
             return Err(ExecutionError::ObjectNotFound(target_id));
         }
-        let configured_attack_player = match &self.attack_target_mode {
-            Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => {
-                Some(resolve_player_filter(game, player_filter, ctx)?)
+        let (configured_attack_player, attack_player_only) = match &self.attack_target_mode {
+            Some(CopyAttackTargetMode::Player(player_filter)) => {
+                (Some(resolve_player_filter(game, player_filter, ctx)?), true)
             }
-            None => None,
+            Some(CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(player_filter)) => (
+                Some(resolve_player_filter(game, player_filter, ctx)?),
+                false,
+            ),
+            None => (None, false),
         };
         let cleanup_options = TokenCleanupOptions::new(
             self.exile_at_end_of_combat,
@@ -422,18 +427,23 @@ impl EffectExecutor for CreateTokenCopyEffect {
                 )?;
 
                 if let Some(attack_player) = configured_attack_player {
-                    let targets = attack_targets_for_player(game, attack_player);
-                    if !targets.is_empty() {
-                        if let Some(chosen_target) =
-                            choose_attack_target(game, ctx, attack_player, &targets)
-                        {
-                            if let Some(combat) = game.combat.as_mut() {
-                                combat.attackers.push(AttackerInfo {
-                                    creature: entered_id,
-                                    target: chosen_target,
-                                });
-                            }
-                        }
+                    let chosen_target = if attack_player_only {
+                        game.player(attack_player)
+                            .is_some_and(|player| player.is_in_game())
+                            .then_some(AttackTarget::Player(attack_player))
+                    } else {
+                        let targets = attack_targets_for_player(game, attack_player);
+                        (!targets.is_empty())
+                            .then(|| choose_attack_target(game, ctx, attack_player, &targets))
+                            .flatten()
+                    };
+                    if let Some(chosen_target) = chosen_target
+                        && let Some(combat) = game.combat.as_mut()
+                    {
+                        combat.attackers.push(AttackerInfo {
+                            creature: entered_id,
+                            target: chosen_target,
+                        });
                     }
                 }
 
@@ -1100,6 +1110,47 @@ mod tests {
             panic!("Expected Objects result");
         }
         assert_ne!(bob, charlie, "sanity check");
+    }
+
+    #[test]
+    fn player_only_attack_mode_does_not_offer_that_players_planeswalkers() {
+        use crate::combat_state::{AttackTarget, CombatState};
+
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let charlie = PlayerId::from_index(2);
+        let creature_id = create_creature(&mut game, "Copy Source", alice);
+        let source = create_creature(&mut game, "Ability Source", alice);
+        let _charlie_walker = create_planeswalker(&mut game, "Charlie Walker", charlie);
+        game.combat = Some(CombatState::default());
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature_id)]);
+        ctx.iteration.iterated_player = Some(charlie);
+        let result = CreateTokenCopyEffect::one(ChooseSpec::creature())
+            .enters_tapped(true)
+            .attacking_player(PlayerFilter::IteratedPlayer)
+            .execute(&mut game, &mut ctx)
+            .expect("create attacking copy");
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected copied token");
+        };
+        let combat = game.combat.as_ref().expect("combat should remain active");
+        let token_attacker = combat
+            .attackers
+            .iter()
+            .find(|info| info.creature == ids[0])
+            .expect("token should be attacking");
+        assert_eq!(token_attacker.target, AttackTarget::Player(charlie));
+        assert!(game.is_tapped(ids[0]), "token should enter tapped");
     }
 
     #[test]

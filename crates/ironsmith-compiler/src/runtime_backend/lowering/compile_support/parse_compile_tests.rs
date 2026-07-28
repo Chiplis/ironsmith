@@ -52,6 +52,40 @@ fn find_cant_effect(effects: &[Effect]) -> Option<&crate::effects::CantEffect> {
     })
 }
 
+#[test]
+fn lowering_preserves_past_control_lki_mode_and_authored_noun() {
+    let mut filter = ObjectFilter::default();
+    filter.set_demonstrative_antecedent_surface(Some(
+        ironsmith_core::DemonstrativeAntecedentSurface::Permanent,
+    ));
+    let predicate = PredicateAst::PlayerTaggedObjectMatches {
+        player: PlayerAst::You,
+        tag: TagKey::from("returned_0"),
+        filter,
+        mode: ironsmith_core::TaggedObjectMatchMode::LastKnown,
+    };
+
+    let condition =
+        compile_condition_from_predicate_ast(&predicate, &mut EffectLoweringContext::new(), &None)
+            .expect("past-control predicate should lower");
+    let Condition::PlayerTaggedObjectMatches {
+        player,
+        tag,
+        filter,
+        mode,
+    } = condition
+    else {
+        panic!("expected a tagged-object player condition");
+    };
+    assert_eq!(player, PlayerFilter::You);
+    assert_eq!(tag.as_str(), "returned_0");
+    assert_eq!(mode, ironsmith_core::TaggedObjectMatchMode::LastKnown);
+    assert_eq!(
+        filter.demonstrative_antecedent_surface(),
+        Some(ironsmith_core::DemonstrativeAntecedentSurface::Permanent)
+    );
+}
+
 fn walk_rs_files(root: &Path, files: &mut Vec<std::path::PathBuf>) {
     for entry in std::fs::read_dir(root).expect("read source directory") {
         let entry = entry.expect("read source entry");
@@ -217,6 +251,29 @@ fn move_to_zone_lowering_preserves_oracle_verb_and_explicit_actor() {
         assert_eq!(lowered.verb_surface, surface);
         assert_eq!(lowered.actor_surface, Some(expected_actor));
     }
+}
+
+#[test]
+fn single_exile_lowering_preserves_explicit_actor() {
+    let EffectAst::SubjectVerb(mut subject_verb) =
+        EffectAst::subject_verb_exile(TargetAst::Source(None), false)
+    else {
+        unreachable!("exile constructor must produce a subject-verb AST")
+    };
+    subject_verb.subject.player = PlayerAst::Opponent;
+
+    let (effects, choices) = compile_effect(
+        &EffectAst::SubjectVerb(subject_verb),
+        &mut EffectLoweringContext::new(),
+    )
+    .expect("typed single-object exile should lower");
+    assert!(choices.is_empty());
+    let lowered = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::MoveToZoneEffect>())
+        .expect("face-up single exile should lower to a move effect");
+    assert_eq!(lowered.zone, crate::zone::Zone::Exile);
+    assert_eq!(lowered.actor_surface, Some(PlayerFilter::Opponent));
 }
 
 #[test]
@@ -578,6 +635,61 @@ fn compile_damage_equal_to_power_over_each_object_fans_out_per_object() {
 }
 
 #[test]
+fn compile_each_object_power_damage_iterates_sources_and_keeps_prior_target() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Each Source Damage Probe")
+        .parse_text(
+            "Choose up to one target creature or planeswalker. Each creature with power 4 or greater you control deals damage equal to its power to that permanent.",
+        )
+        .expect("each-object power damage should parse");
+    let debug = format!("{:#?}", def.spell_effect.expect("spell effect"));
+    let compact = debug
+        .chars()
+        .filter(|ch| !ch.is_whitespace())
+        .collect::<String>();
+
+    assert!(
+        compact.contains("TaggedEffect")
+            && compact.contains("tag:TagKey(\"targeted_0\")")
+            && compact.contains("TargetOnlyEffect"),
+        "the single chosen permanent should remain tagged outside the source loop: {debug}"
+    );
+    assert!(
+        compact.contains("ForEachObject")
+            && compact.contains("GreaterThanOrEqual(4)")
+            && compact.contains("controller:Some(You)"),
+        "the qualifying controlled creatures should be the iterated set: {debug}"
+    );
+    assert!(
+        compact.contains("ExecuteWithSourceEffect{source:Iterated")
+            && compact.contains("PowerOf(Iterated)"),
+        "each iterand should be both the damage source and its own power value: {debug}"
+    );
+    assert!(
+        compact.contains("target:Object(ObjectFilter")
+            && compact.contains("\"targeted_0\"")
+            && !compact.contains("target:Iterated"),
+        "damage should stay bound to the one prior target, not the source iterand: {debug}"
+    );
+}
+
+#[test]
+fn compile_seat_relative_control_preserves_the_explicit_right_player() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Control Pass Probe")
+        .parse_text(
+            "{2}, {T}: Draw a card. The player to your right gains control of this artifact.",
+        )
+        .expect("seat-relative control should parse");
+    let debug = format!("{:#?}", def.abilities);
+
+    assert!(
+        debug.contains("ChangeControllerToPlayer")
+            && debug.contains("PlayerToYourRight")
+            && !debug.contains("IteratedPlayer"),
+        "the control recipient should retain its authored seat relation: {debug}"
+    );
+}
+
+#[test]
 fn compile_each_other_becomes_copy_uses_prior_chosen_object_as_copy_source() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Copy Choice Probe")
         .parse_text(
@@ -777,6 +889,136 @@ fn inline_dynamic_token_power_toughness_lowers_from_typed_creation_fact() {
 }
 
 #[test]
+fn comma_then_dynamic_token_keeps_pt_tag_and_delayed_cleanup() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Token Sequence Probe")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "At the beginning of combat on your turn, put an oil counter on this artifact, then create an X/1 red Phyrexian Horror creature token with trample and haste, where X is the number of oil counters on this artifact. Sacrifice that token at the beginning of the next end step.",
+        )
+        .expect("dynamic token sequence should parse");
+    let triggered = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => Some(triggered),
+            _ => None,
+        })
+        .expect("expected a triggered ability");
+    let [sequence_effect] = triggered.effects.segments[0].default_effects.as_slice() else {
+        panic!("expected one authored sequence");
+    };
+    let sequence = sequence_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("expected comma-then sequence");
+    assert_eq!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen);
+    let [_, create_effect, set_pt_effect] = sequence.effects.as_slice() else {
+        panic!("expected counter, token creation, and dynamic P/T setter");
+    };
+    let tagged_create = create_effect
+        .as_tagged()
+        .expect("created token should carry an identity tag");
+    let create = tagged_create
+        .effect
+        .downcast_ref::<crate::effects::CreateTokenEffect>()
+        .expect("expected token creation");
+    assert!(create.sacrifice_at_next_end_step);
+
+    let set_pt = set_pt_effect
+        .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()
+        .expect("expected dynamic base-P/T setter");
+    assert!(
+        matches!(&set_pt.target, ChooseSpec::Tagged(tag) if tag == &tagged_create.tag),
+        "P/T setter must target the exact created token: {set_pt:#?}"
+    );
+    assert!(
+        matches!(
+            set_pt.power.unhinted(),
+            Value::CountersOn(source, Some(crate::object::CounterType::Oil))
+                if matches!(source.base(), ChooseSpec::Source)
+        ),
+        "power must remain the source's oil-counter count: {set_pt:#?}"
+    );
+    assert_eq!(set_pt.toughness.unhinted(), &Value::Fixed(1));
+}
+
+#[test]
+fn dynamic_token_stats_after_destroy_keep_the_destroyed_object_reference() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Token Destroy Probe")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "{B}, {T}: Destroy target creature. If that creature dies this way, create a black Vampire creature token. Its power is equal to that creature's power and its toughness is equal to that creature's toughness.",
+        )
+        .expect("destroy-linked dynamic token P/T should parse");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .expect("expected an activated ability");
+    let effects = &activated.effects.segments[0].default_effects;
+    let conditional = effects[1]
+        .downcast_ref::<crate::effects::IfEffect>()
+        .expect("expected the death-result condition");
+    let set_pt = conditional.then[1]
+        .downcast_ref::<crate::effects::SetBasePowerToughnessEffect>()
+        .expect("expected the created token's dynamic P/T effect");
+    for value in [&set_pt.power, &set_pt.toughness] {
+        let spec = match value {
+            Value::PowerOf(spec) | Value::ToughnessOf(spec) => spec,
+            other => panic!("expected a copied characteristic value, got {other:#?}"),
+        };
+        assert!(
+            matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "destroyed_0"),
+            "the token characteristic must use the destroyed target, got {spec:#?}"
+        );
+    }
+}
+
+#[test]
+fn payload_type_metadata_seeds_source_reference_context_before_rules_lines() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Metadata Context Probe")
+        .parse_text(
+            "Type: Enchantment\n\
+             When a player doesn't pay this enchantment's cumulative upkeep, draw a card.",
+        )
+        .expect("payload metadata should seed typed source references");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CumulativeUpkeepNotPaid"),
+        "the typed possessive source reference must survive payload metadata parsing: {debug}"
+    );
+}
+
+#[test]
+fn triggered_shared_dynamic_damage_keeps_target_controller_fanout() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Dynamic Triggered Damage Probe")
+        .parse_text(
+            "Type: Enchantment\n\
+             Cumulative upkeep {2}\n\
+             When a player doesn't pay this enchantment's cumulative upkeep, this enchantment \
+             deals X damage to target player or planeswalker and each creature that player or \
+             that planeswalker's controller controls, where X is twice the number of age counters \
+             on this enchantment minus 2.",
+        )
+        .expect("triggered shared dynamic damage should parse");
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("CumulativeUpkeepNotPaid"),
+        "the unpaid-upkeep trigger must remain typed when paired with the keyword line: {debug}"
+    );
+    assert!(
+        debug.contains("TargetPlayerOrControllerOfTarget"),
+        "the creature fanout must remain linked to the damage target: {debug}"
+    );
+    assert!(
+        debug.contains("Scaled(") && debug.contains("Age") && debug.contains("-2"),
+        "the shared dynamic amount must retain its arithmetic expression: {debug}"
+    );
+}
+
+#[test]
 fn token_definition_lowers_quoted_triggered_rules_text() {
     let source_text = "2/2 black Alien Angel artifact creature token with first strike, vigilance, and \"Whenever an opponent casts a creature spell, this token isn't a creature until end of turn.\"";
 
@@ -949,7 +1191,7 @@ fn full_triggered_token_creation_keeps_quoted_blocks_untap_ability() {
         .expect("created Illusions should carry the quoted triggered ability");
     assert!(matches!(
         &nested.trigger.kind,
-        crate::triggers::TriggerKind::ThisBlocksObject { filter }
+        crate::triggers::TriggerKind::ThisBlocksObject { filter, .. }
             if filter.card_types.as_slice() == [CardType::Creature]
     ));
 
@@ -1432,6 +1674,33 @@ fn resolve_target_spec_preserves_source_surface_when_collapsing_to_source() {
 }
 
 #[test]
+fn source_sacrifice_preserves_its_authored_permanent_noun() {
+    let surface = crate::target::SourceReferenceSurface::ThisPermanentType(
+        "this permanent".to_string(),
+    );
+    let sacrifice = EffectAst::subject_verb_sacrifice(
+        PlayerAst::You,
+        ObjectFilter::source().with_source_surface(surface.clone()),
+        1,
+        None,
+    );
+    let mut ctx = EffectLoweringContext::new();
+    let (effects, choices) =
+        compile_effects(&[sacrifice], &mut ctx).expect("source sacrifice should lower");
+    let lowered = effects[0]
+        .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+        .expect("source sacrifice should remain a typed sacrifice");
+
+    assert_eq!(
+        lowered.target,
+        ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(surface),
+        )
+    );
+    assert!(choices.is_empty());
+}
+
+#[test]
 fn resolve_target_spec_preserves_implicit_it_when_it_resolves_to_source() {
     let target = TargetAst::Tagged(
         TagKey::from(IT_TAG),
@@ -1879,6 +2148,54 @@ fn compile_last_known_countered_spell_preserves_stack_identity() {
 }
 
 #[test]
+fn compile_live_permanent_spell_predicate_preserves_stack_identity() {
+    let permanent_spell = ObjectFilter {
+        card_types: vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Enchantment,
+            CardType::Planeswalker,
+            CardType::Battle,
+        ],
+        zone: Some(Zone::Stack),
+        stack_kind: Some(crate::filter::StackObjectKind::Spell),
+        ..ObjectFilter::default()
+    };
+
+    let condition = compile_condition_from_predicate_ast(
+        &PredicateAst::ItMatches(permanent_spell),
+        &mut EffectLoweringContext::new(),
+        &Some(COPIED_STACK_OBJECT_TAG.to_string()),
+    )
+    .expect("live permanent-spell predicate should lower");
+    let Condition::TaggedObjectMatches(tag, filter) = condition else {
+        panic!("expected tagged copied-spell condition");
+    };
+    assert_eq!(tag.as_str(), COPIED_STACK_OBJECT_TAG);
+    assert_eq!(filter.zone, Some(Zone::Stack));
+    assert_eq!(
+        filter.stack_kind,
+        Some(crate::filter::StackObjectKind::Spell)
+    );
+}
+
+#[test]
+fn compile_copy_does_not_replace_the_original_pronoun_antecedent() {
+    let effects = vec![EffectAst::subject_verb_copy_spell(
+        TargetAst::Tagged(TagKey::from("triggering"), None),
+        Value::Fixed(1),
+        PlayerAst::You,
+        true,
+        false,
+        Vec::new(),
+    )];
+    let mut ctx = EffectLoweringContext::new();
+    ctx.last_object_tag = Some("original_spell".to_string());
+    compile_effects(&effects, &mut ctx).expect("copy should lower");
+    assert_eq!(ctx.last_object_tag.as_deref(), Some("original_spell"));
+}
+
+#[test]
 fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
     let effects = vec![EffectAst::ForEachTagged {
         tag: TagKey::from("revealed_0"),
@@ -1926,6 +2243,58 @@ fn compile_for_each_tagged_rewrites_it_targets_to_iterated_object() {
     assert!(
         debug.matches("target: Iterated").count() >= 2,
         "iterated move targets: {debug}"
+    );
+}
+
+#[test]
+fn consult_inside_for_each_tagged_does_not_steal_the_iteration_binding() {
+    let effects = vec![EffectAst::ForEachTagged {
+        tag: TagKey::from("chosen_targets"),
+        effects: vec![
+            EffectAst::subject_verb_consult_top_of_library(
+                PlayerAst::You,
+                crate::cards::builders::LibraryConsultModeAst::Reveal,
+                ObjectFilter::default().without_type(CardType::Land),
+                crate::cards::builders::LibraryConsultStopRuleAst::FirstMatch,
+                TagKey::from("revealed"),
+                TagKey::from("matched"),
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::Actor,
+                PlayerAst::Implicit,
+                SubjectVerbActionAst::DealDamage {
+                    amount: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                    target: TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                    unpreventable: false,
+                },
+            ),
+        ],
+    }];
+
+    let (compiled, _, _) = compile_effects_with_explicit_frame(
+        &effects,
+        &mut IdGenContext::default(),
+        LoweringFrame::default(),
+    )
+    .expect("compile consult inside for-each-tagged");
+
+    let for_each = compiled[0]
+        .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+        .expect("outer tagged-object iterator");
+    let damage = for_each.effects[1]
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .expect("damage inside tagged-object iterator");
+    assert!(matches!(damage.target.base(), ChooseSpec::Iterated));
+    assert!(matches!(
+        damage.amount.unhinted(),
+        Value::ManaValueOf(spec)
+            if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "matched")
+    ));
+
+    let debug = format!("{compiled:#?}");
+    assert!(
+        debug.contains("ConsultTopOfLibraryEffect") && debug.contains("target: Iterated"),
+        "the found card may update antecedent memory, but damage must still bind to the current loop member: {debug}"
     );
 }
 
@@ -2127,4 +2496,111 @@ fn relative_cards_in_hand_value_binds_to_target_subject() {
         Value::CardsInHand(PlayerFilter::AliasedTarget(player))
             if matches!(player.as_ref(), PlayerFilter::Opponent)
     ));
+}
+
+#[test]
+fn explicit_damage_target_binds_same_clause_that_player_value_in_iterated_context() {
+    let your_hand = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(PlayerFilter::You);
+    let that_players_hand = Value::Count(
+        ObjectFilter::default()
+            .in_zone(Zone::Hand)
+            .owned_by(PlayerFilter::IteratedPlayer),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::ThatPlayerPossessive);
+    let amount = Value::Add(
+        Box::new(Value::Count(your_hand)),
+        Box::new(Value::Scaled(Box::new(that_players_hand), -1)),
+    )
+    .with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs);
+    let effects = vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::DealDamage {
+            amount,
+            target: TargetAst::Player(PlayerFilter::Opponent, Some(TextSpan::synthetic())),
+            unpreventable: false,
+        },
+    )];
+    for frame in [
+        LoweringFrame {
+            // A controller-scoped trigger can import "you" as the older
+            // discourse antecedent.
+            last_player_filter: Some(PlayerFilter::You),
+            ..Default::default()
+        },
+        LoweringFrame {
+            // Trigger and loop lowering can instead carry an active outer
+            // iterated-player scope.
+            iterated_player: true,
+            last_player_filter: Some(PlayerFilter::IteratedPlayer),
+            ..Default::default()
+        },
+    ] {
+        let (compiled, _, _) =
+            compile_effects_with_explicit_frame(&effects, &mut IdGenContext::default(), frame)
+                .expect("same-clause targeted damage should compile");
+        let damage = compiled[0]
+            .downcast_ref::<crate::effects::DealDamageEffect>()
+            .expect("expected damage effect");
+        let Value::Add(left, right) = damage.amount.unhinted() else {
+            panic!("expected dynamic subtraction amount: {:#?}", damage.amount);
+        };
+        assert!(matches!(
+            left.unhinted(),
+            Value::Count(filter) if filter.owner == Some(PlayerFilter::You)
+        ));
+        assert!(matches!(
+            right.unhinted(),
+            Value::Scaled(inner, -1)
+                if inner.has_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::ThatPlayerPossessive
+                ) && matches!(
+                    inner.unhinted(),
+                    Value::Count(filter)
+                        if matches!(
+                            filter.owner.as_ref(),
+                            Some(PlayerFilter::AliasedTarget(player))
+                                if matches!(player.as_ref(), PlayerFilter::Opponent)
+                        )
+                )
+        ));
+    }
+}
+
+#[test]
+fn nonexplicit_damage_recipient_preserves_outer_iterated_player_value() {
+    let that_players_hand = ObjectFilter::default()
+        .in_zone(Zone::Hand)
+        .owned_by(PlayerFilter::IteratedPlayer);
+    let effects = vec![EffectAst::subject_verb(
+        SubjectVerbRoleAst::Actor,
+        PlayerAst::Implicit,
+        SubjectVerbActionAst::DealDamage {
+            amount: Value::Count(that_players_hand),
+            target: TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+            unpreventable: false,
+        },
+    )];
+    let frame = LoweringFrame {
+        iterated_player: true,
+        last_player_filter: Some(PlayerFilter::IteratedPlayer),
+        ..Default::default()
+    };
+
+    let (compiled, _, _) =
+        compile_effects_with_explicit_frame(&effects, &mut IdGenContext::default(), frame)
+            .expect("outer iterated-player damage should compile");
+    let damage = compiled[0]
+        .downcast_ref::<crate::effects::DealDamageEffect>()
+        .expect("expected damage effect");
+    assert_eq!(
+        damage.amount.unhinted(),
+        &Value::Count(
+            ObjectFilter::default()
+                .in_zone(Zone::Hand)
+                .owned_by(PlayerFilter::IteratedPlayer)
+        )
+    );
 }

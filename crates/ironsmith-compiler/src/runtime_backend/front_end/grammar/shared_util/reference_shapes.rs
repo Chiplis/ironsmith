@@ -167,6 +167,12 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     }
     if prefix_one_of(
         slice,
+        &[&["active", "player"], &["the", "active", "player"]],
+    ) {
+        return SubjectAst::Player(PlayerAst::Active);
+    }
+    if prefix_one_of(
+        slice,
         &[&["enchanted", "player"], &["enchanted", "players"]],
     ) {
         return SubjectAst::Player(PlayerAst::Enchanted);
@@ -186,6 +192,27 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     {
         return SubjectAst::Player(PlayerAst::Attacking);
     }
+    if prefix_one_of(
+        slice,
+        &[
+            &["the", "player", "to", "your", "left"],
+            &["player", "to", "your", "left"],
+        ],
+    ) {
+        return SubjectAst::Player(PlayerAst::PlayerToYourLeft);
+    }
+    if prefix_one_of(
+        slice,
+        &[
+            &["the", "player", "to", "your", "right"],
+            &["player", "to", "your", "right"],
+        ],
+    ) {
+        return SubjectAst::Player(PlayerAst::PlayerToYourRight);
+    }
+    if is_that_player_or_object_controller(slice) {
+        return SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController);
+    }
     if prefix_one_of(slice, &[&["they"], &["that", "player"], &["the", "player"]])
         || prefix_one_of(slice, &[&["the", "voter"], &["voter"]])
     {
@@ -201,9 +228,6 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
         ],
     ) {
         return SubjectAst::Player(PlayerAst::Chosen);
-    }
-    if is_that_player_or_object_controller(slice) {
-        return SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController);
     }
     if prefix_one_of(slice, &[&["that", "players"], &["their"]]) {
         return SubjectAst::Player(PlayerAst::That);
@@ -488,6 +512,10 @@ fn filter_keyword_constraint_for_words(words: &[&str]) -> Option<FilterKeywordCo
     }
     if permission_shapes::exact_words(words, &["decayed"]) {
         Some(Marker("decayed"))
+    } else if permission_shapes::exact_words(words, &["fading"]) {
+        Some(Marker("fading"))
+    } else if permission_shapes::exact_words(words, &["unearth"]) {
+        Some(Marker("unearth"))
     } else if permission_shapes::exact_words(words, &["level", "up"]) {
         Some(Marker("level up"))
     } else if permission_shapes::exact_words(words, &["disturb"]) {
@@ -617,8 +645,26 @@ mod tests {
     #[test]
     fn parses_subject_and_reference_surfaces() {
         assert_eq!(
+            parse_subject_words(&["the", "active", "player"]),
+            SubjectAst::Player(PlayerAst::Active)
+        );
+        assert_eq!(
             parse_subject_words(&["the", "player", "with", "the", "most", "life"]),
             SubjectAst::Player(PlayerAst::MostLifeTied)
+        );
+        assert_eq!(
+            parse_subject_words(&[
+                "that",
+                "player",
+                "or",
+                "that",
+                "planeswalkers",
+                "controller",
+                "discards",
+                "two",
+                "cards",
+            ]),
+            SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController)
         );
         assert!(contains_source_from_your_hand(&[
             "discard", "this", "card", "from", "your", "hand"
@@ -639,6 +685,14 @@ mod tests {
         assert_eq!(
             parse_filter_keyword_constraint_words(&["toxic"]),
             Some((FilterKeywordConstraint::Marker("toxic"), 1))
+        );
+        assert_eq!(
+            parse_filter_keyword_constraint_words(&["fading"]),
+            Some((FilterKeywordConstraint::Marker("fading"), 1))
+        );
+        assert_eq!(
+            parse_filter_keyword_constraint_words(&["unearth"]),
+            Some((FilterKeywordConstraint::Marker("unearth"), 1))
         );
         assert_eq!(
             parse_filter_keyword_constraint_words(&["doctor's", "companion"]),

@@ -504,6 +504,29 @@ mod tests {
         assert_eq!(filter.card_types, vec![CardType::Creature]);
         assert_eq!(filter.zone, Some(Zone::Graveyard));
         assert!(filter.entered_graveyard_this_turn);
+        assert_eq!(
+            filter.graveyard_entry_history_surface(),
+            Some(ironsmith_core::GraveyardEntryHistorySurface::PutThereFromAnywhereThisTurn)
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_put_there_this_turn_clause() {
+        let tokens = lex_line(
+            "creature card from a graveyard that was put there this turn",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert!(filter.entered_graveyard_this_turn);
+        assert!(!filter.entered_graveyard_from_battlefield_this_turn);
+        assert_eq!(
+            filter.graveyard_entry_history_surface(),
+            Some(ironsmith_core::GraveyardEntryHistorySurface::PutThereThisTurn)
+        );
     }
 
     #[test]
@@ -521,6 +544,26 @@ mod tests {
         assert_eq!(
             filter.entered_battlefield_controller,
             Some(PlayerFilter::You)
+        );
+    }
+
+    #[test]
+    fn parse_object_filter_lexed_handles_negative_attack_or_entry_history() {
+        let tokens = lex_line(
+            "creatures you control that didn't attack or enter this turn",
+            0,
+        )
+        .unwrap();
+
+        let filter = parse_object_filter_with_grammar_entrypoint_lexed(&tokens, false).unwrap();
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(filter.didnt_attack_this_turn);
+        assert!(filter.didnt_enter_battlefield_this_turn);
+        assert_eq!(
+            filter.description(),
+            "creature you control that didn't attack or enter this turn"
         );
     }
 
@@ -754,6 +797,28 @@ mod tests {
                     tag: TagKey::from(IT_TAG),
                     relation: TaggedOpbjectRelation::AttachedToTaggedObject,
                 }
+        }));
+    }
+
+    #[test]
+    fn parse_object_filter_distinguishes_last_known_attachment_provenance() {
+        let past = lex_line("Auras that were attached to it", 0).unwrap();
+        let current = lex_line("Auras that are attached to it", 0).unwrap();
+
+        let past_filter = parse_object_filter_with_grammar_entrypoint_lexed(&past, false).unwrap();
+        let current_filter =
+            parse_object_filter_with_grammar_entrypoint_lexed(&current, false).unwrap();
+
+        assert!(past_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
+                && constraint.tag == TagKey::from(IT_TAG)
+        }));
+        assert!(current_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::AttachedToTaggedObject
+                && constraint.tag == TagKey::from(IT_TAG)
+        }));
+        assert!(!current_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::WasAttachedToTaggedObject
         }));
     }
 
@@ -1053,6 +1118,19 @@ mod tests {
             ))
         );
         assert_eq!(filter.description(), "token created with this enchantment");
+
+        let pronoun_tokens = lex_line("tokens created with it", 0).unwrap();
+        let pronoun_filter =
+            parse_object_filter_with_grammar_entrypoint_lexed(&pronoun_tokens, false).unwrap();
+        assert!(pronoun_filter.token);
+        assert!(pronoun_filter.created_with_source);
+        assert_eq!(
+            pronoun_filter.created_with_source_surface,
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "it".to_string()
+            ))
+        );
+        assert_eq!(pronoun_filter.description(), "token created with it");
     }
 
     #[test]

@@ -357,6 +357,11 @@ pub struct WouldChangeZoneMatcher {
     pub to_zone: Option<Zone>,
     pub cause_filter: Option<CauseFilter>,
     pub require_cause_source_match: bool,
+    /// Tagged-object snapshots captured when a delayed matcher is registered.
+    /// These keep tag-aware filters meaningful after the resolving effect's
+    /// execution context is gone and preserve stable identity across zones.
+    pub frozen_tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
 }
 
 impl WouldChangeZoneMatcher {
@@ -367,6 +372,7 @@ impl WouldChangeZoneMatcher {
             to_zone,
             cause_filter: None,
             require_cause_source_match: false,
+            frozen_tagged_objects: std::collections::HashMap::new(),
         }
     }
 
@@ -377,6 +383,17 @@ impl WouldChangeZoneMatcher {
 
     pub fn requiring_cause_source_match(mut self) -> Self {
         self.require_cause_source_match = true;
+        self
+    }
+
+    pub fn with_frozen_tagged_objects(
+        mut self,
+        tagged_objects: std::collections::HashMap<
+            crate::tag::TagKey,
+            Vec<crate::snapshot::ObjectSnapshot>,
+        >,
+    ) -> Self {
+        self.frozen_tagged_objects = tagged_objects;
         self
     }
 }
@@ -411,9 +428,13 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             return false;
         }
 
+        let mut filter_ctx = ctx.filter_ctx.clone();
+        filter_ctx
+            .tagged_objects
+            .extend(self.frozen_tagged_objects.clone());
+
         if zone_change.from == Zone::Stack {
             let mut filter = self.filter.clone();
-            let mut filter_ctx = ctx.filter_ctx.clone();
 
             if filter.zone == Some(Zone::Stack) {
                 filter.zone = None;
@@ -433,7 +454,7 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
             .first()
             .and_then(|&id| ctx.game.object(id))
         {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
+            self.filter.matches(obj, &filter_ctx, ctx.game)
                 || self.matches_merged_card_component_only(zone_change, ctx)
         } else {
             false
@@ -467,8 +488,12 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
         else {
             return false;
         };
+        let mut filter_ctx = ctx.filter_ctx.clone();
+        filter_ctx
+            .tagged_objects
+            .extend(self.frozen_tagged_objects.clone());
         if object.kind != crate::object::ObjectKind::Token
-            || self.filter.matches(object, &ctx.filter_ctx, ctx.game)
+            || self.filter.matches(object, &filter_ctx, ctx.game)
         {
             return false;
         }
@@ -479,7 +504,7 @@ impl ReplacementMatcher for WouldChangeZoneMatcher {
                     component.object.kind == crate::object::ObjectKind::Card
                         && self
                             .filter
-                            .matches(&component.object, &ctx.filter_ctx, ctx.game)
+                            .matches(&component.object, &filter_ctx, ctx.game)
                 })
             })
     }

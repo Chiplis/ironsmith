@@ -1416,6 +1416,26 @@ fn normalize_paired_self_copula_surfaces(
 }
 
 fn prepare_clause_comparison(oracle_text: &str, compiled_lines: &[String]) -> ClauseComparisonPrep {
+    // A compiled renderer line may itself contain newlines. Those embedded
+    // source-line boundaries are presentation-equivalent to separate vector
+    // entries, but the later compiled-line normalizer intentionally flattens
+    // non-modal entries. Preserve the fundamental exact-surface invariant
+    // before that structural normalization can merge adjacent source lines.
+    let oracle_source_lines = oracle_text
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    let compiled_source_lines = compiled_lines
+        .iter()
+        .flat_map(|line| line.lines())
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>();
+    if oracle_source_lines == compiled_source_lines {
+        return ClauseComparisonPrep::trivially_equal();
+    }
+
     // Only canonicalize the contracted and explicit self-copula forms when
     // they occur on opposite sides of this comparison. Applying that rewrite
     // independently changed scores for cards whose compiled output had not

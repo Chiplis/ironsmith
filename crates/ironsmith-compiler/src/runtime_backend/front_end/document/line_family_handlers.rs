@@ -202,10 +202,6 @@ fn tokens_without_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] 
     }
 }
 
-fn tokens_before_reminder_or_terminal_period(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    line_grammar::parse_visible_line_tokens(tokens)
-}
-
 fn max_speed_intervening_if_tokens(body_tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
     let visible = line_grammar::parse_visible_max_speed_tokens(body_tokens);
     let Some(shape) = line_grammar::parse_max_speed_trigger_split(body_tokens) else {
@@ -748,13 +744,20 @@ fn station_threshold_is_creature_pt_threshold(
 pub(super) fn run_partner_with_keyword_line_family(
     ctx: &LineDispatchContext<'_>,
 ) -> Result<Option<LineDispatchResult>, CardTextError> {
-    let Some(_) = partner_with_name_from_line(ctx.line) else {
+    let Some(partner_name) = partner_with_name_from_line(ctx.line) else {
         return Ok(None);
     };
 
     let partner_static = StaticLineCst {
         info: ctx.line.info.clone(),
-        parse_tokens: tokens_before_reminder_or_terminal_period(&ctx.line.tokens).to_vec(),
+        // Source-name normalization can rewrite a shared leading word in the
+        // partner's proper name (for example, Soulblade Corrupter on
+        // Soulblade Renewer) to "this creature". Recover the authored name
+        // from the retained source tokens before lowering the keyword line.
+        parse_tokens: lex_line(
+            &format!("Partner with {partner_name}"),
+            ctx.line.info.line_index,
+        )?,
         chosen_option: None,
         parsed: None,
     };
@@ -1137,6 +1140,22 @@ mod tests {
                 .as_deref(),
             Some("Partner - Friends forever")
         );
+
+        let shared_prefix_document = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Soulblade Renewer"),
+            "Partner with Soulblade Corrupter (When this creature enters, target player may put Soulblade Corrupter into their hand from their library, then shuffle.)",
+        )
+        .expect("shared-prefix partner line should preprocess");
+        let shared_prefix_cst =
+            parse_document_cst(&shared_prefix_document, false).expect("shared-prefix partner cst");
+        let [RewriteLineCst::Static(shared_prefix_line)] = shared_prefix_cst.lines.as_slice()
+        else {
+            panic!("expected one static partner-with line");
+        };
+        assert_eq!(
+            render_token_slice(&shared_prefix_line.parse_tokens),
+            "Partner with Soulblade Corrupter"
+        );
     }
 
     #[test]
@@ -1336,14 +1355,76 @@ mod tests {
             "After this main phase, there is an additional combat phase followed by an additional main phase."
         );
     }
+
+    #[test]
+    fn attached_ignore_permission_wins_full_document_static_classification() {
+        let restriction = "Enchanted creature can't attack or block, and its activated abilities can't be activated. That creature's controller may sacrifice a permanent of their choice for that player to ignore this effect until end of turn.";
+        let document = preprocess_document(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Attached Restriction Test")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .subtypes(vec![crate::types::Subtype::Aura]),
+            restriction,
+        )
+        .expect("attached restriction should preprocess");
+        let cst = parse_document_cst(&document, false).expect("attached restriction cst");
+        let [RewriteLineCst::Static(line)] = cst.lines.as_slice() else {
+            panic!("the two-sentence attached restriction must be classified as one static line");
+        };
+        let routed = parse_static_ability_ast_line_lexed(&line.parse_tokens)
+            .expect("classified static line should parse")
+            .expect("classified static line should retain typed abilities");
+        let debug = format!("{routed:#?}");
+        assert_eq!(routed.len(), 3, "{debug}");
+        assert!(debug.contains("AttackOrBlock"), "{debug}");
+        assert!(debug.contains("ActivateAbilitiesOf"), "{debug}");
+        assert!(
+            debug.contains(
+                "AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn"
+            ),
+            "{debug}"
+        );
+
+        let compiled = crate::runtime_backend::compile_card_text(
+            CardDefinitionBuilder::new(crate::CardId::new(), "Attached Restriction Test")
+                .card_types(vec![crate::types::CardType::Enchantment])
+                .subtypes(vec![crate::types::Subtype::Aura]),
+            &format!(
+                "Enchant creature\n{restriction}\n{{1}}{{U}}: Return this Aura to its owner's hand."
+            ),
+            false,
+        )
+        .expect("the complete Aura text should compile");
+        let abilities_debug = format!("{:#?}", compiled.definition.abilities);
+        let spell_debug = format!("{:#?}", compiled.definition.spell_effect);
+        assert!(
+            abilities_debug.contains(
+                "AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn"
+            ) && abilities_debug.matches("RuleRestriction").count() >= 2,
+            "all three static abilities must survive final definition assembly: {abilities_debug}"
+        );
+        assert!(
+            spell_debug.contains("AttachToEffect")
+                && !spell_debug.contains("MayEffect")
+                && !spell_debug.contains("RuleRestriction"),
+            "the spell program must contain only Aura attachment semantics: {spell_debug}"
+        );
+    }
 }
 
 fn partner_with_name_from_line(line: &PreprocessedLine) -> Option<String> {
-    let shape = keyword_special_lines::parse_partner_with_name_shape_tokens(&line.tokens)?;
-    let name = render_original_text_for_token_slice(line, shape.name_tokens)
-        .unwrap_or_else(|| render_token_slice(shape.name_tokens))
-        .trim()
-        .replace('"', "");
+    let name =
+        keyword_special_lines::parse_partner_with_name_shape_tokens(&line.info.source_tokens)
+            .map(|shape| render_token_slice(shape.name_tokens))
+            .or_else(|| {
+                let shape =
+                    keyword_special_lines::parse_partner_with_name_shape_tokens(&line.tokens)?;
+                Some(
+                    render_original_text_for_token_slice(line, shape.name_tokens)
+                        .unwrap_or_else(|| render_token_slice(shape.name_tokens)),
+                )
+            })?
+            .trim()
+            .replace('"', "");
     (!name.is_empty()).then_some(name)
 }
 
@@ -1462,11 +1543,14 @@ pub(super) fn run_statement_probe_line_family(
     {
         return Ok(None);
     }
-    let prefer_nonpermanent_statement =
+    let prefer_statement_before_static =
         should_prefer_statement_before_static_for_nonpermanent_spell(
             ctx.preprocessed,
             &ctx.line.tokens,
-        );
+        ) || super::super::grammar::effects::parse_persistent_no_maximum_hand_size_player_lexed(
+            &ctx.line.tokens,
+        )
+        .is_some();
     let has_effect_prefix_before_static =
         has_effect_prefix_before_trailing_static_sentence(&ctx.line.tokens);
 
@@ -1476,7 +1560,7 @@ pub(super) fn run_statement_probe_line_family(
     // runtime ETB choice/note metadata. A typed statement on an instant or
     // sorcery is the exception: trailing restriction language must not turn
     // the spell's complete action sequence into a battlefield static ability.
-    if !prefer_nonpermanent_statement
+    if !prefer_statement_before_static
         && !has_effect_prefix_before_static
         && matches!(
             parse_static_ability_ast_line_lexed(&ctx.line.tokens),
@@ -1531,7 +1615,7 @@ pub(super) fn run_statement_probe_line_family(
         )
     ) || linked_preference.is_some()
         || looks_like_statement_line_lexed(ctx.line)
-        || prefer_nonpermanent_statement)
+        || prefer_statement_before_static)
         && (!matches!(
             static_preference,
             Some(
@@ -1542,7 +1626,7 @@ pub(super) fn run_statement_probe_line_family(
                     | line_grammar::StatementStaticPreference::FirstEquipCostAlternative
                     | line_grammar::StatementStaticPreference::ConditionalKeywordTypeAddition
             )
-        ) || prefer_nonpermanent_statement)
+        ) || prefer_statement_before_static)
         && !is_keyword_action_replacement_static_line(&ctx.line.tokens)
         && !is_lose_game_replacement_static_line(&ctx.line.tokens)
         && let Some(mut statement_line) = parse_statement_line_cst(ctx.line)?

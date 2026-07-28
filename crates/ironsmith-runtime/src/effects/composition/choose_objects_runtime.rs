@@ -11,7 +11,8 @@ use crate::effects::cards::search_overrides::{
     finish_opposition_agent_search_control, offer_library_search_casts, opposition_agent_search,
 };
 use crate::effects::helpers::{
-    resolve_player_filter_to_list, resolve_value, view_hidden_candidate_objects,
+    normalize_chosen_one_per_card_type, resolve_player_filter_to_list, resolve_value,
+    view_hidden_candidate_objects,
 };
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::SearchLibraryEvent;
@@ -76,6 +77,18 @@ fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> bool {
             .as_deref()
             .is_some_and(object_filter_mentions_iterated_player)
         || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(object_filter_mentions_iterated_player)
+        || filter
+            .no_shared_creature_types_with
+            .iter()
+            .any(object_filter_mentions_iterated_player)
+        || filter
+            .characteristic_relations
+            .iter()
+            .any(|relation| object_filter_mentions_iterated_player(&relation.comparison))
+        || filter
             .any_of
             .iter()
             .any(object_filter_mentions_iterated_player)
@@ -110,6 +123,7 @@ fn value_mentions_iterated_player(value: &crate::effect::Value) -> bool {
         }
         crate::effect::Value::CreaturesDiedThisTurnControlledBy(player)
         | crate::effect::Value::CountPlayers(player)
+        | crate::effect::Value::CountPlayersWithCardsInHandAtLeast(player, _)
         | crate::effect::Value::PartySize(player)
         | crate::effect::Value::LifeTotal(player)
         | crate::effect::Value::LifeTotalDifference(player)
@@ -1343,6 +1357,18 @@ pub(crate) fn run_choose_objects(
         };
         let chosen = if effect.filter.distinct_creature_types {
             normalize_chosen_distinct_creature_types(
+                game,
+                chosen,
+                &candidates,
+                min,
+                max,
+                !allow_hidden_partial,
+            )
+        } else {
+            chosen
+        };
+        let chosen = if effect.filter.one_per_card_type {
+            normalize_chosen_one_per_card_type(
                 game,
                 chosen,
                 &candidates,

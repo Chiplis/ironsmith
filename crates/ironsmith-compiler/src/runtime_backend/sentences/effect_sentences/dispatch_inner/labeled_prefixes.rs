@@ -358,6 +358,13 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     // example, "loses"), so route the typed voting subject before the generic
     // gain/lose primitive can erase the vote-affinity predicate.
     if dispatch_shape.has_gain_or_lose {
+        // An independent action followed by an explicit gain/lose action is
+        // an action choice, not one unusually long gain-ability subject. The
+        // broad grant parser accepts object-filter prefixes and can otherwise
+        // consume the leading action while retaining only the grant branch.
+        if let Some(unless_action) = super::parse_or_action_clause_lexed(tokens)? {
+            return Ok(vec![unless_action]);
+        }
         if let Some(mut effects) = parse_subject_verb_extension_sentence(tokens)? {
             apply_where_x_to_damage_amounts(tokens, &mut effects)?;
             return Ok(effects);

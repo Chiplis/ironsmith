@@ -140,6 +140,15 @@ impl TriggerMatcher for DealsDamageToTrigger {
         } else {
             self.source_filter.description()
         };
+        let source = super::deals_damage::correct_damage_source_indefinite_article(source);
+        if self.source_surface == DamageSourceSurface::PassiveBy {
+            let damage_kind = if self.combat_only {
+                "combat damage"
+            } else {
+                "damage"
+            };
+            return format!("Whenever {target} is dealt {damage_kind} by {source}");
+        }
         if self.combat_only {
             format!("Whenever {source} deals combat damage to {target}")
         } else {

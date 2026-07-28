@@ -14,6 +14,23 @@ fn parses_phase_all_shape() {
 }
 
 #[test]
+fn phase_action_shape_rejects_negated_restriction_subjects() {
+    for text in [
+        "Permanents can't phase in.",
+        "Permanents cannot phase in.",
+        "Permanents can not phase in.",
+        "Creatures don't phase out.",
+        "This creature does not phase out.",
+    ] {
+        let tokens = lex_line(text, 0).unwrap();
+        assert!(
+            parse_keyword_mechanic_tokens(&tokens).is_none(),
+            "{text} is a restriction, not a resolving phase action"
+        );
+    }
+}
+
+#[test]
 fn parses_counted_manifest_dread() {
     let tokens = lex_line("Manifest dread three times.", 0).unwrap();
     assert!(matches!(

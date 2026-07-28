@@ -6,8 +6,8 @@ use crate::cards::TextSpan;
 #[cfg(test)]
 use crate::cards::builders::PlayerAst;
 use crate::cards::builders::{
-    AdditionalCostChoiceOptionAst, CardTextError, KeywordAction, ParsedAbility, ReferenceImports,
-    TargetAst,
+    ADDITIONAL_COST_OBJECT_TAG, AdditionalCostChoiceOptionAst, CardTextError, KeywordAction,
+    ParsedAbility, ReferenceImports, TargetAst,
 };
 use crate::cost::OptionalCost;
 use crate::cost::TotalCost;
@@ -84,7 +84,15 @@ thread_local! {
         RefCell::new(SourceReferenceContext::default());
 }
 
-#[cfg(test)]
+/// Run a nested parse with only the card's proper-name aliases installed.
+///
+/// Most full-card parsing should use `with_card_source_reference_context`,
+/// which also makes `this creature`, `this enchantment`, and similar type
+/// surfaces the preferred self-reference. Quoted abilities granted to an
+/// attached object are different: an explicit proper name still denotes the
+/// granting card, while a typed `this ...` reference denotes the object that
+/// receives the ability. The attached-grant parser uses this name-only context
+/// to preserve that authored distinction.
 pub(crate) fn with_source_reference_context<T>(card_name: &str, f: impl FnOnce() -> T) -> T {
     with_source_reference_context_aliases(card_name, Vec::new(), f)
 }
@@ -519,7 +527,14 @@ fn activation_cost_object_reference(cost: &TotalCost) -> Option<ActivationCostOb
 pub(crate) fn activation_cost_reference_imports(cost: &TotalCost) -> ReferenceImports {
     match activation_cost_object_reference(cost) {
         Some(ActivationCostObjectReference::Tagged(tag)) => {
-            ReferenceImports::with_last_object_tag(tag)
+            let mut imports = ReferenceImports::with_last_object_tag(tag.clone());
+            if tag.as_str().starts_with("sacrifice_cost_") {
+                imports.snapshot_tag_aliases.push((
+                    ADDITIONAL_COST_OBJECT_TAG.to_string(),
+                    tag.as_str().to_string(),
+                ));
+            }
+            imports
         }
         Some(ActivationCostObjectReference::Source) => ReferenceImports {
             source_object_antecedent: true,
@@ -536,9 +551,11 @@ fn tag_has_prefix(tag: &TagKey, prefix: &str) -> bool {
 pub(crate) fn value_contains_unbound_x(value: &Value) -> bool {
     match value {
         Value::X | Value::XTimes(_) => true,
-        Value::SurfaceHinted { value, .. } => value_contains_unbound_x(value),
-        Value::Scaled(value, _) => value_contains_unbound_x(value),
-        Value::Add(left, right) => {
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => value_contains_unbound_x(value),
+        Value::Add(left, right) | Value::Min(left, right) => {
             value_contains_unbound_x(left) || value_contains_unbound_x(right)
         }
         _ => false,
@@ -570,7 +587,18 @@ pub(crate) fn replace_unbound_x_with_value(
             Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
             multiplier,
         )),
+        Value::DividedRoundedDown(value, divisor) => Ok(Value::DividedRoundedDown(
+            Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
+            divisor,
+        )),
+        Value::HalfRoundedDown(value) => Ok(Value::HalfRoundedDown(Box::new(
+            replace_unbound_x_with_value(*value, replacement, clause)?,
+        ))),
         Value::Add(left, right) => Ok(Value::Add(
+            Box::new(replace_unbound_x_with_value(*left, replacement, clause)?),
+            Box::new(replace_unbound_x_with_value(*right, replacement, clause)?),
+        )),
+        Value::Min(left, right) => Ok(Value::Min(
             Box::new(replace_unbound_x_with_value(*left, replacement, clause)?),
             Box::new(replace_unbound_x_with_value(*right, replacement, clause)?),
         )),
@@ -1099,6 +1127,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_subject_preserves_seat_relative_players() {
+        let right = lex_line("the player to your right gains control of this artifact", 0).unwrap();
+        assert_eq!(
+            parse_subject(&right),
+            SubjectAst::Player(PlayerAst::PlayerToYourRight)
+        );
+
+        let left = lex_line("the player to your left chooses a color", 0).unwrap();
+        assert_eq!(
+            parse_subject(&left),
+            SubjectAst::Player(PlayerAst::PlayerToYourLeft)
+        );
+    }
+
+    #[test]
     fn parse_subject_recognizes_each_other_player() {
         let tokens = lex_line("each other player", 0).unwrap();
         assert_eq!(
@@ -1180,6 +1223,36 @@ mod tests {
             filter.nonblocking,
             "expected nonblocking filter: {filter:?}"
         );
+    }
+
+    #[test]
+    fn parse_target_phrase_preserves_graveyard_entry_history() {
+        for (text, from_battlefield) in [
+            (
+                "target nonland card in a graveyard that was put there from anywhere this turn",
+                false,
+            ),
+            (
+                "target creature card in your graveyard that was put there from the battlefield this turn",
+                true,
+            ),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let target =
+                parse_target_phrase(&tokens).expect("temporal graveyard target should parse");
+            let TargetAst::Object(filter, target_span, _) = target else {
+                panic!("expected target object for {text}, got {target:?}");
+            };
+            assert!(target_span.is_some(), "expected explicit target span");
+            assert!(
+                filter.entered_graveyard_this_turn,
+                "graveyard-entry history was dropped for {text}: {filter:#?}"
+            );
+            assert_eq!(
+                filter.entered_graveyard_from_battlefield_this_turn, from_battlefield,
+                "{text}: {filter:#?}"
+            );
+        }
     }
 
     #[test]
@@ -1385,6 +1458,14 @@ mod tests {
 
         let eternalize = lex_line("Eternalize {4}{U}{U}", 0).unwrap();
         assert!(parse_eternalize_line_lexed(&eternalize).unwrap().is_some());
+        let eternalize_with_additional_cost =
+            lex_line("Eternalize—{2}{W}{W}, Discard a card.", 0).unwrap();
+        let eternalize_with_additional_cost =
+            parse_eternalize_line_lexed(&eternalize_with_additional_cost)
+                .unwrap()
+                .expect("eternalize with a compound activation cost should parse");
+        assert_eq!(eternalize_with_additional_cost.costs().len(), 2);
+        assert!(format!("{eternalize_with_additional_cost:#?}").contains("DiscardEffect"));
 
         let epic = lex_line("Epic", 0).unwrap();
         assert!(parse_epic_line_lexed(&epic));
@@ -1776,7 +1857,7 @@ pub(crate) fn parse_prowl_line_lexed(
 
 pub(crate) fn parse_eternalize_line_lexed(
     tokens: &[OwnedLexToken],
-) -> Result<Option<ManaCost>, CardTextError> {
+) -> Result<Option<TotalCost>, CardTextError> {
     let Some(fact) =
         keyword_line_facts::parse_named_cost_line_tokens(tokens, NamedCostKeyword::Eternalize)
     else {
@@ -1785,16 +1866,13 @@ pub(crate) fn parse_eternalize_line_lexed(
     if fact.cost_tokens.is_empty() {
         return Ok(None);
     }
-    let (mana_cost, consumed) =
-        leading_mana_cost_from_tokens(fact.cost_tokens).ok_or_else(|| {
-            CardTextError::ParseError("eternalize keyword missing mana cost".to_string())
-        })?;
-    if consumed == 0 {
+    let total_cost = parse_activation_cost(fact.cost_tokens)?;
+    if total_cost.mana_cost().is_none() {
         return Err(CardTextError::ParseError(
             "eternalize keyword missing mana cost".to_string(),
         ));
     }
-    Ok(Some(mana_cost))
+    Ok(Some(total_cost))
 }
 
 pub(crate) fn parse_epic_line_lexed(tokens: &[OwnedLexToken]) -> bool {

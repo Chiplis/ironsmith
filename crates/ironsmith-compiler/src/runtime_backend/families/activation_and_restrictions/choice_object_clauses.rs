@@ -335,6 +335,20 @@ mod tests {
     }
 
     #[test]
+    fn normalized_named_source_restriction_targets_the_source() {
+        let tokens = tokenize_line("This can't attack.", 0);
+
+        let parsed = parse_negated_object_restriction_clause(&tokens)
+            .expect("parse source attack restriction")
+            .expect("expected restriction");
+
+        let Restriction::Attack(filter) = parsed.restriction else {
+            panic!("expected an attack restriction");
+        };
+        assert_eq!(filter, ObjectFilter::source());
+    }
+
+    #[test]
     fn parse_negated_object_restriction_clause_supports_activated_abilities_of_that_permanent() {
         let tokens = tokenize_line(
             "Activated abilities of that permanent can't be activated.",

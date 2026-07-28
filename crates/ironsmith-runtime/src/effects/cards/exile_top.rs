@@ -20,6 +20,8 @@ pub struct ExileTopOfLibraryEffect {
     pub count: Value,
     /// Which player's library to exile from.
     pub player: PlayerFilter,
+    /// Authored actor placement; gameplay semantics remain in `player`.
+    pub surface: Option<ironsmith_core::ExileTopLibrarySurface>,
     /// Optional tags to record the cards moved this way.
     pub moved_tags: Vec<TagKey>,
     /// Optional tags that accumulate all cards moved across repeated executions.
@@ -34,6 +36,7 @@ impl ExileTopOfLibraryEffect {
         Self {
             count: count.into(),
             player,
+            surface: None,
             moved_tags: Vec::new(),
             accumulated_tags: Vec::new(),
             face_down: false,
@@ -42,6 +45,11 @@ impl ExileTopOfLibraryEffect {
 
     pub fn tag_moved(mut self, tag: impl Into<TagKey>) -> Self {
         self.moved_tags.push(tag.into());
+        self
+    }
+
+    pub fn with_surface(mut self, surface: ironsmith_core::ExileTopLibrarySurface) -> Self {
+        self.surface = Some(surface);
         self
     }
 

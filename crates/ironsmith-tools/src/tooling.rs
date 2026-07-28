@@ -307,11 +307,61 @@ fn scoring_oracle_source_lines(text: &str) -> Vec<String> {
         .collect()
 }
 
+fn normalize_compound_activation_frequency(line: &str) -> String {
+    let lower = line.to_ascii_lowercase();
+    let Some(activate_start) = lower.find("activate only ") else {
+        return line.to_string();
+    };
+    let compound_marker = " and only ";
+    let Some(relative_split) = lower[activate_start..].rfind(compound_marker) else {
+        return line.to_string();
+    };
+    let split = activate_start + relative_split;
+    let frequency_tail = &line[split + compound_marker.len()..];
+    let sentence_end = frequency_tail.find(". ").unwrap_or(frequency_tail.len());
+    let frequency_surface = frequency_tail[..sentence_end].trim();
+    let frequency_clause = frequency_surface.trim_end_matches('.');
+    let words = frequency_clause.split_whitespace().collect::<Vec<_>>();
+    let valid_frequency = words.first().is_some_and(|word| {
+        matches!(
+            word.to_ascii_lowercase().as_str(),
+            "once"
+                | "twice"
+                | "thrice"
+                | "zero"
+                | "one"
+                | "two"
+                | "three"
+                | "four"
+                | "five"
+                | "six"
+                | "seven"
+                | "eight"
+                | "nine"
+                | "ten"
+        ) || word.parse::<u32>().is_ok()
+    });
+    if words.len() != 3
+        || !valid_frequency
+        || !words[1].eq_ignore_ascii_case("each")
+        || !words[2].eq_ignore_ascii_case("turn")
+    {
+        return line.to_string();
+    }
+
+    let suffix = &frequency_tail[sentence_end..];
+    format!(
+        "{}. Activate only {frequency_surface}{suffix}",
+        line[..split].trim_end_matches('.')
+    )
+}
+
 fn normalize_canonical_oracle_line(line: &str) -> String {
-    line.replace(
+    let normalized = line.replace(
         "At the beginning of each player's end step,",
         "At the beginning of each end step,",
-    )
+    );
+    normalize_compound_activation_frequency(&normalized)
 }
 
 pub fn load_canonical_cards(path: &str) -> Result<BTreeMap<String, CardPayload>, Box<dyn Error>> {
@@ -3125,7 +3175,7 @@ pub fn compile_definition_from_payload(payload: &CardPayload) -> Result<CardDefi
 mod tests {
     use super::*;
     use ironsmith::compiled_text::debug_compiled_lines;
-    use ironsmith::semantic_compare::report_embedding_config;
+    use ironsmith::semantic_compare::{compare_card_semantics_scored, report_embedding_config};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn unique_temp_path(name: &str) -> PathBuf {
@@ -3134,6 +3184,66 @@ mod tests {
             .expect("system time")
             .as_nanos();
         env::temp_dir().join(format!("ironsmith-{name}-{nanos}.sqlite3"))
+    }
+
+    #[test]
+    fn compound_activation_frequency_is_normalized_into_typed_clauses_for_scoring() {
+        let oracle = "{0}: Add X mana in any combination of {U} and/or {R}, where X is this creature's power. Activate only during your turn and only once each turn.";
+        let normalized = normalized_oracle_source_lines(oracle).join("\n");
+
+        assert_eq!(
+            normalized,
+            "{0}: Add X mana in any combination of {U} and/or {R}, where X is this creature's power. Activate only during your turn. Activate only once each turn."
+        );
+        let (_, _, score, _, mismatch) = compare_card_semantics_scored(
+            "Compound Activation Fixture",
+            &normalized,
+            &[oracle.to_string()],
+            report_embedding_config(),
+        );
+        assert_eq!(score, 1.0);
+        assert!(!mismatch);
+
+        let unrelated = "Draw a card and only once each turn create a Treasure token.";
+        assert_eq!(normalize_canonical_oracle_line(unrelated), unrelated);
+    }
+
+    #[test]
+    fn exact_multiline_effects_with_reminder_text_score_as_exact() {
+        let oracle = "Put a shield counter on target creature.\nScry 1.";
+        let raw_oracle = "Put a shield counter on target creature. (If it would be dealt damage or destroyed, remove a shield counter from it instead.)\nScry 1.";
+        let payload = CardPayload {
+            name: "Shield and Scry Fixture".to_string(),
+            parse_name: None,
+            oracle_text: oracle.to_string(),
+            raw_oracle_text: raw_oracle.to_string(),
+            metadata_lines: vec!["Mana cost: {W}".to_string(), "Type: Instant".to_string()],
+            parse_input: build_parse_input(
+                &["Mana cost: {W}".to_string(), "Type: Instant".to_string()],
+                raw_oracle,
+            ),
+            other_face_name: None,
+            linked_face_layout: None,
+        };
+
+        let grouped_compiled_comparison = compare_card_semantics_scored(
+            &payload.name,
+            oracle,
+            &[oracle.to_string()],
+            report_embedding_config(),
+        );
+        let snapshot = compile_authoritative_snapshot_from_payload(&payload);
+
+        assert_eq!(grouped_compiled_comparison.2, 1.0);
+        assert!(!grouped_compiled_comparison.4);
+        assert_eq!(snapshot.parse_status, ParseStatus::StrictCompiled);
+        assert_eq!(snapshot.normalized_oracle_text, oracle);
+        assert_eq!(snapshot.compiled_text.as_deref(), Some(oracle));
+        assert_eq!(
+            snapshot.similarity_score, 1.0,
+            "identical normalized oracle and compiled text must score exactly"
+        );
+        assert!(!snapshot.semantic_mismatch);
     }
 
     #[test]

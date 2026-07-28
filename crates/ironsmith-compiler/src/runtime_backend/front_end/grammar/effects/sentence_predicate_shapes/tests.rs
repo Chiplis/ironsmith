@@ -2,6 +2,21 @@ use super::super::super::super::lexer::lex_line;
 use super::*;
 
 #[test]
+fn parses_attacking_doesnt_tap_if_source_is_untapped() {
+    let tokens = lex_line(
+        "Attacking doesn't cause creatures you control to tap this combat if this is untapped.",
+        0,
+    )
+    .unwrap();
+    let shape =
+        parse_attacking_doesnt_tap_if_source_untapped_tokens(&tokens).expect("vigilance surface");
+    assert_eq!(
+        parser_token_word_refs(shape.affected_tokens),
+        ["creatures", "you", "control"]
+    );
+}
+
+#[test]
 fn parses_typed_where_x_shapes() {
     let tokens = lex_line(
         "Target creature deals X damage to any target and X damage to itself, where X is its power.",
@@ -53,6 +68,21 @@ fn parses_typed_where_x_shapes() {
             sentence.stripped_references_target,
         ),
         Some(WhereXValueShape::RemovedCountersThisWay),
+    );
+}
+
+#[test]
+fn parses_chosen_objects_power_difference() {
+    let tokens = lex_line(
+        "where X is the difference between the chosen creatures' powers.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_where_x_value_shape_tokens(&tokens, false),
+        Some(WhereXValueShape::ChosenObjectsPowerDifference {
+            object_kind: "creature".to_string(),
+        })
     );
 }
 

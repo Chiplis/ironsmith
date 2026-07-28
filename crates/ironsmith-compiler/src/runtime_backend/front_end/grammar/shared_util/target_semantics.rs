@@ -941,6 +941,20 @@ pub(crate) fn parse_target_phrase_inner(
     }
 
     let mut filter = parse_object_filter(remaining, other)?;
+    // Definite combat-role noun phrases identify the concrete participant in
+    // the triggering block relationship. Keep the ordinary role predicate as
+    // well, both for structural rendering and as a legality guard.
+    if token_words.starts_with(&["the", "blocking"]) && filter.blocking {
+        filter = filter.match_tagged(
+            TagKey::from("blocking"),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+    } else if token_words.starts_with(&["the", "attacking"]) && filter.attacking {
+        filter = filter.match_tagged(
+            TagKey::from("blocked"),
+            TaggedOpbjectRelation::IsTaggedObject,
+        );
+    }
     apply_target_preparation_facts(
         &mut filter,
         parse_target_preparation_facts(remaining, explicit_target),
@@ -1016,6 +1030,32 @@ mod tests {
     }
 
     #[test]
+    fn definite_combat_role_targets_keep_the_block_pair_identity() {
+        for (text, expected_tag, expected_role) in [
+            ("the blocking creature", "blocking", "blocking"),
+            ("the attacking creature", "blocked", "attacking"),
+        ] {
+            let TargetAst::Object(filter, explicit_target, _) = parse(text) else {
+                panic!("expected object target for {text}");
+            };
+            assert!(explicit_target.is_none(), "{filter:#?}");
+            assert!(
+                filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == expected_tag
+                        && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                }),
+                "{filter:#?}"
+            );
+            assert_eq!(filter.blocking, expected_role == "blocking", "{filter:#?}");
+            assert_eq!(
+                filter.attacking,
+                expected_role == "attacking",
+                "{filter:#?}"
+            );
+        }
+    }
+
+    #[test]
     fn another_stickered_target_does_not_turn_reflexive_it_into_a_reference() {
         let TargetAst::Object(filter, explicit_target, it_span) =
             parse("another target creature with an art sticker on it")
@@ -1037,6 +1077,38 @@ mod tests {
         };
         assert!(filter.other);
         assert_eq!(filter.card_types, vec![CardType::Creature]);
+    }
+
+    #[test]
+    fn counters_put_on_it_this_way_keeps_exact_producer_set_reference() {
+        let TargetAst::Object(filter, _, _) =
+            parse("each creature that had counters put on it this way")
+        else {
+            panic!("expected object filter");
+        };
+        assert_eq!(filter.card_types, vec![CardType::Creature]);
+        assert_eq!(
+            filter.union_surface.prior_effect_action(),
+            Some(ironsmith_core::PriorEffectAction::CountersPut)
+        );
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
+    }
+
+    #[test]
+    fn became_a_creature_this_way_keeps_exact_animation_result_reference() {
+        let TargetAst::Object(filter, _, _) =
+            parse("each artifact that became a creature this way")
+        else {
+            panic!("expected object filter");
+        };
+        assert!(filter.card_types.contains(&CardType::Artifact));
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        }));
     }
 
     #[test]

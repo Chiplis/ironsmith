@@ -1017,6 +1017,11 @@ impl GameState {
                     .unwrap_or_else(|| self.controller_of(source_obj));
                 let filter_ctx = self.filter_context_for(controller, Some(unit.source));
                 filter.matches(source_obj, &filter_ctx, self)
+                    || (reason == crate::costs::PaymentReason::CastSpell
+                        && source_obj.zone == Zone::Stack
+                        && self.cast_origin_snapshot(source_id).is_some_and(|origin| {
+                            filter.matches_snapshot(origin, &filter_ctx, self)
+                        }))
             }
             crate::ability::ManaPaymentPredicate::CostContains(symbol) => effective_cost
                 .is_some_and(|cost| cost.pips().iter().any(|pip| pip.contains(symbol))),

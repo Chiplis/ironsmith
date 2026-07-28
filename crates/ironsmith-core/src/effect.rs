@@ -3,7 +3,9 @@
 //! These types describe effect identity and selection cardinality without
 //! pulling in the runtime execution engine.
 
-use crate::filter_model::{AlternativeCastKind, ObjectFilter, ObjectRef, PlayerFilter};
+use crate::filter_model::{
+    AlternativeCastKind, ObjectFilter, ObjectRef, PlayerFilter, StackObjectKind,
+};
 use crate::mana::{ManaCost, ManaSymbol};
 use crate::tag::TagKey;
 use crate::target_model::ChooseSpec;
@@ -51,6 +53,9 @@ pub struct ChoiceCount {
     pub up_to_x: bool,
     /// Whether the chosen object(s) should be selected at random.
     pub random: bool,
+    /// Whether the source explicitly authored the otherwise semantic-neutral
+    /// word "exactly" before a fixed or dynamic count.
+    pub explicit_exactly: bool,
 }
 
 /// Distinguishes exact, optional, and "all matching" search instructions.
@@ -172,6 +177,14 @@ pub enum Until {
     #[default]
     Forever,
     EndOfTurn,
+    /// The earlier of the current turn ending or any player rolling the
+    /// specified result. `matching_rolls_observed` is materialized when the
+    /// continuous effect resolves so rolls that happened earlier in the turn
+    /// do not immediately expire it.
+    EndOfTurnOrAnyPlayerRolls {
+        result: u32,
+        matching_rolls_observed: u32,
+    },
     YourNextTurn,
     YourNextTurnEnd,
     YourNextUpkeep,
@@ -244,6 +257,15 @@ pub struct PriorEffectResultSurface {
     pub filter: ObjectFilter,
     pub actor: PriorEffectResultActor,
     pub quantifier: PriorEffectResultQuantifier,
+    /// Explicit number of matching result objects required by the predicate.
+    ///
+    /// This is distinct from `quantifier`: it retains counted surfaces such
+    /// as "two nonland cards were milled this way" and is evaluated against
+    /// the prior effect's affected-object memory.
+    pub required_count: Option<u32>,
+    /// Characteristic that at least one pair among the matching result objects
+    /// must share, for predicates such as "two cards that share a color".
+    pub shared_characteristic: Option<crate::ObjectCharacteristic>,
 }
 
 impl PriorEffectResultSurface {
@@ -258,7 +280,19 @@ impl PriorEffectResultSurface {
             filter,
             actor,
             quantifier,
+            required_count: None,
+            shared_characteristic: None,
         }
+    }
+
+    pub fn with_count_sharing(
+        mut self,
+        required_count: u32,
+        characteristic: crate::ObjectCharacteristic,
+    ) -> Self {
+        self.required_count = Some(required_count);
+        self.shared_characteristic = Some(characteristic);
+        self
     }
 }
 
@@ -267,8 +301,75 @@ pub enum GrantPlayTaggedDuration {
     UntilEndOfTurn,
     UntilYourNextTurnEnd,
     UntilYourNextEndStep,
+    /// The permission remains active until the same source object next exiles
+    /// another card.
+    UntilSourceExilesAnother,
     ForAsLongAsExiled,
     ForAsLongAsYouControlSource,
+}
+
+/// Oracle-facing noun phrase for a temporary permission over a tagged card
+/// collection. Runtime identity remains carried by the grant's `tag`; this
+/// only preserves distinctions that cannot be recovered from that tag.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GrantPlayTaggedObjectSurface {
+    It,
+    ThatCard,
+    ThatSpell,
+    ThoseCards,
+    SpellsFromAmongThoseCards,
+    SpellsFromAmongThoseExiledCards,
+    SpellFromAmongCardsExiledWithSource {
+        creature_spell: bool,
+        source: SourceReferenceSurface,
+    },
+}
+
+/// Oracle-facing reference used by a flexible-mana suffix on a temporary
+/// tagged-card permission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrantPlayTaggedManaReferenceSurface {
+    It,
+    ThatSpell,
+    Them,
+    ThoseSpells,
+}
+
+/// Presentation provenance for a temporary tagged-card permission.
+///
+/// The duration and playable set remain typed by `GrantPlayTaggedEffect`.
+/// These fields preserve only authored placement and reference wording.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct GrantPlayTaggedSurface {
+    pub leading_duration: bool,
+    pub object: Option<GrantPlayTaggedObjectSurface>,
+    pub mana_reference: Option<GrantPlayTaggedManaReferenceSurface>,
+    /// Authored source noun in "until you exile another card with this ...".
+    /// The event-bounded lifetime itself is carried by
+    /// `GrantPlayTaggedDuration::UntilSourceExilesAnother`.
+    pub until_source_exiles_another: Option<SourceReferenceSurface>,
+}
+
+impl GrantPlayTaggedSurface {
+    pub fn with_leading_duration(mut self, leading: bool) -> Self {
+        self.leading_duration = leading;
+        self
+    }
+
+    pub fn with_object(mut self, object: GrantPlayTaggedObjectSurface) -> Self {
+        self.object = Some(object);
+        self
+    }
+
+    pub fn with_mana_reference(mut self, reference: GrantPlayTaggedManaReferenceSurface) -> Self {
+        self.mana_reference = Some(reference);
+        self
+    }
+
+    pub fn with_until_source_exiles_another(mut self, source: SourceReferenceSurface) -> Self {
+        self.until_source_exiles_another = Some(source);
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -317,9 +418,18 @@ pub enum RetargetMode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DelayedTriggerSpec {
+    AsPermanentsUntap {
+        player: PlayerFilter,
+        source_must_be_controlled: bool,
+    },
     BeginningOfUpkeep(PlayerFilter),
     BeginningOfDrawStep(PlayerFilter),
     BeginningOfEndStep(PlayerFilter),
+    BeginningOfCleanupStep(PlayerFilter),
+    /// The first cleanup step that begins after this delayed trigger is
+    /// registered. The scheduling effect is one-shot; the player filter
+    /// distinguishes "the next cleanup step" from "your next cleanup step".
+    BeginningOfNextCleanupStep(PlayerFilter),
     BeginningOfCombat(PlayerFilter),
     BeginningOfMainPhase(PlayerFilter),
     BeginningOfPrecombatMainPhase(PlayerFilter),
@@ -413,6 +523,9 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     pub duration: DelayedTriggerDuration,
     pub until_end_of_turn: bool,
     pub until_end_of_combat: bool,
+    /// Preserve an authored duration before the trigger clause, such as
+    /// "Until end of turn, whenever ...", instead of moving it to the event.
+    pub leading_duration_surface: bool,
     pub watch_ability_source: bool,
     /// Capture every object target chosen for the resolving spell or ability
     /// and register one watcher per object.
@@ -420,6 +533,9 @@ pub struct ScheduleDelayedTriggerEffect<E> {
     /// Preserve the authored set-reference surface for a watched tagged set,
     /// such as "either of those creatures".
     pub either_of_watched_objects: bool,
+    /// A collection-scoped lifetime: the registration expires once none of
+    /// the captured objects under `tag` remain in `zone`.
+    pub while_any_tagged_object_in_zone: Option<(crate::tag::TagKey, crate::zone::Zone)>,
     pub target_choices: Vec<ChooseSpec>,
     pub target_tag: Option<crate::tag::TagKey>,
     pub target_filter: Option<ObjectFilter>,
@@ -442,9 +558,11 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
             duration: DelayedTriggerDuration::Forever,
             until_end_of_turn: false,
             until_end_of_combat: false,
+            leading_duration_surface: false,
             watch_ability_source: false,
             watch_all_object_targets: false,
             either_of_watched_objects: false,
+            while_any_tagged_object_in_zone: None,
             target_choices,
             target_tag: None,
             target_filter: None,
@@ -497,8 +615,22 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
         self
     }
 
+    pub fn with_leading_duration_surface(mut self) -> Self {
+        self.leading_duration_surface = true;
+        self
+    }
+
     pub fn with_either_of_watched_objects_surface(mut self) -> Self {
         self.either_of_watched_objects = true;
+        self
+    }
+
+    pub fn while_any_tagged_object_in_zone(
+        mut self,
+        tag: impl Into<crate::tag::TagKey>,
+        zone: crate::zone::Zone,
+    ) -> Self {
+        self.while_any_tagged_object_in_zone = Some((tag.into(), zone));
         self
     }
 
@@ -517,6 +649,17 @@ impl<E> ScheduleDelayedTriggerEffect<E> {
 pub enum SetQuantifierSurface {
     All,
     Each,
+    /// A plural pronoun referring to an already established object result.
+    ///
+    /// The result tag/filter remains the executable identity; this records
+    /// only that Oracle authored the follow-up subject as `they`.
+    They,
+    /// A plural demonstrative reference to a previously established set.
+    ///
+    /// This is presentation-only, but unlike `Each` it also records that
+    /// lowering must reuse the antecedent set rather than build a new set from
+    /// the demonstrative noun alone.
+    Those,
 }
 
 /// Oracle surface used when a type-changing effect preserves an object's
@@ -775,6 +918,7 @@ impl ChoiceCount {
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         }
     }
 
@@ -786,6 +930,7 @@ impl ChoiceCount {
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         }
     }
 
@@ -797,6 +942,7 @@ impl ChoiceCount {
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         }
     }
 
@@ -808,6 +954,7 @@ impl ChoiceCount {
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         }
     }
 
@@ -819,6 +966,7 @@ impl ChoiceCount {
             dynamic_x: true,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         }
     }
 
@@ -830,6 +978,7 @@ impl ChoiceCount {
             dynamic_x: true,
             up_to_x: true,
             random: false,
+            explicit_exactly: false,
         }
     }
 
@@ -857,6 +1006,13 @@ impl ChoiceCount {
 
     pub fn at_random(mut self) -> Self {
         self.random = true;
+        self
+    }
+
+    /// Preserve an explicitly authored `exactly` without changing the
+    /// cardinality enforced by this choice.
+    pub const fn with_explicit_exactly(mut self) -> Self {
+        self.explicit_exactly = true;
         self
     }
 }
@@ -1928,11 +2084,23 @@ impl MillEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ShuffleGraveyardIntoLibraryEffect {
     pub player: PlayerFilter,
+    /// Preserve the longer authored "all cards from ... graveyard" surface.
+    pub explicit_all_cards_from: bool,
 }
 
 impl ShuffleGraveyardIntoLibraryEffect {
     pub fn new(player: PlayerFilter) -> Self {
-        Self { player }
+        Self {
+            player,
+            explicit_all_cards_from: false,
+        }
+    }
+
+    pub fn with_all_cards_from_surface(player: PlayerFilter) -> Self {
+        Self {
+            player,
+            explicit_all_cards_from: true,
+        }
     }
 }
 
@@ -2017,6 +2185,10 @@ pub struct ExiledWithSourceMoveSurface {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReturnToHandEffect {
     pub spec: ChooseSpec,
+    /// Player explicitly presented as performing the return action. Runtime
+    /// movement remains object-based; this preserves causative clauses such
+    /// as "you may have that player return ...".
+    pub actor_surface: Option<PlayerFilter>,
     /// Contextual player named by the oracle destination (for example,
     /// "your hand" or "their hand"). The zone change itself still follows
     /// the rules and moves the object to its owner's hand.
@@ -2034,6 +2206,7 @@ impl ReturnToHandEffect {
     pub fn with_spec(spec: ChooseSpec) -> Self {
         Self {
             spec,
+            actor_surface: None,
             destination_player_surface: None,
             exiled_with_source_surface: None,
             set_quantifier_surface: None,
@@ -2044,6 +2217,7 @@ impl ReturnToHandEffect {
     pub fn target(spec: ChooseSpec) -> Self {
         Self {
             spec: ChooseSpec::target(spec),
+            actor_surface: None,
             destination_player_surface: None,
             exiled_with_source_surface: None,
             set_quantifier_surface: None,
@@ -2054,6 +2228,7 @@ impl ReturnToHandEffect {
     pub fn targets(spec: ChooseSpec, count: ChoiceCount) -> Self {
         Self {
             spec: ChooseSpec::target(spec).with_count(count),
+            actor_surface: None,
             destination_player_surface: None,
             exiled_with_source_surface: None,
             set_quantifier_surface: None,
@@ -2064,11 +2239,17 @@ impl ReturnToHandEffect {
     pub fn all(filter: ObjectFilter) -> Self {
         Self {
             spec: ChooseSpec::all(filter),
+            actor_surface: None,
             destination_player_surface: None,
             exiled_with_source_surface: None,
             set_quantifier_surface: None,
             set_reference_surface: None,
         }
+    }
+
+    pub fn with_actor_surface(mut self, player: PlayerFilter) -> Self {
+        self.actor_surface = Some(player);
+        self
     }
 
     pub fn with_destination_player_surface(mut self, player: PlayerFilter) -> Self {
@@ -2316,6 +2497,10 @@ pub struct MoveToZoneEffect {
     /// (for example, "those cards" or "the exiled cards"). Tagged specs can
     /// resolve more than one object, but do not otherwise retain that surface.
     pub target_plural_surface: bool,
+    /// Authored provenance for a tagged-set complement disposition. This is
+    /// presentation-only; the enclosing tagged iteration remains the
+    /// executable definition of which objects move.
+    pub remainder_surface: Option<LibraryRemainderSurface>,
     /// Explicit player who performs the oracle instruction. The rules engine
     /// still moves the same objects to the same zones; this only preserves
     /// surfaces such as "that player puts" and "each player puts".
@@ -2358,6 +2543,7 @@ impl MoveToZoneEffect {
             library_order: None,
             verb_surface: MoveToZoneVerbSurface::Canonical,
             target_plural_surface: false,
+            remainder_surface: None,
             actor_surface: None,
             destination_player_surface: None,
             destination_player_reference_surface: None,
@@ -2398,6 +2584,11 @@ impl MoveToZoneEffect {
 
     pub fn with_target_plural_surface(mut self) -> Self {
         self.target_plural_surface = true;
+        self
+    }
+
+    pub fn with_remainder_surface(mut self, surface: LibraryRemainderSurface) -> Self {
+        self.remainder_surface = Some(surface);
         self
     }
 
@@ -2657,6 +2848,44 @@ pub struct ForEachObject<E> {
 impl<E> ForEachObject<E> {
     pub fn new(filter: ObjectFilter, effects: Vec<E>) -> Self {
         Self { filter, effects }
+    }
+}
+
+/// Runs a tagged producer once for each matching source object, retains the
+/// source-to-result association, then runs a consumer once for each retained
+/// pair after every producer iteration has completed.
+///
+/// This preserves two-phase Oracle instructions such as "for each ...,
+/// create ..." followed by "each of those ... [acts on] a different one of
+/// those ...". The explicit binding tags keep the consumer composable without
+/// overloading the ordinary `__it__` iterator reference.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForEachObjectCorrelatedResultEffect<E> {
+    pub filter: ObjectFilter,
+    pub producer_effects: Vec<E>,
+    pub result_tag: crate::tag::TagKey,
+    pub source_binding_tag: crate::tag::TagKey,
+    pub result_binding_tag: crate::tag::TagKey,
+    pub consumer_effects: Vec<E>,
+}
+
+impl<E> ForEachObjectCorrelatedResultEffect<E> {
+    pub fn new(
+        filter: ObjectFilter,
+        producer_effects: Vec<E>,
+        result_tag: impl Into<crate::tag::TagKey>,
+        source_binding_tag: impl Into<crate::tag::TagKey>,
+        result_binding_tag: impl Into<crate::tag::TagKey>,
+        consumer_effects: Vec<E>,
+    ) -> Self {
+        Self {
+            filter,
+            producer_effects,
+            result_tag: result_tag.into(),
+            source_binding_tag: source_binding_tag.into(),
+            result_binding_tag: result_binding_tag.into(),
+            consumer_effects,
+        }
     }
 }
 
@@ -2923,6 +3152,7 @@ pub struct BecomeColorChoiceEffect {
     pub target: ChooseSpec,
     pub duration: Until,
     pub chooser: PlayerFilter,
+    pub allow_multiple: bool,
 }
 
 impl BecomeColorChoiceEffect {
@@ -2931,11 +3161,17 @@ impl BecomeColorChoiceEffect {
             target,
             duration,
             chooser: PlayerFilter::You,
+            allow_multiple: false,
         }
     }
 
     pub fn with_chooser(mut self, chooser: PlayerFilter) -> Self {
         self.chooser = chooser;
+        self
+    }
+
+    pub fn with_multiple_colors(mut self, allow_multiple: bool) -> Self {
+        self.allow_multiple = allow_multiple;
         self
     }
 }
@@ -2944,7 +3180,12 @@ impl BecomeColorChoiceEffect {
 pub struct PayManaEffect {
     pub cost: crate::mana::ManaCost,
     pub player: ChooseSpec,
+    /// An exact value for printed X, computed from game state rather than
+    /// chosen by the paying player.
     pub x_value: Option<Value>,
+    /// An inclusive upper bound for printed X. The paying player chooses X
+    /// from the affordable values between zero and this resolved maximum.
+    pub x_maximum: Option<Value>,
 }
 
 impl PayManaEffect {
@@ -2953,11 +3194,17 @@ impl PayManaEffect {
             cost,
             player,
             x_value: None,
+            x_maximum: None,
         }
     }
 
     pub fn with_x_value(mut self, x_value: Value) -> Self {
         self.x_value = Some(x_value);
+        self
+    }
+
+    pub fn with_x_maximum(mut self, x_maximum: Value) -> Self {
+        self.x_maximum = Some(x_maximum);
         self
     }
 }
@@ -3466,6 +3713,98 @@ impl<E> ScheduleEffectsWhenTaggedLeavesEffect<E> {
 pub enum TokenAbilityPresentation {
     InlineWith,
     SeparateSentence,
+    SeparateSentenceGain,
+    /// The token had no intrinsic abilities before the authored `It has ...`
+    /// sentence, so all grouped abilities belong to that single sentence.
+    SeparateSentenceCombined,
+    /// Gain-verb counterpart of `SeparateSentenceCombined`.
+    SeparateSentenceGainCombined,
+    InlineWithThenStandalone(usize),
+    SeparateSentenceThenStandalone(usize),
+    SeparateSentenceGainThenStandalone(usize),
+    SeparateSentenceCombinedThenStandalone(usize),
+    SeparateSentenceGainCombinedThenStandalone(usize),
+    Standalone(usize),
+}
+
+impl TokenAbilityPresentation {
+    /// Mark an authored post-create ability sentence as containing every
+    /// ability currently present on an otherwise ability-free token.
+    pub const fn combined_separate_sentence(self) -> Self {
+        match self {
+            Self::SeparateSentence => Self::SeparateSentenceCombined,
+            Self::SeparateSentenceGain => Self::SeparateSentenceGainCombined,
+            other => other,
+        }
+    }
+
+    /// Record another authored ability sentence after the token-definition
+    /// sentence. The count is presentation-only; all abilities remain on the
+    /// token definition for execution.
+    pub const fn with_added_standalone_tail(current: Option<Self>) -> Self {
+        match current {
+            Some(Self::InlineWith) => Self::InlineWithThenStandalone(1),
+            Some(Self::SeparateSentence) => Self::SeparateSentenceThenStandalone(1),
+            Some(Self::SeparateSentenceGain) => Self::SeparateSentenceGainThenStandalone(1),
+            Some(Self::SeparateSentenceCombined) => Self::SeparateSentenceCombinedThenStandalone(1),
+            Some(Self::SeparateSentenceGainCombined) => {
+                Self::SeparateSentenceGainCombinedThenStandalone(1)
+            }
+            Some(Self::InlineWithThenStandalone(count)) => {
+                Self::InlineWithThenStandalone(count + 1)
+            }
+            Some(Self::SeparateSentenceThenStandalone(count)) => {
+                Self::SeparateSentenceThenStandalone(count + 1)
+            }
+            Some(Self::SeparateSentenceGainThenStandalone(count)) => {
+                Self::SeparateSentenceGainThenStandalone(count + 1)
+            }
+            Some(Self::SeparateSentenceCombinedThenStandalone(count)) => {
+                Self::SeparateSentenceCombinedThenStandalone(count + 1)
+            }
+            Some(Self::SeparateSentenceGainCombinedThenStandalone(count)) => {
+                Self::SeparateSentenceGainCombinedThenStandalone(count + 1)
+            }
+            Some(Self::Standalone(count)) => Self::Standalone(count + 1),
+            None => Self::Standalone(1),
+        }
+    }
+
+    pub const fn standalone_tail_count(self) -> usize {
+        match self {
+            Self::InlineWithThenStandalone(count)
+            | Self::SeparateSentenceThenStandalone(count)
+            | Self::SeparateSentenceGainThenStandalone(count)
+            | Self::SeparateSentenceCombinedThenStandalone(count)
+            | Self::SeparateSentenceGainCombinedThenStandalone(count)
+            | Self::Standalone(count) => count,
+            Self::InlineWith
+            | Self::SeparateSentence
+            | Self::SeparateSentenceGain
+            | Self::SeparateSentenceCombined
+            | Self::SeparateSentenceGainCombined => 0,
+        }
+    }
+
+    pub const fn grouped_presentation(self) -> Option<Self> {
+        match self {
+            Self::InlineWith | Self::InlineWithThenStandalone(_) => Some(Self::InlineWith),
+            Self::SeparateSentence | Self::SeparateSentenceThenStandalone(_) => {
+                Some(Self::SeparateSentence)
+            }
+            Self::SeparateSentenceGain | Self::SeparateSentenceGainThenStandalone(_) => {
+                Some(Self::SeparateSentenceGain)
+            }
+            Self::SeparateSentenceCombined | Self::SeparateSentenceCombinedThenStandalone(_) => {
+                Some(Self::SeparateSentenceCombined)
+            }
+            Self::SeparateSentenceGainCombined
+            | Self::SeparateSentenceGainCombinedThenStandalone(_) => {
+                Some(Self::SeparateSentenceGainCombined)
+            }
+            Self::Standalone(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3474,6 +3813,12 @@ pub struct CreateTokenEffect<D> {
     pub count: Value,
     pub controller: PlayerFilter,
     pub controller_target: Option<ChooseSpec>,
+    /// Apply the source permanent's chosen color to the token definition as
+    /// the token is created.
+    pub use_source_chosen_color: bool,
+    /// Apply the source permanent's chosen creature type to the token
+    /// definition as the token is created.
+    pub use_source_chosen_creature_type: bool,
     /// Whether the authored text explicitly named `you` as the actor of the
     /// create action. This is presentation-only; `controller` remains the
     /// semantic source of truth for who creates and controls the token.
@@ -3503,6 +3848,8 @@ impl<D> CreateTokenEffect<D> {
             count,
             controller,
             controller_target,
+            use_source_chosen_color: false,
+            use_source_chosen_creature_type: false,
             actor_surface_explicit: false,
             suppress_aura_attachment_choice: false,
             ability_presentation: None,
@@ -3526,6 +3873,16 @@ impl<D> CreateTokenEffect<D> {
 
     pub fn with_explicit_actor_surface(mut self) -> Self {
         self.actor_surface_explicit = true;
+        self
+    }
+
+    pub fn with_source_chosen_color(mut self) -> Self {
+        self.use_source_chosen_color = true;
+        self
+    }
+
+    pub fn with_source_chosen_creature_type(mut self) -> Self {
+        self.use_source_chosen_creature_type = true;
         self
     }
 
@@ -3615,7 +3972,34 @@ pub enum CopyPtAdjustment {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CopyAttackTargetMode {
+    Player(PlayerFilter),
     PlayerOrPlaneswalkerControlledBy(PlayerFilter),
+}
+
+/// Authored anaphor used by a sentence that follows a token-copy action.
+///
+/// `They` is grammatical-role aware: renderers use `they` as a subject and
+/// `them` as an object. Keeping this typed lets the semantic model continue to
+/// fold token follow-ups into the copy effect without losing their surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TokenCopyReferenceSurface {
+    It,
+    They,
+    ThatToken,
+    ThoseTokens,
+    TheToken,
+    TheTokens,
+    TokenCreatedThisWay,
+    TokensCreatedThisWay,
+}
+
+impl TokenCopyReferenceSurface {
+    pub fn is_plural(self) -> bool {
+        matches!(
+            self,
+            Self::They | Self::ThoseTokens | Self::TheTokens | Self::TokensCreatedThisWay
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3625,17 +4009,23 @@ pub struct CreateTokenCopyEffect<A> {
     pub controller: PlayerFilter,
     pub enters_tapped: bool,
     pub has_haste: bool,
+    /// `None` means haste was authored as an inline copy exception. `Some`
+    /// records the subject of a separate post-create haste sentence.
+    pub haste_followup_reference_surface: Option<TokenCopyReferenceSurface>,
     pub enters_attacking: bool,
     pub attack_target_mode: Option<CopyAttackTargetMode>,
     pub exile_at_end_of_combat: bool,
+    pub exile_at_end_of_combat_reference_surface: Option<TokenCopyReferenceSurface>,
     /// "except it has haste and loses soulbond" (Mirage Phalanx): the copy is
     /// created without the soulbond pairing ability.
     pub loses_soulbond: bool,
     pub sacrifice_at_next_end_step: bool,
+    pub sacrifice_at_next_end_step_reference_surface: Option<TokenCopyReferenceSurface>,
     /// Original quoted copiable ability text when the cleanup instruction was
     /// granted to the token as part of the copy exception.
     pub sacrifice_at_next_end_step_ability_text: Option<String>,
     pub exile_at_next_end_step: bool,
+    pub exile_at_next_end_step_reference_surface: Option<TokenCopyReferenceSurface>,
     pub next_end_step_player: PlayerFilter,
     pub pt_adjustment: Option<CopyPtAdjustment>,
     pub clear_mana_cost: bool,
@@ -3657,13 +4047,17 @@ impl<A> CreateTokenCopyEffect<A> {
             controller,
             enters_tapped: false,
             has_haste: false,
+            haste_followup_reference_surface: None,
             enters_attacking: false,
             attack_target_mode: None,
             exile_at_end_of_combat: false,
+            exile_at_end_of_combat_reference_surface: None,
             loses_soulbond: false,
             sacrifice_at_next_end_step: false,
+            sacrifice_at_next_end_step_reference_surface: None,
             sacrifice_at_next_end_step_ability_text: None,
             exile_at_next_end_step: false,
+            exile_at_next_end_step_reference_surface: None,
             next_end_step_player: PlayerFilter::Any,
             pt_adjustment: None,
             clear_mana_cost: false,
@@ -3711,6 +4105,14 @@ impl<A> CreateTokenCopyEffect<A> {
         self
     }
 
+    pub fn haste_followup_reference_surface(
+        mut self,
+        surface: Option<TokenCopyReferenceSurface>,
+    ) -> Self {
+        self.haste_followup_reference_surface = surface;
+        self
+    }
+
     pub fn attacking(mut self, value: bool) -> Self {
         self.enters_attacking = value;
         if !value {
@@ -3733,8 +4135,22 @@ impl<A> CreateTokenCopyEffect<A> {
         self
     }
 
+    pub fn attacking_player(mut self, player: PlayerFilter) -> Self {
+        self.enters_attacking = true;
+        self.attack_target_mode = Some(CopyAttackTargetMode::Player(player));
+        self
+    }
+
     pub fn exile_at_eoc(mut self, value: bool) -> Self {
         self.exile_at_end_of_combat = value;
+        self
+    }
+
+    pub fn exile_at_end_of_combat_reference_surface(
+        mut self,
+        surface: Option<TokenCopyReferenceSurface>,
+    ) -> Self {
+        self.exile_at_end_of_combat_reference_surface = surface;
         self
     }
 
@@ -3748,6 +4164,14 @@ impl<A> CreateTokenCopyEffect<A> {
         self
     }
 
+    pub fn sacrifice_at_next_end_step_reference_surface(
+        mut self,
+        surface: Option<TokenCopyReferenceSurface>,
+    ) -> Self {
+        self.sacrifice_at_next_end_step_reference_surface = surface;
+        self
+    }
+
     pub fn sacrifice_at_next_end_step_ability_text(mut self, text: Option<String>) -> Self {
         self.sacrifice_at_next_end_step_ability_text = text;
         self
@@ -3755,6 +4179,14 @@ impl<A> CreateTokenCopyEffect<A> {
 
     pub fn exile_at_next_end_step(mut self, value: bool) -> Self {
         self.exile_at_next_end_step = value;
+        self
+    }
+
+    pub fn exile_at_next_end_step_reference_surface(
+        mut self,
+        surface: Option<TokenCopyReferenceSurface>,
+    ) -> Self {
+        self.exile_at_next_end_step_reference_surface = surface;
         self
     }
 
@@ -4044,6 +4476,9 @@ pub enum ExileUntilDuration {
 pub struct ExileUntilEffect {
     pub spec: ChooseSpec,
     pub duration: ExileUntilDuration,
+    /// A separately targeted permanent whose departure ends the duration.
+    /// `None` keeps the traditional ability-source watcher.
+    pub leave_watcher: Option<ChooseSpec>,
     pub return_zone: crate::zone::Zone,
     pub face_down: bool,
     /// Preserve the older two-sentence Oracle surface that explicitly says
@@ -4056,6 +4491,7 @@ impl ExileUntilEffect {
         Self {
             spec,
             duration,
+            leave_watcher: None,
             return_zone: crate::zone::Zone::Battlefield,
             face_down: false,
             explicit_return_surface: false,
@@ -4064,6 +4500,11 @@ impl ExileUntilEffect {
 
     pub fn with_face_down(mut self, face_down: bool) -> Self {
         self.face_down = face_down;
+        self
+    }
+
+    pub fn with_leave_watcher(mut self, watcher: ChooseSpec) -> Self {
+        self.leave_watcher = Some(watcher);
         self
     }
 
@@ -4080,19 +4521,37 @@ impl ExileUntilEffect {
 #[derive(Debug, Clone, PartialEq)]
 pub struct CopySpellEffect {
     pub target: ChooseSpec,
+    /// The kind named by an authored stack-object back-reference.
+    ///
+    /// Tagged references intentionally carry identity only, so a phrase such
+    /// as "that spell", "that ability", or "that spell or ability" needs
+    /// separate typed provenance for compiled-text rendering.
+    pub target_reference_kind: Option<StackObjectKind>,
+    /// Whether the authored target back-reference was the pronoun `it`.
+    ///
+    /// Reference resolution may replace the pronoun's internal tag with the
+    /// triggering stack-object tag. This independent surface bit preserves
+    /// the authored wording without weakening that semantic identity.
+    pub target_reference_pronoun: bool,
     pub count: Value,
     pub copier: PlayerFilter,
     pub removed_supertypes: Vec<Supertype>,
 }
 
 impl CopySpellEffect {
-    pub fn new(target: ChooseSpec, count: impl Into<Value>) -> Self {
-        Self {
-            target,
-            count: count.into(),
-            copier: PlayerFilter::You,
-            removed_supertypes: Vec::new(),
+    fn target_stack_kind(target: &ChooseSpec) -> Option<StackObjectKind> {
+        match target {
+            ChooseSpec::SurfaceHinted { spec, .. }
+            | ChooseSpec::Target(spec)
+            | ChooseSpec::WithCount(spec, _)
+            | ChooseSpec::WithCountValue(spec, _, _) => Self::target_stack_kind(spec),
+            ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter.stack_kind,
+            _ => None,
         }
+    }
+
+    pub fn new(target: ChooseSpec, count: impl Into<Value>) -> Self {
+        Self::new_for_player(target, count, PlayerFilter::You)
     }
 
     pub fn new_for_player(
@@ -4100,8 +4559,11 @@ impl CopySpellEffect {
         count: impl Into<Value>,
         copier: PlayerFilter,
     ) -> Self {
+        let target_reference_kind = Self::target_stack_kind(&target);
         Self {
             target,
+            target_reference_kind,
+            target_reference_pronoun: false,
             count: count.into(),
             copier,
             removed_supertypes: Vec::new(),
@@ -4123,6 +4585,23 @@ impl CopySpellEffect {
         for supertype in supertypes {
             self = self.removed_supertype(supertype);
         }
+        self
+    }
+
+    pub fn with_target_reference_kind(mut self, kind: StackObjectKind) -> Self {
+        self.target_reference_kind = Some(kind);
+        self
+    }
+
+    pub fn with_optional_target_reference_kind(mut self, kind: Option<StackObjectKind>) -> Self {
+        if let Some(kind) = kind {
+            self.target_reference_kind = Some(kind);
+        }
+        self
+    }
+
+    pub fn with_target_reference_pronoun(mut self, pronoun: bool) -> Self {
+        self.target_reference_pronoun = pronoun;
         self
     }
 }
@@ -4365,10 +4844,25 @@ impl<E> VoteEffect<E> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct SecretObjectChoice {
+    /// Objects each participant may choose. Relative player filters such as
+    /// `IteratedPlayer` are evaluated for that participant.
+    pub filter: ObjectFilter,
+    /// Number of objects each participant chooses.
+    pub count: ChoiceCount,
+    /// Shared result-set tag populated only after every participant has made
+    /// their hidden selection.
+    pub tag: TagKey,
+    /// Whether the authored procedure immediately reveals the selections.
+    pub reveal_after_choice: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct SecretChoiceEffect {
     pub options: Vec<String>,
     pub participants: Vec<PlayerFilter>,
     pub participant_target: Option<ChooseSpec>,
+    pub object_choice: Option<SecretObjectChoice>,
 }
 
 impl SecretChoiceEffect {
@@ -4384,6 +4878,23 @@ impl SecretChoiceEffect {
             options,
             participants,
             participant_target,
+            object_choice: None,
+        }
+    }
+
+    pub fn new_objects(participants: Vec<PlayerFilter>, object_choice: SecretObjectChoice) -> Self {
+        let participant_target = participants.iter().find_map(|participant| {
+            if let PlayerFilter::Target(inner) = participant {
+                Some(ChooseSpec::target(ChooseSpec::Player((**inner).clone())))
+            } else {
+                None
+            }
+        });
+        Self {
+            options: Vec::new(),
+            participants,
+            participant_target,
+            object_choice: Some(object_choice),
         }
     }
 }

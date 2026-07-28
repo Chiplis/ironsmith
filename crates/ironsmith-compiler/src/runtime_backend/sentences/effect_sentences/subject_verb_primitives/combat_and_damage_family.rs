@@ -595,10 +595,26 @@ pub(crate) fn parse_sentence_transform_with_followup(
     };
 
     let target_clause = head_clause.from(1).trimmed();
+    let trailing_if =
+        crate::runtime_backend::front_end::grammar::structure::split_trailing_if_clause_lexed(
+            target_clause.tokens(),
+        );
+    let transform_target_tokens = trailing_if
+        .as_ref()
+        .map(|condition| condition.leading_tokens)
+        .unwrap_or_else(|| target_clause.tokens());
     let transform = if is_transform {
-        parse_transform(target_clause.tokens())?
+        parse_transform(transform_target_tokens)?
     } else {
-        parse_convert(target_clause.tokens())?
+        parse_convert(transform_target_tokens)?
+    };
+    let transform = if let Some(condition) = trailing_if {
+        EffectAst::TrailingIf {
+            predicate: condition.predicate,
+            effects: vec![transform],
+        }
+    } else {
+        transform
     };
     let Some(tail_clause) = tail_clause else {
         return Ok(Some(vec![transform]));

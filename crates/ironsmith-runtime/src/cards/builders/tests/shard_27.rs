@@ -52,6 +52,42 @@ pub(super) fn vonas_hunger_keeps_each_opponents_rounded_up_half_choice() {
 }
 
 #[test]
+pub(super) fn direct_fractional_sacrifices_keep_typed_rounding_surface() {
+    let expected = [
+        (
+            "Curse of the Cabal",
+            &["Target player sacrifices half the permanents of their choice, rounded down"][..],
+        ),
+        (
+            "Rakdos the Defiler",
+            &[
+                "sacrifice half the non-demon permanents you control, rounded up",
+                "that player sacrifices half the non-demon permanents they control of their choice, rounded up",
+            ][..],
+        ),
+        (
+            "Tectonic Split",
+            &["sacrifice half the lands you control, rounded up"][..],
+        ),
+    ];
+
+    for (name, expected_surfaces) in expected {
+        assert_oracle_card_parses_strict(name);
+        let definition = parse_oracle_card_definition(name);
+        let debug = format!("{definition:#?}");
+        assert!(debug.contains("HalfRoundedDown"), "{name}: {debug}");
+
+        let compiled = canonical_compiled_lines(&definition).join("\n");
+        for expected_surface in expected_surfaces {
+            assert!(
+                compiled.contains(expected_surface),
+                "{name} should preserve its typed fractional sacrifice surface: {compiled}"
+            );
+        }
+    }
+}
+
+#[test]
 pub(super) fn distributed_damage_cards_keep_one_or_two_targets_surface() {
     for name in [
         "Arc Mage",

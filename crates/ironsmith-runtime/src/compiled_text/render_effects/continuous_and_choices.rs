@@ -673,6 +673,15 @@ pub(super) fn describe_look_at_top_then_put_any_matching_to_zone_rest_bottom(
         ironsmith_core::LibraryRemainderSurface::Rest => {
             format!("Put the rest on the bottom of {owner} library{order_text}")
         }
+        ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
+            if opener != "Reveal" {
+                return None;
+            }
+            format!(
+                "Then put the rest of the cards revealed this way on the bottom of {owner} library{order_text}"
+            )
+        }
+        ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay => return None,
         ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield => {
             if opener != "Reveal" || zone != Zone::Battlefield {
                 return None;
@@ -2150,9 +2159,43 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
     };
+    let remainder_clause = match remainder.surface {
+        ironsmith_core::LibraryRemainderSurface::Rest => {
+            format!("{remainder_opener} the rest on the bottom of {owner} library{order_text}")
+        }
+        ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
+            if !(look_at_top.reveal || reveal_tagged.is_some()) {
+                return None;
+            }
+            if look_at_top.player == PlayerFilter::You {
+                format!(
+                    "Then put the rest of the cards revealed this way on the bottom of {owner} library{order_text}"
+                )
+            } else {
+                format!(
+                    "Then {remainder_opener} the rest of the cards revealed this way on the bottom of {owner} library{order_text}"
+                )
+            }
+        }
+        ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay => return None,
+        ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield => {
+            if !(look_at_top.reveal || reveal_tagged.is_some()) {
+                return None;
+            }
+            if look_at_top.player == PlayerFilter::You {
+                format!(
+                    "Then put all cards revealed this way that weren't put onto the battlefield on the bottom of {owner} library{order_text}"
+                )
+            } else {
+                format!(
+                    "Then {remainder_opener} all cards revealed this way that weren't put onto the battlefield on the bottom of {owner} library{order_text}"
+                )
+            }
+        }
+    };
 
     Some(format!(
-        "{opener} the top {count_text} {noun} of {owner} library{where_clause}. {put_prefix} {selection} from among them onto the battlefield{battlefield_suffix}. {remainder_opener} the rest on the bottom of {owner} library{order_text}"
+        "{opener} the top {count_text} {noun} of {owner} library{where_clause}. {put_prefix} {selection} from among them onto the battlefield{battlefield_suffix}. {remainder_clause}"
     ))
 }
 
@@ -2333,7 +2376,7 @@ pub(crate) fn describe_draw_then_discard(
     draw: &crate::effects::DrawCardsEffect,
     discard: &crate::effects::DiscardEffect,
 ) -> Option<String> {
-    if draw.player != discard.player {
+    if !player_filters_refer_to_same_player(&draw.player, &discard.player) {
         return None;
     }
     let draw_count = if draw.count.has_surface_hint(ValueSurfaceHint::ForEach) {
@@ -2357,10 +2400,15 @@ pub(crate) fn describe_draw_then_discard(
         return Some(text);
     }
     let player = describe_player_filter(&draw.player);
+    let draw_clause = describe_draw_for_each(draw).unwrap_or_else(|| {
+        format!(
+            "{player} {} {draw_count}",
+            player_verb(&player, "draw", "draws")
+        )
+    });
     let mut text = format!(
-        "{player} {} {}, then {} {}",
-        player_verb(&player, "draw", "draws"),
-        draw_count,
+        "{}, then {} {}",
+        capitalize_first(&draw_clause),
         player_verb(&player, "discard", "discards"),
         describe_discard_count(&discard.count, discard.card_filter.as_ref())
     );
@@ -2658,7 +2706,7 @@ pub(super) fn describe_target_opponent_create_tokens_with_count(
         return None;
     }
 
-    let token_blueprint = describe_token_blueprint(&create.token);
+    let token_blueprint = describe_create_token_blueprint(create);
     let token_phrase = pluralize_token_phrase(&token_blueprint);
     let (token_main, token_ability) = split_token_ability_sentence(&token_phrase);
     let mut text = format!(
@@ -3464,7 +3512,14 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
         bare == ObjectFilter::default()
     }
 
-    let [choose_effect, reveal_effect, shuffle_effect] = may.effects.as_slice() else {
+    let search_effects = if let [effect] = may.effects.as_slice()
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+    {
+        sequence.effects.as_slice()
+    } else {
+        may.effects.as_slice()
+    };
+    let [choose_effect, reveal_effect, shuffle_effect] = search_effects else {
         return None;
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
@@ -3532,7 +3587,7 @@ pub(crate) fn describe_may_search_reveal_shuffle_then_conditional_move(
     let condition = describe_condition(&conditional.condition);
 
     Some(format!(
-        "{may_clause} search {search_origin} for {selection}, reveal it, then shuffle. If {condition}, put that card into {owner_possessive} hand. Otherwise, put that card on top of {owner_possessive} library"
+        "{may_clause} search {search_origin} for {selection}, reveal it, then shuffle. Put that card into {owner_possessive} hand if {condition}. Otherwise, put that card on top of {owner_possessive} library"
     ))
 }
 
@@ -3820,12 +3875,17 @@ pub(crate) fn describe_search_reveal_conditional_may_battlefield_else_hand_then_
         player,
         tag,
         filter,
+        mode,
     } = not_condition.as_ref()
     else {
         return None;
     };
     let battlefield_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
-    if *player != PlayerFilter::You || tag != &choose.tag || filter != &battlefield_filter {
+    if *player != PlayerFilter::You
+        || *mode != crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown
+        || tag != &choose.tag
+        || filter != &battlefield_filter
+    {
         return None;
     }
     let hand_move =

@@ -338,10 +338,41 @@ pub(super) fn jetfire_ingenious_scientist_compiled_text_keeps_nonartifact_mana_s
         "expected Jetfire compiled text to preserve scaled mana output from removed counters, got {rendered}"
     );
     assert!(
-        rendered.contains("spend this mana only to cast artifact spells")
-            || rendered.contains("spend this mana only to cast an artifact spell"),
+        rendered.contains("this mana can't be spent to cast nonartifact spells"),
         "expected Jetfire compiled text to preserve nonartifact spend restriction, got {rendered}"
     );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+fn is_negative_nonartifact_cast_payment_restriction(
+    restriction: &crate::ability::ManaUsageRestriction,
+) -> bool {
+    let crate::ability::ManaUsageRestriction::PaymentTransaction {
+        restriction: Some(crate::ability::ManaPaymentPredicate::Not(forbidden)),
+        on_spend,
+    } = restriction
+    else {
+        return false;
+    };
+    let crate::ability::ManaPaymentPredicate::All(parts) = forbidden.as_ref() else {
+        return false;
+    };
+    on_spend.is_empty()
+        && parts.iter().any(|part| {
+            matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::Purpose(
+                    crate::ability::ManaPaymentPurpose::CastSpell
+                )
+            )
+        })
+        && parts.iter().any(|part| {
+            matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::SourceMatches(filter)
+                    if filter.excluded_card_types == vec![CardType::Artifact]
+            )
+        })
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -362,26 +393,46 @@ pub(super) fn jetfire_ingenious_scientist_mana_ability_restricts_nonartifact_spe
         })
         .expect("Jetfire should have a restricted mana ability");
 
-    let has_artifact_only_restriction =
-        activated.mana_usage_restrictions.iter().any(|restriction| {
-            matches!(
-                restriction,
-                crate::ability::ManaUsageRestriction::CastSpellMatching {
-                    filter,
-                    restrict_to_matching_spell: true,
-                    ..
-                } if filter.card_types == vec![CardType::Artifact]
-            )
-        });
     assert!(
-        has_artifact_only_restriction,
-        "expected Jetfire mana ability to allow only artifact spell casting"
+        activated
+            .mana_usage_restrictions
+            .iter()
+            .any(is_negative_nonartifact_cast_payment_restriction),
+        "expected Jetfire mana ability to forbid only nonartifact spell casting"
     );
 
     assert_eq!(
         activated.mana_usage_restrictions.len(),
         1,
         "Jetfire mana ability should carry a single cast restriction"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn hydraulic_helper_keeps_its_artifact_only_mana_restriction() {
+    let def = parse_oracle_card_definition("Hydraulic Helper");
+    let activated = def
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) if activated.mana_output.is_some() => Some(activated),
+            _ => None,
+        })
+        .expect("Hydraulic Helper should have a mana ability");
+
+    assert!(
+        activated
+            .mana_usage_restrictions
+            .iter()
+            .any(is_negative_nonartifact_cast_payment_restriction),
+        "Hydraulic Helper's mana must forbid nonartifact spells without forbidding other payments: {activated:#?}"
+    );
+
+    let rendered = canonical_compiled_lines(&def).join("\n");
+    assert!(
+        rendered.contains("{T}: Add {U}. This mana can't be spent to cast a nonartifact spell."),
+        "the compiled surface must retain the authored negative spend restriction: {rendered}"
     );
 }
 
@@ -2971,6 +3022,50 @@ pub(super) fn strict_parse_meld_regression_cards() {
         "Vanille, Cheerful l'Cie",
     ] {
         assert_oracle_card_parses_strict(name);
+    }
+}
+
+#[test]
+pub(super) fn meld_regression_cards_do_not_exile_an_unrelated_hand_card() {
+    for name in [
+        "Gisela, the Broken Blade",
+        "Titania, Voice of Gaea",
+        "Vanille, Cheerful l'Cie",
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        let rendered = unprocessed_compiled_lines(&definition)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            !rendered.contains("exile a card in your hand"),
+            "{name} retained a synthetic hand-card exile before meld: {rendered}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn target_player_or_planeswalker_followups_keep_the_controller_actor() {
+    for name in ["Blightning", "Rakdos's Return"] {
+        let definition = parse_oracle_card_definition(name);
+        let effects = definition
+            .spell_effect
+            .as_ref()
+            .expect("damage-discard card should be a spell")
+            .flattened_default_effects();
+        let discard = effects
+            .iter()
+            .find_map(|effect| effect.downcast_ref::<crate::effects::DiscardEffect>())
+            .expect("damage-discard spell should retain its discard");
+        assert_eq!(
+            discard.player,
+            PlayerFilter::TargetPlayerOrControllerOfTarget,
+            "{name} lost the planeswalker-controller branch of its follow-up actor"
+        );
+        let rendered = canonical_compiled_lines(&definition).join(" ");
+        assert!(
+            rendered.contains("That player or that planeswalker's controller discards"),
+            "{name} did not preserve the typed controller reference in compiled text: {rendered}"
+        );
     }
 }
 

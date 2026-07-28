@@ -851,6 +851,36 @@ pub(super) fn render_source_surface_for_hard_triggered_and_static_clauses() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn hearth_elemental_shared_graveyard_domain_round_trips_exactly() {
+    let oracle = "This spell costs {X} less to cast, where X is the number of cards in your graveyard that are instant cards, sorcery cards, and/or have an Adventure.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hearth Elemental Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("Hearth Elemental cost reduction should parse");
+
+    assert_eq!(unprocessed_compiled_lines(&def), vec![oracle.to_string()]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn legion_leadership_keeps_both_coordinated_duration_actions() {
+    let oracle = "Until end of turn, double target creature's power and it gains first strike.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Legion Leadership Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Legion Leadership coordinated duration should parse");
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("double target creature's power")
+            && rendered.contains("gains first strike")
+            && !rendered.contains("Each creature"),
+        "expected both coordinated target actions, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn soulflayer_delve_exiled_keywords_grant_to_source() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Soulflayer Variant")
         .card_types(vec![CardType::Creature])
@@ -1037,6 +1067,10 @@ pub(super) fn parse_returned_object_pronoun_static_followup_stays_in_trigger() {
             && rendered_lower.contains("angel"),
         "expected returned-object modifications in compiled text, got {rendered}"
     );
+    assert_eq!(
+        rendered,
+        "Whenever a nontoken non-Angel creature you control dies, return that card to the battlefield under its owner's control with a +1/+1 counter on it. It has flying and is an Angel in addition to its other types."
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -1120,6 +1154,26 @@ pub(super) fn parse_your_turn_keyword_grants_preserve_during_vs_as_long_surface(
         as_long_rendered == "As long as it's your turn, this creature has first strike."
             || as_long_rendered == "During your turn, this creature has first strike.",
         "expected as-long keyword grant to render as an active-your-turn surface, got {as_long_rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn separately_authored_during_turn_keyword_statics_keep_their_line_boundaries() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Turn Static Boundary Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "During your turn, this creature has first strike.\nDuring your turn, creatures you control with +1/+1 counters on them have first strike.",
+        )
+        .expect("separate during-turn statics should parse");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "During your turn, this creature has first strike.".to_string(),
+            "During your turn, creatures you control with +1/+1 counters on them have first strike."
+                .to_string(),
+        ]
     );
 }
 
@@ -1710,6 +1764,25 @@ pub(super) fn render_source_surface_for_hard_spell_effect_clauses() {
             );
         });
     }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn doomsday_keeps_the_cross_zone_partition_and_exact_surface() {
+    let oracle = "Search your library and graveyard for five cards and exile the rest. Put the chosen cards on top of your library in any order. You lose half your life, rounded up.";
+    let definition = CardDefinitionBuilder::new(CardId::from_raw(1), "Doomsday Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("cross-zone search partition should parse");
+    let debug = format!("{:#?}", definition.spell_effect);
+
+    assert!(debug.contains("ChooseObjectsEffect"), "{debug}");
+    assert!(debug.contains("IsNotTaggedObject"), "{debug}");
+    assert!(debug.contains("HalfLifeTotalRoundedUp"), "{debug}");
+    assert_eq!(
+        canonical_compiled_lines(&definition),
+        vec![oracle.to_string()]
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

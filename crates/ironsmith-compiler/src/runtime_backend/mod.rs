@@ -193,7 +193,20 @@ pub(crate) fn compile_card_text(
 ) -> Result<CompiledCardText, CardTextError> {
     stacker::grow(16 * 1024 * 1024, || {
         let text = text.into();
+        let mut builder = builder;
         let card_name = builder.card_builder.name_ref().to_string();
+        // Payload-backed callers put card identity in `Type:` metadata instead
+        // of pre-seeding the builder. Install that identity before source-aware
+        // grammar resolves phrases such as "this enchantment's".
+        for raw_line in text.lines() {
+            let Some(crate::front_end::MetadataLine::TypeLine(raw_type_line)) =
+                crate::front_end::parse_metadata_line(raw_line)?
+            else {
+                continue;
+            };
+            builder =
+                builder.apply_metadata(crate::front_end::MetadataLine::TypeLine(raw_type_line))?;
+        }
         let card_types = builder.card_builder.card_types_ref().to_vec();
         let subtypes = builder.card_builder.subtypes_ref().to_vec();
         util::with_card_source_reference_context(card_name.as_str(), &card_types, &subtypes, || {

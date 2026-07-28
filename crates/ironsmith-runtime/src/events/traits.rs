@@ -39,6 +39,8 @@ pub enum EventKind {
     BecomeTapped,
     /// Permanent becoming untapped
     BecomeUntapped,
+    /// A player reaches the turn-based action that untaps their permanents
+    PermanentsUntapStep,
     /// Permanent being destroyed
     Destroy,
     /// Permanent being sacrificed
@@ -89,6 +91,8 @@ pub enum EventKind {
     BeginningOfDrawStep,
     /// Beginning of end step
     BeginningOfEndStep,
+    /// Beginning of cleanup step
+    BeginningOfCleanupStep,
     /// Beginning of combat
     BeginningOfCombat,
     /// End of combat

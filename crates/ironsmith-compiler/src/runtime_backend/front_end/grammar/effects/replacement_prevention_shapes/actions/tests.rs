@@ -55,6 +55,21 @@ fn parses_counter_removed_pump_shape() {
         Some(CounterRemovedPumpShape {
             power: 1,
             toughness: 0,
+            includes_this_way: true,
+        })
+    );
+
+    let activation_cost_reference = lex_line(
+        "For each counter removed, this creature gets +2/+0 until end of turn.",
+        0,
+    )
+    .unwrap();
+    assert_eq!(
+        parse_counter_removed_pump_shape(&activation_cost_reference),
+        Some(CounterRemovedPumpShape {
+            power: 2,
+            toughness: 0,
+            includes_this_way: false,
         })
     );
 }

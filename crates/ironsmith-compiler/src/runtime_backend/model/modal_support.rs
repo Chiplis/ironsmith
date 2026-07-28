@@ -12,6 +12,7 @@ use super::activation_and_restrictions::activated_line_core::{
 use super::clause_support::{parse_effect_sentences_lexed, parse_trigger_clause_lexed};
 use super::cst_lowering::lower_activation_cost_cst;
 use super::effect_ast_traversal::try_for_each_nested_effects_mut;
+use super::grammar::abilities::parse_activation_condition_lexed;
 use super::grammar::activation_costs::parse_activation_cost_tokens;
 use super::grammar::primitives as grammar;
 use super::grammar::structure::{
@@ -140,6 +141,8 @@ pub(crate) fn parse_modal_header(
         for sentence in split_lexed_sentences(&tokens[choose_idx + 1..]) {
             if let Some(timing) = parse_activate_only_timing_lexed(sentence) {
                 activated.timing = timing;
+            } else if let Some(condition) = parse_activation_condition_lexed(sentence) {
+                activated.activation_restrictions.push(condition);
             }
         }
     }
@@ -378,7 +381,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::RollDiceChooseResult { .. }
             | SubjectVerbActionAst::ShuffleHandAndGraveyardIntoLibrary
             | SubjectVerbActionAst::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary
-            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary
+            | SubjectVerbActionAst::ShuffleGraveyardIntoLibrary { .. }
             | SubjectVerbActionAst::ReorderGraveyard
             | SubjectVerbActionAst::ChooseColor
             | SubjectVerbActionAst::ChooseCardType { .. }
@@ -401,6 +404,7 @@ fn replace_modal_header_x_in_effect_ast(
             | SubjectVerbActionAst::PutSticker { .. }
             | SubjectVerbActionAst::SwitchPowerToughness { .. }
             | SubjectVerbActionAst::AddManaColorsAmong { .. }
+            | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. }
             | SubjectVerbActionAst::AddManaImprintedColors
             | SubjectVerbActionAst::DoubleManaPool
             | SubjectVerbActionAst::EmptyManaPool
@@ -619,6 +623,7 @@ fn parse_modal_header_prefix_effects(
                 Some(ModalGate {
                     predicate: effect_predicate,
                     remove_mode_only: gate_spec.remove_mode_only,
+                    reflexive: gate_spec.reflexive,
                 }),
             )
         } else {

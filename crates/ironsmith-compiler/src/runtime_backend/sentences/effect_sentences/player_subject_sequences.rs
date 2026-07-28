@@ -2,9 +2,155 @@ use super::super::lexer::{
     OwnedLexToken, TokenKind, parser_token_word_refs, token_word_refs, trim_lexed_commas,
 };
 use super::lex_chain_helpers::find_verb_lexed;
-use crate::cards::builders::{EffectAst, PlayerAst, TagKey};
+use crate::cards::builders::{
+    EffectAst, PlayerAst, ReturnControllerAst, SubjectVerbActionAst, SubjectVerbEffectAst, TagKey,
+    TargetAst, TextSpan,
+};
 use crate::effect::Value;
 use crate::target::ObjectFilter;
+use crate::zone::Zone;
+
+fn comma_then_segments(tokens: &[OwnedLexToken]) -> Option<Vec<&[OwnedLexToken]>> {
+    let mut segments = Vec::new();
+    let mut start = 0usize;
+    let mut idx = 0usize;
+    while idx + 1 < tokens.len() {
+        if tokens[idx].kind == TokenKind::Comma && tokens[idx + 1].is_word("then") {
+            let segment = trim_lexed_commas(&tokens[start..idx]);
+            if segment.is_empty() {
+                return None;
+            }
+            segments.push(segment);
+            start = idx + 2;
+            idx += 2;
+            continue;
+        }
+        idx += 1;
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    let tail = trim_lexed_commas(&tokens[start..]);
+    if tail.is_empty() {
+        return None;
+    }
+    segments.push(tail);
+    Some(segments)
+}
+
+fn with_each_player_subject(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut rewritten = vec![
+        OwnedLexToken::word("each", TextSpan::synthetic()),
+        OwnedLexToken::word("player", TextSpan::synthetic()),
+    ];
+    rewritten.extend_from_slice(tokens);
+    rewritten
+}
+
+fn single_each_player_effect(mut effects: Vec<EffectAst>) -> Option<EffectAst> {
+    let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_mut_slice() else {
+        return None;
+    };
+    (nested.len() == 1).then(|| nested.remove(0))
+}
+
+/// Preserve a per-player result set across an intervening action:
+/// `Each player exiles ..., then sacrifices ..., then puts all cards they
+/// exiled this way onto the battlefield.`
+///
+/// The first action's affected objects are tagged inside the player loop, so
+/// the final move consumes only that player's exile result rather than the
+/// intervening sacrifice result or unrelated cards already in exile.
+pub(super) fn parse_each_player_exile_sacrifice_return_exiled(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, crate::cards::builders::CardTextError> {
+    let words = parser_token_word_refs(tokens);
+    if !matches!(words.as_slice(), ["each", "player", ..]) {
+        return Ok(None);
+    }
+    let Some(segments) = comma_then_segments(tokens) else {
+        return Ok(None);
+    };
+    let [first_tokens, second_tokens, third_tokens] = segments.as_slice() else {
+        return Ok(None);
+    };
+
+    let Some(first) = single_each_player_effect(super::parse_effect_sentence_lexed(first_tokens)?)
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        first,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Exile { .. } | SubjectVerbActionAst::ExileAll { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+
+    let second_with_subject = with_each_player_subject(second_tokens);
+    let Some(second) =
+        single_each_player_effect(super::parse_effect_sentence_lexed(&second_with_subject)?)
+    else {
+        return Ok(None);
+    };
+    if !matches!(
+        second,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Sacrifice { .. }
+                | SubjectVerbActionAst::SacrificeAll { .. },
+            ..
+        })
+    ) {
+        return Ok(None);
+    }
+
+    let third_words = parser_token_word_refs(third_tokens);
+    let is_linked_return = third_words
+        .first()
+        .is_some_and(|word| matches!(*word, "puts" | "put"))
+        && third_words.iter().any(|word| *word == "all")
+        && third_words
+            .iter()
+            .any(|word| matches!(*word, "card" | "cards"))
+        && third_words
+            .windows(3)
+            .any(|window| window == ["they", "exiled", "this"])
+        && third_words
+            .windows(2)
+            .any(|window| window == ["this", "way"])
+        && (third_words
+            .windows(2)
+            .any(|window| window == ["onto", "battlefield"])
+            || third_words
+                .windows(3)
+                .any(|window| window == ["onto", "the", "battlefield"]));
+    if !is_linked_return {
+        return Ok(None);
+    }
+
+    let exiled_tag =
+        crate::runtime_backend::util::helper_tag_for_tokens(first_tokens, "exiled_this_way");
+    let return_filter = ObjectFilter::tagged(exiled_tag.clone()).in_zone(Zone::Exile);
+    let put_exiled = EffectAst::subject_verb_put_onto_battlefield(
+        PlayerAst::That,
+        TargetAst::Object(return_filter, None, None),
+        false,
+        ReturnControllerAst::Preserve,
+    );
+
+    Ok(Some(vec![EffectAst::ForEachPlayer {
+        effects: vec![
+            EffectAst::TagAffected {
+                effect: Box::new(first),
+                tag: exiled_tag,
+            },
+            second,
+            put_exiled,
+        ],
+    }]))
+}
 
 /// Parse a coordinated instruction in which the controller and defending
 /// player each choose between discarding and sacrificing.
@@ -163,7 +309,9 @@ fn controller_action_after_boundary(
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::{EffectAst, SubjectVerbActionAst, SubjectVerbEffectAst};
+    use crate::cards::builders::{
+        EffectAst, SubjectVerbActionAst, SubjectVerbEffectAst, TargetAst,
+    };
     use crate::runtime_backend::lexer::lex_line;
 
     use super::super::parse_effect_sentence_lexed;
@@ -270,5 +418,47 @@ mod tests {
             ),
             "{effects:#?}"
         );
+    }
+
+    #[test]
+    fn each_player_exile_sacrifice_return_keeps_the_exile_result_set() {
+        let tokens = lex_line(
+            "Each player exiles all artifact cards from their graveyard, then sacrifices all artifacts they control, then puts all cards they exiled this way onto the battlefield.",
+            0,
+        )
+        .expect("result-set sequence should lex");
+        assert!(
+            super::parse_each_player_exile_sacrifice_return_exiled(&tokens)
+                .expect("specialized result-set parser should not fail")
+                .is_some(),
+            "specialized result-set parser should claim {tokens:#?}"
+        );
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("result-set sequence should parse");
+        let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+            panic!("expected one each-player sequence, got {effects:#?}");
+        };
+        let [
+            EffectAst::TagAffected { tag, .. },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Sacrifice { .. } | SubjectVerbActionAst::SacrificeAll { .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutOntoBattlefield { target, .. },
+                ..
+            }),
+        ] = nested.as_slice()
+        else {
+            panic!("expected tagged exile, sacrifice, and return, got {nested:#?}");
+        };
+        let TargetAst::Object(filter, None, None) = target else {
+            panic!("expected an untargeted tagged-exile filter");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == *tag
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        }));
     }
 }

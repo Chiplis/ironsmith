@@ -27,6 +27,12 @@
         return compact;
     }
     if let Some(choose_mode) = effect.downcast_ref::<crate::effects::ChooseModeEffect>() {
+        if let Some(compact) = describe_choose_card_type_reveal_partition(choose_mode) {
+            return compact;
+        }
+        if let Some(compact) = describe_inline_token_creation_choice(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_inline_pt_modifier_choice(choose_mode) {
             return compact;
         }
@@ -192,6 +198,9 @@
         return bullet_modes;
     }
     if let Some(create_token) = effect.downcast_ref::<crate::effects::CreateTokenEffect>() {
+        if let Some(compact) = describe_token_definition_with_end_step_sacrifice(create_token) {
+            return compact;
+        }
         if let Some(compact) = describe_compact_create_token(create_token) {
             return compact;
         }
@@ -234,8 +243,8 @@
             text
         };
         let describe_created_token_blueprint = || {
-            let blueprint = describe_token_blueprint_with_presentation(
-                &create_token.token,
+            let blueprint = describe_create_token_blueprint_with_presentation(
+                create_token,
                 create_token.ability_presentation,
             );
             if create_token.enters_tapped && !create_token.enters_attacking {
@@ -263,6 +272,8 @@
                 sentence
                     .replacen(". It has ", ". Those tokens have ", 1)
                     .replacen(". They have ", ". Those tokens have ", 1)
+                    .replacen(". It gains ", ". Those tokens gain ", 1)
+                    .replacen(". They gain ", ". Those tokens gain ", 1)
             });
             let mut text = describe_create_token_action(
                 &format!("a {token_main} for each {for_each_count}"),
@@ -357,12 +368,12 @@
         );
         text = append_token_entry_flags(text, singular_count);
         if use_where_x {
-            text.push_str(&format!(
-                ", where X is {}",
-                describe_value(&create_token.count)
-            ));
+            text = append_token_where_x_continuation(
+                text,
+                &describe_value(&create_token.count),
+            );
         } else if let Some(where_x) = dynamic_pt_where {
-            text.push_str(&format!(", where X is {where_x}"));
+            text = append_token_where_x_continuation(text, &where_x);
         }
         text = append_token_ability_sentence(text, token_ability);
         return append_token_cleanup_sentences(text, singular_count);
@@ -388,7 +399,11 @@
             }
             _ => describe_choose_spec(&create_copy.target),
         };
-        let inline_tapped = create_copy.enters_tapped;
+        let player_only_attack = matches!(
+            create_copy.attack_target_mode,
+            Some(crate::effects::CopyAttackTargetMode::Player(_))
+        );
+        let inline_tapped = create_copy.enters_tapped && !player_only_attack;
         let inline_attacking =
             create_copy.enters_attacking && create_copy.attack_target_mode.is_none();
         let token_state = match (inline_tapped, inline_attacking) {
@@ -445,30 +460,42 @@
                 describe_possessive_player_filter(&create_copy.controller)
             ));
         }
-        if create_copy.enters_tapped && !inline_tapped {
+        if create_copy.enters_tapped && !inline_tapped && !player_only_attack {
             text.push_str(", tapped");
         }
         if create_copy.enters_attacking && !inline_attacking {
-            if let Some(crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
-                player_filter,
-            )) = &create_copy.attack_target_mode
-            {
-                let player = describe_player_filter(player_filter);
-                text.push_str(&format!(
-                    ", attacking {player} or a planeswalker they control"
-                ));
-            } else {
-                text.push_str(", attacking");
+            match &create_copy.attack_target_mode {
+                Some(crate::effects::CopyAttackTargetMode::Player(_)) => {}
+                Some(
+                    crate::effects::CopyAttackTargetMode::PlayerOrPlaneswalkerControlledBy(
+                        player_filter,
+                    ),
+                ) => {
+                    let player = describe_player_filter(player_filter);
+                    text.push_str(&format!(
+                        ", attacking {player} or a planeswalker they control"
+                    ));
+                }
+                None => text.push_str(", attacking"),
             }
         }
         let singular_copy = matches!(create_copy.count, Value::Fixed(1));
         let append_copy_cleanup = |mut text: String| {
-            let created_object = if singular_copy {
-                "that token"
-            } else {
-                "those tokens"
+            let default_created_object = || {
+                if singular_copy && player_only_attack {
+                    "it"
+                } else if singular_copy {
+                    "that token"
+                } else {
+                    "those tokens"
+                }
+                .to_string()
             };
             if create_copy.exile_at_end_of_combat {
+                let created_object = create_copy
+                    .exile_at_end_of_combat_reference_surface
+                    .map(|surface| token_copy_reference_text(surface, false).to_string())
+                    .unwrap_or_else(&default_created_object);
                 text.push_str(&format!(". Exile {created_object} at end of combat"));
             }
             if create_copy.sacrifice_at_next_end_step
@@ -476,6 +503,10 @@
                     .sacrifice_at_next_end_step_ability_text
                     .is_none()
             {
+                let created_object = create_copy
+                    .sacrifice_at_next_end_step_reference_surface
+                    .map(|surface| token_copy_reference_text(surface, false).to_string())
+                    .unwrap_or_else(&default_created_object);
                 let timing =
                     describe_next_end_step_cleanup_timing(&create_copy.next_end_step_player);
                 text.push_str(&format!(
@@ -483,6 +514,10 @@
                 ));
             }
             if create_copy.exile_at_next_end_step {
+                let created_object = create_copy
+                    .exile_at_next_end_step_reference_surface
+                    .map(|surface| token_copy_reference_text(surface, false).to_string())
+                    .unwrap_or_else(default_created_object);
                 let timing =
                     describe_next_end_step_cleanup_timing(&create_copy.next_end_step_player);
                 text.push_str(&format!(
@@ -634,7 +669,7 @@
                 "they aren't legendary".to_string()
             });
         }
-        if create_copy.has_haste {
+        if create_copy.has_haste && create_copy.haste_followup_reference_surface.is_none() {
             let mut clause = if singular_copy {
                 "it has haste".to_string()
             } else {
@@ -680,6 +715,26 @@
         }
         if use_where_x {
             text.push_str(&format!(", where X is {}", describe_value(&create_copy.count)));
+        }
+        if player_only_attack {
+            let subject = if singular_copy {
+                "The token enters"
+            } else {
+                "Those tokens enter"
+            };
+            let state = if create_copy.enters_tapped {
+                "tapped and attacking that player"
+            } else {
+                "attacking that player"
+            };
+            text.push_str(&format!(". {subject} {state}"));
+        }
+        if create_copy.has_haste
+            && let Some(surface) = create_copy.haste_followup_reference_surface
+        {
+            let subject = capitalize_first(token_copy_reference_text(surface, true));
+            let verb = if surface.is_plural() { "gain" } else { "gains" };
+            text.push_str(&format!(". {subject} {verb} haste"));
         }
         return append_copy_cleanup(text);
     }
@@ -854,8 +909,30 @@
                 describe_possessive_player_filter(player)
             );
         }
+        if cant.duration == Until::EndOfTurn
+            && cant.duration_surface
+                == crate::effect::RestrictionDurationSurface::LeadingUntilEndOfTurn
+        {
+            return format!(
+                "Until end of turn, {}",
+                lowercase_first(&describe_restriction(&cant.restriction))
+            );
+        }
+        if cant.duration == Until::YourNextTurn
+            && cant.duration_surface
+                == crate::effect::RestrictionDurationSurface::LeadingUntilYourNextTurn
+        {
+            return format!(
+                "Until your next turn, {}",
+                lowercase_first(&describe_restriction(&cant.restriction))
+            );
+        }
         if cant.duration == Until::Forever
-            && matches!(cant.restriction, crate::effect::Restriction::GainLife(_))
+            && matches!(
+                cant.restriction,
+                crate::effect::Restriction::GainLife(_)
+                    | crate::effect::Restriction::NoMaximumHandSize(_)
+            )
         {
             return format!(
                 "{} for the rest of the game",
@@ -1114,22 +1191,35 @@
         effect.downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()
     {
         let library_owner = describe_possessive_player_filter(&remainder.player);
-        let remainder_text = if remainder.keep_tagged.is_some()
-            && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed")
-        {
-            "Put the rest of the revealed cards"
-        } else if remainder.keep_tagged.is_some()
-            && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "exiled")
-        {
-            "Put the rest of the exiled cards"
-        } else if remainder.keep_tagged.is_some() {
-            "Put the remaining tagged cards"
-        } else if crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed") {
-            "Put the revealed cards"
-        } else if crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "exiled") {
-            "Put the exiled cards"
-        } else {
-            "Put the tagged remainder"
+        let remainder_text = match remainder.surface {
+            ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
+                "Put the rest of the cards revealed this way"
+            }
+            ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay => {
+                "Put the cards you revealed this way"
+            }
+            ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield => {
+                "Put all cards revealed this way that weren't put onto the battlefield"
+            }
+            ironsmith_core::LibraryRemainderSurface::Rest => {
+                if remainder.keep_tagged.is_some()
+                    && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed")
+                {
+                    "Put the rest of the revealed cards"
+                } else if remainder.keep_tagged.is_some()
+                    && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "exiled")
+                {
+                    "Put the rest of the exiled cards"
+                } else if remainder.keep_tagged.is_some() {
+                    "Put the remaining tagged cards"
+                } else if crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed") {
+                    "Put the revealed cards"
+                } else if crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "exiled") {
+                    "Put the exiled cards"
+                } else {
+                    "Put the tagged remainder"
+                }
+            }
         };
         let order_text = match remainder.order {
             crate::effects::consult_helpers::LibraryBottomOrder::Random => {
@@ -1204,6 +1294,12 @@
                 };
                 format!("{article} {subtype}")
             };
+            // Static type-setting text for a whole class of lands is stated
+            // as a characteristic ("All Mountains are Plains"), not as a
+            // resolving transformation with an artificial "forever" suffix.
+            if become_basic.duration == Until::Forever && plural_subject {
+                return format!("{target} are {subtype_text}");
+            }
             let verb = if plural_subject { "become" } else { "becomes" };
             if become_basic.duration == Until::EndOfTurn {
                 return format!("{target} {verb} {subtype_text} until end of turn");
@@ -1669,20 +1765,36 @@
                 }
                 return text;
             }
-            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering_source")
+            if let ChooseSpec::Tagged(tag) = &copy_spell.target
+                && matches!(
+                    tag.as_str(),
+                    "triggering" | "triggering_source" | "__it__"
+                )
             {
-                let mut text = "Copy that ability".to_string();
-                if copy_spell
-                    .removed_supertypes
-                    .contains(&crate::types::Supertype::Legendary)
-                {
-                    text.push_str(", except the copy isn't legendary");
-                }
-                return text;
-            }
-            if matches!(&copy_spell.target, ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" || tag.as_str() == "__it__")
-            {
-                let mut text = "Copy that spell or ability".to_string();
+                let reference = match (
+                    copy_spell.target_reference_pronoun,
+                    tag.as_str(),
+                    copy_spell.target_reference_kind,
+                ) {
+                    (true, _, _) => "it",
+                    (false, "__it__", _) => "it",
+                    (false, _, Some(StackObjectKind::Spell)) => "that spell",
+                    (
+                        false,
+                        _,
+                        Some(
+                            StackObjectKind::Ability
+                                | StackObjectKind::ActivatedAbility
+                                | StackObjectKind::TriggeredAbility,
+                        ),
+                    ) => "that ability",
+                    (false, _, Some(StackObjectKind::SpellOrAbility)) => {
+                        "that spell or ability"
+                    }
+                    (false, "triggering_source", None) => "that ability",
+                    (false, _, None) => "that spell or ability",
+                };
+                let mut text = format!("Copy {reference}");
                 if copy_spell
                     .removed_supertypes
                     .contains(&crate::types::Supertype::Legendary)
@@ -1700,10 +1812,10 @@
             }
             return text;
         }
+        let count = describe_value(&copy_spell.count);
         return format!(
-            "Copy {} {} time(s)",
-            target_text,
-            describe_value(&copy_spell.count)
+            "Copy {target_text} {count} {}",
+            if count == "1" { "time" } else { "times" }
         );
     }
     if let Some(choose_new) = effect.downcast_ref::<crate::effects::ChooseNewTargetsEffect>() {
@@ -1849,6 +1961,49 @@
                 .unwrap_or_else(|| multiplier.to_string());
             return format!(
                 "Add {amount} mana of any color for each counter removed this way{}",
+                describe_add_mana_destination_suffix(&add_any.player)
+            );
+        }
+        if !add_any.distinct_colors
+            && let Some(colors) = add_any.available_colors.as_ref()
+            && !colors.is_empty()
+            && !crate::color::Color::ALL
+                .iter()
+                .all(|color| colors.contains(color))
+            && !add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs)
+            && let Value::PriorEffectMetric { query, .. }
+                | Value::PendingPriorEffectMetric(query) = add_any.amount.unhinted()
+            && query.metric == crate::effect::EffectMetric::Count
+            && query.action.is_some()
+        {
+            let options = colors
+                .iter()
+                .copied()
+                .map(crate::mana::ManaSymbol::from_color)
+                .collect::<Vec<_>>();
+            return format!(
+                "Add {} for each {}{}",
+                describe_mana_alternatives(&options),
+                describe_prior_effect_metric_basis(query, false),
+                describe_add_mana_destination_suffix(&add_any.player)
+            );
+        }
+        if !add_any.distinct_colors
+            && let Some(colors) = add_any.available_colors.as_ref()
+            && !colors.is_empty()
+            && !crate::color::Color::ALL
+                .iter()
+                .all(|color| colors.contains(color))
+            && let Some(for_each) = describe_turn_history_for_each_basis(&add_any.amount)
+        {
+            let options = colors
+                .iter()
+                .copied()
+                .map(crate::mana::ManaSymbol::from_color)
+                .collect::<Vec<_>>();
+            return format!(
+                "Add {} for each {for_each}{}",
+                describe_mana_alternatives(&options),
                 describe_add_mana_destination_suffix(&add_any.player)
             );
         }
@@ -2062,6 +2217,15 @@
             "For each color among {}, add one mana of that color{}",
             describe_for_each_filter(&add_colors_among.filter),
             describe_add_mana_destination_suffix(&add_colors_among.player)
+        );
+    }
+    if let Some(add_any_color_among) =
+        effect.downcast_ref::<crate::effects::AddOneManaOfAnyColorAmongEffect>()
+    {
+        return format!(
+            "Add one mana of any color among {}{}",
+            describe_for_each_filter(&add_any_color_among.filter),
+            describe_add_mana_destination_suffix(&add_any_color_among.player)
         );
     }
     if let Some(add_commander) =
@@ -2688,6 +2852,18 @@
         );
     }
     if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        if let Some(text) = describe_delayed_draw_step_life_loss_unless_payment(schedule) {
+            return text;
+        }
+        if let Some(text) = describe_delayed_owned_object_return_at_next_upkeep(schedule) {
+            return text;
+        }
+        if let Some(text) = describe_delayed_dynamic_token_creation_at_next_upkeep(schedule) {
+            return text;
+        }
+        if let Some(text) = describe_collection_scoped_each_upkeep_return(schedule) {
+            return text;
+        }
         if let Some(text) = describe_delayed_life_loss_and_source_return(schedule) {
             return text;
         }
@@ -2716,7 +2892,10 @@
             // turn is exactly "the next combat phase this turn".
             trigger_text = "At the beginning of the next combat phase this turn".to_string();
         }
-        if schedule.until_end_of_turn && !schedule.until_end_of_combat {
+        if schedule.until_end_of_turn
+            && !schedule.until_end_of_combat
+            && !schedule.leading_duration_surface
+        {
             let trigger_lower = trigger_text.to_ascii_lowercase();
             if !trigger_lower.contains(" this turn") {
                 trigger_text.push_str(" this turn");
@@ -2762,6 +2941,30 @@
         }
         if delayed_text.starts_with("draw ") {
             delayed_text = format!("you {delayed_text}");
+        }
+        if schedule.one_shot
+            && let Some(untap) = schedule
+                .trigger
+                .downcast_ref::<crate::triggers::AsPermanentsUntapTrigger>()
+        {
+            let timing = if untap.player == crate::target::PlayerFilter::You {
+                "During your next untap step, as you untap your permanents".to_string()
+            } else {
+                format!(
+                    "During {} next untap step, as they untap their permanents",
+                    crate::triggers::describe_player_filter_possessive(&untap.player)
+                )
+            };
+            return format!("{timing}, {delayed_text}");
+        }
+        if schedule.leading_duration_surface
+            && schedule.duration == ironsmith_core::DelayedTriggerDuration::EndOfTurn
+            && !schedule.start_next_turn
+        {
+            return format!(
+                "Until end of turn, {}, {delayed_text}",
+                lowercase_first(&trigger_text)
+            );
         }
         if schedule.duration
             == ironsmith_core::DelayedTriggerDuration::UntilControllerNextTurn
@@ -2811,6 +3014,27 @@
         {
             let next_trigger = trigger_text.replacen("main phase", "next main phase", 1);
             return format!("{next_trigger}, {delayed_text}");
+        }
+        if schedule.one_shot
+            && !schedule.start_next_turn
+            && !schedule.until_end_of_turn
+            && !schedule.until_end_of_combat
+            && schedule
+                .trigger
+                .downcast_ref::<crate::triggers::BeginningOfCleanupStepTrigger>()
+                .is_some_and(|cleanup| cleanup.next)
+        {
+            let single_clause = !delayed_text.contains(". ")
+                && !delayed_text.contains(" and ")
+                && !delayed_text.contains(", then");
+            if single_clause {
+                return format!(
+                    "{} {}",
+                    capitalize_first(&delayed_text),
+                    lowercase_first(&trigger_text)
+                );
+            }
+            return format!("{trigger_text}, {delayed_text}");
         }
         if schedule.target_tag.is_some()
             && (trigger_lower.contains("when this creature is dealt damage")
@@ -2915,6 +3139,45 @@
             && (trigger_lower.contains("beginning of each player's end step")
                 || trigger_lower.contains("beginning of end step"))
         {
+            // A short delayed cleanup that refers back to an object, or a
+            // single typed destroy instruction, reads action-first in Oracle:
+            // "Sacrifice it at ..." / "Destroy all permanents at ...".
+            // Independent compound payloads keep timing-first wording.
+            let delayed_lower = delayed_text.to_ascii_lowercase();
+            let single_clause = !delayed_lower.contains(". ")
+                && !delayed_lower.contains(" and ")
+                && !delayed_lower.contains(", then");
+            let back_references = delayed_lower
+                .split(|c: char| !c.is_ascii_alphanumeric() && c != '\'')
+                .any(|word| word == "it" || word == "them")
+                || delayed_lower.contains("that creature")
+                || delayed_lower.contains("that permanent")
+                || delayed_lower.contains("those creatures")
+                || delayed_lower.contains("those permanents");
+            let delayed_effects = schedule.effects.flattened_default_effects();
+            let is_single_destroy_instruction = matches!(
+                delayed_effects,
+                [effect]
+                    if structural_unwrap_render_wrappers(effect)
+                        .downcast_ref::<crate::effects::DestroyEffect>()
+                        .is_some()
+            );
+            let is_single_phase_out_instruction = matches!(
+                delayed_effects,
+                [effect]
+                    if structural_unwrap_render_wrappers(effect)
+                        .downcast_ref::<crate::effects::PhaseOutEffect>()
+                        .is_some()
+            );
+            if (single_clause && back_references)
+                || is_single_destroy_instruction
+                || is_single_phase_out_instruction
+            {
+                return format!(
+                    "{} at the beginning of the next end step",
+                    capitalize_first(&delayed_text)
+                );
+            }
             return format!("At the beginning of the next end step, {delayed_text}");
         }
         if schedule.one_shot && trigger_lower.contains("end of combat") {
@@ -3396,11 +3659,19 @@
         return "Apply a replacement effect".to_string();
     }
     if let Some(become_color) = effect.downcast_ref::<crate::effects::BecomeColorChoiceEffect>() {
+        let choice = if become_color.allow_multiple {
+            "color or colors"
+        } else {
+            "color"
+        };
+        let duration = match &become_color.duration {
+            Until::Forever => String::new(),
+            _ => format!(" {}", describe_until(&become_color.duration)),
+        };
         return format!(
-            "{} becomes the color of {} choice {}",
+            "{} becomes the {choice} of {} choice{duration}",
             describe_choose_spec(&become_color.target),
             describe_possessive_player_filter(&become_color.chooser),
-            describe_until(&become_color.duration)
         );
     }
     if let Some(become_type) =
@@ -3559,11 +3830,33 @@
                 format!("the toughness of {}", describe_choose_spec(target))
             }
         };
+        let connective = if matches!(
+            (&exchange_values.left, &exchange_values.right),
+            (
+                crate::effects::ExchangeValueOperand::LifeTotal(_),
+                crate::effects::ExchangeValueOperand::Power(_)
+                    | crate::effects::ExchangeValueOperand::Toughness(_)
+            ) | (
+                crate::effects::ExchangeValueOperand::Power(_)
+                    | crate::effects::ExchangeValueOperand::Toughness(_),
+                crate::effects::ExchangeValueOperand::LifeTotal(_)
+            )
+        ) {
+            " with "
+        } else {
+            " and "
+        };
+        let duration = if exchange_values.duration == Until::Forever {
+            String::new()
+        } else {
+            format!(" {}", describe_until(&exchange_values.duration))
+        };
         return format!(
-            "Exchange {} and {}{}",
+            "Exchange {}{}{}{}",
             describe_operand(&exchange_values.left),
+            connective,
             describe_operand(&exchange_values.right),
-            describe_until(&exchange_values.duration)
+            duration
         );
     }
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
@@ -3571,9 +3864,22 @@
     }
     if let Some(experience) = effect.downcast_ref::<crate::effects::ExperienceCountersEffect>() {
         let player = describe_player_filter(&experience.player);
-        let amount = match experience.count {
-            Value::Fixed(1) => "an experience counter".to_string(),
-            _ => format!("{} experience counters", describe_value(&experience.count)),
+        let amount = if let Some((multiplier, basis)) =
+            describe_for_each_multiplier_and_basis(&experience.count)
+        {
+            let counters = if multiplier == 1 {
+                "an experience counter".to_string()
+            } else {
+                let multiplier =
+                    number_word(multiplier).unwrap_or_else(|| multiplier.to_string());
+                format!("{multiplier} experience counters")
+            };
+            format!("{counters} for each {basis}")
+        } else {
+            match experience.count {
+                Value::Fixed(1) => "an experience counter".to_string(),
+                _ => format!("{} experience counters", describe_value(&experience.count)),
+            }
         };
         return format!("{player} {} {amount}", player_verb(&player, "get", "gets"));
     }
@@ -3717,6 +4023,11 @@
     }
     if let Some(grant_play_tagged) = effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
     {
+        if let Some(rendered) =
+            describe_temporary_tagged_permission_surface(grant_play_tagged, false)
+        {
+            return rendered;
+        }
         if let Some(counter_type) = grant_play_tagged.during_turns_counter_put_on_source {
             let verb = if grant_play_tagged.allow_land { "play" } else { "cast" };
             return format!(
@@ -3732,6 +4043,9 @@
             }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
                 "until your next end step"
+            }
+            crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => {
+                "until this source exiles another card"
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 "for as long as it remains exiled"
@@ -3856,10 +4170,20 @@
             };
             return format!("Until end of turn, you may cast spells from among {cards_text}");
         }
-        return format!(
+        let mut rendered = format!(
             "{} may {verb} {object_text} {timing}",
             describe_player_filter(&grant_play_tagged.player),
         );
+        if let Some(cost) = &grant_play_tagged.spell_cost_increase {
+            rendered.push_str(&format!(
+                ". Each spell cast this way costs {} more to cast",
+                cost.to_oracle()
+            ));
+        }
+        if grant_play_tagged.lands_enter_tapped {
+            rendered.push_str(". Each land played this way enters tapped");
+        }
+        return rendered;
     }
     if let Some(grant_tagged_spell_life) =
         effect.downcast_ref::<crate::effects::GrantTaggedSpellLifeCostByManaValueEffect>()
@@ -3947,6 +4271,9 @@
             }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
                 "until your next end step"
+            }
+            crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => {
+                "until this source exiles another card"
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
                 "for as long as it remains exiled"
@@ -4450,6 +4777,47 @@
             let group = small_number_word(*divisor as u32).unwrap_or_else(|| divisor.to_string());
             return format!("For each {group} counters removed this way, {repeated}");
         }
+        let affected_card_basis = if repeat
+            .count
+            .has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay)
+        {
+            Some("card discarded this way")
+        } else if repeat
+            .count
+            .has_surface_hint(ValueSurfaceHint::CardsRevealedThisWay)
+        {
+            Some("card revealed this way")
+        } else {
+            None
+        };
+        if let Some(basis) = affected_card_basis {
+            return format!("{repeated} for each {basis}");
+        }
+        let mana_symbol_group = if repeat.count.has_surface_hint(ValueSurfaceHint::ForEach) {
+            match repeat.count.unhinted() {
+                Value::ManaSymbolSpentToCastThisSpell { symbol, reference } => {
+                    Some((symbol, reference, 1usize))
+                }
+                Value::DividedRoundedDown(value, divisor) if *divisor > 0 => {
+                    match value.as_ref() {
+                        Value::ManaSymbolSpentToCastThisSpell { symbol, reference } => {
+                            Some((symbol, reference, *divisor as usize))
+                        }
+                        _ => None,
+                    }
+                }
+                _ => None,
+            }
+        } else {
+            None
+        };
+        if let Some((symbol, reference, group_size)) = mana_symbol_group {
+            let group = describe_mana_symbol(*symbol).repeat(group_size);
+            return format!(
+                "For each {group} spent to cast {}, {repeated}",
+                reference.text()
+            );
+        }
         if repeat.count.has_surface_hint(ValueSurfaceHint::ForEach)
             && let Some((multiplier, basis)) =
                 crate::compiled_text::describe_counter_for_each_basis(&repeat.count)
@@ -4461,6 +4829,23 @@
         }
         if let Some(basis) = describe_turn_history_for_each_basis(&repeat.count) {
             return format!("For each {basis}, {repeated}");
+        }
+        if repeat.count.has_surface_hint(ValueSurfaceHint::ForEach)
+            && let Some(basis) = describe_create_for_each_count(&repeat.count)
+        {
+            return format!("{repeated} for each {basis}");
+        }
+        if repeat
+            .count
+            .has_surface_hint(ValueSurfaceHint::RepeatThisProcessOnce)
+        {
+            if let Some(repeated) = describe_repeated_choose_copy_with_cleanup(repeat) {
+                return format!("{repeated}. Repeat this process once");
+            }
+            return format!(
+                "{}. Repeat this process once",
+                capitalize_first(repeated.trim_end_matches('.'))
+            );
         }
         return match repeat.count.unhinted() {
             Value::Fixed(1) => repeated,

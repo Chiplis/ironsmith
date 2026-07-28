@@ -10,7 +10,9 @@ use super::super::primitives;
 pub(super) enum BattlefieldChangeShape {
     NoPermanentLeft,
     PermanentLeft,
-    PermanentLeftUnderYourControl,
+    PermanentLeftUnderYourControl {
+        surface: crate::PermanentLeftBattlefieldControlSurface,
+    },
     LandPutIntoGraveyardFromBattlefield,
     NonlandPermanentLeftOrSpellWarped,
 }
@@ -112,17 +114,20 @@ fn parse_permanent_left_under_control(
             primitives::kw("left"),
             parse_battlefield_under_your_control_this_turn,
         )
-            .void(),
+            .value(BattlefieldChangeShape::PermanentLeftUnderYourControl {
+                surface: crate::PermanentLeftBattlefieldControlSurface::LeftUnderYourControl,
+            }),
         (
             parse_permanent_noun,
             primitives::phrase(&["you", "controlled"]),
             primitives::kw("left"),
             parse_battlefield_this_turn,
         )
-            .void(),
+            .value(BattlefieldChangeShape::PermanentLeftUnderYourControl {
+                surface: crate::PermanentLeftBattlefieldControlSurface::YouControlledLeft,
+            }),
     ))
-    .parse_next(input)?;
-    Ok(BattlefieldChangeShape::PermanentLeftUnderYourControl)
+    .parse_next(input)
 }
 
 fn parse_land_put_into_graveyard(input: &mut LexStream<'_>) -> WResult<BattlefieldChangeShape> {

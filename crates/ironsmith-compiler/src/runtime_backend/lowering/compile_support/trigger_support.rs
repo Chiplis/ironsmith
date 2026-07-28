@@ -237,16 +237,31 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::attacks_you_one_or_more(filter)
         }
         TriggerSpec::ThisBlocks => Trigger::this_blocks(),
-        TriggerSpec::ThisBlocksObject(filter) => Trigger::this_blocks_object(filter),
+        TriggerSpec::ThisBlocksObject {
+            filter,
+            min_blocked_objects,
+        } => match min_blocked_objects {
+            Some(minimum) => Trigger::this_blocks_objects_with_minimum(filter, minimum as usize),
+            None => Trigger::this_blocks_object(filter),
+        },
         TriggerSpec::Blocks(filter) => Trigger::blocks(filter),
         TriggerSpec::BlocksOneOrMore(filter) => Trigger::blocks_one_or_more(filter),
+        TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked } => {
+            Trigger::blocks_object_with_lesser_power(blocker, blocked)
+        }
         TriggerSpec::ThisBecomesBlocked => Trigger::this_becomes_blocked(),
         TriggerSpec::BecomesBlocked(filter) => Trigger::becomes_blocked(filter),
         TriggerSpec::ThisBecomesBlockedByObject(filter) => {
             Trigger::this_becomes_blocked_by_object(filter)
         }
+        TriggerSpec::BecomesBlockedByObjectWithLesserPower { blocked, blocker } => {
+            Trigger::becomes_blocked_by_object_with_lesser_power(blocked, blocker)
+        }
         TriggerSpec::ThisDies => Trigger::this_dies(),
         TriggerSpec::ThisDiesOrIsExiled => Trigger::this_dies_or_is_exiled(),
+        TriggerSpec::ThisDiesOrIsExiledWithSurface(surface) => {
+            Trigger::this_dies_or_is_exiled_with_surface(surface.clone())
+        }
         TriggerSpec::ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker { marker } => {
             Trigger::new(
                 crate::triggers::zone_changes::ZoneChangeTrigger::new()
@@ -386,6 +401,7 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             Trigger::is_dealt_combat_damage(ChooseSpec::Object(filter))
         }
         TriggerSpec::YouGainLife => Trigger::you_gain_life(),
+        TriggerSpec::YouGainLifeCausedBy(source) => Trigger::you_gain_life_caused_by(source),
         TriggerSpec::YouGainLifeDuringTurn(during_turn) => {
             Trigger::you_gain_life_during_turn(during_turn)
         }
@@ -612,14 +628,16 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         },
         TriggerSpec::SpellCast {
             filter,
+            mana_source_filter,
             caster,
             timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
             from_not_hand,
-        } => Trigger::spell_cast_qualified(
+        } => Trigger::spell_cast_qualified_with_mana_source(
             filter,
+            mana_source_filter,
             caster,
             timing,
             during_turn,
@@ -840,7 +858,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
         TriggerSpec::KeywordActionFromSource { action, player } => {
             Trigger::keyword_action_from_source(action, player)
         }
-        TriggerSpec::WinsClash { player } => Trigger::wins_clash(player),
+        TriggerSpec::WinsClash { player, surface } => {
+            Trigger::wins_clash_with_surface(player, surface)
+        }
         TriggerSpec::Expend { player, amount } => Trigger::expend(amount, player),
         TriggerSpec::SagaChapter(chapters) => Trigger::saga_chapter(chapters),
         TriggerSpec::FinalChapterAbilityResolved(filter) => {
@@ -1020,7 +1040,10 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::ThisAttacks
         | TriggerSpec::ThisAttacksPlayerWhoControlsAtLeast { .. }
         | TriggerSpec::ThisBecomesBlocked
-        | TriggerSpec::BecomesBlocked(_) => Some(PlayerFilter::Defending),
+        | TriggerSpec::BecomesBlocked(_)
+        | TriggerSpec::BecomesBlockedByObjectWithLesserPower { .. } => {
+            Some(PlayerFilter::Defending)
+        }
         TriggerSpec::Attacks(filter) | TriggerSpec::AttacksOneOrMore(filter)
             if filter
                 .attacking_player_or_planeswalker_controlled_by
@@ -1078,7 +1101,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
         TriggerSpec::KeywordAction { player, .. }
         | TriggerSpec::KeywordActionTaggedObject { player, .. }
         | TriggerSpec::KeywordActionFromSource { player, .. }
-        | TriggerSpec::WinsClash { player } => {
+        | TriggerSpec::WinsClash { player, .. } => {
             if *player == PlayerFilter::Any {
                 // Unlike each-player phase triggers, these families do not
                 // prove that the resolution program owns a player-iteration
@@ -1139,6 +1162,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
                 ..
             } if spell_cast_filter_binds_target_count(filter) => true,
             TriggerSpec::YouGainLife
+            | TriggerSpec::YouGainLifeCausedBy(_)
             | TriggerSpec::YouGainLifeDuringTurn(_)
             | TriggerSpec::PlayerLosesLife(_)
             | TriggerSpec::PlayersLoseLifeOneOrMore(_)
@@ -1280,6 +1304,7 @@ mod tests {
     fn non_phase_any_filter_does_not_claim_a_player_iteration_scope() {
         let trigger = TriggerSpec::WinsClash {
             player: PlayerFilter::Any,
+            surface: ironsmith_core::ClashWinTriggerSurface::WinAClash,
         };
         assert_eq!(
             inferred_trigger_player_filter(&trigger),

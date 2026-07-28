@@ -51,7 +51,63 @@ fn ajani_goldmane_keeps_separate_token_ability_presentation_before_runtime_conve
 
     assert_eq!(
         create.ability_presentation,
-        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence)
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined)
+    );
+}
+
+#[test]
+fn chandra_keeps_gain_as_the_separate_token_ability_verb() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Chandra, Acolyte of Flame")
+        .card_types(vec![CardType::Planeswalker])
+        .parse_text(
+            "0: Create two 1/1 red Elemental creature tokens. They gain haste. Sacrifice them at the beginning of the next end step.",
+        )
+        .expect("Chandra's token ability should parse");
+    let create = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| &segment.default_effects)
+                .find_map(|effect| effect.as_create_token()),
+            _ => None,
+        })
+        .expect("Chandra's ability must create Elemental tokens");
+
+    assert_eq!(
+        create.ability_presentation,
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined)
+    );
+}
+
+#[test]
+fn post_definition_token_trigger_keeps_its_standalone_sentence_boundary() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Standalone Token Trigger")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "{2}{G}: This enchantment deals 1 damage to target creature. Create a 1/1 green Splinter creature token. It has flying and \"Cumulative upkeep {G}.\" When it leaves the battlefield, it deals 1 damage to you and each creature you control.",
+        )
+        .expect("a direct token trigger after an It-has sentence should parse");
+    let create = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => activated
+                .effects
+                .segments
+                .iter()
+                .flat_map(|segment| &segment.default_effects)
+                .find_map(|effect| effect.as_create_token()),
+            _ => None,
+        })
+        .expect("the activated ability must create a Splinter token");
+
+    assert_eq!(
+        create.ability_presentation,
+        Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombinedThenStandalone(1))
     );
 }
 
@@ -456,6 +512,11 @@ pub(super) fn rewrite_lexed_effect_sequence_wraps_extra_turn_end_step_followup()
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("DelayedUntilEndStepOfExtraTurn"), "{debug}");
+    assert_eq!(
+        debug.matches("DelayedUntilEndStepOfExtraTurn").count(),
+        1,
+        "the anaphoric end-step sentence must not be wrapped in a second delayed schedule: {debug}"
+    );
 }
 
 pub(super) fn registry_sentence_inputs(
@@ -1484,6 +1545,29 @@ pub(super) fn rewrite_sequence_registry_preserves_may_cast_target_graveyard_spel
         "{debug}"
     );
     assert!(debug.contains("without_paying_mana_cost: true"), "{debug}");
+}
+
+#[test]
+pub(super) fn rewrite_sequence_registry_preserves_dynamic_source_power_graveyard_cast_limit() {
+    let sentences = registry_sentence_inputs(
+        "You may cast target instant or sorcery card with mana value less than or equal to his power from your graveyard. If that spell would be put into your graveyard, exile it instead.",
+    );
+
+    let matched =
+        super::super::effect_sentences::try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("registry lookup should not error")
+            .expect("registry should match dynamic may-cast/replacement bundle");
+    let debug = format!("{:#?}", matched.effects);
+
+    assert_eq!(
+        matched.name,
+        "may-cast-target-graveyard-spell-then-exile-replacement"
+    );
+    assert!(debug.contains("LessThanOrEqualExpr"), "{debug}");
+    assert!(debug.contains("SourcePower"), "{debug}");
+    assert!(debug.contains("MasculineSourcePossessive"), "{debug}");
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(debug.contains("RegisterFutureZoneReplacement"), "{debug}");
 }
 
 #[test]
@@ -3774,6 +3858,122 @@ pub(super) fn rewrite_lowered_binds_self_replacement_it_condition_to_default_tar
     assert!(debug.contains("blocking: true"), "{debug}");
     assert!(!debug.contains("SourceMatches"), "{debug}");
     assert!(!debug.contains("TargetMatches"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn lowered_tagged_identity_conditions_keep_demonstrative_and_other_surfaces()
+-> Result<(), CardTextError> {
+    for (name, card_type, text, expects_other) in [
+        (
+            "Typed Demonstrative Variant",
+            CardType::Instant,
+            "Target creature you control gets +2/+2 until end of turn. If that creature is an Ally, it also gains flying until end of turn.",
+            false,
+        ),
+        (
+            "Typed Other Demonstrative Variant",
+            CardType::Creature,
+            "When this creature enters, put a +1/+1 counter on target creature. If that creature is another Hero, put two +1/+1 counters on it instead.",
+            true,
+        ),
+    ] {
+        let builder = CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![card_type]);
+        let (definition, _) =
+            parse_text_with_annotations_lowered(builder, text.to_string(), false)?;
+        let debug = format!("{definition:#?}");
+        let debug_lines = debug.lines().collect::<Vec<_>>();
+        let keeps_creature_surface = debug_lines.windows(2).any(|lines| {
+            lines[0].contains("demonstrative_antecedent: Some(") && lines[1].trim() == "Creature,"
+        });
+
+        assert!(debug.contains("TaggedObjectMatches"), "{name}: {debug}");
+        assert!(keeps_creature_surface, "{name}: {debug}");
+        assert_eq!(
+            debug.contains("other: true"),
+            expects_other,
+            "{name}: {debug}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+pub(super) fn lowered_color_named_sources_keep_color_filters_in_restrictions_and_conditions()
+-> Result<(), CardTextError> {
+    for (name, color_word, expected_color) in [
+        ("Black Scarab", "black", ColorSet::BLACK),
+        ("Blue Scarab", "blue", ColorSet::BLUE),
+        ("Green Scarab", "green", ColorSet::GREEN),
+        ("Red Scarab", "red", ColorSet::RED),
+        ("White Scarab", "white", ColorSet::WHITE),
+    ] {
+        let text = format!(
+            "Enchanted creature can't be blocked by {color_word} creatures.\n\
+             Enchanted creature gets +2/+2 as long as an opponent controls a {color_word} permanent."
+        );
+        let builder =
+            CardDefinitionBuilder::new(CardId::new(), name).card_types(vec![CardType::Enchantment]);
+        let (definition, _) = parse_text_with_annotations_lowered(builder, text, false)?;
+
+        let static_abilities = definition
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                AbilityKind::Static(static_ability) => Some(static_ability),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        let blockers = static_abilities
+            .iter()
+            .find_map(|ability| match &ability.payload {
+                crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+                    restriction: crate::effect::Restriction::BlockSpecificAttacker { blockers, .. },
+                    ..
+                } => Some(blockers),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{name}: expected a specific-blocker restriction"));
+        assert_eq!(
+            blockers.colors,
+            Some(expected_color),
+            "{name}: {blockers:#?}"
+        );
+        assert!(!blockers.source, "{name}: {blockers:#?}");
+        assert_eq!(blockers.source_surface, None, "{name}: {blockers:#?}");
+
+        let anthem = static_abilities
+            .iter()
+            .find_map(|ability| match &ability.payload {
+                crate::static_abilities::StaticAbilityPayload::Anthem(anthem) => Some(anthem),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("{name}: expected an anthem"));
+        let Some(crate::ConditionExpr::CountComparison {
+            count: crate::static_abilities::AnthemCountExpression::MatchingFilter(condition_filter),
+            comparison: crate::effect::Comparison::GreaterThanOrEqual(1),
+            ..
+        }) = anthem.condition.as_ref()
+        else {
+            panic!("{name}: expected a matching-permanent condition: {anthem:#?}");
+        };
+        assert_eq!(
+            condition_filter.colors,
+            Some(expected_color),
+            "{name}: {condition_filter:#?}"
+        );
+        assert_eq!(
+            condition_filter.controller,
+            Some(crate::filter::PlayerFilter::Opponent),
+            "{name}: {condition_filter:#?}"
+        );
+        assert!(!condition_filter.source, "{name}: {condition_filter:#?}");
+        assert_eq!(
+            condition_filter.source_surface, None,
+            "{name}: {condition_filter:#?}"
+        );
+    }
     Ok(())
 }
 

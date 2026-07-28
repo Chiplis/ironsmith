@@ -520,7 +520,7 @@ mod tests {
         let mut ctx = ExecutionContext::new_default(spell_id, alice);
         let effect = CopySpellEffect::new(
             ChooseSpec::Source,
-            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(
+            Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(
                 crate::target::ObjectFilter::default(),
             )),
         );

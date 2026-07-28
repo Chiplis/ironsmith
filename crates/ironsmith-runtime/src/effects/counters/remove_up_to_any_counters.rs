@@ -1,10 +1,10 @@
 //! Remove up to any counters effect implementation.
 
 use crate::decision::FallbackStrategy;
-use crate::decisions::{CounterRemovalSpec, make_decision_with_fallback};
+use crate::decisions::{CounterRemovalSpec, DecisionSpec as _, make_decision_with_fallback};
 use crate::effect::EffectOutcome;
-use crate::effects::EffectExecutor;
 use crate::effects::helpers::{resolve_single_object_for_effect, resolve_value};
+use crate::effects::{EffectExecutor, RemoveAnyCountersAmongEffect};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::object::CounterType;
@@ -32,8 +32,14 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
         let max_count = resolve_value(game, &self.max_count, ctx)?.max(0) as u32;
+        if let ChooseSpec::All(filter) = self.target.unhinted() {
+            let min_count = if self.up_to { 0 } else { max_count };
+            let distributed =
+                RemoveAnyCountersAmongEffect::dynamic(min_count, max_count, filter.clone(), false);
+            return distributed.execute(game, ctx);
+        }
+        let target_id = resolve_single_object_for_effect(game, ctx, &self.target)?;
 
         // Get available counters on the target
         let available_counters: Vec<(CounterType, u32)> = game
@@ -59,13 +65,16 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         }
 
         // Ask the player which counters to remove using the spec-based system
+        let min_count = if self.up_to { 0 } else { actual_max };
         let spec = CounterRemovalSpec::new(
             ctx.source,
             target_id,
             actual_max,
             available_counters.clone(),
-        );
-        let selections = make_decision_with_fallback(
+        )
+        .with_min_total(min_count);
+        let mandatory_fallback = spec.default_response(FallbackStrategy::Maximum);
+        let mut selections = make_decision_with_fallback(
             game,
             &mut ctx.decision_maker,
             ctx.controller,
@@ -75,6 +84,9 @@ impl EffectExecutor for RemoveUpToAnyCountersEffect {
         );
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
+        }
+        if selections.iter().map(|(_, count)| *count).sum::<u32>() < min_count {
+            selections = mandatory_fallback;
         }
 
         // Validate and apply the selections using centralized method

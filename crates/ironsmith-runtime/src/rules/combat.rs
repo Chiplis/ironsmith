@@ -368,6 +368,31 @@ pub(crate) fn can_block_with_view(
         }
     }
 
+    if attacker_has(StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures)
+        && let Some(defending_player) = game.current_controller(blocker.id)
+    {
+        let creature_count_for = |player| {
+            game.battlefield
+                .iter()
+                .filter(|&&id| {
+                    game.current_controller(id) == Some(player)
+                        && view.object_has_card_type(id, CardType::Creature)
+                })
+                .count()
+        };
+        let defending_count = creature_count_for(defending_player);
+        let greatest_count = game
+            .players
+            .iter()
+            .filter(|player| player.is_in_game())
+            .map(|player| creature_count_for(player.id))
+            .max()
+            .unwrap_or(0);
+        if defending_count == greatest_count {
+            return false;
+        }
+    }
+
     // "Can block only creatures with flying"
     if blocker_has(StaticAbilityId::CanBlockOnlyFlying) && !attacker_has(StaticAbilityId::Flying) {
         return false;

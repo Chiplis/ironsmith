@@ -26,6 +26,42 @@ fn exact_normalized_clause_match_beats_special_mismatch_penalties() {
 }
 
 #[test]
+fn named_multi_zone_search_tense_and_sequence_surface_compare_equally() {
+    let oracle = "When this creature enters, you may search your library and/or graveyard for a card named Huatli, Dinosaur Knight, reveal it, then put it into your hand. If you searched your library this way, shuffle.";
+    let compiled = vec![
+        "When this creature enters, you may search your library and/or graveyard for a card named huatli dinosaur knight, reveal it, and put it into your hand. If you search your library this way, shuffle.".to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) =
+        compare_card_semantics_scored("Sun-Blessed Mount", oracle, &compiled, strict_embedding());
+
+    assert_eq!(delta, 0);
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "similarity={similarity} mismatch={mismatch}"
+    );
+}
+
+#[test]
+fn revealed_set_shared_card_type_surface_compares_to_prior_result_rendering() {
+    let oracle = "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. Otherwise, you draw a card.";
+    let compiled = vec![
+        "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. Then if a permanent that shares a card type with it was revealed this way, copy that spell, you may choose new targets for the copy, then each opponent draws a card. Otherwise, draw a card.".to_string(),
+    ];
+    let (_oracle_cov, _compiled_cov, similarity, delta, mismatch) = compare_card_semantics_scored(
+        "Gandalf, Westward Voyager",
+        oracle,
+        &compiled,
+        strict_embedding(),
+    );
+
+    assert_eq!(delta, 0);
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "similarity={similarity} mismatch={mismatch}"
+    );
+}
+
+#[test]
 fn d20_numeric_ranges_ignore_typographic_dash_choice() {
     let oracle = "Roll a d20.\n1-9 | Each player draws a card.\n10-19 | You draw a card.";
     let compiled = vec![

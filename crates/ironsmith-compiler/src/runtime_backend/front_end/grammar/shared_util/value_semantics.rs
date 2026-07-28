@@ -13,7 +13,8 @@ use crate::runtime_backend::object_filters::{
     parse_object_filter, parse_object_filter_lexed, parse_object_filter_words,
 };
 use crate::runtime_backend::util::{
-    trim_commas, trim_edge_punctuation, trim_edge_punctuation_tokens,
+    parse_greater_than_or_equal_quantity_prefix, trim_commas, trim_edge_punctuation,
+    trim_edge_punctuation_tokens,
 };
 
 use super::super::super::lexer::{OwnedLexToken, trim_lexed_commas};
@@ -36,6 +37,75 @@ const CREATURES_DIED_THIS_TURN_PHRASES: &[&[&str]] = &[
     &["creatures", "that", "died", "this", "turn"],
 ];
 const EQUAL_TO_PHRASE: &[&str] = &["equal", "to"];
+
+/// Parse an authored mana-symbol payment total such as
+/// `the amount of {S} spent to cast this spell`.
+///
+/// This must stay lexed: mana groups intentionally do not appear in
+/// `TokenWordView`, so a word-only value parser cannot preserve which symbol
+/// the count refers to.
+pub(crate) fn parse_mana_symbol_spent_to_cast_value(tokens: &[OwnedLexToken]) -> Option<Value> {
+    let tokens = trim_edge_punctuation_tokens(tokens);
+    let mut mana_indices = tokens
+        .iter()
+        .enumerate()
+        .filter_map(|(index, token)| token.mana_group_inner().map(|_| index));
+    let mana_index = mana_indices.next()?;
+    if mana_indices.next().is_some() {
+        return None;
+    }
+
+    let prefix = TokenWordView::new(&tokens[..mana_index]).to_word_refs();
+    if !matches!(
+        prefix.as_slice(),
+        ["the", "amount", "of"]
+            | ["amount", "of"]
+            | ["where", "x", "is", "the", "amount", "of"]
+            | ["where", "x", "is", "amount", "of"]
+    ) {
+        return None;
+    }
+
+    let suffix = TokenWordView::new(&tokens[mana_index + 1..]).to_word_refs();
+    let reference = match suffix.as_slice() {
+        ["spent", "to", "cast", "it"] => ironsmith_core::ManaSpentCastReferenceSurface::It,
+        ["spent", "to", "cast", "this", "spell"] => {
+            ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell
+        }
+        ["spent", "to", "cast", "this", "creature"] => {
+            ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature
+        }
+        _ => return None,
+    };
+    // Reject hidden punctuation or other non-word tokens in an otherwise
+    // matching surface instead of silently treating them as absent.
+    if prefix.len() + suffix.len() + 1 != tokens.len() {
+        return None;
+    }
+
+    let symbols =
+        super::super::values::parse_mana_symbol_group(tokens[mana_index].parser_text()).ok()?;
+    let [symbol] = symbols.as_slice() else {
+        return None;
+    };
+    if !matches!(
+        symbol,
+        crate::mana::ManaSymbol::White
+            | crate::mana::ManaSymbol::Blue
+            | crate::mana::ManaSymbol::Black
+            | crate::mana::ManaSymbol::Red
+            | crate::mana::ManaSymbol::Green
+            | crate::mana::ManaSymbol::Colorless
+            | crate::mana::ManaSymbol::Snow
+    ) {
+        return None;
+    }
+
+    Some(Value::ManaSymbolSpentToCastThisSpell {
+        symbol: *symbol,
+        reference,
+    })
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct EqualToStart {
@@ -194,6 +264,17 @@ fn pending_aggregate_metric_value(
 ) -> Option<Value> {
     let source = value_helper_shapes::parse_prior_effect_metric_source(object_words)?;
     let metric = aggregate_effect_metric(aggregate, value_kind);
+    if let Some(value) = parse_prior_effect_aggregate_metric_value(metric, object_words) {
+        return Some(value);
+    }
+    Some(Value::PendingEffectMetric { source, metric })
+}
+
+pub(crate) fn parse_prior_effect_aggregate_metric_value(
+    metric: EffectMetric,
+    object_words: &[&str],
+) -> Option<Value> {
+    let source = value_helper_shapes::parse_prior_effect_metric_source(object_words)?;
     let this_way_start = object_words
         .windows(2)
         .position(|window| window == ["this", "way"]);
@@ -218,7 +299,7 @@ fn pending_aggregate_metric_value(
             return Some(Value::PendingPriorEffectMetric(query));
         }
     }
-    Some(Value::PendingEffectMetric { source, metric })
+    None
 }
 
 fn aggregate_filter_value(
@@ -407,6 +488,15 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
         return None;
     }
 
+    if matches!(
+        words.as_slice(),
+        ["time" | "times", "you", "descended", "this", "turn"]
+    ) {
+        return Some(Value::TurnHistoryCount(TurnHistoryCount::Descended(
+            PlayerFilter::You,
+        )));
+    }
+
     // Keep the exact, unqualified creature-death wording on the dedicated
     // value variant. Richer historical filters still use TurnHistoryCount.
     if let Some(value) = parse_creatures_died_this_turn_count_value(&tokens) {
@@ -455,19 +545,33 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
         return Some(value);
     }
 
-    for (suffix, controller) in [
-        (&["that", "died", "this", "turn"][..], None),
+    for (suffix, controller, default_surface) in [
+        (
+            &["that", "died", "this", "turn"][..],
+            None,
+            ironsmith_core::DeathHistoryControllerSurface::DiedUnderControl,
+        ),
         (
             &["that", "died", "under", "your", "control", "this", "turn"][..],
             Some(PlayerFilter::You),
+            ironsmith_core::DeathHistoryControllerSurface::DiedUnderControl,
         ),
     ] {
         if let Some(end) = suffix_start(&words, suffix) {
             let mut filter = history_filter_from_word_prefix(&tokens, &word_view, end)?;
-            if controller.is_some() {
-                filter.controller = controller;
+            let has_suffix_controller = controller.is_some();
+            if let Some(controller) = controller {
+                filter.controller = Some(controller);
             }
-            return Some(Value::TurnHistoryCount(TurnHistoryCount::Died(filter)));
+            let controller_surface = if !has_suffix_controller && filter.controller.is_some() {
+                ironsmith_core::DeathHistoryControllerSurface::ControlledThenDied
+            } else {
+                default_surface
+            };
+            return Some(Value::TurnHistoryCount(TurnHistoryCount::Died {
+                filter,
+                controller_surface,
+            }));
         }
     }
 
@@ -725,6 +829,23 @@ pub(crate) fn parse_turn_history_count_value(tokens: &[OwnedLexToken]) -> Option
             "life",
             "this",
             "turn"
+        ] | [
+            "your",
+            "opponent" | "opponents",
+            "who",
+            "lost",
+            "life",
+            "this",
+            "turn"
+        ] | [
+            "of",
+            "your",
+            "opponent" | "opponents",
+            "who",
+            "lost",
+            "life",
+            "this",
+            "turn"
         ]
     ) {
         return Some(Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(
@@ -829,6 +950,27 @@ pub(crate) fn parse_turn_history_value_binding(tokens: &[OwnedLexToken]) -> Opti
     let body_view = TokenWordView::new(&body_tokens);
     let body_words = body_view.to_word_refs();
 
+    if matches!(
+        body_words.as_slice(),
+        [
+            "the" | "total",
+            "amount",
+            "of",
+            "damage",
+            "dealt",
+            "to",
+            "it",
+            "this",
+            "turn"
+        ] | [
+            "the", "total", "amount", "of", "damage", "dealt", "to", "it", "this", "turn"
+        ]
+    ) {
+        return Some(Value::TurnHistoryCount(
+            TurnHistoryCount::DamageDealtToSource,
+        ));
+    }
+
     for prefix in [
         &["the", "number", "of"][..],
         &["number", "of"][..],
@@ -920,8 +1062,18 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     if let Some(value) = parse_cards_discarded_this_turn_count_value(&filter_tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
     }
+    if let Some((players, minimum)) = parse_players_with_cards_in_hand_at_least(&filter_tokens) {
+        return Some(
+            Value::CountPlayersWithCardsInHandAtLeast(players, minimum)
+                .with_surface_hint(ValueSurfaceHint::EqualTo),
+        );
+    }
     if let Some(player) = value_helper_shapes::parse_cards_in_hand_player(&filter_words) {
-        return Some(Value::CardsInHand(player).with_surface_hint(ValueSurfaceHint::EqualTo));
+        let mut value = Value::CardsInHand(player).with_surface_hint(ValueSurfaceHint::EqualTo);
+        if value_helper_shapes::has_that_player_possessive(&filter_words) {
+            value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);
+        }
+        return Some(value);
     }
     if let Some(value) = parse_spells_cast_this_turn_matching_count_value(&filter_tokens) {
         return Some(value.with_surface_hint(ValueSurfaceHint::EqualTo));
@@ -960,6 +1112,37 @@ pub(crate) fn parse_equal_to_number_of_filter_value(tokens: &[OwnedLexToken]) ->
     }
     let filter = parse_object_filter(&filter_tokens, false).ok()?;
     Some(Value::Count(filter).with_surface_hint(ValueSurfaceHint::EqualTo))
+}
+
+pub(crate) fn parse_players_with_cards_in_hand_at_least(
+    tokens: &[OwnedLexToken],
+) -> Option<(PlayerFilter, u32)> {
+    let word_view = TokenWordView::new(tokens);
+    let words = word_view.to_word_refs();
+    let with_idx = words.iter().position(|word| *word == "with")?;
+    let players = match &words[..with_idx] {
+        ["your", "opponents"] | ["opponents"] => PlayerFilter::Opponent,
+        ["players"] | ["each", "player"] => PlayerFilter::Any,
+        ["other", "players"] => PlayerFilter::NotYou,
+        ["you"] => PlayerFilter::You,
+        _ => return None,
+    };
+    let threshold_range = word_view.token_span_for_words(with_idx + 1, word_view.len())?;
+    let threshold_tokens = trim_edge_punctuation(&tokens[threshold_range]);
+    let (minimum, used) = parse_greater_than_or_equal_quantity_prefix(
+        &threshold_tokens,
+        false,
+        false,
+        "player hand-size count",
+    )
+    .ok()
+    .flatten()?;
+    let remainder = TokenWordView::new(&threshold_tokens[used..]).to_word_refs();
+    matches!(
+        remainder.as_slice(),
+        ["card" | "cards", "in", "hand"] | ["card" | "cards", "in", "their", "hand"]
+    )
+    .then_some((players, minimum))
 }
 
 pub(crate) fn parse_equal_to_number_of_filter_plus_or_minus_fixed_value(
@@ -1338,6 +1521,50 @@ mod tests {
     }
 
     #[test]
+    fn mana_symbol_spent_value_preserves_symbol_and_cast_reference() {
+        for (text, expected_symbol, expected_reference) in [
+            (
+                "where X is the amount of {S} spent to cast this spell",
+                crate::mana::ManaSymbol::Snow,
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisSpell,
+            ),
+            (
+                "the amount of {U} spent to cast it",
+                crate::mana::ManaSymbol::Blue,
+                ironsmith_core::ManaSpentCastReferenceSurface::It,
+            ),
+            (
+                "amount of {G} spent to cast this creature",
+                crate::mana::ManaSymbol::Green,
+                ironsmith_core::ManaSpentCastReferenceSurface::ThisCreature,
+            ),
+        ] {
+            assert_eq!(
+                parse_mana_symbol_spent_to_cast_value(&lex_words(text)),
+                Some(Value::ManaSymbolSpentToCastThisSpell {
+                    symbol: expected_symbol,
+                    reference: expected_reference,
+                }),
+                "{text}",
+            );
+        }
+    }
+
+    #[test]
+    fn mana_symbol_spent_value_rejects_non_exact_or_multi_symbol_surfaces() {
+        for text in [
+            "where X is the amount of {S}{S} spent to cast this spell",
+            "where X is the amount of {S} spent to cast this spell, then draw a card",
+            "where X is the number of {S} spent to cast this spell",
+        ] {
+            assert!(
+                parse_mana_symbol_spent_to_cast_value(&lex_words(text)).is_none(),
+                "{text}",
+            );
+        }
+    }
+
+    #[test]
     fn dynamic_filter_comparisons_preserve_prefix_vs_postfix_surface() {
         let prefix = ["less", "than", "or", "equal", "to", "your", "life", "total"];
         let (prefix_comparison, prefix_used) =
@@ -1436,6 +1663,10 @@ mod tests {
                 "nontoken creatures that died under your control this turn",
                 "Died",
             ),
+            (
+                "nontoken creatures you controlled that died this turn",
+                "Died",
+            ),
             ("tokens you created this turn", "TokensCreated"),
             (
                 "lands that entered the battlefield under your control this turn",
@@ -1465,6 +1696,7 @@ mod tests {
                 "+1/+1 counters you've put on creatures under your control this turn",
                 "CountersPutOn",
             ),
+            ("times you descended this turn", "Descended"),
         ];
 
         for (text, expected) in cases {
@@ -1475,6 +1707,32 @@ mod tests {
                 debug.contains("TurnHistoryCount") && debug.contains(expected),
                 "{text}: {debug}"
             );
+        }
+    }
+
+    #[test]
+    fn death_history_counts_preserve_authored_controller_order() {
+        for (text, expected_surface) in [
+            (
+                "nontoken creatures that died under your control this turn",
+                ironsmith_core::DeathHistoryControllerSurface::DiedUnderControl,
+            ),
+            (
+                "nontoken creatures you controlled that died this turn",
+                ironsmith_core::DeathHistoryControllerSurface::ControlledThenDied,
+            ),
+        ] {
+            let value = parse_turn_history_count_value(&lex_words(text))
+                .unwrap_or_else(|| panic!("history count should parse: {text}"));
+            let Value::TurnHistoryCount(TurnHistoryCount::Died {
+                filter,
+                controller_surface,
+            }) = value
+            else {
+                panic!("expected a typed death-history count for {text}: {value:?}");
+            };
+            assert_eq!(filter.controller, Some(PlayerFilter::You), "{text}");
+            assert_eq!(controller_surface, expected_surface, "{text}");
         }
     }
 
@@ -1604,6 +1862,27 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_token_where_bindings_use_typed_turn_history_values() {
+        let descended = parse_turn_history_value_binding(&lex_words(
+            "where X is the number of times you descended this turn",
+        ))
+        .expect("descend count should parse");
+        assert!(matches!(
+            descended,
+            Value::TurnHistoryCount(TurnHistoryCount::Descended(PlayerFilter::You))
+        ));
+
+        let damage = parse_turn_history_value_binding(&lex_words(
+            "where X is the amount of damage dealt to it this turn",
+        ))
+        .expect("source damage total should parse");
+        assert!(matches!(
+            damage,
+            Value::TurnHistoryCount(TurnHistoryCount::DamageDealtToSource)
+        ));
+    }
+
+    #[test]
     fn parses_opponents_dealt_combat_damage_without_a_source_qualifier() {
         let value = parse_turn_history_count_value(&lex_words(
             "opponents that were dealt combat damage this turn",
@@ -1615,6 +1894,18 @@ mod tests {
                 players: PlayerFilter::Opponent,
                 sources,
             }) if sources == ObjectFilter::default()
+        ));
+    }
+
+    #[test]
+    fn parses_authored_possessive_opponents_who_lost_life_count() {
+        let value = parse_turn_history_count_value(&lex_words(
+            "for each of your opponents who lost life this turn",
+        ))
+        .expect("distinct opponents who lost life should parse");
+        assert!(matches!(
+            value,
+            Value::TurnHistoryCount(TurnHistoryCount::PlayersLostLife(PlayerFilter::Opponent))
         ));
     }
 
@@ -1662,6 +1953,61 @@ mod tests {
         assert!(filter.token);
         assert_eq!(filter.controller, Some(PlayerFilter::You));
         assert_eq!(filter.name, None);
+    }
+
+    #[test]
+    fn equal_to_hand_count_preserves_authored_that_player_possessive() {
+        for (text, expected_hint) in [
+            ("equal to the number of cards in that player's hand", true),
+            ("equal to the number of cards in their hand", false),
+        ] {
+            let value = parse_equal_to_number_of_filter_value(&lex_words(text))
+                .unwrap_or_else(|| panic!("player-relative hand count should parse: {text}"));
+            assert!(
+                value.has_surface_hint(ValueSurfaceHint::EqualTo),
+                "{value:#?}"
+            );
+            assert_eq!(
+                value.has_surface_hint(ValueSurfaceHint::ThatPlayerPossessive),
+                expected_hint,
+                "{text}: {value:#?}"
+            );
+            assert!(matches!(
+                value.unhinted(),
+                Value::CardsInHand(PlayerFilter::IteratedPlayer)
+            ));
+        }
+    }
+
+    #[test]
+    fn equal_to_number_of_players_with_minimum_hand_size_keeps_both_filters() {
+        let value = parse_equal_to_number_of_filter_value(&lex_words(
+            "equal to the number of your opponents with four or more cards in hand",
+        ))
+        .expect("qualified opponent count should parse");
+        let Value::SurfaceHinted { value, hints } = value else {
+            panic!("expected equal-to surface hint");
+        };
+        assert_eq!(hints, vec![ValueSurfaceHint::EqualTo]);
+        assert_eq!(
+            *value,
+            Value::CountPlayersWithCardsInHandAtLeast(PlayerFilter::Opponent, 4)
+        );
+    }
+
+    #[test]
+    fn minimum_hand_size_player_count_does_not_claim_other_count_domains() {
+        for text in [
+            "creatures with four or more cards in hand",
+            "your opponents with four or fewer cards in hand",
+            "your opponents with four or more cards in graveyard",
+            "cards in your opponents' hands",
+        ] {
+            assert!(
+                parse_players_with_cards_in_hand_at_least(&lex_words(text)).is_none(),
+                "the qualified-player parser must not claim {text:?}"
+            );
+        }
     }
 
     #[test]

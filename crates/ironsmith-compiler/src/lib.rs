@@ -98,7 +98,8 @@ pub use front_end::{
 pub use ids::{CardId, ObjectId, PlayerId, StableId};
 pub use ironsmith_core::{
     AttachmentConditionHost, CompanionDeckCardFacts, CompanionDeckCondition,
-    Condition as ConditionExpr, SourceCounterThresholdSurface, WorkspaceSplitMarker,
+    Condition as ConditionExpr, PermanentLeftBattlefieldControlSurface,
+    SourceCounterThresholdSurface, WorkspaceSplitMarker,
 };
 pub use model::{
     AdditionalCostChoiceOptionAst, AnnotatedEffect, AnnotatedEffectSequence, ClashOpponentAst,
@@ -126,8 +127,9 @@ pub use payload::{IfResultPredicate, KeywordAction};
 pub use pipeline::{LoweringPipeline, PostpassProcessor};
 pub use tag::TagKey;
 pub use target::{
-    ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, TaggedObjectConstraint,
-    TaggedOpbjectRelation,
+    ChooseSpec, ObjectCharacteristic, ObjectCharacteristicRelation,
+    ObjectCharacteristicRelationKind, ObjectFilter, ObjectRef, PlayerFilter,
+    TaggedObjectConstraint, TaggedOpbjectRelation,
 };
 pub use types::{CardType, Subtype, Supertype};
 pub use zone::Zone;

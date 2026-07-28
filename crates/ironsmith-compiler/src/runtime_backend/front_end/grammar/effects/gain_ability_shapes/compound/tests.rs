@@ -68,6 +68,16 @@ fn get_then_ability_subject_excludes_leading_duration() {
 }
 
 #[test]
+fn rejects_completed_player_action_before_shared_pump_subject() {
+    let tokens = lex_line(
+        "You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn, where X is the difference between the chosen creatures' powers.",
+        0,
+    )
+    .unwrap();
+    assert!(parse_get_then_ability_shape(&tokens).is_none());
+}
+
+#[test]
 fn keeps_leading_duration_and_where_x_inside_typed_captures() {
     let tokens = lex_line(
         "Until end of turn, target creature gains trample and gets +X/+0, where X is the number of creatures you control.",
@@ -93,5 +103,18 @@ fn captures_attached_object_and_related_creature_type_subject() {
     assert_eq!(shape.subject, AttachedReferenceSubject::EnchantedCreature);
     assert_eq!(words(shape.pump_tokens), ["+1/+0"]);
     assert_eq!(words(shape.ability_tokens), ["first", "strike"]);
+    assert_eq!(shape.duration, Until::EndOfTurn);
+}
+
+#[test]
+fn captures_attached_object_and_related_creature_type_pump_without_keyword() {
+    let tokens = lex_line(
+        "Enchanted creature and other creatures that share a creature type with it get +1/+1 until end of turn.",
+        0,
+    )
+    .unwrap();
+    let shape = parse_attached_and_related_get_shape(&tokens).unwrap();
+    assert_eq!(shape.subject, AttachedReferenceSubject::EnchantedCreature);
+    assert_eq!(words(shape.pump_tokens), ["+1/+1"]);
     assert_eq!(shape.duration, Until::EndOfTurn);
 }

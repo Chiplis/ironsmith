@@ -2,7 +2,9 @@
 
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::{resolve_objects_for_effect, resolve_player_filter};
+use crate::effects::helpers::{
+    resolve_objects_for_effect, resolve_objects_from_spec, resolve_player_filter,
+};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::events::ShuffleLibraryEvent;
 use crate::events::processing::{EventOutcome, process_zone_change_with_additional_effects};
@@ -45,6 +47,189 @@ fn expected_zone_for_object(
     }
 }
 
+#[derive(Debug)]
+struct PreparedShuffleObjectsAction {
+    objects: Vec<(crate::ids::ObjectId, Option<Zone>)>,
+    players_to_shuffle: Vec<crate::ids::PlayerId>,
+}
+
+fn prepare_shuffle_objects_action_from_ids(
+    effect: &ShuffleObjectsIntoLibraryEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+    object_ids: Vec<crate::ids::ObjectId>,
+) -> Result<PreparedShuffleObjectsAction, ExecutionError> {
+    let objects = object_ids
+        .iter()
+        .copied()
+        .map(|object_id| {
+            (
+                object_id,
+                expected_zone_for_object(&effect.target, game, ctx, object_id),
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let shuffle_affected_owners =
+        effect.owner_library_destination || uses_affected_object_owner(&effect.player);
+    let mut players_to_shuffle = Vec::new();
+    if shuffle_affected_owners {
+        for object_id in &object_ids {
+            if let Some(owner) = game.object(*object_id).map(|object| object.owner) {
+                push_unique_player(&mut players_to_shuffle, owner);
+            }
+        }
+        if players_to_shuffle.is_empty()
+            && let Ok(player) = resolve_player_filter(game, &effect.player, ctx)
+        {
+            push_unique_player(&mut players_to_shuffle, player);
+        }
+    } else {
+        push_unique_player(
+            &mut players_to_shuffle,
+            resolve_player_filter(game, &effect.player, ctx)?,
+        );
+    }
+
+    Ok(PreparedShuffleObjectsAction {
+        objects,
+        players_to_shuffle,
+    })
+}
+
+fn prepare_shuffle_objects_action(
+    effect: &ShuffleObjectsIntoLibraryEffect,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<PreparedShuffleObjectsAction, ExecutionError> {
+    let object_ids = match resolve_objects_for_effect(game, ctx, &effect.target) {
+        Ok(ids) => ids,
+        Err(ExecutionError::InvalidTarget) => Vec::new(),
+        Err(err) => return Err(err),
+    };
+    prepare_shuffle_objects_action_from_ids(effect, game, ctx, object_ids)
+}
+
+fn prepare_simultaneous_shuffle_objects_action(
+    effect: &ShuffleObjectsIntoLibraryEffect,
+    game: &GameState,
+    ctx: &ExecutionContext,
+) -> Result<PreparedShuffleObjectsAction, ExecutionError> {
+    // Simultaneous proposals are prepared from a read-only game state. Any
+    // choices have already been made by the preceding selection effect, so
+    // resolve only the objects currently recorded in the execution context.
+    let object_ids = match resolve_objects_from_spec(game, &effect.target, ctx) {
+        Ok(ids) => ids,
+        Err(ExecutionError::InvalidTarget) => Vec::new(),
+        Err(err) => return Err(err),
+    };
+    prepare_shuffle_objects_action_from_ids(effect, game, ctx, object_ids)
+}
+
+fn execute_prepared_shuffle_objects_action(
+    prepared: PreparedShuffleObjectsAction,
+    game: &mut GameState,
+    ctx: &mut ExecutionContext,
+) -> Result<EffectOutcome, ExecutionError> {
+    let mut moved_ids = Vec::new();
+    let additional_effects = ctx.additional_replacement_effects_snapshot();
+
+    for (object_id, expected_zone) in prepared.objects {
+        let Some(obj) = game.object(object_id) else {
+            continue;
+        };
+        if let Some(expected_zone) = expected_zone
+            && obj.zone != expected_zone
+        {
+            continue;
+        }
+
+        let from_zone = obj.zone;
+        let pre_snapshot = ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
+        match process_zone_change_with_additional_effects(
+            game,
+            object_id,
+            from_zone,
+            Zone::Library,
+            ctx.cause.clone(),
+            &mut *ctx.decision_maker,
+            &additional_effects,
+        ) {
+            EventOutcome::Proceed(final_zone) => {
+                if final_zone != Zone::Library {
+                    continue;
+                }
+                let mut result =
+                    finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
+                if !result.new_object_ids.is_empty() {
+                    ctx.refresh_target_snapshot(pre_snapshot.clone());
+                    if pre_snapshot.object_id == ctx.source {
+                        ctx.refresh_source_snapshot(pre_snapshot.clone());
+                    }
+                    for &new_id in &result.new_object_ids {
+                        if let Some(owner) = game.object(new_id).map(|moved| moved.owner) {
+                            game.move_library_card_to_bottom(
+                                owner,
+                                new_id,
+                                "card moved into library before shuffle",
+                            );
+                        }
+                    }
+                    if from_zone == Zone::Battlefield {
+                        maybe_prompt_for_split_result_order(
+                            game,
+                            &mut *ctx.decision_maker,
+                            final_zone,
+                            &ctx.cause,
+                            &mut result,
+                        );
+                        game.record_zone_change_results(object_id, result.new_object_ids.clone());
+                    }
+                    moved_ids.extend(result.new_object_ids.iter().copied());
+                }
+            }
+            EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => {}
+        }
+    }
+
+    let mut shuffle_events = Vec::with_capacity(prepared.players_to_shuffle.len());
+    for player_id in prepared.players_to_shuffle {
+        game.shuffle_player_library(player_id);
+        shuffle_events.push(TriggerEvent::new_with_provenance(
+            ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
+            ctx.provenance,
+        ));
+    }
+
+    if moved_ids.is_empty() {
+        Ok(EffectOutcome::resolved().with_events(shuffle_events))
+    } else {
+        Ok(EffectOutcome::with_objects(moved_ids).with_events(shuffle_events))
+    }
+}
+
+#[derive(Debug)]
+struct ShuffleObjectsIntoLibraryProposal {
+    prepared: PreparedShuffleObjectsAction,
+    iterated_player: Option<crate::ids::PlayerId>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for ShuffleObjectsIntoLibraryProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Self {
+            prepared,
+            iterated_player,
+        } = *self;
+        ctx.with_temp_iterated_player(iterated_player, |ctx| {
+            execute_prepared_shuffle_objects_action(prepared, game, ctx)
+        })
+    }
+}
+
 impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -52,11 +237,11 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
 
     fn prepare_simultaneous_player_action(
         &self,
-        _game: &GameState,
+        game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
+        Ok(Box::new(ShuffleObjectsIntoLibraryProposal {
+            prepared: prepare_simultaneous_shuffle_objects_action(self, game, ctx)?,
             iterated_player: ctx.iteration.iterated_player,
         }))
     }
@@ -66,112 +251,8 @@ impl EffectExecutor for ShuffleObjectsIntoLibraryEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let object_ids = match resolve_objects_for_effect(game, ctx, &self.target) {
-            Ok(ids) => ids,
-            Err(ExecutionError::InvalidTarget) => Vec::new(),
-            Err(err) => return Err(err),
-        };
-        let shuffle_affected_owners =
-            self.owner_library_destination || uses_affected_object_owner(&self.player);
-        let mut players_to_shuffle = Vec::new();
-        if shuffle_affected_owners {
-            for object_id in &object_ids {
-                if let Some(owner) = game.object(*object_id).map(|object| object.owner) {
-                    push_unique_player(&mut players_to_shuffle, owner);
-                }
-            }
-            if players_to_shuffle.is_empty()
-                && let Ok(player) = resolve_player_filter(game, &self.player, ctx)
-            {
-                push_unique_player(&mut players_to_shuffle, player);
-            }
-        } else {
-            push_unique_player(
-                &mut players_to_shuffle,
-                resolve_player_filter(game, &self.player, ctx)?,
-            );
-        }
-
-        let mut moved_ids = Vec::new();
-        let additional_effects = ctx.additional_replacement_effects_snapshot();
-
-        for object_id in object_ids {
-            let Some(obj) = game.object(object_id) else {
-                continue;
-            };
-            if let Some(expected_zone) =
-                expected_zone_for_object(&self.target, game, ctx, object_id)
-                && obj.zone != expected_zone
-            {
-                continue;
-            }
-
-            let from_zone = obj.zone;
-            let pre_snapshot =
-                ObjectSnapshot::from_object_with_calculated_characteristics(obj, game);
-            match process_zone_change_with_additional_effects(
-                game,
-                object_id,
-                from_zone,
-                Zone::Library,
-                ctx.cause.clone(),
-                &mut *ctx.decision_maker,
-                &additional_effects,
-            ) {
-                EventOutcome::Proceed(final_zone) => {
-                    if final_zone != Zone::Library {
-                        continue;
-                    }
-                    let mut result =
-                        finalize_zone_change_move(game, object_id, final_zone, ctx.cause.clone());
-                    if !result.new_object_ids.is_empty() {
-                        ctx.refresh_target_snapshot(pre_snapshot.clone());
-                        if pre_snapshot.object_id == ctx.source {
-                            ctx.refresh_source_snapshot(pre_snapshot.clone());
-                        }
-                        for &new_id in &result.new_object_ids {
-                            if let Some(owner) = game.object(new_id).map(|moved| moved.owner) {
-                                game.move_library_card_to_bottom(
-                                    owner,
-                                    new_id,
-                                    "card moved into library before shuffle",
-                                );
-                            }
-                        }
-                        if from_zone == Zone::Battlefield {
-                            maybe_prompt_for_split_result_order(
-                                game,
-                                &mut *ctx.decision_maker,
-                                final_zone,
-                                &ctx.cause,
-                                &mut result,
-                            );
-                            game.record_zone_change_results(
-                                object_id,
-                                result.new_object_ids.clone(),
-                            );
-                        }
-                        moved_ids.extend(result.new_object_ids.iter().copied());
-                    }
-                }
-                EventOutcome::Prevented | EventOutcome::Replaced | EventOutcome::NotApplicable => {}
-            }
-        }
-
-        let mut shuffle_events = Vec::with_capacity(players_to_shuffle.len());
-        for player_id in players_to_shuffle {
-            game.shuffle_player_library(player_id);
-            shuffle_events.push(TriggerEvent::new_with_provenance(
-                ShuffleLibraryEvent::new(player_id, ctx.cause.clone()),
-                ctx.provenance,
-            ));
-        }
-
-        if moved_ids.is_empty() {
-            Ok(EffectOutcome::resolved().with_events(shuffle_events))
-        } else {
-            Ok(EffectOutcome::with_objects(moved_ids).with_events(shuffle_events))
-        }
+        let prepared = prepare_shuffle_objects_action(self, game, ctx)?;
+        execute_prepared_shuffle_objects_action(prepared, game, ctx)
     }
 
     fn get_target_spec(&self) -> Option<&ChooseSpec> {

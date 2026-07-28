@@ -35,6 +35,23 @@ fn has_target_separator(tokens: &[OwnedLexToken]) -> bool {
     .is_some()
 }
 
+fn has_target_and_attached_set(words: &[&str]) -> bool {
+    let Some(and_all) = words.windows(2).position(|window| window == ["and", "all"]) else {
+        return false;
+    };
+    let attached_tail = &words[and_all + 2..];
+    let Some(attached_to) = attached_tail
+        .windows(2)
+        .position(|window| window == ["attached", "to"])
+    else {
+        return false;
+    };
+    matches!(
+        &attached_tail[attached_to + 2..],
+        ["it"] | ["them"] | ["that", _]
+    )
+}
+
 pub(crate) fn parse_destroy_multi_target_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DestroyMultiTargetShape> {
@@ -48,7 +65,17 @@ pub(crate) fn parse_destroy_multi_target_shape(
     }
     // "target X and all other Ys with the same name ..." is the same-name
     // fanout family (one target + a mass action), not a multi-target list.
-    if words.windows(3).any(|window| window == ["and", "all", "other"]) {
+    if words
+        .windows(3)
+        .any(|window| window == ["and", "all", "other"])
+    {
+        return None;
+    }
+    // A declared target plus the complete set attached to that declaration
+    // is one linked destroy program, not a list of independent targets.
+    // Leave it for the typed target-and-attached destroy parser, which binds
+    // both actions through a stable object tag.
+    if has_target_and_attached_set(&words) {
         return None;
     }
     let target_words = &words[1..];
@@ -89,5 +116,16 @@ mod tests {
             up_to_one_target_word_starts(&TokenWordView::new(&tokens).to_word_refs()),
             [1, 7]
         );
+    }
+
+    #[test]
+    fn leaves_target_and_attached_object_sets_for_the_linked_destroy_parser() {
+        let tokens = lex_line(
+            "Destroy target creature with flying and all Equipment attached to that creature.",
+            0,
+        )
+        .unwrap();
+
+        assert!(parse_destroy_multi_target_shape(&tokens).is_none());
     }
 }

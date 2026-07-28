@@ -1,6 +1,6 @@
 use crate::cards::builders::{IfResultPredicate, PlayerAst, PredicateAst};
 use ironsmith_core::{
-    PriorEffectAction, PriorEffectResultActor, PriorEffectResultQuantifier,
+    ObjectCharacteristic, PriorEffectAction, PriorEffectResultActor, PriorEffectResultQuantifier,
     PriorEffectResultSurface,
 };
 use winnow::combinator::{alt, eof, opt};
@@ -206,6 +206,43 @@ fn matches_phrase(tokens: &[OwnedLexToken], phrase: &'static [&'static str]) -> 
     .is_ok()
 }
 
+fn counted_shared_characteristic(tokens: &[OwnedLexToken]) -> Option<(u32, ObjectCharacteristic)> {
+    let normalized = normalized_word_tokens(tokens);
+    let count = leaf::parse_number_complete(normalized.first()?.parser_text()).ok()?;
+    if count < 2 {
+        return None;
+    }
+    let words = normalized
+        .iter()
+        .map(OwnedLexToken::parser_text)
+        .collect::<Vec<_>>();
+    let has_relative = |tail: &[&str]| {
+        words.windows(tail.len() + 2).any(|window| {
+            window[0] == "that"
+                && matches!(window[1], "share" | "shares")
+                && window[2..] == tail[..]
+        })
+    };
+    // `normalized_word_tokens` removes articles, so characteristic tails are
+    // compared in that same canonical form.
+    let characteristic = if has_relative(&["color"]) {
+        ObjectCharacteristic::Color
+    } else if has_relative(&["card", "type"]) {
+        ObjectCharacteristic::CardType
+    } else if has_relative(&["permanent", "type"]) {
+        ObjectCharacteristic::PermanentType
+    } else if has_relative(&["creature", "type"]) {
+        ObjectCharacteristic::Subtype(crate::types::SubtypeFamily::Creature)
+    } else if has_relative(&["land", "type"]) {
+        ObjectCharacteristic::Subtype(crate::types::SubtypeFamily::Land)
+    } else if has_relative(&["mana", "value"]) {
+        ObjectCharacteristic::ManaValue
+    } else {
+        return None;
+    };
+    Some((count, characteristic))
+}
+
 /// Route a typed `... this way` object predicate through the ordinary
 /// predicate grammar instead of collapsing it to the legacy `if you do`
 /// boolean. The generated result tag supplies identity; the retained filter,
@@ -229,6 +266,9 @@ fn parse_typed_prior_effect_result_surface(
         _ => return None,
     };
     let action = filter.prior_effect_action_surface()?;
+    if let Some(disjunction) = parse_explicit_prior_result_filter_disjunction(tokens) {
+        filter = disjunction;
+    }
     filter.set_prior_effect_action_surface(None);
     // The antecedent result memory provides the subject identity and the
     // action provides the zone transition. Drop only an implicit identity
@@ -247,9 +287,57 @@ fn parse_typed_prior_effect_result_surface(
     } else {
         PriorEffectResultQuantifier::One
     };
-    Some(PriorEffectResultSurface::new(
-        action, filter, actor, quantifier,
-    ))
+    let mut surface = PriorEffectResultSurface::new(action, filter, actor, quantifier);
+    if let Some((count, characteristic)) = counted_shared_characteristic(tokens) {
+        surface = surface.with_count_sharing(count, characteristic);
+    }
+    Some(surface)
+}
+
+/// Preserve independently qualified result objects such as
+/// "a permanent you controlled or a token was destroyed this way." The
+/// ordinary flat object-filter parser correctly recognizes the terminal
+/// action but can otherwise intersect the two arms into "a permanent token."
+/// Requiring an explicit article on both arms distinguishes this semantic
+/// disjunction from compact type lists such as "an artifact or creature."
+fn parse_explicit_prior_result_filter_disjunction(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::target::ObjectFilter> {
+    let copula_idx = tokens.iter().position(|token| {
+        token
+            .as_word()
+            .is_some_and(|word| matches!(word, "is" | "are" | "was" | "were"))
+    })?;
+    let or_idx = tokens[..copula_idx]
+        .iter()
+        .rposition(|token| token.is_word("or"))?;
+    let left = &tokens[..or_idx];
+    let right = &tokens[or_idx + 1..copula_idx];
+    let has_explicit_article = |branch: &[OwnedLexToken]| {
+        branch
+            .first()
+            .and_then(OwnedLexToken::as_word)
+            .is_some_and(|word| matches!(word, "a" | "an"))
+    };
+    if !has_explicit_article(left) || !has_explicit_article(right) {
+        return None;
+    }
+
+    let parse_branch = |branch: &[OwnedLexToken]| {
+        let mut filter =
+            super::filters::parse_object_filter_with_grammar_entrypoint_lexed(branch, false)
+                .ok()?;
+        filter.zone = None;
+        filter.tagged_constraints.clear();
+        filter.set_prior_effect_action_surface(None);
+        (filter != crate::target::ObjectFilter::default()).then_some(filter)
+    };
+    let left = parse_branch(left)?;
+    let right = parse_branch(right)?;
+    let mut filter = crate::target::ObjectFilter::default();
+    filter.any_of = vec![left, right];
+    filter.set_explicit_union_branch_articles(true);
+    Some(filter)
 }
 
 fn parse_prior_result_object_filter(
@@ -405,6 +493,16 @@ pub(crate) fn parse_if_result_predicate_tokens(
 pub(crate) fn parse_if_result_predicate_lexed_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<IfResultPredicate> {
+    // The broad direct-result recognizer also accepts counted passive clauses,
+    // but it intentionally models only their basic action/filter surface.
+    // Give the typed path first refusal when the clause carries a cross-object
+    // characteristic count so that neither cardinality nor pairwise sharing
+    // is discarded.
+    if counted_shared_characteristic(tokens).is_some()
+        && let Some(surface) = parse_typed_prior_effect_result_surface(tokens)
+    {
+        return Some(IfResultPredicate::PriorEffectResult(surface));
+    }
     if let Some(surface) = parse_direct_prior_effect_result_surface(tokens)
         .or_else(|| parse_typed_prior_effect_result_surface(tokens))
     {
@@ -432,6 +530,14 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
         || matches_phrase(&normalized, &["it", "connives", "this", "way"])
     {
         return Some(IfResultPredicate::Did);
+    }
+    if matches_phrase(
+        &normalized,
+        &["you", "pay", "this", "cost", "one", "or", "more", "times"],
+    ) {
+        return Some(IfResultPredicate::Value(
+            crate::effect::Comparison::GreaterThan(0),
+        ));
     }
     if (starts_with_phrase(&normalized, &["you", "win"])
         || starts_with_phrase(&normalized, &["you", "won"]))
@@ -626,7 +732,8 @@ pub(crate) fn parse_if_result_predicate_lexed_tokens(
     {
         return Some(IfResultPredicate::DiesThisWay);
     }
-    if starts_with_phrase(&normalized, &["excess", "damage", "was", "dealt", "to"])
+    if (starts_with_phrase(&normalized, &["excess", "damage", "was", "dealt", "to"])
+        || starts_with_phrase(&normalized, &["excess", "damage", "is", "dealt", "to"]))
         && has_phrase(&normalized, &["creature"])
         && ends_with_phrase(&normalized, &["this", "way"])
     {
@@ -716,6 +823,10 @@ mod tests {
                 "a player is dealt damage this way",
                 IfResultPredicate::DealtDamageToPlayer,
             ),
+            (
+                "excess damage is dealt to the creature an opponent controls this way",
+                IfResultPredicate::ExcessDamageDealt,
+            ),
             ("you lost the flip", IfResultPredicate::DidNot),
             ("that player doesn't", IfResultPredicate::DidNot),
             ("its power becomes 3 this way", IfResultPredicate::Did),
@@ -755,5 +866,55 @@ mod tests {
             constraint.tag.as_str() == "__chosen_name__"
                 && constraint.relation == crate::filter::TaggedOpbjectRelation::SameNameAsTagged
         }));
+    }
+
+    #[test]
+    fn typed_prior_result_preserves_independently_qualified_or_arms() {
+        let tokens = lex_line(
+            "a permanent you controlled or a token was destroyed this way",
+            0,
+        )
+        .unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) =
+            parse_if_result_predicate_lexed_tokens(&tokens)
+        else {
+            panic!("expected typed prior-effect result");
+        };
+
+        assert_eq!(surface.action, PriorEffectAction::Destroyed);
+        assert_eq!(surface.filter.any_of.len(), 2);
+        assert_eq!(
+            surface.filter.any_of[0].controller,
+            Some(crate::target::PlayerFilter::You)
+        );
+        assert!(surface.filter.any_of[1].token);
+        assert!(surface.filter.has_explicit_union_branch_articles());
+    }
+
+    #[test]
+    fn typed_prior_result_preserves_counted_shared_color_set_condition() {
+        let tokens = lex_line(
+            "two nonland cards that share a color were milled this way",
+            0,
+        )
+        .unwrap();
+        let Some(IfResultPredicate::PriorEffectResult(surface)) =
+            parse_if_result_predicate_lexed_tokens(&tokens)
+        else {
+            panic!("expected typed counted prior-effect result");
+        };
+
+        assert_eq!(surface.action, PriorEffectAction::Milled);
+        assert_eq!(surface.required_count, Some(2));
+        assert_eq!(
+            surface.shared_characteristic,
+            Some(ObjectCharacteristic::Color)
+        );
+        assert!(
+            surface
+                .filter
+                .excluded_card_types
+                .contains(&crate::types::CardType::Land)
+        );
     }
 }

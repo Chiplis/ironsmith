@@ -75,6 +75,7 @@ impl EffectExecutor for ReconfigureEffect {
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         })
     }
 }

@@ -259,7 +259,9 @@ fn describe_hexproof_from_filter(filter: &ObjectFilter) -> String {
         .unwrap_or(description.as_str());
     // A bare type noun reads as a class: "hexproof from planeswalkers".
     if filter.card_types.len() == 1
-        && filter.card_types[0].to_string().eq_ignore_ascii_case(fragment)
+        && filter.card_types[0]
+            .to_string()
+            .eq_ignore_ascii_case(fragment)
     {
         return format!("{fragment}s");
     }

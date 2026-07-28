@@ -20,6 +20,105 @@ fn test_anthem() {
 }
 
 #[test]
+fn compound_anthem_pluralizes_branch_local_other() {
+    let mut filter = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        controller: Some(PlayerFilter::You),
+        any_of: vec![
+            ObjectFilter::default().with_subtype(Subtype::Skeleton),
+            ObjectFilter::default()
+                .with_subtype(Subtype::Zombie)
+                .other(),
+        ],
+        ..ObjectFilter::default()
+    };
+    filter.set_conjunctive_set_surface(true);
+
+    assert_eq!(
+        Anthem::new(filter, 1, 1).display(),
+        "Skeletons and other Zombies you control get +1/+1"
+    );
+}
+
+#[test]
+fn serial_compound_anthem_pluralizes_every_characteristic_arm() {
+    let mut leading = ObjectFilter::default();
+    leading.any_of = vec![
+        ObjectFilter::default().with_subtype(Subtype::Pest).other(),
+        ObjectFilter::default().with_subtype(Subtype::Bat),
+        ObjectFilter::default().with_subtype(Subtype::Insect),
+        ObjectFilter::default().with_subtype(Subtype::Snake),
+    ];
+    let mut filter = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        controller: Some(PlayerFilter::You),
+        any_of: vec![
+            leading,
+            ObjectFilter::default().with_subtype(Subtype::Spider),
+        ],
+        ..ObjectFilter::default()
+    };
+    filter.set_conjunctive_set_surface(true);
+
+    assert_eq!(
+        Anthem::new(filter, 1, 1).display(),
+        "other Pests, Bats, Insects, Snakes, and Spiders you control get +1/+1"
+    );
+}
+
+#[test]
+fn relative_enchanted_by_subject_preserves_each_filter_arm() {
+    let mut filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
+    filter.other = true;
+    filter.with_attached_object = Some(Box::new(
+        ObjectFilter::default()
+            .with_subtype(Subtype::Aura)
+            .controlled_by(PlayerFilter::You),
+    ));
+    filter.set_relative_attachment_state_surface(true);
+
+    assert_eq!(
+        pluralized_subject_text(&filter),
+        "other creatures you control that are enchanted by Auras you control"
+    );
+}
+
+#[test]
+fn plural_subject_preserves_conjunctions_inside_counter_qualifiers() {
+    assert_eq!(
+        pluralize_subject_clause(
+            "a creature you control with three or more +1/+1 counters on them",
+        ),
+        "creatures you control with three or more +1/+1 counters on them"
+    );
+}
+
+#[test]
+fn plural_subject_does_not_pluralize_already_plural_card_type_nouns_twice() {
+    assert_eq!(
+        pluralize_subject_clause("lands you control"),
+        "lands you control"
+    );
+    assert_eq!(
+        pluralize_subject_clause(
+            "lands you control and land cards you own that aren't on the battlefield",
+        ),
+        "lands you control and land cards you own that aren't on the battlefield"
+    );
+}
+
+#[test]
+fn team_controller_subject_pluralizes_the_subtype_not_the_control_verb() {
+    let warriors = ObjectFilter::default()
+        .with_subtype(Subtype::Warrior)
+        .controlled_by(PlayerFilter::your_team());
+    assert_eq!(
+        pluralized_subject_text(&warriors),
+        "Warriors your team controls"
+    );
+}
+
+#[test]
 fn anthem_scales_per_affected_objects_controller_hand() {
     let count = AnthemCountExpression::MatchingFilter(ObjectFilter {
         zone: Some(Zone::Hand),
@@ -52,6 +151,79 @@ fn anthem_scales_per_card_in_your_hand() {
     assert_eq!(
         anthem.display(),
         "this creature gets +1/+1 for each card in your hand"
+    );
+}
+
+#[test]
+fn anthem_scales_per_card_opponents_own_in_exile() {
+    let mut count_filter = ObjectFilter {
+        zone: Some(Zone::Exile),
+        owner: Some(PlayerFilter::Opponent),
+        ..Default::default()
+    };
+    count_filter.set_explicit_card_noun(true);
+    let count = AnthemCountExpression::MatchingFilter(count_filter);
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(1, count.clone()),
+        AnthemValue::scaled(1, count),
+    );
+
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +1/+1 for each card your opponents own in exile"
+    );
+}
+
+#[test]
+fn anthem_scales_over_each_typed_conjunctive_count_domain() {
+    let mut hand = ObjectFilter {
+        zone: Some(Zone::Hand),
+        ..ObjectFilter::default()
+    };
+    hand.set_explicit_card_noun(true);
+    let mut foretold = ObjectFilter {
+        zone: Some(Zone::Exile),
+        foretold: true,
+        ..ObjectFilter::default()
+    };
+    foretold.set_explicit_card_noun(true);
+    let mut count_filter = ObjectFilter {
+        owner: Some(PlayerFilter::You),
+        any_of: vec![hand, foretold],
+        ..ObjectFilter::default()
+    };
+    count_filter.set_conjunctive_set_surface(true);
+    let count = AnthemCountExpression::MatchingFilter(count_filter);
+    let anthem = Anthem::for_source(0, 0).with_values(
+        AnthemValue::scaled(1, count.clone()),
+        AnthemValue::scaled(1, count),
+    );
+
+    assert_eq!(
+        anthem.display(),
+        "this creature gets +1/+1 for each card in your hand and each foretold card you own in exile"
+    );
+}
+
+#[test]
+fn capped_affected_creature_type_anthem_preserves_oracle_surface() {
+    let count = AnthemCountExpression::CreatureTypesAmong(ObjectFilter::source());
+    let anthem = Anthem::new(
+        ObjectFilter::creature()
+            .you_control()
+            .without_subtype(Subtype::Human),
+        0,
+        0,
+    )
+    .with_values(
+        AnthemValue::scaled_capped(1, count.clone(), 10),
+        AnthemValue::scaled_capped(1, count, 10),
+    )
+    .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::Each));
+
+    assert_eq!(
+        anthem.display(),
+        "Each non-Human creature you control gets +1/+1 for each of its creature types, to a maximum of 10"
     );
 }
 
@@ -299,6 +471,14 @@ fn describe_static_condition_displays_half_starting_life_total() {
             }
         ),
         "as long as your life total is less than or equal to half your starting life total"
+    );
+}
+
+#[test]
+fn describe_static_condition_displays_kicked_spell_condition() {
+    assert_eq!(
+        describe_static_condition(&crate::ConditionExpr::ThisSpellWasKicked),
+        "as long as this spell was kicked"
     );
 }
 
@@ -953,6 +1133,66 @@ fn multi_object_ability_grants_are_executable_copyable_removable_and_expire() {
 }
 
 #[test]
+fn attached_named_source_marker_materializes_the_granting_attachment() {
+    let attachment = ObjectId::from_raw(41);
+    let named_source = ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(SourceReferenceSurface::FullName(
+            "Granting Aura".to_string(),
+        )),
+    );
+    let granted_object_source = ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
+        ),
+    );
+    let marker = crate::effect::Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        named_source.clone(),
+        crate::effect::Effect::new(crate::effects::SacrificeTargetEffect::new(named_source)),
+    ));
+    let sequence = crate::effect::Effect::new(crate::effects::SequenceEffect::new(vec![
+        marker,
+        crate::effect::Effect::tap(granted_object_source.clone()),
+    ]));
+    let ability = Ability::activated(crate::cost::TotalCost::free(), vec![sequence]);
+
+    let materialized = materialize_named_granting_source(&ability, attachment);
+    let AbilityKind::Activated(activated) = materialized.kind else {
+        panic!("expected activated granted ability");
+    };
+    let [effect] = activated.effects.flattened_default_effects() else {
+        panic!("expected one coordinated sequence");
+    };
+    let sequence = effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("coordinated granted effects should remain a sequence");
+    let [named_effect, holder_effect] = sequence.effects.as_slice() else {
+        panic!("expected named-source and granted-object effects");
+    };
+    let with_source = named_effect
+        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+        .expect("proper-name child should remain an execute-with-source wrapper");
+    assert_eq!(
+        with_source.source.base(),
+        &ChooseSpec::SpecificObject(attachment)
+    );
+    assert_eq!(
+        with_source.source.source_reference_surface(),
+        Some(&SourceReferenceSurface::FullName(
+            "Granting Aura".to_string()
+        ))
+    );
+    let tap = holder_effect
+        .downcast_ref::<crate::effects::TapEffect>()
+        .expect("typed granted-object reference should remain a sibling effect");
+    assert_eq!(tap.target.base(), &ChooseSpec::Source);
+    assert_eq!(
+        tap.target.source_reference_surface(),
+        granted_object_source.source_reference_surface(),
+        "`this creature` must keep the granted ability's ordinary source"
+    );
+}
+
+#[test]
 fn level_static_carriers_expose_triggered_and_activated_keyword_abilities() {
     let mut game = GameState::new(vec!["Alice".to_string()], 20);
     let alice = PlayerId::from_index(0);
@@ -1138,6 +1378,69 @@ fn test_anthem_count_expression_counts_distinct_creature_types() {
 }
 
 #[test]
+fn capped_creature_type_count_is_evaluated_per_affected_creature() {
+    let mut game = GameState::new(vec!["Alice".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let source_card = CardBuilder::new(CardId::new(), "Type Keeper")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let source = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+    let two_types = CardBuilder::new(CardId::new(), "Two Types")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elf, Subtype::Warrior])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let many_types = CardBuilder::new(CardId::new(), "Many Types")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![
+            Subtype::Elf,
+            Subtype::Warrior,
+            Subtype::Goblin,
+            Subtype::Human,
+            Subtype::Rogue,
+            Subtype::Wizard,
+            Subtype::Zombie,
+            Subtype::Dragon,
+            Subtype::Beast,
+            Subtype::Soldier,
+            Subtype::Cleric,
+        ])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+    let two_types = game.create_object_from_card(&two_types, alice, Zone::Battlefield);
+    let many_types = game.create_object_from_card(&many_types, alice, Zone::Battlefield);
+
+    let count = AnthemCountExpression::CreatureTypesAmong(ObjectFilter::source());
+    let anthem = Anthem::new(ObjectFilter::creature().you_control(), 0, 0).with_values(
+        AnthemValue::scaled_capped(1, count.clone(), 10),
+        AnthemValue::scaled_capped(1, count, 10),
+    );
+    let effects = anthem.generate_effects(source, alice, &game);
+    let modifier_for = |target| {
+        effects.iter().find_map(|effect| {
+            (effect.applies_to == EffectTarget::Specific(target)).then_some(&effect.modification)
+        })
+    };
+
+    assert!(matches!(
+        modifier_for(two_types),
+        Some(Modification::ModifyPowerToughness {
+            power: 2,
+            toughness: 2
+        })
+    ));
+    assert!(matches!(
+        modifier_for(many_types),
+        Some(Modification::ModifyPowerToughness {
+            power: 10,
+            toughness: 10
+        })
+    ));
+}
+
+#[test]
 fn test_set_land_subtypes() {
     let nonbasic_land_filter = ObjectFilter {
         zone: Some(Zone::Battlefield),
@@ -1179,6 +1482,28 @@ fn test_grant_ability() {
 }
 
 #[test]
+fn filtered_cost_tax_grant_keeps_its_quoted_affected_object_surface() {
+    let mut spell_filter = ObjectFilter::default();
+    spell_filter.cast_by = Some(PlayerFilter::Opponent);
+    spell_filter.targets_object = Some(Box::new(ObjectFilter::source_with_surface(
+        ironsmith_core::SourceReferenceSurface::ThisPermanentType("this creature".to_string()),
+    )));
+    let tax = StaticAbility::new(crate::static_abilities::CostIncrease::new(
+        spell_filter,
+        Value::Fixed(2),
+    ));
+    let affected = ObjectFilter::creature()
+        .you_control()
+        .with_static_ability(StaticAbilityId::Flying);
+    let grant = GrantAbility::new(affected, tax);
+
+    assert_eq!(
+        grant.display(),
+        "creatures you control with flying have \"Spells your opponents cast that target this creature cost {2} more to cast\""
+    );
+}
+
+#[test]
 fn quantified_grant_preserves_each_and_direct_restriction_surface() {
     let grant = GrantAbility::new(
         ObjectFilter::creature().you_control(),
@@ -1190,6 +1515,14 @@ fn quantified_grant_preserves_each_and_direct_restriction_surface() {
         grant.display(),
         "Each creature you control can't be blocked by more than 1 creature"
     );
+}
+
+#[test]
+fn quantified_all_grant_does_not_repeat_the_implicit_global_quantifier() {
+    let grant = GrantAbility::new(ObjectFilter::creature(), StaticAbility::double_strike())
+        .with_set_quantifier_surface(Some(ironsmith_core::SetQuantifierSurface::All));
+
+    assert_eq!(grant.display(), "All creatures have double strike");
 }
 
 #[test]
@@ -1250,6 +1583,173 @@ fn test_grant_ability_displays_spell_subjects_with_cast_and_origin() {
     assert_eq!(
         grant.display(),
         "enchantment spells you cast from your hand have cascade"
+    );
+
+    let first_from_exile = ObjectFilter {
+        zone: Some(Zone::Exile),
+        cast_by: Some(PlayerFilter::You),
+        first_spell_cast_each_turn: true,
+        has_mana_cost: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        GrantAbility::new(first_from_exile, StaticAbility::cascade()).display(),
+        "the first spell you cast from exile each turn has cascade"
+    );
+
+    let all_from_exile = ObjectFilter {
+        zone: Some(Zone::Exile),
+        cast_by: Some(PlayerFilter::You),
+        has_mana_cost: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        GrantAbility::new(all_from_exile, StaticAbility::cascade()).display(),
+        "spells you cast from exile have cascade"
+    );
+
+    let mut instant_and_sorcery = ObjectFilter::spell().cast_by(PlayerFilter::You);
+    instant_and_sorcery.has_mana_cost = true;
+    instant_and_sorcery.any_of = vec![
+        ObjectFilter::default().with_type(CardType::Instant),
+        ObjectFilter::default().with_type(CardType::Sorcery),
+    ];
+    instant_and_sorcery.set_conjunctive_set_surface(true);
+    assert_eq!(
+        GrantAbility::new(instant_and_sorcery.clone(), StaticAbility::cascade()).display(),
+        "instant and sorcery spells you cast have cascade"
+    );
+
+    instant_and_sorcery.zone = Some(Zone::Hand);
+    assert_eq!(
+        GrantAbility::new(instant_and_sorcery, StaticAbility::cascade()).display(),
+        "instant and sorcery spells you cast from your hand have cascade"
+    );
+}
+
+#[test]
+fn parsed_compound_spell_keyword_grants_keep_shared_cast_scope() {
+    for text in [
+        "Instant and sorcery spells you cast have storm.",
+        "Instant and sorcery spells you cast from your hand have cascade.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Compound Spell Grant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(text)
+            .expect("compound spell grant should compile");
+
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec![text.to_string()]
+        );
+    }
+}
+
+#[test]
+fn parsed_compound_spell_keyword_grants_keep_shared_controller_scope() {
+    for text in [
+        "Instant and sorcery spells you control have rebound.",
+        "Instant and sorcery spells you control have lifelink.",
+        "Instant and sorcery spells you control have deathtouch.",
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), "Controlled Spell Grant")
+            .card_types(vec![CardType::Enchantment])
+            .parse_text(text)
+            .expect("controlled compound spell grant should compile");
+
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec![text.to_string()]
+        );
+    }
+}
+
+#[test]
+fn first_matching_spell_cast_from_zone_grant_resets_each_turn() {
+    fn record_spell_cast(
+        game: &mut GameState,
+        caster: PlayerId,
+        grant_source: ObjectId,
+        name: &str,
+        from_zone: Zone,
+    ) -> ObjectId {
+        let card = CardBuilder::new(CardId::new(), name)
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Red]))
+            .card_types(vec![CardType::Instant])
+            .build();
+        let spell = game.create_object_from_card(&card, caster, Zone::Stack);
+        let casting_method = if from_zone == Zone::Hand {
+            crate::alternative_cast::CastingMethod::Normal
+        } else {
+            crate::alternative_cast::CastingMethod::PlayFrom {
+                source: grant_source,
+                zone: from_zone,
+                use_alternative: None,
+            }
+        };
+        game.push_to_stack(
+            crate::game_state::StackEntry::new(spell, caster).with_casting_method(casting_method),
+        );
+        let snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(spell).unwrap(), game);
+        let event = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::spells::SpellCastEvent::new_with_snapshot(
+                spell, caster, from_zone, snapshot,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&event);
+        spell
+    }
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source_definition = CardDefinitionBuilder::new(CardId::new(), "First Exile Grant")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(4, 3))
+        .parse_text("The first spell you cast from exile each turn has cascade.")
+        .expect("first-from-exile cascade grant should parse");
+    let source = game.create_object_from_definition(&source_definition, alice, Zone::Battlefield);
+
+    let hand_spell = record_spell_cast(&mut game, alice, source, "Hand Spell", Zone::Hand);
+    assert!(
+        !game.current_has_static_ability_id(hand_spell, StaticAbilityId::Cascade),
+        "an earlier spell from another zone must not receive or consume the grant"
+    );
+
+    let opponents_exile_spell =
+        record_spell_cast(&mut game, bob, source, "Opponent Exile Spell", Zone::Exile);
+    assert!(
+        !game.current_has_static_ability_id(opponents_exile_spell, StaticAbilityId::Cascade),
+        "the source controller's grant must not apply to another player's exile spell"
+    );
+
+    let first_exile_spell =
+        record_spell_cast(&mut game, alice, source, "First Exile Spell", Zone::Exile);
+    assert!(
+        game.current_has_static_ability_id(first_exile_spell, StaticAbilityId::Cascade),
+        "the controller's first matching exile cast should have cascade"
+    );
+
+    let second_exile_spell =
+        record_spell_cast(&mut game, alice, source, "Second Exile Spell", Zone::Exile);
+    assert!(
+        !game.current_has_static_ability_id(second_exile_spell, StaticAbilityId::Cascade),
+        "a later matching exile cast in the same turn must not have cascade"
+    );
+
+    game.next_turn();
+    let next_turn_exile_spell = record_spell_cast(
+        &mut game,
+        alice,
+        source,
+        "Next Turn Exile Spell",
+        Zone::Exile,
+    );
+    assert!(
+        game.current_has_static_ability_id(next_turn_exile_spell, StaticAbilityId::Cascade),
+        "the first matching exile cast on a new turn should have cascade again"
     );
 }
 

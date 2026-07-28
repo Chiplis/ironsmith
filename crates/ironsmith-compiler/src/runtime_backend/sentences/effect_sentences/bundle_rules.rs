@@ -18,20 +18,21 @@ use super::dispatch_entry::{
 };
 use super::zone_handlers::{parse_exile_top_library_clause, split_exile_face_down_suffix};
 use crate::cards::builders::{
-    CardTextError, ChoiceCount, EffectAst, IT_TAG, LibraryConsultModeAst,
+    CardTextError, ChoiceCount, EffectAst, IT_TAG, IfResultPredicate, LibraryConsultModeAst,
     LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst, SubjectVerbActionAst,
     SubjectVerbEffectAst, SubjectVerbRoleAst, TagKey, TargetAst, TextSpan, Verb,
 };
 use crate::effect::Value;
 use crate::filter::AlternativeCastKind;
 use crate::object::CounterType;
+use crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut;
 use crate::runtime_backend::effect_sentences;
 use crate::runtime_backend::front_end::grammar::effects as bundle_grammar;
 use crate::target::{
     ObjectFilter, PlayerFilter, SourceReferenceSurface, TaggedObjectConstraint,
     TaggedOpbjectRelation,
 };
-use crate::types::{CardType, Subtype};
+use crate::types::CardType;
 use crate::zone::Zone;
 
 pub(crate) fn parse_same_sentence_copy_and_may_cast_copy(
@@ -443,19 +444,31 @@ fn parse_exile_top_library_then_play_bundle(
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
                 SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                    tag: _,
                     player,
                     allow_land,
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
-                    ..
+                    while_on_top_of_library,
+                    free_cast_from_current_zone,
+                    until_source_exiles_another,
+                    surface,
                 },
             ..
-        }) => EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-            permission_tag,
-            player,
-            allow_land,
-            without_paying_mana_cost,
-            allow_any_color_for_cast,
+        }) => EffectAst::subject_verb(
+            SubjectVerbRoleAst::Actor,
+            PlayerAst::Implicit,
+            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                tag: permission_tag,
+                player,
+                allow_land,
+                without_paying_mana_cost,
+                allow_any_color_for_cast,
+                while_on_top_of_library,
+                free_cast_from_current_zone,
+                until_source_exiles_another,
+                surface,
+            },
         ),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -492,11 +505,20 @@ fn parse_exile_top_library_then_play_bundle(
                     allow_any_color_for_cast,
                     filter,
                     during_turns_counter_put_on_source,
+                    spell_cost_increase,
+                    lands_enter_tapped,
                     ..
                 },
             ..
         }) => {
-            if let Some(counter_type) = during_turns_counter_put_on_source {
+            if spell_cost_increase.is_some() || lands_enter_tapped {
+                EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
+                    permission_tag,
+                    player,
+                    spell_cost_increase,
+                    lands_enter_tapped,
+                )
+            } else if let Some(counter_type) = during_turns_counter_put_on_source {
                 EffectAst::subject_verb_grant_play_tagged_during_turns_counter_put_on_source(
                     permission_tag,
                     player,
@@ -523,6 +545,50 @@ fn parse_exile_top_library_then_play_bundle(
     }
     leading_effects.push(permission_effect);
     Ok(Some(leading_effects))
+}
+
+fn parse_optional_result_exile_choice_play_bundle(
+    sentences: &[&[OwnedLexToken]],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let [optional_sentence, conditional_sentence, permission_sentence] = sentences else {
+        return Ok(None);
+    };
+    let Some(prefix) =
+        crate::runtime_backend::grammar::structure::split_leading_result_prefix_lexed(
+            conditional_sentence,
+        )
+    else {
+        return Ok(None);
+    };
+    if prefix.kind
+        != crate::runtime_backend::grammar::structure::LeadingResultPrefixKind::If
+        || prefix.predicate != IfResultPredicate::Did
+    {
+        return Ok(None);
+    }
+
+    let optional_effects = effect_sentences::parse_effect_sentence_lexed(optional_sentence)?;
+    if !matches!(
+        optional_effects.as_slice(),
+        [EffectAst::May { .. } | EffectAst::MayByPlayer { .. }]
+    ) {
+        return Ok(None);
+    }
+    let Some(linked_effects) = parse_exile_top_library_then_play_bundle(
+        prefix.trailing_tokens,
+        permission_sentence,
+        None,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let mut effects = optional_effects;
+    effects.push(EffectAst::IfResult {
+        predicate: prefix.predicate,
+        effects: linked_effects,
+    });
+    Ok(Some(effects))
 }
 
 fn parse_hidden_exile_partition_permission_bundle(
@@ -659,45 +725,23 @@ fn parse_choose_type_then_phase_out_bundle(
     }
 
     let mut phase_out_filter = (*filter).clone();
-    phase_out_filter.card_types = choose_filter.card_types.clone();
+    // The first sentence chooses a type, not an object of that type. Keep the
+    // option domain on a typed card-type choice and let the second sentence
+    // refer to the value stored on the source.
+    phase_out_filter.card_types.clear();
+    phase_out_filter.all_card_types.clear();
     phase_out_filter.excluded_subtypes = choose_filter.excluded_subtypes.clone();
-    if choose_filter
-        .card_types
-        .iter()
-        .any(|value| *value == crate::types::CardType::Enchantment)
-        && choose_filter
-            .excluded_subtypes
-            .iter()
-            .any(|value| *value == Subtype::Aura)
-        && !phase_out_filter
-            .excluded_subtypes
-            .iter()
-            .any(|value| *value == Subtype::Aura)
-    {
-        phase_out_filter.excluded_subtypes.push(Subtype::Aura);
-    }
-    phase_out_filter = phase_out_filter.match_tagged(
-        TagKey::from(IT_TAG),
-        TaggedOpbjectRelation::SharesPermanentType,
-    );
-
-    let mut choose_filter = choose_filter;
-    if choose_filter.controller.is_none() && choose_filter.owner.is_none() {
-        choose_filter.controller = Some(match chooser {
-            PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
-            PlayerAst::That => PlayerFilter::IteratedPlayer,
-            _ => PlayerFilter::target_player(),
-        });
-    }
+    phase_out_filter.chosen_creature_type = false;
+    phase_out_filter.chosen_card_type = true;
+    phase_out_filter.tagged_constraints.retain(|constraint| {
+        !matches!(
+            constraint.relation,
+            TaggedOpbjectRelation::SharesCardType | TaggedOpbjectRelation::SharesPermanentType
+        )
+    });
 
     Ok(Some(vec![
-        EffectAst::ChooseObjects {
-            filter: choose_filter,
-            count: choose_count,
-            count_value: None,
-            player: chooser,
-            tag: TagKey::from(IT_TAG),
-        },
+        EffectAst::subject_verb_choose_card_type(chooser, choose_filter.card_types),
         EffectAst::subject_verb_phase_out_all(phase_out_filter),
     ]))
 }
@@ -916,6 +960,135 @@ fn parse_choose_objects_then_for_each_of_those_bundle(
             return Ok(None);
         }
         combined.extend(trailing_effects);
+    }
+    Ok(Some(combined))
+}
+
+fn chosen_target_collection_player_filter(target: &TargetAst) -> Option<(PlayerFilter, bool)> {
+    match target {
+        TargetAst::Player(filter, _) => Some((filter.clone(), false)),
+        TargetAst::PlayerOrPlaneswalker(filter, _) => Some((filter.clone(), true)),
+        TargetAst::ObjectOrPlayer(_, filter, _) => Some((filter.clone(), true)),
+        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_) => Some((PlayerFilter::Any, true)),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            chosen_target_collection_player_filter(inner)
+        }
+        _ => None,
+    }
+}
+
+#[derive(Clone, Copy)]
+enum MixedTargetIteration {
+    Player,
+    Object,
+}
+
+fn bind_prior_mixed_target_reference(target: &mut TargetAst, iteration: MixedTargetIteration) {
+    match target {
+        TargetAst::PlayerOrPlaneswalker(PlayerFilter::TargetPlayerOrControllerOfTarget, span) => {
+            *target = match iteration {
+                MixedTargetIteration::Player => {
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, span.clone())
+                }
+                MixedTargetIteration::Object => {
+                    TargetAst::Tagged(TagKey::from(IT_TAG), span.clone())
+                }
+            };
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, ..) => {
+            bind_prior_mixed_target_reference(inner, iteration);
+        }
+        _ => {}
+    }
+}
+
+/// A mixed player/object target collection executes as two disjoint typed
+/// loops. Rebind an authored “that player or planeswalker” damage recipient
+/// to the current member of the corresponding loop so every chosen target,
+/// rather than the first target in the shared resolution context, receives
+/// its own result.
+fn bind_mixed_target_iteration_damage(effects: &mut [EffectAst], iteration: MixedTargetIteration) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DealDamage { target, .. },
+            ..
+        }) = effect
+        {
+            bind_prior_mixed_target_reference(target, iteration);
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            bind_mixed_target_iteration_damage(nested, iteration);
+        });
+    }
+}
+
+/// Preserve a declared target collection that can contain players as well as
+/// permanents, then execute the same authored procedure once for each chosen
+/// target.
+///
+/// Player targets use an anaphoric target-player iterator. Object targets are
+/// captured from the same declaration under one tag and use the existing
+/// tagged-object iterator. The two runtime loops are disjoint but share one
+/// parsed body, so mixed collections retain one target declaration without
+/// introducing a bespoke runtime effect.
+fn parse_choose_mixed_targets_then_for_each_bundle(
+    first: &[OwnedLexToken],
+    second: &[OwnedLexToken],
+    third: Option<&[OwnedLexToken]>,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(choice_shape) =
+        bundle_grammar::clause_dispatch_shapes::parse_choose_target_shape(first)
+    else {
+        return Ok(None);
+    };
+    let Ok(target) = parse_target_phrase(choice_shape.target_tokens) else {
+        return Ok(None);
+    };
+    let Some((player_filter, includes_objects)) = chosen_target_collection_player_filter(&target)
+    else {
+        return Ok(None);
+    };
+    let Some(loop_shape) = bundle_grammar::parse_for_each_chosen_shape(second) else {
+        return Ok(None);
+    };
+    let loop_body = effect_sentences::parse_effect_sentence_lexed(loop_shape.body)?;
+    if loop_body.is_empty() {
+        return Ok(None);
+    }
+    let mut player_body = loop_body.clone();
+    bind_mixed_target_iteration_damage(&mut player_body, MixedTargetIteration::Player);
+    let mut object_body = loop_body;
+    bind_mixed_target_iteration_damage(&mut object_body, MixedTargetIteration::Object);
+
+    let object_targets_tag = helper_tag_for_tokens(first, "chosen_target_objects");
+    let declaration = EffectAst::subject_verb_explicit_target_only(target);
+    let mut combined = vec![if includes_objects {
+        EffectAst::TagAffected {
+            effect: Box::new(declaration),
+            tag: object_targets_tag.clone(),
+        }
+    } else {
+        declaration
+    }];
+    combined.push(EffectAst::ForEachPlayersFiltered {
+        // The mixed declaration above already made the target choice. This
+        // is an anaphoric view over its player members, not a second target
+        // declaration.
+        filter: PlayerFilter::AliasedTarget(Box::new(player_filter)),
+        effects: player_body,
+    });
+    if includes_objects {
+        combined.push(EffectAst::ForEachTagged {
+            tag: object_targets_tag,
+            effects: object_body,
+        });
+    }
+    if let Some(third) = third {
+        let mut trailing = effect_sentences::parse_effect_sentence_lexed(third)?;
+        if trailing.is_empty() {
+            return Ok(None);
+        }
+        combined.append(&mut trailing);
     }
     Ok(Some(combined))
 }
@@ -1305,6 +1478,41 @@ fn parse_persistent_exile_play_tax_bundle(tokens: &[OwnedLexToken]) -> Option<Ve
     ])
 }
 
+fn parse_each_player_hand_exile_play_constraints_bundle(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<EffectAst>> {
+    let shape = bundle_grammar::parse_each_player_hand_exile_play_constraints_tokens(tokens)?;
+    let exiled_tag = helper_tag_for_tokens(tokens, "each_player_hand_exiled");
+    let mut hand_card = ObjectFilter::default();
+    hand_card.zone = Some(Zone::Hand);
+    hand_card.owner = Some(PlayerFilter::IteratedPlayer);
+
+    Some(vec![
+        EffectAst::ForEachPlayersFiltered {
+            filter: shape.players,
+            effects: vec![
+                EffectAst::ChooseObjects {
+                    filter: hand_card,
+                    count: ChoiceCount::exactly(1),
+                    count_value: None,
+                    player: PlayerAst::That,
+                    tag: exiled_tag.clone(),
+                },
+                EffectAst::subject_verb_exile(
+                    TargetAst::Tagged(exiled_tag.clone(), None),
+                    false,
+                ),
+            ],
+        },
+        EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
+            exiled_tag,
+            PlayerAst::ItsOwner,
+            Some(shape.additional_cost),
+            shape.lands_enter_tapped,
+        ),
+    ])
+}
+
 fn parse_look_hand_optional_exile_play_tax_bundle(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<EffectAst>> {
@@ -1517,17 +1725,63 @@ fn parse_controller_sacrifice_consult_bundle(tokens: &[OwnedLexToken]) -> Option
     let revealed_tag = TagKey::from("controller_consult_revealed");
     let matched_tag = TagKey::from("controller_consult_matched");
     let target = TargetAst::Object(shape.target_filter, Some(TextSpan::synthetic()), None);
+    let sacrifice = EffectAst::subject_verb_sacrifice(
+        PlayerAst::ItsController,
+        ObjectFilter::default(),
+        1,
+        Some(target),
+    );
+    let mut match_filter = shape.match_filter;
+
+    if shape.conditional_on_sacrifice {
+        let sacrificed_tag = helper_tag_for_tokens(tokens, "sacrificed");
+        for constraint in &mut match_filter.tagged_constraints {
+            if constraint.relation == TaggedOpbjectRelation::SharesCardType {
+                constraint.tag = sacrificed_tag.clone();
+            }
+        }
+        match_filter.tagged_constraints.dedup();
+        let followups = vec![
+            EffectAst::subject_verb_consult_top_of_library(
+                PlayerAst::That,
+                LibraryConsultModeAst::Reveal,
+                match_filter,
+                LibraryConsultStopRuleAst::FirstMatch,
+                revealed_tag,
+                matched_tag.clone(),
+            ),
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(matched_tag, None),
+                shape.destination,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            ),
+            EffectAst::subject_verb(
+                SubjectVerbRoleAst::LibraryOwner,
+                PlayerAst::ItsController,
+                SubjectVerbActionAst::ShuffleLibrary,
+            ),
+        ];
+        return Some(vec![
+            EffectAst::TagAffected {
+                effect: Box::new(sacrifice),
+                tag: sacrificed_tag,
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: followups,
+            },
+        ]);
+    }
+
     Some(vec![
-        EffectAst::subject_verb_sacrifice(
-            PlayerAst::ItsController,
-            ObjectFilter::default(),
-            1,
-            Some(target),
-        ),
+        sacrifice,
         EffectAst::subject_verb_consult_top_of_library(
             PlayerAst::That,
             LibraryConsultModeAst::Reveal,
-            shape.match_filter,
+            match_filter,
             LibraryConsultStopRuleAst::FirstMatch,
             revealed_tag,
             matched_tag.clone(),
@@ -1593,6 +1847,7 @@ fn parse_each_player_shuffle_then_consult_bundle(
                     player: PlayerAst::That,
                     tag: qualifying_tag,
                     filter: tagged_library_filter,
+                    mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
                 },
                 if_true: vec![
                     EffectAst::subject_verb_consult_top_of_library(
@@ -1679,6 +1934,14 @@ use consult_bundles::{
     parse_consult_then_put_matches_battlefield_rest_bottom_bundle,
     parse_reveal_repeated_disposition_bundle, parse_reveal_until_land_put_all_graveyard_bundle,
 };
+
+#[path = "bundle_rules/per_graveyard.rs"]
+mod per_graveyard;
+use per_graveyard::parse_choose_each_graveyard_then_owner_shuffle_bundle;
+
+#[path = "bundle_rules/delayed_collections.rs"]
+mod delayed_collections;
+use delayed_collections::parse_exile_collection_each_upkeep_return_bundle;
 
 fn parse_bid_life_for_control_bundle(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
     let shape = bundle_grammar::parse_life_bid_shape(tokens)?;
@@ -1795,6 +2058,9 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     if let Ok(Some(effects)) = parse_reveal_from_outside_game_to_hand(tokens) {
         return Some(effects);
     }
+    if let Some(effects) = parse_each_player_hand_exile_play_constraints_bundle(tokens) {
+        return Some(effects);
+    }
     if let Some(effects) = parse_look_hand_optional_exile_play_tax_bundle(tokens) {
         return Some(effects);
     }
@@ -1820,6 +2086,18 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
         return Some(effects);
     }
     let sentences = split_lexed_sentences(tokens);
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_exile_collection_each_upkeep_return_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_each_graveyard_then_owner_shuffle_bundle(sentences[0], sentences[1])
+    {
+        return Some(effects);
+    }
     if sentences.len() == 2
         && let Some(mut effects) =
             parse_untap_then_phase_out_until_source_leaves_bundle(sentences[0])
@@ -1851,6 +2129,11 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_top_library_then_play_bundle(sentences[0], sentences[1], None)
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 3
+        && let Ok(Some(effects)) = parse_optional_result_exile_choice_play_bundle(&sentences)
     {
         return Some(effects);
     }
@@ -1894,6 +2177,21 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     }
     if sentences.len() == 3
         && let Ok(Some(effects)) = parse_discard_reveal_choose_discard_chosen_bundle(&sentences)
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 3
+        && let Ok(Some(effects)) = parse_choose_mixed_targets_then_for_each_bundle(
+            sentences[0],
+            sentences[1],
+            Some(sentences[2]),
+        )
+    {
+        return Some(effects);
+    }
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_mixed_targets_then_for_each_bundle(sentences[0], sentences[1], None)
     {
         return Some(effects);
     }
@@ -1989,6 +2287,60 @@ mod tests {
     use super::*;
     use crate::runtime_backend::front_end::lexer::lex_line;
 
+    #[test]
+    fn each_opponent_hand_exile_keeps_permission_tax_and_land_entry_linked() {
+        let tokens = lex_line(
+            "Each opponent exiles a card from their hand and may play that card for as long as it remains exiled. Each spell cast this way costs {1} more to cast. Each land played this way enters tapped.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens)
+            .expect("linked each-opponent hand exile bundle");
+        let [
+            EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::Opponent,
+                effects: per_player,
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantPlayTaggedForAsLongAsExiled {
+                        tag: grant_tag,
+                        player: PlayerAst::ItsOwner,
+                        spell_cost_increase: Some(cost),
+                        lands_enter_tapped: true,
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected correlated exile and constrained play grant: {effects:#?}");
+        };
+        let [
+            EffectAst::ChooseObjects {
+                tag: chosen_tag,
+                filter,
+                ..
+            },
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::Exile {
+                        target: TargetAst::Tagged(exile_tag, None),
+                        ..
+                    },
+                ..
+            }),
+        ] = per_player.as_slice()
+        else {
+            panic!("expected per-player choose/exile pair: {per_player:#?}");
+        };
+        assert_eq!(filter.zone, Some(Zone::Hand));
+        assert_eq!(filter.owner, Some(PlayerFilter::IteratedPlayer));
+        assert_eq!(chosen_tag, exile_tag);
+        assert_eq!(chosen_tag, grant_tag);
+        assert_eq!(cost.to_oracle(), "{1}");
+    }
+
     fn conditional_mana_value_limit(effect: &EffectAst) -> Option<i32> {
         let EffectAst::Conditional {
             predicate: PredicateAst::ItMatches(filter),
@@ -2015,6 +2367,208 @@ mod tests {
             Some(crate::target::Comparison::LessThanOrEqual(limit)) => Some(*limit),
             _ => None,
         }
+    }
+
+    #[test]
+    fn per_player_type_choice_phase_out_keeps_one_shared_card_type() {
+        let tokens = lex_line(
+            "That player chooses artifact, creature, land, or non-Aura enchantment. All nontoken permanents of that type phase out.",
+            0,
+        )
+        .unwrap();
+        let effects =
+            parse_typed_effect_bundle_lexed(&tokens).expect("typed choice/phase-out bundle");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                subject:
+                    crate::cards::builders::SubjectVerbSubjectAst {
+                        player: PlayerAst::That,
+                        ..
+                    },
+                action: SubjectVerbActionAst::ChooseCardType { options },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PhaseOutAll { filter, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected typed card-type choice and phase-out pair: {effects:#?}");
+        };
+
+        assert_eq!(
+            options,
+            &[
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Land,
+                CardType::Enchantment,
+            ]
+        );
+        assert!(filter.nontoken);
+        assert!(filter.chosen_card_type);
+        assert!(!filter.chosen_creature_type);
+        assert!(filter.card_types.is_empty());
+        assert_eq!(filter.excluded_subtypes, [crate::types::Subtype::Aura]);
+        assert!(filter.tagged_constraints.is_empty());
+        assert!(filter.controller.is_none());
+    }
+
+    #[test]
+    fn mixed_target_collection_reuses_one_complete_consult_procedure_per_target() {
+        let tokens = lex_line(
+            "Choose any number of target players or planeswalkers. For each of them, reveal cards from the top of your library until you reveal a nonland card, this spell deals damage equal to that card's mana value to that player or planeswalker, then you put the revealed cards on the bottom of your library in any order.",
+            0,
+        )
+        .unwrap();
+        let effects =
+            parse_typed_effect_bundle_lexed(&tokens).expect("mixed target consult bundle");
+        let [
+            EffectAst::TagAffected {
+                effect: declaration,
+                tag: object_targets,
+            },
+            EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::AliasedTarget(player_filter),
+                effects: player_body,
+            },
+            EffectAst::ForEachTagged {
+                tag: tagged_targets,
+                effects: object_body,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one declaration and disjoint player/object loops: {effects:#?}");
+        };
+        assert_eq!(player_filter.as_ref(), &PlayerFilter::Any);
+        assert_eq!(object_targets, tagged_targets);
+        assert!(matches!(
+            declaration.as_ref(),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::TargetOnly {
+                        target: TargetAst::WithCount(inner, count),
+                        explicit_declaration: true,
+                    },
+                ..
+            }) if matches!(
+                inner.as_ref(),
+                TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, _)
+            ) && count == &ChoiceCount::any_number()
+        ));
+        assert_eq!(player_body.len(), 3, "{player_body:#?}");
+        assert!(matches!(
+            player_body.as_slice(),
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::DealDamage {
+                        target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                        ..
+                    },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        keep_tagged: None,
+                        ..
+                    },
+                    ..
+                }),
+            ]
+        ));
+        assert!(matches!(
+            object_body.as_slice(),
+            [
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::DealDamage {
+                        target: TargetAst::Tagged(tag, _),
+                        ..
+                    },
+                    ..
+                }),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        keep_tagged: None,
+                        ..
+                    },
+                    ..
+                }),
+            ] if tag.as_str() == IT_TAG
+        ));
+    }
+
+    #[test]
+    fn conditional_controller_sacrifice_consult_keeps_result_and_object_provenance() {
+        let tokens = lex_line(
+            "Target artifact's controller sacrifices it. If the player does, they reveal cards from the top of their library until they reveal an artifact card that shares a card type with the sacrificed artifact, put that card onto the battlefield, then shuffle.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("conditional consult bundle");
+        let [
+            EffectAst::TagAffected {
+                effect: sacrifice,
+                tag: sacrificed_tag,
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: followups,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected tagged sacrifice and result-gated consult, got {effects:#?}");
+        };
+        assert!(matches!(
+            sacrifice.as_ref(),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Sacrifice {
+                    target: Some(_),
+                    ..
+                },
+                ..
+            })
+        ));
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::ConsultTopOfLibrary {
+                        filter: match_filter,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone { .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ShuffleLibrary,
+                ..
+            }),
+        ] = followups.as_slice()
+        else {
+            panic!("expected consult, move, and shuffle followups, got {followups:#?}");
+        };
+        assert_eq!(
+            match_filter
+                .tagged_constraints
+                .iter()
+                .filter(|constraint| {
+                    constraint.tag == *sacrificed_tag
+                        && constraint.relation == TaggedOpbjectRelation::SharesCardType
+                })
+                .count(),
+            1
+        );
     }
 
     #[test]
@@ -2120,6 +2674,45 @@ mod tests {
     }
 
     #[test]
+    fn exile_top_bundle_preserves_source_exile_permission_duration() {
+        let tokens = lex_line(
+            "Exile the top card of your library. You may play that card until you exile another card with this enchantment.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens)
+            .expect("source-exile-bounded permission bundle should parse");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ExileTopOfLibrary { tags, .. },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                        tag,
+                        until_source_exiles_another: true,
+                        surface: Some(surface),
+                        ..
+                    },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected linked exile/grant bundle, got {effects:#?}");
+        };
+        assert_eq!(tags.first(), Some(tag));
+        assert_eq!(
+            surface
+                .until_source_exiles_another
+                .as_ref()
+                .map(ironsmith_core::SourceReferenceSurface::display_text)
+                .as_deref(),
+            Some("this enchantment")
+        );
+    }
+
+    #[test]
     fn inline_exile_top_choose_one_rebinds_the_play_permission() {
         let tokens = lex_line(
             "Exile the top two cards of your library, then choose one of them. You may play that card this turn.",
@@ -2158,6 +2751,51 @@ mod tests {
             tags.first() == Some(&constraint.tag)
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
+    }
+
+    #[test]
+    fn optional_result_exile_choice_rebinds_the_trailing_play_permission() {
+        let tokens = lex_line(
+            "You may discard a card. If you do, exile the top two cards of your library, then choose one of them. You may play that card this turn.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens)
+            .expect("optional result-gated exile choice should parse as one linked bundle");
+        let [
+            EffectAst::May { .. } | EffectAst::MayByPlayer { .. },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: linked,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected optional action plus result-gated linked program, got {effects:#?}");
+        };
+        assert!(
+            matches!(
+                linked.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::ExileTopOfLibrary { count, .. },
+                        ..
+                    }),
+                    EffectAst::ChooseTaggedObjectsInZone { tag: chosen, .. },
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action:
+                            SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                                tag: permission,
+                                surface: Some(surface),
+                                ..
+                            },
+                        ..
+                    }),
+                ] if count == &Value::Fixed(2)
+                    && chosen == permission
+                    && !surface.leading_duration
+            ),
+            "the choice and trailing permission must share one exact exiled-card tag and surface: {linked:#?}"
+        );
     }
 
     #[test]

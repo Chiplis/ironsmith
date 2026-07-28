@@ -68,6 +68,52 @@ pub(super) fn describe_simple_any_of_keyword_clause(
     Some(describe_filter_union_list(labels, connective, false))
 }
 
+/// Compact mirrored ownership/controller branches while preserving their
+/// shared object constraints.
+///
+/// A filter represented as `(permanent owned by you) OR (permanent controlled
+/// by you)` is the typed form of Oracle's "a permanent you own or control".
+/// Only the relation field may differ between the branches; otherwise the
+/// expanded descriptions remain necessary to convey the distinct selectors.
+pub(super) fn describe_you_own_or_control_union(
+    any_of: &[ObjectFilter],
+    connective: ObjectFilterUnionConnective,
+) -> Option<String> {
+    if connective != ObjectFilterUnionConnective::Or {
+        return None;
+    }
+    let [first, second] = any_of else {
+        return None;
+    };
+
+    let (owned, controlled) = if first.owner == Some(PlayerFilter::You)
+        && first.controller.is_none()
+        && second.controller == Some(PlayerFilter::You)
+        && second.owner.is_none()
+    {
+        (first, second)
+    } else if second.owner == Some(PlayerFilter::You)
+        && second.controller.is_none()
+        && first.controller == Some(PlayerFilter::You)
+        && first.owner.is_none()
+    {
+        (second, first)
+    } else {
+        return None;
+    };
+
+    let mut owned_base = owned.clone();
+    owned_base.owner = None;
+    let mut controlled_base = controlled.clone();
+    controlled_base.controller = None;
+    if owned_base != controlled_base {
+        return None;
+    }
+
+    let base = ensure_filter_indefinite_article(owned_base.description());
+    Some(format!("{base} you own or control"))
+}
+
 pub(super) fn plus_minus_counter_delta(
     counters: &std::collections::HashMap<CounterType, u32>,
 ) -> i32 {
@@ -231,6 +277,8 @@ pub(super) fn describe_possessive_player_filter(filter: &PlayerFilter) -> String
         PlayerFilter::NotYou => "a non-you player's".to_string(),
         PlayerFilter::Opponent => "an opponent's".to_string(),
         PlayerFilter::Teammate => "a teammate's".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left's".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right's".to_string(),
         PlayerFilter::Active => "the active player's".to_string(),
         PlayerFilter::Defending => "the defending player's".to_string(),
         PlayerFilter::Attacking => "an attacking player's".to_string(),
@@ -298,6 +346,8 @@ pub(crate) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::NotYou => "player other than you".to_string(),
         PlayerFilter::Opponent => "opponent".to_string(),
         PlayerFilter::Teammate => "teammate".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::Active => "active player".to_string(),
         PlayerFilter::Defending => "defending player".to_string(),
         PlayerFilter::Attacking => "attacking player".to_string(),
@@ -745,6 +795,18 @@ pub(super) fn describe_counter_constraint(constraint: CounterConstraint, plural:
         CounterConstraint::Typed(counter_type) => {
             format!("a {} counter", counter_type.description())
         }
+        CounterConstraint::AtLeast {
+            counter_type,
+            count,
+        } => {
+            let count = ironsmith_core::cardinal_word(count).unwrap_or_else(|| count.to_string());
+            match counter_type {
+                Some(counter_type) => {
+                    format!("{count} or more {} counters", counter_type.description())
+                }
+                None => format!("{count} or more counters"),
+            }
+        }
     }
 }
 
@@ -865,6 +927,21 @@ pub(super) fn describe_comparison(cmp: &Comparison) -> String {
                 format!("the number of {} counters", counter_type.description())
             }
             Value::CountersOn(_, None) => "the number of counters".to_string(),
+            Value::PlayerCounters(player, counter_type) => {
+                let holder = match player {
+                    PlayerFilter::You => "you have".to_string(),
+                    PlayerFilter::Opponent => "an opponent has".to_string(),
+                    PlayerFilter::Any => "a player has".to_string(),
+                    PlayerFilter::Target(_)
+                    | PlayerFilter::AliasedTarget(_)
+                    | PlayerFilter::Specific(_) => "that player has".to_string(),
+                    other => format!("{} has", other.description()),
+                };
+                format!(
+                    "the number of {} counters {holder}",
+                    counter_type.description()
+                )
+            }
             Value::SourcePower => "this creature's power".to_string(),
             Value::SourceToughness => "this creature's toughness".to_string(),
             Value::ManaValueOf(spec) => {

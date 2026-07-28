@@ -631,6 +631,25 @@ pub(super) fn parse_triggered_put_into_graveyard_from_anywhere() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn parse_possessive_target_owner_shuffle_preserves_subject_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Possessive Owner Shuffle Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target creature's owner shuffles it into their library.")
+        .expect("possessive target-owner shuffle should parse");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        ["Target creature's owner shuffles it into their library."]
+    );
+    let debug = format!("{def:#?}");
+    assert!(
+        debug.contains("possessive_owner_subject: true")
+            && debug.contains("player: OwnerOf(Target)"),
+        "expected typed possessive owner surface, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_triggered_put_into_exile_from_anywhere() {
     let def = CardDefinitionBuilder::new(CardId::new(), "From Anywhere Exile Variant")
         .card_types(vec![CardType::Creature])
@@ -1596,11 +1615,15 @@ pub(super) fn parse_until_end_of_turn_whenever_clause_as_temporary_grant() {
         schedule.duration,
         ironsmith_core::DelayedTriggerDuration::EndOfTurn
     );
+    assert!(
+        schedule.leading_duration_surface,
+        "the authored leading duration should survive lowering"
+    );
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("whenever you cast a black spell this turn")
+        rendered.contains("until end of turn, whenever you cast a black spell")
             && rendered.contains("put a +1/+1 counter on this creature"),
         "expected temporary delayed-trigger surface, got {rendered}"
     );
@@ -2025,6 +2048,56 @@ pub(super) fn parse_each_player_discard_then_draw_keeps_each_player_scope() {
         compiled.contains("Each player discards their hand, then draws 7 cards")
             || compiled.contains("Each player discards their hand, then draws seven cards"),
         "expected each-player scope to carry into draw clause, got {compiled}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn leading_then_conjugated_draw_keeps_each_player_scope() {
+    let (def, trace) = ironsmith_compiler::parse_trace::capture(|| {
+        CardDefinitionBuilder::new(CardId::new(), "Day Undoing Variant")
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(
+                "Each player shuffles their hand and graveyard into their library, then draws seven cards. If it's your turn, end the turn.",
+            )
+            .expect("leading-then conjugated draw should retain each-player scope")
+    });
+
+    let debug = format!("{:#?}", def.spell_effect);
+    let compact = debug.split_whitespace().collect::<String>();
+    assert!(
+        debug.contains("ForPlayersEffect")
+            && debug.contains("filter: Any")
+            && debug.contains("ShuffleHandAndGraveyardIntoLibraryEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("count: Fixed")
+            && debug.contains("player: IteratedPlayer"),
+        "shuffle and conjugated draw must share each-player scope: {debug}\ntrace:\n{}",
+        trace.render()
+    );
+    assert!(
+        debug.contains("ConditionalEffect")
+            && debug.contains("EndTurnEffect")
+            && debug.contains("player: You")
+            && !compact.contains("DrawCardsEffect{count:Fixed(7,),player:You")
+            && !compact.contains("EndTurnEffect{player:IteratedPlayer"),
+        "the turn gate must apply only to your end-turn action: {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "Each player shuffles their hand and graveyard into their library, then draws 7 cards"
+        ) || rendered.contains(
+            "Each player shuffles their hand and graveyard into their library, then draws seven cards"
+        ),
+        "expected oracle-like each-player chain, got {rendered}"
+    );
+    assert!(
+        rendered.contains("If it's your turn, end the turn")
+            && !rendered.contains("draw seven cards if it's your turn")
+            && !rendered.contains("each player ends the turn"),
+        "conditional end-turn scope must remain separate, got {rendered}"
     );
 }
 

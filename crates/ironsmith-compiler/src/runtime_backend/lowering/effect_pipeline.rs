@@ -33,12 +33,19 @@ pub(crate) struct PreparedPredicateForLowering {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct SourceSentenceSegment {
+    pub(crate) effect_count: usize,
+    pub(crate) leading_then: bool,
+    pub(crate) starting_with_controller: bool,
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct PreparedEffectsForLowering {
     pub(crate) effects: Vec<EffectAst>,
-    /// Number of top-level semantic effects contributed by each authored
-    /// source sentence. Empty means the source did not carry an independently
-    /// verified multi-sentence boundary into preparation.
-    pub(crate) source_sentence_effect_counts: Vec<usize>,
+    /// Top-level semantic-effect span and typed leading connective for each
+    /// authored source sentence. Empty means the source did not carry an
+    /// independently verified multi-sentence boundary into preparation.
+    pub(crate) source_sentence_segments: Vec<SourceSentenceSegment>,
     pub(crate) imports: ReferenceImports,
     pub(crate) initial_env: ReferenceEnv,
     pub(crate) annotated: AnnotatedEffectSequence,

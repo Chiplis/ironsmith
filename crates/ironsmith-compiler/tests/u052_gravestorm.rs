@@ -37,7 +37,7 @@ fn gravestorm_instances_lower_to_independent_stack_triggers() {
         assert!(matches!(copy_spell.target, ChooseSpec::Source));
         assert_eq!(
             copy_spell.count,
-            Value::TurnHistoryCount(TurnHistoryCount::Died(Default::default()))
+            Value::TurnHistoryCount(TurnHistoryCount::died(Default::default()))
         );
 
         let retarget = retarget

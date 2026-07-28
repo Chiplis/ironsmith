@@ -54,7 +54,7 @@ impl EffectExecutor for AddManaOfColorsAmongEffect {
     }
 }
 
-fn colors_among_filter(
+pub(super) fn colors_among_filter(
     game: &GameState,
     filter: &ObjectFilter,
     source: ObjectId,

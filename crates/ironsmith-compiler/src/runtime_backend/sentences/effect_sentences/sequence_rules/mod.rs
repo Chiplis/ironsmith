@@ -69,6 +69,10 @@ fn first_word_you(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "you")
 }
 
+fn first_word_you_or_until(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
+    sentence_head_word_in(sentences, sentence_idx, &["you", "until"])
+}
+
 fn first_word_look(sentences: &[SentenceInput], sentence_idx: usize) -> bool {
     sentence_head_word_is(sentences, sentence_idx, "look")
 }
@@ -256,6 +260,14 @@ fn for_each_tagged_copy_window(sentences: &[SentenceInput], sentence_idx: usize)
 
 const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
     SequenceRuleDef {
+        name: "participant-secret-object-choice-reveal-sacrifice",
+        feature_tag: Some("secret-participant-object-choice"),
+        priority: 447,
+        consumed_sentences: 2,
+        predicate: first_word_you,
+        parser: generic_subject_verb_sequences::pairs::parse_participant_secret_object_choice_then_reveal_and_sacrifice,
+    },
+    SequenceRuleDef {
         name: "exile-each-player-put-return-exiled-exile-source",
         feature_tag: Some("exiled-collection-return-after-player-actions"),
         priority: 446,
@@ -412,6 +424,14 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::quads::parse_look_at_top_conditional_hand_counts_then_rest_bottom,
     },
     SequenceRuleDef {
+        name: "look-at-top-optional-battlefield-conditional-remainder",
+        feature_tag: Some("looked-cards-conditional-remainder-partition"),
+        priority: 431,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::quads::parse_look_at_top_optional_battlefield_then_conditional_remainder,
+    },
+    SequenceRuleDef {
         name: "look-at-top-put-counted-into-hand-rest-bottom-kicker-override",
         feature_tag: Some("looked-cards-kicker-override"),
         priority: 430,
@@ -434,6 +454,30 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         consumed_sentences: 4,
         predicate: first_word_look,
         parser: generic_subject_verb_sequences::quads::parse_look_at_top_may_exile_match_rest_bottom_cast_exiled,
+    },
+    SequenceRuleDef {
+        name: "look-reveal-match-hand-selected-condition-rest-bottom",
+        feature_tag: Some("looked-card-selected-condition-remainder"),
+        priority: 430,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::quads::parse_look_reveal_match_to_hand_if_selected_matches_rest_bottom,
+    },
+    SequenceRuleDef {
+        name: "reveal-top-optional-battlefield-then-hand-rest-graveyard",
+        feature_tag: Some("looked-card-two-stage-graveyard-partition"),
+        priority: 430,
+        consumed_sentences: 4,
+        predicate: first_word_reveal,
+        parser: generic_subject_verb_sequences::quads::parse_reveal_top_optional_battlefield_then_hand_rest_graveyard,
+    },
+    SequenceRuleDef {
+        name: "look-reveal-your-turn-battlefield-else-hand-rest-bottom",
+        feature_tag: Some("looked-card-your-turn-destination-partition"),
+        priority: 430,
+        consumed_sentences: 5,
+        predicate: first_word_look,
+        parser: generic_subject_verb_sequences::quads::parse_look_may_reveal_then_your_turn_battlefield_else_hand_rest_bottom,
     },
     SequenceRuleDef {
         name: "destroy-for-each-destroyed-consult-exile-put-shuffle",
@@ -671,7 +715,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("looked-cards-any-matching-bottom"),
         priority: 335,
         consumed_sentences: 3,
-        predicate: first_word_target_exile_look_or_reveal,
+        predicate: first_word_then_target_exile_look_or_reveal,
         parser: generic_subject_verb_sequences::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom,
     },
     SequenceRuleDef {
@@ -785,6 +829,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::parse_each_player_repeat_pay_life_tokens_sequence,
     },
     SequenceRuleDef {
+        name: "starting-each-player-optional-repeat",
+        feature_tag: Some("repeat-process"),
+        priority: 327,
+        consumed_sentences: 2,
+        predicate: first_word_starting,
+        parser:
+            generic_subject_verb_sequences::parse_starting_each_player_optional_repeat_sequence,
+    },
+    SequenceRuleDef {
         name: "target-gains-flashback-until-eot-targets-mana-cost",
         feature_tag: Some("flashback-cost-followup"),
         priority: 236,
@@ -870,7 +923,7 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         feature_tag: Some("cast-target-graveyard-spell-replacement"),
         priority: 242,
         consumed_sentences: 2,
-        predicate: first_word_you,
+        predicate: first_word_you_or_until,
         parser: generic_subject_verb_sequences::pairs::parse_may_cast_target_graveyard_spell_then_exile_replacement,
     },
     SequenceRuleDef {
@@ -1190,5 +1243,141 @@ pub(crate) fn subject_verb_sequence_route(name: &str) -> &'static str {
             "subject-verb verb=Gain subject=explicit recognizer=parameterized-flashback-grant"
         }
         _ => "subject-verb verb=Do subject=implicit recognizer=sequence-procedure",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::cards::builders::{
+        IfResultPredicate, SubjectVerbActionAst, SubjectVerbEffectAst,
+    };
+    use crate::runtime_backend::{lex_line, split_lexed_sentences};
+
+    #[test]
+    fn leading_then_looked_partition_uses_one_provenance_program() {
+        let tokens = lex_line(
+            "Then look at the top X cards of your library, where X is the number of time counters on this creature. You may put a nonland permanent card with mana value 3 or less from among them onto the battlefield. Put the rest on the bottom of your library in a random order.",
+            0,
+        )
+        .expect("lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+
+        assert!(
+            first_word_then_target_exile_look_or_reveal(&sentences, 0),
+            "leading-then predicate must admit the sentence"
+        );
+        assert!(
+            generic_subject_verb_sequences::triples::parse_top_cards_put_any_matching_to_zone_rest_bottom(
+                &sentences,
+                0,
+            )
+            .expect("specialized parser")
+            .is_some(),
+            "specialized looked-partition parser must accept the three-sentence shape"
+        );
+        let matched = try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("sequence parse")
+            .expect("leading-then looked partition should match a typed sequence rule");
+        assert_eq!(
+            matched.name,
+            "top-cards-put-any-matching-to-zone-rest-bottom"
+        );
+
+        let [look, choose, move_each, remainder] = matched.effects.as_slice() else {
+            panic!(
+                "expected look/choose/move/remainder provenance program: {:#?}",
+                matched.effects
+            );
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::LookAtTopCards { tag: looked, .. },
+            ..
+        }) = look
+        else {
+            panic!("expected looked-card producer: {look:#?}");
+        };
+        let EffectAst::ChooseTaggedObjectsInZone {
+            filter,
+            tag: chosen,
+            ..
+        } = choose
+        else {
+            panic!("expected looked-card selection: {choose:#?}");
+        };
+        assert!(
+            filter
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag == *looked),
+            "selection must consume the looked-card pool: {filter:#?}"
+        );
+        assert!(matches!(
+            move_each,
+            EffectAst::ForEachTagged { tag, .. } if tag == chosen
+        ));
+        assert!(matches!(
+            remainder,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                        tag,
+                        keep_tagged: Some(keep_tagged),
+                        ..
+                    },
+                ..
+            }) if tag == looked && keep_tagged == chosen
+        ));
+    }
+
+    #[test]
+    fn starting_each_player_optional_action_becomes_one_typed_repeat_process() {
+        let tokens = lex_line(
+            "Starting with you, each player may put a permanent card from their hand onto the battlefield. Repeat this process until no one puts a card onto the battlefield.",
+            0,
+        )
+        .expect("lex");
+        let split = split_lexed_sentences(&tokens);
+        let sentences = split
+            .iter()
+            .map(|sentence| SentenceInput::from_lexed(sentence))
+            .collect::<Vec<_>>();
+
+        let matched = try_parse_subject_verb_sequence_rule(&sentences, 0)
+            .expect("sequence parse")
+            .expect("the optional participant process should match");
+        assert_eq!(matched.name, "starting-each-player-optional-repeat");
+        assert_eq!(matched.consumed_sentences, 2);
+
+        let [EffectAst::RepeatProcess {
+            effects,
+            continue_effect_index,
+            continue_predicate: IfResultPredicate::Did,
+        }] = matched.effects.as_slice()
+        else {
+            panic!(
+                "expected one typed repeat process, got: {:#?}",
+                matched.effects
+            );
+        };
+        assert_eq!(*continue_effect_index, 0);
+        let [EffectAst::SourceSentence {
+            effects,
+            starting_with_controller: true,
+            ..
+        }] = effects.as_slice()
+        else {
+            panic!("the repeat body must retain authored participant order: {effects:#?}");
+        };
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::ForEachPlayer {
+                effects: per_player,
+            }] if matches!(per_player.as_slice(), [EffectAst::May { .. }])
+        ));
     }
 }

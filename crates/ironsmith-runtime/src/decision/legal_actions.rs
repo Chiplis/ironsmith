@@ -783,6 +783,33 @@ fn add_battlefield_actions(
 ) {
     use crate::special_actions::{SpecialAction, can_perform_check};
 
+    // Attachment-relative ignore permissions are usable by the attached
+    // object's controller, who need not control the Aura itself. Scan every
+    // battlefield source before the ordinary controlled-permanent ability
+    // pass so the special action is visible to the correct player.
+    for source_id in game.zone_ids(Zone::Battlefield) {
+        let Some(source) = game.object(source_id) else {
+            continue;
+        };
+        for (ability_index, ability) in source.abilities.iter().enumerate() {
+            let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+                continue;
+            };
+            if static_ability.id()
+                != crate::static_abilities::StaticAbilityId::AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
+            {
+                continue;
+            }
+            let action = SpecialAction::IgnoreAttachedRestriction {
+                source_id,
+                ability_index,
+            };
+            if can_perform_check(&action, game, player).is_ok() {
+                actions.push(LegalAction::SpecialAction(action));
+            }
+        }
+    }
+
     for &perm_id in controlled_battlefield {
         if game.is_face_down(perm_id) {
             for method in crate::special_actions::available_turn_face_up_methods(game, perm_id) {

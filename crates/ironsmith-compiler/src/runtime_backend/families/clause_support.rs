@@ -354,9 +354,7 @@ fn parse_hexproof_from_chain(tokens: &[OwnedLexToken]) -> Option<Vec<KeywordActi
     }
     // "hexproof from monocolored/multicolored/planeswalkers" — the same
     // non-color qualities the granted-ability path accepts.
-    let filter_token_first = *words_view
-        .token_start_indices()
-        .get(first_word_idx + 2)?;
+    let filter_token_first = *words_view.token_start_indices().get(first_word_idx + 2)?;
     let filter = parse_object_filter_lexed(&tokens[filter_token_first..], false).ok()?;
     Some(vec![KeywordAction::HexproofFrom(filter)])
 }
@@ -814,6 +812,7 @@ fn parse_triggered_line_lexed_inner(tokens: &[OwnedLexToken]) -> Result<LineAst,
             trigger: TriggerSpec::Either(
                 Box::new(TriggerSpec::SpellCast {
                     filter: Some(spell_filter),
+                    mana_source_filter: None,
                     caster: PlayerFilter::You,
                     timing: None,
                     during_turn: None,

@@ -69,6 +69,20 @@ fn render_trimmed_lexed_tokens(tokens: &[OwnedLexToken]) -> String {
     render_token_slice(tokens).trim().to_string()
 }
 
+fn is_exile_it_cost_segment(tokens: &[OwnedLexToken]) -> bool {
+    primitives::TokenWordView::new(tokens).word_refs() == ["exile", "it"]
+}
+
+fn cost_segment_preserves_source_identity(segment: &ActivationCostSegmentCst) -> bool {
+    match segment {
+        ActivationCostSegmentCst::PutCounters { .. }
+        | ActivationCostSegmentCst::RemoveCounters { .. }
+        | ActivationCostSegmentCst::RemoveCountersDynamic { .. } => true,
+        ActivationCostSegmentCst::RemoveCountersAmong { filter, .. } => filter.source,
+        _ => false,
+    }
+}
+
 fn activation_cost_prefix_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     if let Some(colon_idx) = locate_token_index(tokens, OwnedLexToken::is_colon) {
         &tokens[..colon_idx]
@@ -137,6 +151,51 @@ fn parse_activation_cost_segment_tokens(
         }
         ActivationCostSegmentKind::BareSymbol => parse_bare_symbol_segment_tokens(tokens).map(Ok),
     }
+}
+
+fn parse_source_plus_chosen_sacrifice_segment_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<Vec<ActivationCostSegmentCst>> {
+    if !token_slice_first_is(tokens, "sacrifice") {
+        return None;
+    }
+
+    for conjunction in 1..tokens.len().saturating_sub(1) {
+        if !tokens[conjunction].is_word("and") {
+            continue;
+        }
+        let Ok(source) = parse_typed_sacrifice_segment_tokens(
+            &tokens[..conjunction],
+            named_source_reference_surface_for_words,
+        ) else {
+            continue;
+        };
+        if !matches!(source, ActivationCostSegmentCst::SacrificeSelf { .. }) {
+            continue;
+        }
+
+        // The second operand inherits the authored sacrifice verb:
+        // "Sacrifice this artifact and any number of creatures" is two
+        // executable costs, not one object filter.
+        let mut inherited = Vec::with_capacity(tokens.len() - conjunction);
+        inherited.push(tokens[0].clone());
+        inherited.extend_from_slice(&tokens[conjunction + 1..]);
+        let Ok(chosen) = parse_typed_sacrifice_segment_tokens(
+            &inherited,
+            named_source_reference_surface_for_words,
+        ) else {
+            continue;
+        };
+        if !matches!(
+            chosen,
+            ActivationCostSegmentCst::SacrificeChosen { .. }
+                | ActivationCostSegmentCst::SacrificeCreature
+        ) {
+            continue;
+        }
+        return Some(vec![source, chosen]);
+    }
+    None
 }
 
 fn named_source_reference_surface_for_words(
@@ -298,19 +357,31 @@ fn parse_activation_cost_cst_tokens(
             continue;
         }
 
+        if let Some(compound) = parse_source_plus_chosen_sacrifice_segment_tokens(segment_tokens) {
+            segments.extend(compound);
+            continue;
+        }
+
         let segment = render_trimmed_lexed_tokens(segment_tokens);
-        let parsed = parse_activation_cost_segment_tokens(segment_tokens)
-            .unwrap_or_else(|| {
+        let parsed = if is_exile_it_cost_segment(segment_tokens)
+            && segments
+                .last()
+                .is_some_and(cost_segment_preserves_source_identity)
+        {
+            Ok(ActivationCostSegmentCst::ExileSelf)
+        } else {
+            parse_activation_cost_segment_tokens(segment_tokens).unwrap_or_else(|| {
                 Err(CardTextError::ParseError(format!(
                     "rewrite activation-cost segment parser does not yet support '{segment}'",
                 )))
             })
-            .map_err(|err| {
-                CardTextError::ParseError(format!(
-                    "unsupported activation cost segment (clause: '{}'): {err}",
-                    segment,
-                ))
-            })?;
+        }
+        .map_err(|err| {
+            CardTextError::ParseError(format!(
+                "unsupported activation cost segment (clause: '{}'): {err}",
+                segment,
+            ))
+        })?;
         segments.push(parsed);
     }
 
@@ -463,5 +534,38 @@ mod tests {
                 ActivationCostSegmentCst::ExileChosen { .. }
             ]
         ));
+    }
+
+    #[test]
+    fn source_bound_counter_cost_keeps_exile_it_on_that_source() {
+        let parsed = parse("{T}, Remove X time counters from this artifact and exile it");
+        assert!(matches!(
+            parsed.segments.as_slice(),
+            [
+                ActivationCostSegmentCst::Tap,
+                ActivationCostSegmentCst::RemoveCountersDynamic {
+                    counter_type: Some(CounterType::Time),
+                    display_x: true,
+                    remove_all: false,
+                },
+                ActivationCostSegmentCst::ExileSelf,
+            ]
+        ));
+    }
+
+    #[test]
+    fn source_plus_any_number_sacrifice_is_two_typed_cost_segments() {
+        let parsed = parse("{T}, Sacrifice this artifact and any number of creatures you control");
+        let [
+            ActivationCostSegmentCst::Tap,
+            ActivationCostSegmentCst::SacrificeSelf { surface: None },
+            ActivationCostSegmentCst::SacrificeChosen { count, filter },
+        ] = parsed.segments.as_slice()
+        else {
+            panic!("expected source and chosen sacrifice costs, got {parsed:?}");
+        };
+        assert!(count.is_any_number());
+        assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+        assert_eq!(filter.controller, Some(crate::target::PlayerFilter::You));
     }
 }

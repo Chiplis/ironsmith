@@ -1184,6 +1184,14 @@ fn etb_value_uses_entering_object(value: &crate::effect::Value) -> bool {
         crate::effect::Value::ManaSpentToCastThisSpell
         | crate::effect::Value::ManaFromSourceSpentToCastThisSpell { .. }
         | crate::effect::Value::ColorsOfManaSpentToCastThisSpell => true,
+        crate::effect::Value::PowerOf(spec)
+        | crate::effect::Value::ToughnessOf(spec)
+        | crate::effect::Value::ManaValueOf(spec)
+        | crate::effect::Value::CountersOn(spec, _)
+            if matches!(spec.base(), crate::target::ChooseSpec::Source) =>
+        {
+            true
+        }
         crate::effect::Value::Add(left, right) | crate::effect::Value::Min(left, right) => {
             etb_value_uses_entering_object(left) || etb_value_uses_entering_object(right)
         }

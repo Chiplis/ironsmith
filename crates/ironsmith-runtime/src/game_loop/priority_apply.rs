@@ -470,6 +470,16 @@ pub fn apply_priority_response_with_dm(
                 .map_err(|e| GameLoopError::InvalidState(format!("Cannot play land: {e}")))?;
 
             let old_zone = game.object(*land_id).map(|o| o.zone).unwrap_or(Zone::Hand);
+            let permission_forces_tapped = old_zone != Zone::Hand
+                && game
+                    .effect_store
+                    .grant_registry
+                    .land_play_from_permissions_enters_tapped(
+                        game,
+                        *land_id,
+                        old_zone,
+                        player,
+                    );
             if let Some(linked_land_def) = game
                 .object(*land_id)
                 .and_then(|object| crate::decision::linked_other_face_land_definition(game, object))
@@ -477,13 +487,20 @@ pub fn apply_priority_response_with_dm(
             {
                 object.apply_definition_face(&linked_land_def);
             }
-            let result = game
-                .move_object_with_etb_processing_with_dm(
+            let result = if permission_forces_tapped {
+                game.move_object_with_etb_processing_with_dm_and_forced_tapped(
                     *land_id,
                     Zone::Battlefield,
                     decision_maker,
                 )
-                .ok_or_else(|| GameLoopError::InvalidState("Failed to move land".to_string()))?;
+            } else {
+                game.move_object_with_etb_processing_with_dm(
+                    *land_id,
+                    Zone::Battlefield,
+                    decision_maker,
+                )
+            }
+            .ok_or_else(|| GameLoopError::InvalidState("Failed to move land".to_string()))?;
             let new_id = result.new_id;
 
             game.set_current_controller(new_id, player);

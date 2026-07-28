@@ -15,6 +15,7 @@ pub(crate) struct ControllerSacrificeConsultShape {
     pub(crate) target_filter: ObjectFilter,
     pub(crate) match_filter: ObjectFilter,
     pub(crate) destination: Zone,
+    pub(crate) conditional_on_sacrifice: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -71,7 +72,7 @@ fn controller_consult_followup<'a>(input: &mut LexStream<'a>) -> WResult<Zone> {
     Ok(destination)
 }
 
-pub(crate) fn parse_controller_sacrifice_consult_tokens(
+fn parse_legacy_controller_sacrifice_consult_tokens(
     tokens: &[OwnedLexToken],
 ) -> Option<ControllerSacrificeConsultShape> {
     let sentences = split_lexed_sentences(tokens);
@@ -111,7 +112,102 @@ pub(crate) fn parse_controller_sacrifice_consult_tokens(
         target_filter,
         match_filter,
         destination,
+        conditional_on_sacrifice: false,
     })
+}
+
+fn conditional_controller_consult_head<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["if", "the", "player", "does"]).parse_next(input)?;
+    commas(input)?;
+    primitives::phrase(&[
+        "they", "reveal", "cards", "from", "the", "top", "of", "their", "library", "until", "they",
+        "reveal",
+    ])
+    .void()
+    .parse_next(input)
+}
+
+fn conditional_controller_consult_followup<'a>(input: &mut LexStream<'a>) -> WResult<Zone> {
+    alt((primitives::kw("onto"), primitives::kw("into"))).parse_next(input)?;
+    opt(alt((primitives::kw("the"), primitives::kw("their")))).parse_next(input)?;
+    let destination = zone.parse_next(input)?;
+    commas(input)?;
+    opt(primitives::kw("then")).parse_next(input)?;
+    primitives::kw("shuffle").parse_next(input)?;
+    Ok(destination)
+}
+
+fn normalize_possessive_filter_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut normalized = tokens.to_vec();
+    let Some(last) = normalized.last_mut() else {
+        return normalized;
+    };
+    let Some(word) = last.as_word() else {
+        return normalized;
+    };
+    let stem =
+        crate::runtime_backend::front_end::shared::util::strip_possessive_suffix(word).to_string();
+    if stem != word {
+        last.replace_word(stem);
+    }
+    normalized
+}
+
+fn parse_conditional_controller_sacrifice_consult_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ControllerSacrificeConsultShape> {
+    let sentences = split_lexed_sentences(tokens);
+    let [sacrifice, conditional_consult] = sentences.as_slice() else {
+        return None;
+    };
+
+    let (_, target_and_tail) =
+        primitives::parse_prefix(sacrifice, primitives::kw("target").void())?;
+    let (target_tokens, sacrifice_tail) =
+        primitives::split_lexed_once_on_separator(target_and_tail, || {
+            primitives::phrase(&["controller", "sacrifices", "it"]).void()
+        })?;
+    if !trim_lexed_commas(sacrifice_tail).is_empty() {
+        return None;
+    }
+    let target_tokens = normalize_possessive_filter_tokens(trim_lexed_commas(target_tokens));
+    let mut target_filter =
+        filters::parse_object_filter_with_grammar_entrypoint_lexed(&target_tokens, false).ok()?;
+    target_filter.zone = Some(Zone::Battlefield);
+
+    let (_, match_and_followup) =
+        primitives::parse_prefix(conditional_consult, conditional_controller_consult_head)?;
+    let (match_tokens, followup_tokens) =
+        primitives::split_lexed_once_on_separator(match_and_followup, || {
+            primitives::phrase(&["put", "that", "card"]).void()
+        })?;
+    let mut match_filter = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+        trim_lexed_commas(match_tokens),
+        false,
+    )
+    .ok()?;
+    match_filter.zone = None;
+    let destination = primitives::parse_all_or_none(
+        trim_lexed_commas(followup_tokens),
+        conditional_controller_consult_followup,
+        "conditional controller sacrifice consult followup",
+    )
+    .ok()
+    .flatten()?;
+
+    Some(ControllerSacrificeConsultShape {
+        target_filter,
+        match_filter,
+        destination,
+        conditional_on_sacrifice: true,
+    })
+}
+
+pub(crate) fn parse_controller_sacrifice_consult_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<ControllerSacrificeConsultShape> {
+    parse_legacy_controller_sacrifice_consult_tokens(tokens)
+        .or_else(|| parse_conditional_controller_sacrifice_consult_tokens(tokens))
 }
 
 fn each_player_shuffle_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -242,6 +338,19 @@ mod tests {
                 .card_types
                 .contains(&CardType::Enchantment)
         );
+        assert!(!shape.conditional_on_sacrifice);
+    }
+
+    #[test]
+    fn parses_conditional_controller_sacrifice_consult_with_shared_type_relation() {
+        let shape = parse_controller_sacrifice_consult_tokens(&lex(
+            "Target artifact's controller sacrifices it. If the player does, they reveal cards from the top of their library until they reveal an artifact card that shares a card type with the sacrificed artifact, put that card onto the battlefield, then shuffle.",
+        ))
+        .unwrap();
+        assert!(shape.target_filter.card_types.contains(&CardType::Artifact));
+        assert!(shape.match_filter.card_types.contains(&CardType::Artifact));
+        assert!(shape.conditional_on_sacrifice);
+        assert_eq!(shape.destination, Zone::Battlefield);
     }
 
     #[test]

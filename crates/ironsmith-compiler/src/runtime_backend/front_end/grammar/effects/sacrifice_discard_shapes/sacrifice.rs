@@ -17,6 +17,11 @@ const TAGGED_REFERENCES: &[&[&str]] = &[
     &["the", "token"],
 ];
 const ONE_OF_TAGGED_SET_REFERENCES: &[&[&str]] = &[&["one", "of", "them"]];
+const ALL_OF_TAGGED_SET_REFERENCES: &[&[&str]] = &[
+    &["those", "permanents"],
+    &["those", "creatures"],
+    &["those", "tokens"],
+];
 const CHOICE_SUFFIXES: &[&[&str]] = &[
     &["of", "their", "choice"],
     &["of", "your", "choice"],
@@ -78,6 +83,7 @@ pub(crate) enum SacrificeTaggedReferenceKind {
     ItOrCard,
     Token,
     OneOfTaggedSet,
+    AllOfTaggedSet,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -168,7 +174,8 @@ pub(crate) fn parse_sacrifice_clause_shape(tokens: &[OwnedLexToken]) -> Sacrific
         unless_token_offset: Some(unless_token_offset),
         unless_kind,
         sacrifice_references_it: common::exact_any(&body_words, TAGGED_REFERENCES)
-            || common::exact_any(&body_words, ONE_OF_TAGGED_SET_REFERENCES),
+            || common::exact_any(&body_words, ONE_OF_TAGGED_SET_REFERENCES)
+            || common::exact_any(&body_words, ALL_OF_TAGGED_SET_REFERENCES),
         has_graveyard_history: common::all_present(
             &body_words,
             &["for", "each", "graveyard", "turn"],
@@ -211,16 +218,17 @@ pub(crate) fn parse_sacrifice_half_rounded_up_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<SacrificeHalfRoundedUpShape<'_>> {
     let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["half", "the"]).void())?;
-    let (rounded_up, before_rounding) =
-        if let Some((_, stripped)) = primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "up"]]) {
-            (true, stripped)
-        } else if let Some((_, stripped)) =
-            primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "down"]])
-        {
-            (false, stripped)
-        } else {
-            return None;
-        };
+    let (rounded_up, before_rounding) = if let Some((_, stripped)) =
+        primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "up"]])
+    {
+        (true, stripped)
+    } else if let Some((_, stripped)) =
+        primitives::strip_lexed_suffix_phrases(rest, &[&["rounded", "down"]])
+    {
+        (false, stripped)
+    } else {
+        return None;
+    };
     let object = parse_sacrifice_object_shape(before_rounding);
     (!object.filter_tokens.is_empty()).then_some(SacrificeHalfRoundedUpShape {
         filter_tokens: object.filter_tokens,
@@ -296,6 +304,8 @@ pub(crate) fn parse_sacrifice_object_shape(tokens: &[OwnedLexToken]) -> Sacrific
         Some(SacrificeTaggedReferenceKind::Token)
     } else if common::exact_any(&words, ONE_OF_TAGGED_SET_REFERENCES) {
         Some(SacrificeTaggedReferenceKind::OneOfTaggedSet)
+    } else if common::exact_any(&words, ALL_OF_TAGGED_SET_REFERENCES) {
+        Some(SacrificeTaggedReferenceKind::AllOfTaggedSet)
     } else if common::exact_any(&words, TAGGED_REFERENCES) {
         Some(SacrificeTaggedReferenceKind::ItOrCard)
     } else {
@@ -385,6 +395,25 @@ mod tests {
             parser_token_word_refs(shape.filter_tokens),
             ["one", "of", "them"]
         );
+    }
+
+    #[test]
+    fn sacrifice_object_shape_preserves_all_of_plural_result_set() {
+        for text in ["those permanents", "those creatures", "those tokens"] {
+            let tokens = lex_line(text, 0).unwrap();
+            let shape = parse_sacrifice_object_shape(&tokens);
+
+            assert_eq!(
+                shape.tagged_reference,
+                Some(SacrificeTaggedReferenceKind::AllOfTaggedSet),
+                "{text}"
+            );
+            assert_eq!(
+                parser_token_word_refs(shape.filter_tokens),
+                text.split_whitespace().collect::<Vec<_>>(),
+                "{text}"
+            );
+        }
     }
 
     #[test]

@@ -219,6 +219,7 @@ fn classify_subtype_word(raw: &str) -> Option<Subtype> {
     }
 
     match candidate.as_str() {
+        "fungi" => return Some(Subtype::Fungus),
         "mice" => return Some(Subtype::Mouse),
         "ouphe" => return Some(Subtype::Ouphe),
         "oxen" => return Some(Subtype::Ox),
@@ -295,6 +296,30 @@ fn classify_flexible_subtype(raw: &str) -> Option<Subtype> {
             stem_before_tail(candidate.as_str(), b"ves")
                 .and_then(|stem| classify_subtype_word(format!("{stem}fe").as_str()))
         })
+}
+
+/// Token-definition heads are an unambiguous type-line context, so words
+/// such as "Sand" should retain their Magic subtype meaning there even though
+/// the broad rules-text filter parser intentionally rejects them as ordinary
+/// English nouns.
+pub(crate) fn classify_token_definition_subtype(raw: &str) -> Option<Subtype> {
+    let candidate = normalized_atom_word(raw);
+    for family in [
+        SubtypeFamily::Land,
+        SubtypeFamily::Creature,
+        SubtypeFamily::Artifact,
+        SubtypeFamily::Enchantment,
+        SubtypeFamily::Spell,
+        SubtypeFamily::Planeswalker,
+        SubtypeFamily::Battle,
+    ] {
+        for subtype in family.all_subtypes() {
+            if subtype_surface_matches(*subtype, candidate.as_str()) {
+                return Some(*subtype);
+            }
+        }
+    }
+    None
 }
 
 fn subtype_surface_matches(subtype: Subtype, candidate: &str) -> bool {
@@ -391,6 +416,10 @@ mod tests {
     #[test]
     fn subtype_parser_preserves_irregular_and_flexible_plurals() {
         assert_eq!(parse_leaf_subtype_complete("mice").unwrap(), Subtype::Mouse);
+        assert_eq!(
+            parse_leaf_subtype_flexible_complete("fungi").unwrap(),
+            Subtype::Fungus
+        );
         assert_eq!(
             parse_leaf_subtype_flexible_complete("foxes").unwrap(),
             Subtype::Fox

@@ -34,12 +34,49 @@ fn mechanical_cleanup(line: String) -> String {
     let line = normalize_debug_safe_mana_symbol_case(&line);
     let line = strip_parenthetical_text(&line);
     let line = normalize_debug_safe_spelling_surface(&line);
+    let line = factor_repeated_other_you_control_union(&line);
     let line = normalize_until_your_next_turn_duration_order(&line);
     let line = normalize_each_player_x_token_damage_pair(&line);
     if line.contains("Whenever that creature ") {
         return line.replace(", draw ", ", you draw ");
     }
     line
+}
+
+fn factor_repeated_other_you_control_union(line: &str) -> String {
+    for verb in [" have ", " gain ", " get ", " are "] {
+        let Some((subject, predicate)) = line.split_once(verb) else {
+            continue;
+        };
+        let Some(subject_body) = subject.strip_prefix("Other ") else {
+            continue;
+        };
+        let lower = subject_body.to_ascii_lowercase();
+        let marker = " and other ";
+        let Some(marker_idx) = lower.find(marker) else {
+            continue;
+        };
+        if lower[marker_idx + marker.len()..].contains(marker) {
+            continue;
+        }
+        let Some(left) = subject_body[..marker_idx]
+            .trim()
+            .strip_suffix(" you control")
+        else {
+            continue;
+        };
+        let Some(right) = subject_body[marker_idx + marker.len()..]
+            .trim()
+            .strip_suffix(" you control")
+        else {
+            continue;
+        };
+        if left.is_empty() || right.is_empty() {
+            continue;
+        }
+        return format!("Other {left} and {right} you control{verb}{predicate}");
+    }
+    line.to_string()
 }
 
 fn lower_first_ascii(text: &str) -> String {
@@ -161,6 +198,8 @@ fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
             (": you draw ", ": draw "),
             (". You draw ", ". Draw "),
             (". you draw ", ". Draw "),
+            ("\nYou draw ", "\nDraw "),
+            ("\nyou draw ", "\nDraw "),
             ("— You draw ", "— Draw "),
             ("— you draw ", "— draw "),
             (", You draw ", ", draw "),
@@ -175,6 +214,19 @@ fn normalize_imperative_draw_subject_outside_quotes(line: &str) -> String {
         normalized.push_str(&segment);
     }
     normalized
+}
+
+fn normalize_exact_choice_coordinated_reward_voice(line: &str) -> String {
+    let Some(rest) = line.strip_prefix("You choose exactly ") else {
+        return line.to_string();
+    };
+    let Some((choice, reward)) = rest.split_once(". Draw ") else {
+        return line.to_string();
+    };
+    if !reward.contains(" and the chosen ") {
+        return line.to_string();
+    }
+    format!("Choose exactly {choice}. You draw {reward}")
 }
 
 fn normalize_debug_safe_spelling_surface(line: &str) -> String {
@@ -216,6 +268,10 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
         .replace("enter the battlefield", "enter")
         .replace("Enters the battlefield", "Enters")
         .replace("Enter the battlefield", "Enter")
+        .replace(
+            "had another land enter under",
+            "had another land enter the battlefield under",
+        )
         .replace(" in the battlefield", " on the battlefield")
         .replace(" In the battlefield", " On the battlefield")
         .replace("Cascade and Cascade", "Cascade, cascade")
@@ -277,6 +333,7 @@ fn normalize_debug_safe_spelling_surface(line: &str) -> String {
             "As long as this creature is equipped, each creature you control that's a Soldier or a Knight gets +1/+1",
         );
     normalized = normalize_imperative_draw_subject_outside_quotes(&normalized);
+    normalized = normalize_exact_choice_coordinated_reward_voice(&normalized);
 
     if normalized.eq_ignore_ascii_case(
         "Whenever a land is put into a graveyard from the battlefield, this artifact deals 2 damage to that object's controller.",
@@ -448,6 +505,16 @@ mod tests {
     }
 
     #[test]
+    fn cleanup_factors_repeated_other_and_controller_scope_across_union_arms() {
+        assert_eq!(
+            factor_repeated_other_you_control_union(
+                "Other nontoken artifact creatures you control and other Vehicles you control have Modular 1."
+            ),
+            "Other nontoken artifact creatures and Vehicles you control have Modular 1."
+        );
+    }
+
+    #[test]
     fn cleanup_demotes_target_that_references() {
         assert_eq!(
             normalize_debug_safe_spelling_surface(
@@ -455,6 +522,12 @@ mod tests {
             ),
             "That player discards that card. That permanent doesn't untap."
         );
+    }
+
+    #[test]
+    fn cleanup_preserves_battlefield_in_second_land_entry_condition() {
+        let text = "Whenever a land enters under an opponent's control, if that player had another land enter the battlefield under their control this turn, this creature deals 3 damage to that player.";
+        assert_eq!(normalize_debug_safe_spelling_surface(text), text);
     }
 
     #[test]
@@ -477,6 +550,21 @@ mod tests {
         assert_eq!(
             normalize_debug_safe_spelling_surface("{T}: You draw a card."),
             "{T}: Draw a card."
+        );
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(
+                "Tap target artifact or creature.\nYou draw a card."
+            ),
+            "Tap target artifact or creature.\nDraw a card."
+        );
+    }
+
+    #[test]
+    fn cleanup_preserves_explicit_draw_after_an_exact_chosen_set() {
+        let text = "You choose exactly two creatures you control. You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn.";
+        assert_eq!(
+            normalize_debug_safe_spelling_surface(text),
+            "Choose exactly two creatures you control. You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn."
         );
     }
 

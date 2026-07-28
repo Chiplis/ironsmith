@@ -5,9 +5,12 @@ use crate::runtime_backend::lexer::{OwnedLexToken, TokenWordView, synthetic_word
 use crate::runtime_backend::object_filters::parse_object_filter_words;
 use crate::runtime_backend::util::{
     source_choose_spec_for_surface, source_reference_surface_for_possessive_words,
-    source_reference_surface_for_words,
+    source_reference_surface_for_words, this_source_surface_for_words,
 };
-use crate::target::{ChooseSpec, PlayerFilter, SacrificedObjectKind};
+use crate::target::{
+    ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter, SacrificedObjectKind,
+    SourceReferenceSurface,
+};
 use crate::{Color, TagKey};
 use ironsmith_core::ValueSurfaceHint;
 
@@ -22,9 +25,6 @@ const EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
     (&["amount", "of", "e", "paid", "this", "way"], 6),
     (&["that", "amount", "of", "excess", "damage"], 5),
     (&["that", "much", "excess", "damage"], 4),
-    (&["the", "result"], 2),
-    (&["that", "result"], 2),
-    (&["result"], 1),
 ];
 
 const DAMAGE_EVENT_AMOUNT_PREFIXES: &[(&[&str], usize)] = &[
@@ -345,25 +345,31 @@ enum Rounding {
 pub(crate) fn parse_value_expr_words(words: &[&str]) -> Option<(Value, usize)> {
     let (mut value, mut used) = parse_value_expr_term_words(words)?;
     while used < words.len() {
-        let operator = *words.get(used)?;
-        if !permission_shapes::exact_words(&[operator], &["plus"])
-            && !permission_shapes::exact_words(&[operator], &["minus"])
-        {
+        let (subtract, operator_words, in_excess_of) = if words.get(used) == Some(&"plus") {
+            (false, 1, false)
+        } else if words.get(used) == Some(&"minus") {
+            (true, 1, false)
+        } else if words.get(used..used + 3) == Some(["in", "excess", "of"].as_slice()) {
+            (true, 3, true)
+        } else {
             break;
-        }
-        let (rhs, rhs_used) = parse_value_expr_term_words(&words[used + 1..])?;
-        used += 1 + rhs_used;
-        let rhs = if permission_shapes::exact_words(&[operator], &["minus"]) {
+        };
+        let (rhs, rhs_used) = parse_value_expr_term_words(&words[used + operator_words..])?;
+        used += operator_words + rhs_used;
+        let rhs = if subtract {
             match rhs {
                 Value::Fixed(fixed) => Value::Fixed(-fixed),
                 Value::X => Value::XTimes(-1),
                 Value::XTimes(multiplier) => Value::XTimes(-multiplier),
-                _ => return None,
+                other => Value::Scaled(Box::new(other), -1),
             }
         } else {
             rhs
         };
         value = Value::Add(Box::new(value), Box::new(rhs));
+        if in_excess_of {
+            value = value.with_surface_hint(ValueSurfaceHint::InExcessOf);
+        }
     }
     Some((value, used))
 }
@@ -441,6 +447,17 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
             Value::EventValue(EventValueSpec::Amount)
                 .with_surface_hint(ValueSurfaceHint::DamageDealt),
             *used,
+        ));
+    }
+
+    if let Some(used) = prefix_len(
+        words,
+        &[&["the", "result"], &["that", "result"], &["result"]],
+    ) {
+        return Some((
+            Value::EventValue(EventValueSpec::Amount)
+                .with_surface_hint(ValueSurfaceHint::PriorEffectResult),
+            used,
         ));
     }
 
@@ -646,10 +663,19 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         }
     }
 
+    if permission_shapes::prefix_words(words, &["its", "power"]) {
+        return Some((
+            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                ChooseSpecSurfaceHint::SourceReference(
+                    SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                ),
+            ))),
+            2,
+        ));
+    }
     if let Some(used) = prefix_len(
         words,
         &[
-            &["its", "power"],
             &["this", "power"],
             &["thiss", "power"],
             &["this", "creature", "power"],
@@ -660,10 +686,33 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     ) {
         return Some((Value::SourcePower, used));
     }
+    if permission_shapes::prefix_words(words, &["his", "power"]) {
+        return Some((
+            Value::SourcePower
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::MasculineSourcePossessive),
+            2,
+        ));
+    }
+    if permission_shapes::prefix_words(words, &["her", "power"]) {
+        return Some((
+            Value::SourcePower
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::FeminineSourcePossessive),
+            2,
+        ));
+    }
+    if permission_shapes::prefix_words(words, &["its", "toughness"]) {
+        return Some((
+            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                ChooseSpecSurfaceHint::SourceReference(
+                    SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                ),
+            ))),
+            2,
+        ));
+    }
     if let Some(used) = prefix_len(
         words,
         &[
-            &["its", "toughness"],
             &["this", "toughness"],
             &["thiss", "toughness"],
             &["this", "creature", "toughness"],
@@ -674,10 +723,19 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     ) {
         return Some((Value::SourceToughness, used));
     }
+    if permission_shapes::prefix_words(words, &["its", "mana", "value"]) {
+        return Some((
+            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                ChooseSpecSurfaceHint::SourceReference(
+                    SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                ),
+            ))),
+            3,
+        ));
+    }
     if let Some(used) = prefix_len(
         words,
         &[
-            &["its", "mana", "value"],
             &["this", "mana", "value"],
             &["thiss", "mana", "value"],
             &["this", "creature", "mana", "value"],
@@ -689,6 +747,19 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
         return Some((
             Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
             used,
+        ));
+    }
+    // In an attack-group trigger, plural "their" denotes the creatures that
+    // jointly satisfied the one-or-more trigger, not every creature currently
+    // on the battlefield.  Trigger queuing captures that exact group under
+    // ATTACKING_GROUP_TAG so the value remains stable while the ability is on
+    // the stack.
+    if permission_shapes::prefix_words(words, &["their", "total", "power"]) {
+        return Some((
+            Value::TotalPower(crate::target::ObjectFilter::tagged(
+                ironsmith_core::ATTACKING_GROUP_TAG,
+            )),
+            3,
         ));
     }
     if let Some(used) = prefix_len(words, COLORS_SPENT_PREFIXES) {
@@ -756,6 +827,28 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         return None;
     }
     idx += 2;
+    if let Some(character_word) = words.get(idx)
+        && let Some(character) = character_word
+            .strip_suffix("'s")
+            .or_else(|| character_word.strip_suffix("’s"))
+            .or_else(|| character_word.strip_suffix('s'))
+        && character.chars().count() == 1
+        && character.chars().all(|character| character.is_alphabetic())
+        && words.get(idx + 1..idx + 5) == Some(&["in", "name", "stickers", "on"][..])
+    {
+        let reference_start = idx + 5;
+        let reference_end = value_boundary(&words[reference_start..]) + reference_start;
+        let reference = words.get(reference_start..reference_end)?;
+        let surface = source_reference_surface_for_words(reference)
+            .or_else(|| this_source_surface_for_words(reference))?;
+        return Some((
+            Value::NameStickerCharacterCountOnSource {
+                character: character.chars().next()?.to_ascii_lowercase(),
+                surface: Some(surface),
+            },
+            reference_end,
+        ));
+    }
     let mut counter_descriptor_start = idx;
     if words
         .get(counter_descriptor_start)
@@ -857,6 +950,17 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
     if let Some(value) = super::value_semantics::parse_turn_history_count_value(&history_tokens) {
         return Some((value, filter_end));
     }
+    // Keep a qualifying hand-size predicate attached to the players it
+    // describes. The generic object-filter fallback below otherwise turns
+    // this into a count of cards across every player's hand.
+    if let Some((players, minimum)) =
+        super::value_semantics::parse_players_with_cards_in_hand_at_least(&history_tokens)
+    {
+        return Some((
+            Value::CountPlayersWithCardsInHandAtLeast(players, minimum),
+            filter_end,
+        ));
+    }
     if exact_one_of(
         filter_words,
         &[
@@ -895,7 +999,11 @@ fn parse_number_of_value(words: &[&str]) -> Option<(Value, usize)> {
         return Some((Value::Count(filter), filter_end));
     }
     let filter = parse_object_filter_words(filter_words, false).ok()?;
-    Some((Value::Count(filter), filter_end))
+    let mut value = Value::Count(filter);
+    if value_helper_shapes::has_that_player_possessive(filter_words) {
+        value = value.with_surface_hint(ValueSurfaceHint::ThatPlayerPossessive);
+    }
+    Some((value, filter_end))
 }
 
 fn parse_source_controller_graveyard_filter(words: &[&str]) -> Option<crate::target::ObjectFilter> {
@@ -954,6 +1062,8 @@ fn value_boundary(words: &[&str]) -> usize {
         .filter_map(|word| permission_shapes::find_words(words, &[*word]))
         .min()
         .unwrap_or(words.len());
+    let in_excess =
+        permission_shapes::find_words(words, &["in", "excess", "of"]).unwrap_or(words.len());
     // A "from <zone>" right after a controller/owner clause is the enclosing
     // effect's movement source, never part of the count basis: "the number
     // of lands you control from your hand onto the battlefield" must count
@@ -966,7 +1076,7 @@ fn value_boundary(words: &[&str]) -> usize {
         })
         .map(|(idx, _)| idx + 1)
         .unwrap_or(words.len());
-    arithmetic.min(movement_source)
+    arithmetic.min(in_excess).min(movement_source)
 }
 
 fn first_counter_word(words: &[&str]) -> Option<usize> {
@@ -1015,6 +1125,7 @@ mod tests {
     use super::*;
     use crate::object::CounterType;
     use crate::runtime_backend::lexer::lex_line;
+    use crate::target::SourceReferenceSurface;
 
     #[test]
     fn parses_rounded_and_tagged_value_expressions() {
@@ -1040,6 +1151,46 @@ mod tests {
     }
 
     #[test]
+    fn parses_character_count_in_source_name_stickers() {
+        let tokens = lex_line("the number of o's in name stickers on this enchantment", 0)
+            .expect("name-sticker character-count fixture should lex");
+        let (value, used) =
+            parse_value_expr_tokens(&tokens).expect("name-sticker character count should parse");
+        assert_eq!(used, tokens.len());
+        assert_eq!(
+            value,
+            Value::NameStickerCharacterCountOnSource {
+                character: 'o',
+                surface: Some(SourceReferenceSurface::ThisPermanentType(
+                    "this enchantment".to_string()
+                )),
+            }
+        );
+    }
+
+    #[test]
+    fn possessive_it_characteristics_keep_the_object_antecedent() {
+        assert_eq!(
+            parse_value_expr_words(&["its", "power"]),
+            Some((
+                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                2,
+            ))
+        );
+        assert_eq!(
+            parse_value_expr_words(&["its", "toughness"]),
+            Some((
+                Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                2,
+            ))
+        );
+        assert_eq!(
+            parse_value_expr_words(&["this", "creatures", "toughness"]),
+            Some((Value::SourceToughness, 3))
+        );
+    }
+
+    #[test]
     fn parses_maximum_hand_size_as_a_bound_player_aggregate() {
         assert_eq!(
             parse_value_expr_words(&[
@@ -1057,6 +1208,67 @@ mod tests {
             parse_value_expr_tokens(&tokens),
             Some((Value::Add(Box::new(Value::X), Box::new(Value::Fixed(2))), 3,))
         );
+    }
+
+    #[test]
+    fn parses_dynamic_subtraction_and_in_excess_of_as_composable_values() {
+        for (operator, in_excess_of) in [
+            (["minus"].as_slice(), false),
+            (["in", "excess", "of"].as_slice(), true),
+        ] {
+            let mut words = vec!["number", "of", "creatures", "you", "control"];
+            words.extend_from_slice(operator);
+            words.extend([
+                "number",
+                "of",
+                "creatures",
+                "target",
+                "opponent",
+                "controls",
+            ]);
+
+            let (value, used) =
+                parse_value_expr_words(&words).expect("dynamic difference should parse");
+            assert_eq!(used, words.len());
+            assert_eq!(
+                value.has_surface_hint(ValueSurfaceHint::InExcessOf),
+                in_excess_of,
+            );
+            let Value::Add(left, right) = value.unhinted() else {
+                panic!("difference should be represented as composable addition");
+            };
+            assert!(matches!(left.as_ref(), Value::Count(_)));
+            assert!(
+                matches!(right.as_ref(), Value::Scaled(inner, -1) if matches!(inner.as_ref(), Value::Count(_)))
+            );
+        }
+    }
+
+    #[test]
+    fn hand_count_preserves_authored_that_player_possessive() {
+        for (owner_words, expected_hint) in [
+            (["that", "players"].as_slice(), true),
+            (["their"].as_slice(), false),
+        ] {
+            let mut words = vec!["the", "number", "of", "cards", "in"];
+            words.extend_from_slice(owner_words);
+            words.push("hand");
+
+            let (value, used) =
+                parse_value_expr_words(&words).expect("player-relative hand count should parse");
+            assert_eq!(used, words.len());
+            assert_eq!(
+                value.has_surface_hint(ValueSurfaceHint::ThatPlayerPossessive),
+                expected_hint,
+                "{words:?}: {value:#?}"
+            );
+            assert!(matches!(
+                value.unhinted(),
+                Value::Count(filter)
+                    if filter.zone == Some(crate::zone::Zone::Hand)
+                        && filter.owner == Some(PlayerFilter::IteratedPlayer)
+            ));
+        }
     }
 
     #[test]
@@ -1125,6 +1337,40 @@ mod tests {
     }
 
     #[test]
+    fn count_value_preserves_player_or_planeswalker_controller_reference() {
+        let words = [
+            "the",
+            "number",
+            "of",
+            "creatures",
+            "that",
+            "opponent",
+            "or",
+            "that",
+            "planeswalkers",
+            "controller",
+            "controls",
+        ];
+        let (value, used) =
+            parse_value_expr_words(&words).expect("controller-relative count should parse");
+
+        assert_eq!(used, words.len());
+        let Value::Count(filter) = value else {
+            panic!("expected an object count");
+        };
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
+        assert_eq!(
+            filter.controller,
+            Some(PlayerFilter::TargetPlayerOrControllerOfTarget)
+        );
+        assert!(
+            !filter
+                .card_types
+                .contains(&crate::types::CardType::Planeswalker)
+        );
+    }
+
+    #[test]
     fn generic_number_of_value_preserves_tapped_this_way_link() {
         let (value, used) =
             parse_value_expr_words(&["the", "number", "of", "creatures", "tapped", "this", "way"])
@@ -1146,6 +1392,32 @@ mod tests {
         assert_eq!(
             query.filter.expect("creature filter").card_types,
             vec![crate::types::CardType::Creature]
+        );
+    }
+
+    #[test]
+    fn generic_number_of_value_keeps_hand_threshold_on_qualified_players() {
+        let words = [
+            "the",
+            "number",
+            "of",
+            "your",
+            "opponents",
+            "with",
+            "four",
+            "or",
+            "more",
+            "cards",
+            "in",
+            "hand",
+        ];
+        let (value, used) =
+            parse_value_expr_words(&words).expect("qualified player count should parse");
+
+        assert_eq!(used, words.len());
+        assert_eq!(
+            value,
+            Value::CountPlayersWithCardsInHandAtLeast(PlayerFilter::Opponent, 4)
         );
     }
 
@@ -1279,5 +1551,23 @@ mod tests {
             Value::ManaValueOf(spec)
                 if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == "__public_revealed")
         ));
+    }
+
+    #[test]
+    fn its_characteristic_keeps_the_pronoun_on_the_object_reference() {
+        let (value, used) =
+            parse_value_expr_words(&["its", "mana", "value"]).expect("possessive mana value");
+        assert_eq!(used, 3);
+        let Value::ManaValueOf(spec) = value else {
+            panic!("expected a typed mana-value reference");
+        };
+        assert!(matches!(
+            spec.base(),
+            ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+        ));
+        assert_eq!(
+            spec.source_reference_surface(),
+            Some(&SourceReferenceSurface::ThisPermanentType("it".to_string()))
+        );
     }
 }

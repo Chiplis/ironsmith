@@ -798,7 +798,9 @@ impl ZoneChangeTrigger {
                     format!("When {battlefield_subject} is put into exile from the battlefield")
                 }
                 (_, ZonePattern::Specific(Zone::Battlefield)) => {
-                    format!("When {battlefield_subject} {enter_verb} the battlefield{origin_suffix}")
+                    format!(
+                        "When {battlefield_subject} {enter_verb} the battlefield{origin_suffix}"
+                    )
                 }
                 (ZonePattern::Specific(Zone::Battlefield), _) => {
                     format!("When {battlefield_subject} leaves the battlefield")
@@ -826,6 +828,13 @@ impl ZoneChangeTrigger {
         }
 
         // Object filter description
+        let enters_under_controller = self.to == ZonePattern::Specific(Zone::Battlefield)
+            && self.object_filter.has_enters_under_controller_surface()
+            && self.object_filter.controller.is_some();
+        let mut display_filter = self.object_filter.clone();
+        if enters_under_controller {
+            display_filter.controller = None;
+        }
         let mut filter_desc = if self.to == ZonePattern::Specific(Zone::Graveyard) {
             graveyard_subject_description(self)
         } else if is_nontoken_card_subject_from_card_zones(self) {
@@ -835,7 +844,7 @@ impl ZoneChangeTrigger {
                 "card".to_string()
             }
         } else {
-            subject_description_for_zone_change(&self.object_filter)
+            subject_description_for_zone_change(&display_filter)
         };
         if let Some(rest) = filter_desc
             .strip_prefix("an opponent's ")
@@ -941,6 +950,21 @@ impl ZoneChangeTrigger {
                     "enters"
                 };
                 parts.push(format!("{verb} {}", enters_origin_phrase(self).unwrap()));
+            }
+            (_, ZonePattern::Specific(Zone::Battlefield)) if enters_under_controller => {
+                let verb = if self.count_mode == CountMode::OneOrMore {
+                    "enter"
+                } else {
+                    "enters"
+                };
+                let controller = match self.object_filter.controller.as_ref() {
+                    Some(PlayerFilter::You) => "your".to_string(),
+                    Some(PlayerFilter::Opponent) => "an opponent's".to_string(),
+                    Some(PlayerFilter::NotYou) => "another player's".to_string(),
+                    Some(_) => "that player's".to_string(),
+                    None => unreachable!("guarded by enters_under_controller"),
+                };
+                parts.push(format!("{verb} under {controller} control"));
             }
             (_, ZonePattern::Specific(Zone::Battlefield)) => {
                 parts.push(
@@ -2030,5 +2054,16 @@ mod tests {
     fn test_display_does_not_duplicate_article_for_land_etb() {
         let trigger = ZoneChangeTrigger::enters_battlefield(ObjectFilter::land());
         assert_eq!(trigger.display(), "Whenever a land enters the battlefield");
+    }
+
+    #[test]
+    fn test_display_preserves_enters_under_opponent_control_surface() {
+        let mut land = ObjectFilter::land().controlled_by(PlayerFilter::Opponent);
+        land.set_enters_under_controller_surface(true);
+        let trigger = ZoneChangeTrigger::enters_battlefield(land);
+        assert_eq!(
+            trigger.display(),
+            "Whenever a land enters under an opponent's control"
+        );
     }
 }

@@ -23,6 +23,7 @@ use crate::types::Subtype;
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
+mod dynamic_color_among;
 #[cfg(ironsmith_runtime_parser_tests)]
 mod shard_00;
 mod shard_01;

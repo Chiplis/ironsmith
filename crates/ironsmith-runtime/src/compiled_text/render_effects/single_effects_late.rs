@@ -1,5 +1,65 @@
 use super::*;
 
+pub(super) fn describe_collection_scoped_each_upkeep_return(
+    schedule: &crate::effects::ScheduleDelayedTriggerEffect,
+) -> Option<String> {
+    let (duration_tag, duration_zone) = schedule.while_any_tagged_object_in_zone.as_ref()?;
+    if *duration_zone != Zone::Exile
+        || duration_tag.as_str() != crate::tag::SOURCE_EXILED_TAG
+        || schedule.one_shot
+        || schedule.start_next_turn
+        || schedule.until_end_of_turn
+        || schedule.until_end_of_combat
+        || !schedule
+            .trigger
+            .downcast_ref::<crate::triggers::BeginningOfUpkeepTrigger>()
+            .is_some_and(|upkeep| upkeep.player == PlayerFilter::Any)
+    {
+        return None;
+    }
+
+    let effects = schedule.effects.flattened_default_effects();
+    let choose = effects.iter().find_map(|effect| {
+        structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+    })?;
+    if choose.chooser != PlayerFilter::Active
+        || choose.count.min != 1
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+        || choose.count.random
+        || choose.count_value.is_some()
+        || choose.zone != Some(Zone::Exile)
+        || choose.filter.zone != Some(Zone::Exile)
+        || choose.filter.owner != Some(PlayerFilter::Active)
+        || !choose.filter.tagged_constraints.iter().any(|constraint| {
+            &constraint.tag == duration_tag
+                && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+
+    let return_effect = effects.iter().find_map(|effect| {
+        structural_unwrap_render_wrappers(effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
+    })?;
+    if return_effect.zone != Zone::Battlefield
+        || return_effect.verb_surface != ironsmith_core::MoveToZoneVerbSurface::Return
+        || return_effect.battlefield_controller != crate::effects::BattlefieldController::Owner
+        || !matches!(
+            return_effect.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &choose.tag
+        )
+    {
+        return None;
+    }
+
+    Some(
+        "For as long as any of those cards remain exiled, at the beginning of each player's upkeep, that player returns one of the exiled cards they own to the battlefield"
+            .to_string(),
+    )
+}
+
 pub(super) fn describe_remove_counter_phrase(
     count: &Value,
     counter_type: CounterType,
@@ -321,6 +381,118 @@ fn describe_restart_game(restart: &crate::effects::RestartGameEffect) -> String 
     format!("Restart the game, leaving in exile {objects} exiled with {source}")
 }
 
+/// Recover the authored card-type choice from its executable nine-mode
+/// lowering. Each mode is the same reveal-and-partition program specialized
+/// to one card type; presenting those implementation modes as ordinary modal
+/// bullets loses the actual Oracle instruction.
+fn describe_choose_card_type_reveal_partition(
+    choice: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    let expected_modes = [
+        ("Artifact", CardType::Artifact),
+        ("Battle", CardType::Battle),
+        ("Creature", CardType::Creature),
+        ("Enchantment", CardType::Enchantment),
+        ("Instant", CardType::Instant),
+        ("Kindred", CardType::Kindred),
+        ("Land", CardType::Land),
+        ("Planeswalker", CardType::Planeswalker),
+        ("Sorcery", CardType::Sorcery),
+    ];
+    if !matches!(choice.chooser, None | Some(PlayerFilter::You))
+        || choice.min != Value::Fixed(1)
+        || choice.max != Value::Fixed(1)
+        || choice.choose_count != Value::Fixed(1)
+        || choice.min_choose_count != Value::Fixed(1)
+        || choice.allow_repeat
+        || choice.random
+        || choice.allow_repeated_modes
+        || choice.spree
+        || !choice.mode_additional_mana_costs.is_empty()
+        || choice.disallow_previously_chosen_modes
+        || choice.disallow_previously_chosen_modes_this_turn
+        || choice.distinct_player_targets_per_mode
+        || choice.conditional_mode_range.is_some()
+        || choice.modes.len() != expected_modes.len()
+        || choice.mode_point_costs.iter().any(|cost| *cost != 1)
+    {
+        return None;
+    }
+
+    fn is_plain_iterated_move(effect: &Effect, zone: Zone) -> bool {
+        let Some(moved) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() else {
+            return false;
+        };
+        matches!(moved.target.base(), ChooseSpec::Iterated)
+            && moved.zone == zone
+            && !moved.to_top
+            && moved.library_order.is_none()
+            && moved.battlefield_controller == crate::effects::BattlefieldController::Preserve
+            && !moved.controller_surface_explicit
+            && moved.enters_with_counters.is_empty()
+            && !moved.enters_tapped
+            && !moved.enters_attacking
+            && moved.attack_target_mode.is_none()
+            && !moved.enters_face_down
+            && !moved.enters_transformed
+            && !moved.transfer_exiled_with_source_links
+    }
+
+    let mut shared_count: Option<Value> = None;
+    for (mode, (expected_label, expected_card_type)) in choice.modes.iter().zip(expected_modes) {
+        if mode.source_text.trim() != expected_label {
+            return None;
+        }
+        let [look_effect, reveal_effect, for_each_effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+        let reveal = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+        let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+        let [conditional_effect] = for_each.effects.as_slice() else {
+            return None;
+        };
+        let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let crate::effect::Condition::TaggedObjectMatches(iterated_tag, filter) =
+            &conditional.condition
+        else {
+            return None;
+        };
+        let [move_to_hand] = conditional.if_true.as_slice() else {
+            return None;
+        };
+        let [move_to_bottom] = conditional.if_false.as_slice() else {
+            return None;
+        };
+
+        let mut expected_filter = ObjectFilter::default();
+        expected_filter.card_types.push(expected_card_type);
+        if look.player != PlayerFilter::You
+            || look.reveal
+            || reveal.tag != look.tag
+            || for_each.tag != look.tag
+            || iterated_tag.as_str() != "__it__"
+            || filter != &expected_filter
+            || !is_plain_iterated_move(move_to_hand, Zone::Hand)
+            || !is_plain_iterated_move(move_to_bottom, Zone::Library)
+        {
+            return None;
+        }
+        if shared_count
+            .as_ref()
+            .is_some_and(|count| count != &look.count)
+        {
+            return None;
+        }
+        shared_count.get_or_insert_with(|| look.count.clone());
+    }
+
+    let count = describe_card_count(shared_count.as_ref()?);
+    Some(format!(
+        "Choose a card type, then reveal the top {count} of your library. Put all cards of the chosen type revealed this way into your hand and the rest on the bottom of your library in any order"
+    ))
+}
+
 fn describe_play_subgame(subgame: &crate::effects::PlaySubgameEffect) -> String {
     let opening = "Players play a Magic subgame, using their libraries as their decks";
     let [continuation] = subgame.nonwinner_effects.as_slice() else {
@@ -354,6 +526,25 @@ fn describe_play_subgame(subgame: &crate::effects::PlaySubgameEffect) -> String 
             .trim(),
     );
     format!("{opening}. After the subgame, {body} for each player who didn't win it")
+}
+
+fn token_copy_reference_text(
+    surface: crate::effects::TokenCopyReferenceSurface,
+    subject: bool,
+) -> &'static str {
+    use crate::effects::TokenCopyReferenceSurface as Surface;
+
+    match (surface, subject) {
+        (Surface::It, _) => "it",
+        (Surface::They, true) => "they",
+        (Surface::They, false) => "them",
+        (Surface::ThatToken, _) => "that token",
+        (Surface::ThoseTokens, _) => "those tokens",
+        (Surface::TheToken, _) => "the token",
+        (Surface::TheTokens, _) => "the tokens",
+        (Surface::TokenCreatedThisWay, _) => "the token created this way",
+        (Surface::TokensCreatedThisWay, _) => "the tokens created this way",
+    }
 }
 
 pub(crate) fn describe_effect_impl(effect: &Effect) -> String {
@@ -430,14 +621,45 @@ pub(super) fn describe_excess_damage_condition_target(target: &ChooseSpec) -> St
     }
 }
 
+fn describe_excess_damage_fight_target(target: &ChooseSpec) -> String {
+    let described = describe_choose_spec(target);
+    if let Some(rest) = described.strip_prefix("target ") {
+        format!("the {rest}")
+    } else {
+        described
+    }
+}
+
 pub(super) fn excess_damage_condition_target_from_effect(effect: &Effect) -> Option<String> {
     if let Some(damage) = effect.downcast_ref::<crate::effects::DealDamageEffect>() {
         return Some(describe_excess_damage_condition_target(&damage.target));
+    }
+    if let Some(fight) = effect.downcast_ref::<crate::effects::FightEffect>() {
+        return Some(describe_excess_damage_fight_target(&fight.creature2));
     }
     if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
         return excess_damage_condition_target_from_effect(&tagged.effect);
     }
     None
+}
+
+#[cfg(test)]
+mod excess_damage_fight_target_tests {
+    use super::*;
+
+    #[test]
+    fn fight_reflexive_uses_the_second_target_creature() {
+        let opponent_creature = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
+        let fight = Effect::fight(
+            ChooseSpec::target_creature(),
+            ChooseSpec::target(ChooseSpec::Object(opponent_creature)),
+        );
+
+        assert_eq!(
+            excess_damage_condition_target_from_effect(&fight),
+            Some("the creature an opponent controls".to_string()),
+        );
+    }
 }
 
 pub(crate) fn normalize_activation_restriction_clause(raw: &str) -> String {
@@ -465,6 +687,73 @@ pub(super) fn describe_mana_usage_restriction_clauses_for_activated(
         .iter()
         .filter_map(|restriction| describe_mana_usage_restriction(restriction, Some(activated)))
         .collect()
+}
+
+fn negative_cast_payment_filter(
+    predicate: &crate::ability::ManaPaymentPredicate,
+) -> Option<&ObjectFilter> {
+    let crate::ability::ManaPaymentPredicate::Not(inner) = predicate else {
+        return None;
+    };
+    let crate::ability::ManaPaymentPredicate::All(parts) = inner.as_ref() else {
+        return None;
+    };
+    if parts.len() != 2
+        || !parts.iter().any(|part| {
+            matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::Purpose(
+                    crate::ability::ManaPaymentPurpose::CastSpell
+                )
+            )
+        })
+    {
+        return None;
+    }
+    parts.iter().find_map(|part| match part {
+        crate::ability::ManaPaymentPredicate::SourceMatches(filter) => Some(filter),
+        _ => None,
+    })
+}
+
+fn activation_source_payment_filter(
+    predicate: &crate::ability::ManaPaymentPredicate,
+) -> Option<&ObjectFilter> {
+    let crate::ability::ManaPaymentPredicate::All(parts) = predicate else {
+        return None;
+    };
+    if parts.len() != 2 {
+        return None;
+    }
+    let valid_purposes = parts.iter().any(|part| {
+        let crate::ability::ManaPaymentPredicate::AnyOf(purposes) = part else {
+            return false;
+        };
+        purposes.len() == 2
+            && purposes.iter().any(|purpose| {
+                matches!(
+                    purpose,
+                    crate::ability::ManaPaymentPredicate::Purpose(
+                        crate::ability::ManaPaymentPurpose::ActivateAbility
+                    )
+                )
+            })
+            && purposes.iter().any(|purpose| {
+                matches!(
+                    purpose,
+                    crate::ability::ManaPaymentPredicate::Purpose(
+                        crate::ability::ManaPaymentPurpose::ActivateManaAbility
+                    )
+                )
+            })
+    });
+    if !valid_purposes {
+        return None;
+    }
+    parts.iter().find_map(|part| match part {
+        crate::ability::ManaPaymentPredicate::SourceMatches(filter) => Some(filter),
+        _ => None,
+    })
 }
 
 pub(super) fn describe_mana_usage_restriction(
@@ -692,6 +981,46 @@ pub(super) fn describe_mana_usage_restriction(
             restriction,
             on_spend,
         } => {
+            if on_spend.is_empty()
+                && let Some(filter) = restriction.as_ref().and_then(negative_cast_payment_filter)
+            {
+                let plural = filter.zone == Some(Zone::Hand)
+                    || activated
+                        .and_then(activated_mana_output_amount)
+                        .is_some_and(|amount| amount > 1)
+                    || activated.is_some_and(|activated| {
+                        activated
+                            .effects
+                            .flattened_default_effects()
+                            .iter()
+                            .any(|effect| {
+                                effect
+                                    .downcast_ref::<crate::effects::AddScaledManaEffect>()
+                                    .is_some()
+                            })
+                    });
+                let spell_text =
+                    describe_mana_usage_spell_filter_target_with_options(filter, plural)?;
+                return Some(format!("This mana can't be spent to cast {spell_text}"));
+            }
+            if on_spend.is_empty()
+                && let Some(filter) = restriction
+                    .as_ref()
+                    .and_then(activation_source_payment_filter)
+            {
+                let source_text = describe_mana_usage_ability_source_filter(filter)?;
+                let source_text = source_text
+                    .strip_prefix("a ")
+                    .or_else(|| source_text.strip_prefix("an "))
+                    .unwrap_or(&source_text);
+                let source_text = source_text
+                    .strip_suffix(" source")
+                    .map(|prefix| format!("{prefix} sources"))
+                    .unwrap_or_else(|| source_text.to_string());
+                return Some(format!(
+                    "Spend this mana only to activate abilities of {source_text}"
+                ));
+            }
             if let Some(crate::ability::ManaPaymentPredicate::Purpose(
                 crate::ability::ManaPaymentPurpose::CumulativeUpkeep,
             )) = restriction
@@ -992,8 +1321,12 @@ pub(super) fn describe_mana_usage_static_ability_bonus(
 pub(crate) fn collect_activation_restriction_clauses(
     timing: &ActivationTiming,
     additional_restrictions: &[String],
+    activation_restrictions: &[crate::ConditionExpr],
 ) -> Vec<String> {
     let mut clauses = Vec::new();
+    let once_per_turn_after_other_restrictions = additional_restrictions
+        .iter()
+        .any(|restriction| restriction == "__ironsmith_once_per_turn_after_other_restrictions");
 
     let timing_is_implied_by_presentation = *timing == ActivationTiming::DuringSourceOwnersUpkeep
         && additional_restrictions.iter().any(|restriction| {
@@ -1002,6 +1335,7 @@ pub(crate) fn collect_activation_restriction_clauses(
                 .is_some_and(|label| label.eq_ignore_ascii_case("Forecast"))
         });
     if !timing_is_implied_by_presentation
+        && !once_per_turn_after_other_restrictions
         && let Some(timing_clause) = describe_activation_timing_clause(timing)
     {
         let normalized = normalize_activation_restriction_clause(timing_clause);
@@ -1021,6 +1355,9 @@ pub(crate) fn collect_activation_restriction_clauses(
         if raw.starts_with("__ironsmith_activation_label:") {
             continue;
         }
+        if raw == "__ironsmith_once_per_turn_after_other_restrictions" {
+            continue;
+        }
         if raw
             .to_ascii_lowercase()
             .contains("exhaust ability only once")
@@ -1028,6 +1365,18 @@ pub(crate) fn collect_activation_restriction_clauses(
             continue;
         }
         let normalized = normalize_activation_restriction_clause(raw);
+        push_activation_restriction_clause(&mut clauses, normalized);
+    }
+
+    for condition in activation_restrictions {
+        let described = super::abilities_and_costs::describe_mana_activation_condition(condition);
+        push_activation_restriction_clause(&mut clauses, described);
+    }
+
+    if once_per_turn_after_other_restrictions
+        && let Some(timing_clause) = describe_activation_timing_clause(timing)
+    {
+        let normalized = normalize_activation_restriction_clause(timing_clause);
         push_activation_restriction_clause(&mut clauses, normalized);
     }
 
@@ -1078,7 +1427,7 @@ pub(crate) fn join_activation_restriction_clauses(clauses: &[String]) -> String 
     let mut line = first.clone();
     for clause in iter {
         if let Some(rest) = clause.strip_prefix("Activate only ") {
-            line.push_str(" and ");
+            line.push_str(" and only ");
             line.push_str(rest);
         } else {
             line.push_str(" and ");
@@ -1462,6 +1811,7 @@ pub(crate) fn describe_keyword_ability(ability: &Ability) -> Option<String> {
             let mut restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
+                &activated.activation_restrictions,
             );
             // Equip implies sorcery-speed by default; only surface extra restrictions.
             restriction_clauses
@@ -1962,7 +2312,7 @@ pub(super) fn cycling_keywords_for_search_filter(filter: &ObjectFilter) -> Vec<S
     keywords
 }
 
-pub(super) fn describe_structural_equip_keyword(
+pub(in crate::compiled_text) fn describe_structural_equip_keyword(
     activated: &crate::ability::ActivatedAbility,
 ) -> Option<String> {
     if !matches!(activated.timing, ActivationTiming::SorcerySpeed) {
@@ -2014,6 +2364,7 @@ pub(super) fn describe_structural_equip_keyword(
         let mut restriction_clauses = collect_activation_restriction_clauses(
             &activated.timing,
             &activated.additional_restrictions,
+            &activated.activation_restrictions,
         );
         restriction_clauses
             .retain(|clause| !clause.eq_ignore_ascii_case("Activate only as a sorcery"));
@@ -2036,6 +2387,7 @@ pub(super) fn describe_structural_equip_keyword(
     let mut restriction_clauses = collect_activation_restriction_clauses(
         &activated.timing,
         &activated.additional_restrictions,
+        &activated.activation_restrictions,
     );
     restriction_clauses.retain(|clause| !clause.eq_ignore_ascii_case("Activate only as a sorcery"));
     if !restriction_clauses.is_empty() {
@@ -3413,7 +3765,7 @@ pub(super) fn describe_structural_gravestorm_keyword(
         .downcast_ref::<crate::effects::CopySpellEffect>()?;
     if !matches!(copy_spell.target, ChooseSpec::Source)
         || copy_spell.count
-            != Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(
+            != Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(
                 crate::target::ObjectFilter::default(),
             ))
         || copy_spell.copier != PlayerFilter::You
@@ -3583,7 +3935,7 @@ pub(super) fn describe_structural_mobilize_keyword(
         || create.sacrifice_at_end_of_combat
         || !create.sacrifice_at_next_end_step
         || create.exile_at_next_end_step
-        || !describe_token_blueprint(&create.token)
+        || !describe_create_token_blueprint(create)
             .eq_ignore_ascii_case("1/1 red Warrior creature token")
     {
         return None;
@@ -4096,6 +4448,7 @@ mod next_turn_draw_surface_tests {
             collect_activation_restriction_clauses(
                 &ActivationTiming::DuringSourceOwnersUpkeep,
                 &["__ironsmith_activation_label:Forecast".to_string()],
+                &[],
             )
             .is_empty()
         );
@@ -4103,8 +4456,36 @@ mod next_turn_draw_surface_tests {
             collect_activation_restriction_clauses(
                 &ActivationTiming::DuringSourceOwnersUpkeep,
                 &[],
+                &[],
             ),
             vec!["Activate only during this card's owner's upkeep"]
+        );
+    }
+
+    #[test]
+    fn joined_activation_restrictions_preserve_each_only_qualifier() {
+        assert_eq!(
+            join_activation_restriction_clauses(&[
+                "Activate only during your turn".to_string(),
+                "Activate only once each turn".to_string(),
+            ]),
+            "Activate only during your turn and only once each turn"
+        );
+    }
+
+    #[test]
+    fn once_per_turn_surface_can_follow_an_authored_condition() {
+        let clauses = collect_activation_restriction_clauses(
+            &ActivationTiming::OncePerTurn,
+            &[
+                "activate only if an opponent lost life this turn".to_string(),
+                "__ironsmith_once_per_turn_after_other_restrictions".to_string(),
+            ],
+            &[],
+        );
+        assert_eq!(
+            join_activation_restriction_clauses(&clauses),
+            "Activate only if an opponent lost life this turn and only once each turn"
         );
     }
 }

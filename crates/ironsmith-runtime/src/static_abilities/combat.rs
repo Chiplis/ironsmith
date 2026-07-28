@@ -894,6 +894,26 @@ impl StaticAbilityKind for CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
     }
 }
 
+/// "Can't be blocked as long as defending player controls the most creatures
+/// or is tied for the most."
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CantBeBlockedWhileDefendingPlayerControlsMostCreatures;
+
+impl StaticAbilityKind for CantBeBlockedWhileDefendingPlayerControlsMostCreatures {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantBeBlockedWhileDefendingPlayerControlsMostCreatures
+    }
+
+    fn display(&self) -> String {
+        "Can't be blocked as long as defending player controls the most creatures or is tied for the most"
+            .to_string()
+    }
+
+    fn grants_evasion(&self) -> bool {
+        true
+    }
+}
+
 /// Can't be blocked by creatures with power N or less.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CantBeBlockedByPowerOrLess {

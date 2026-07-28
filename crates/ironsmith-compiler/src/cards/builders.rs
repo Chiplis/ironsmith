@@ -822,7 +822,7 @@ impl CardDefinitionBuilder {
                         crate::effect::Effect::new(crate::effects::CopySpellEffect::new(
                             crate::target::ChooseSpec::Source,
                             crate::effect::Value::TurnHistoryCount(
-                                ironsmith_core::TurnHistoryCount::Died(
+                                ironsmith_core::TurnHistoryCount::died(
                                     crate::target::ObjectFilter::default(),
                                 ),
                             ),
@@ -1162,11 +1162,20 @@ impl CardDefinitionBuilder {
         })
     }
 
-    pub fn eternalize(self, cost: ManaCost) -> Self {
-        let total_cost = TotalCost::from_costs(vec![
-            crate::costs::Cost::mana(cost),
-            crate::costs::Cost::exile_self(),
-        ]);
+    pub fn eternalize(self, cost: TotalCost) -> Self {
+        fn append_exile_source(cost: &TotalCost) -> TotalCost {
+            match cost.kind() {
+                ironsmith_core::TotalCostKind::All(costs) => {
+                    let mut costs = costs.clone();
+                    costs.push(crate::costs::Cost::exile_self());
+                    TotalCost::from_costs(costs)
+                }
+                ironsmith_core::TotalCostKind::OneOf(branches) => {
+                    TotalCost::one_of(branches.iter().map(append_exile_source).collect())
+                }
+            }
+        }
+        let total_cost = append_exile_source(&cost);
         let create_eternalized_copy = crate::effect::Effect::new(
             crate::effects::CreateTokenCopyEffect::new(
                 crate::target::ChooseSpec::Source,

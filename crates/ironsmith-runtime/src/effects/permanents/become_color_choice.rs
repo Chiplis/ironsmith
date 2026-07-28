@@ -11,7 +11,7 @@ use crate::effects::EffectExecutor;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 
-/// Effect: target permanent becomes one color of the chooser's choice.
+/// Effect: target permanent becomes one or more colors of the chooser's choice.
 pub type BecomeColorChoiceEffect = ironsmith_core::BecomeColorChoiceEffect;
 
 fn color_options() -> [(Color, &'static str); 5] {
@@ -38,24 +38,37 @@ impl EffectExecutor for BecomeColorChoiceEffect {
             .enumerate()
             .map(|(idx, (_, label))| SelectableOption::new(idx, *label))
             .collect();
-        let choice_ctx =
-            SelectOptionsContext::new(chooser, Some(ctx.source), "Choose a color", options, 1, 1);
-        let chosen = ctx
-            .decision_maker
-            .decide_options(game, &choice_ctx)
-            .into_iter()
-            .next();
+        let maximum = if self.allow_multiple {
+            options.len()
+        } else {
+            1
+        };
+        let choice_ctx = SelectOptionsContext::new(
+            chooser,
+            Some(ctx.source),
+            if self.allow_multiple {
+                "Choose one or more colors"
+            } else {
+                "Choose a color"
+            },
+            options,
+            1,
+            maximum,
+        );
+        let chosen = ctx.decision_maker.decide_options(game, &choice_ctx);
         if ctx.decision_maker.awaiting_choice() {
             return Ok(EffectOutcome::count(0));
         }
-        let Some(chosen) = chosen.filter(|idx| *idx < color_options().len()) else {
+        let colors = chosen
+            .into_iter()
+            .filter_map(|index| color_options().get(index).map(|(color, _)| *color))
+            .collect::<crate::color::ColorSet>();
+        if colors.is_empty() {
             return Ok(EffectOutcome::count(0));
-        };
-
-        let (color, _) = color_options()[chosen];
+        }
         let apply = crate::effects::ApplyContinuousEffect::with_spec(
             self.target.clone(),
-            Modification::SetColors(crate::color::ColorSet::from_color(color)),
+            Modification::SetColors(colors),
             self.duration.clone(),
         );
 
@@ -78,6 +91,13 @@ mod tests {
         fn decide_options(&mut self, _game: &GameState, _ctx: &SelectOptionsContext) -> Vec<usize> {
             // Red option index in color_options().
             vec![3]
+        }
+    }
+
+    struct ChooseWhiteAndBlueDm;
+    impl DecisionMaker for ChooseWhiteAndBlueDm {
+        fn decide_options(&mut self, _game: &GameState, _ctx: &SelectOptionsContext) -> Vec<usize> {
+            vec![0, 1]
         }
     }
 
@@ -108,6 +128,31 @@ mod tests {
             colors,
             crate::color::ColorSet::RED,
             "expected target creature to become red"
+        );
+    }
+
+    #[test]
+    fn become_color_choice_can_set_multiple_colors() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature_id =
+            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+
+        let mut dm = ChooseWhiteAndBlueDm;
+        let mut ctx = ExecutionContext::new(ObjectId::from_raw(9999), alice, &mut dm);
+        let effect =
+            BecomeColorChoiceEffect::new(ChooseSpec::SpecificObject(creature_id), Until::EndOfTurn)
+                .with_multiple_colors(true);
+
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("multi-color choice should execute");
+
+        assert_eq!(
+            game.calculated_characteristics(creature_id)
+                .expect("calculated characteristics")
+                .colors,
+            crate::color::ColorSet::WHITE.union(crate::color::ColorSet::BLUE),
         );
     }
 }

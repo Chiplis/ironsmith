@@ -512,6 +512,20 @@ pub(crate) fn parse_draw_equal_to_value(
         return Ok(Some(value));
     }
 
+    // Preserve an authored prior-action metric before the generic
+    // equal-to/filter parsers can collapse it to a bare effect result.  The
+    // exact producer is bound later, while the typed query retains details
+    // such as the counter kind in "stun counters removed this way".
+    if matches!(
+        shape,
+        zone_move_grammar::DrawEqualShape::Fallback {
+            references_this_way: true
+        }
+    ) && let Some(value) = zone_move_grammar::parse_draw_equal_this_way_metric_shape(tokens)
+    {
+        return Ok(Some(value));
+    }
+
     if let Some(value) = parse_add_mana_equal_amount_value(tokens)
         .or_else(|| parse_equal_to_number_of_opponents_you_have_value(tokens))
         .or_else(|| parse_equal_to_number_of_counters_on_reference_value(tokens))
@@ -887,7 +901,7 @@ mod turn_history_draw_tests {
         assert!(
             matches!(
                 zubera.unhinted(),
-                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(_))
+                Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died { .. })
             ),
             "{zubera:?}"
         );

@@ -16,6 +16,19 @@ enum ThreeWayDestination {
     LibraryBottom,
 }
 
+fn looked_partition_effect_outer_id(effect: &Effect) -> Option<crate::effect::EffectId> {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return Some(with_id.id);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return looked_partition_effect_outer_id(&tagged.effect);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        return looked_partition_effect_outer_id(&tag_all.effect);
+    }
+    None
+}
+
 fn exact_tagged_library_filter(
     filter: &ObjectFilter,
     expected: &[(&crate::TagKey, crate::filter::TaggedOpbjectRelation)],
@@ -332,10 +345,12 @@ pub(super) fn describe_looked_card_selected_partition(
         return None;
     };
 
-    let look = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
-    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
-    let tag_remainder =
-        tag_remainder_effect.downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let tag_remainder = structural_unwrap_render_wrappers(tag_remainder_effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
     let move_selected = unwrap_basic_tag_wrappers(move_selected_effect)
         .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
     let move_remainder = unwrap_basic_tag_wrappers(move_remainder_effect)
@@ -413,6 +428,13 @@ pub(super) fn describe_looked_card_selected_partition(
             LookedPartitionDestination::Graveyard
         )
     );
+    let selected_hand_then_library_bottom = matches!(
+        (selected_destination, remainder_destination),
+        (
+            LookedPartitionDestination::Hand,
+            LookedPartitionDestination::LibraryBottom(_)
+        )
+    );
     let selected_library_top_then_bottom = matches!(
         (selected_destination, remainder_destination),
         (
@@ -422,6 +444,7 @@ pub(super) fn describe_looked_card_selected_partition(
     );
     if !(selected_then_library_top
         || selected_hand_then_graveyard
+        || selected_hand_then_library_bottom
         || selected_library_top_then_bottom)
     {
         return None;
@@ -501,13 +524,41 @@ pub(super) fn describe_looked_card_selected_partition(
     };
     let owner = describe_possessive_player_filter(&look.player);
     let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    let mut rendered = format!(
+        "Look at the top {count} {noun} of {owner} library{where_clause}. Put {selected_reference} {selected_destination_text} and {remainder_reference} {remainder_destination_text}"
+    );
+    let mut consumed = offset + 5;
+    if selected_hand_then_graveyard
+        && look.player == PlayerFilter::You
+        && let Some(remainder_id) = looked_partition_effect_outer_id(move_remainder_effect)
+        && let Some(gain) = effects.get(consumed).and_then(|effect| {
+            structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::GainLifeEffect>()
+        })
+        && gain.player == ChooseSpec::Player(PlayerFilter::You)
+        && gain
+            .amount
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
+        && let Value::EffectMetric {
+            effect_id,
+            source: crate::effect::EffectMetricSource::AffectedObjects,
+            metric,
+        } = gain.amount.unhinted()
+        && *effect_id == remainder_id
+        && let Some(characteristic) = match metric {
+            crate::effect::EffectMetric::GreatestPower => Some("power"),
+            crate::effect::EffectMetric::GreatestToughness => Some("toughness"),
+            crate::effect::EffectMetric::GreatestManaValue => Some("mana value"),
+            _ => None,
+        }
+    {
+        rendered.push_str(&format!(
+            ". You gain life equal to the greatest {characteristic} among creature cards put into your graveyard this way"
+        ));
+        consumed += 1;
+    }
 
-    Some((
-        format!(
-            "Look at the top {count} {noun} of {owner} library{where_clause}. Put {selected_reference} {selected_destination_text} and {remainder_reference} {remainder_destination_text}"
-        ),
-        offset + 5,
-    ))
+    Some((rendered, consumed))
 }
 
 fn exact_selected_move<'a>(
@@ -553,6 +604,28 @@ fn exact_selected_move_to_hand(effect: &Effect, selected_tag: &crate::TagKey) ->
         && !move_to_zone.enters_tapped
         && !move_to_zone.enters_attacking
         && !move_to_zone.enters_face_down
+}
+
+fn exact_selected_battlefield_move_with_counter<'a>(
+    effect: &'a Effect,
+    selected_tag: &crate::TagKey,
+) -> Option<(
+    &'a crate::effects::MoveToZoneEffect,
+    &'a crate::effects::PutCountersEffect,
+)> {
+    let for_each = structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [move_effect, counter_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let move_to_zone = structural_unwrap_render_wrappers(move_effect)
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let put_counter = structural_unwrap_render_wrappers(counter_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    (for_each.tag == *selected_tag
+        && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+        && matches!(put_counter.target.base(), ChooseSpec::Iterated))
+    .then_some((move_to_zone, put_counter))
 }
 
 fn exact_plain_selected_group_move_to_zone(
@@ -633,7 +706,14 @@ fn exact_chosen_group_battlefield_or_hand_choice(
     let [battlefield_mode, hand_mode] = choice.modes.as_slice() else {
         return false;
     };
-    choice.chooser.is_none()
+    // Resolution-time choices may spell out the spell's controller as the
+    // chooser. That is semantically the same actor as the implicit chooser
+    // on an ordinary spell, so retain the compact shared-destination surface
+    // for either representation.
+    choice
+        .chooser
+        .as_ref()
+        .is_none_or(|chooser| chooser == &PlayerFilter::You)
         && choice.min == Value::Fixed(1)
         && choice.max == Value::Fixed(1)
         && choice.choose_count == Value::Fixed(1)
@@ -1067,6 +1147,333 @@ pub(super) fn describe_looked_card_selected_hand_remainder_bottom(
     ))
 }
 
+/// Renders a structurally proven looked-card partition that exiles the chosen
+/// card face down, puts a counter on that same card, and sends the exact
+/// complement to the bottom of the source library.
+pub(super) fn describe_look_exile_face_down_counter_rest_bottom(
+    effects: &[&Effect],
+) -> Option<(String, usize)> {
+    let [
+        look_effect,
+        choose_effect,
+        exile_effect,
+        counter_effect,
+        remainder_effect,
+    ] = effects.get(..5)?
+    else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = structural_unwrap_render_wrappers(exile_effect)
+        .downcast_ref::<crate::effects::ExileEffect>()?;
+    let put_counter = structural_unwrap_render_wrappers(counter_effect)
+        .downcast_ref::<crate::effects::PutCountersEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+
+    let mut plain_filter = choose.filter.clone();
+    plain_filter.zone = None;
+    plain_filter.tagged_constraints.clear();
+    let counter_tag = match &put_counter.target {
+        ChooseSpec::Tagged(tag)
+            if tag == &choose.tag || tag.as_str() == crate::tag::SOURCE_EXILED_TAG =>
+        {
+            tag
+        }
+        _ => return None,
+    };
+    if look.reveal
+        || !exact_looked_library_choice(choose, &look.tag)
+        || exact_nonrandom_choice_count(&choose.count) != Some(1)
+        || plain_filter != ObjectFilter::default()
+        || !exile.face_down
+        || !matches!(&exile.spec, ChooseSpec::Tagged(tag) if tag == &choose.tag)
+        || put_counter.target_count.is_some()
+        || put_counter.distributed
+        || remainder.tag != look.tag
+        || remainder.keep_tagged.as_ref() != Some(counter_tag)
+        || remainder.player != look.player
+        || remainder.surface != ironsmith_core::LibraryRemainderSurface::Rest
+    {
+        return None;
+    }
+
+    let order = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    let owner = describe_possessive_player_filter(&look.player);
+    let destination = if look.player == PlayerFilter::You {
+        "your library"
+    } else {
+        "that library"
+    };
+    let counter_phrase = describe_put_counter_phrase(&put_counter.amount, put_counter.counter_type);
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some((
+        format!(
+            "Look at the top {count} {noun} of {owner} library{where_clause}. Exile one of them face down with {counter_phrase} on it, then put the rest on the bottom of {destination}{order}"
+        ),
+        5,
+    ))
+}
+
+/// Renders two optional selections from one revealed pool followed by the
+/// exact complement moving to the graveyard. Every set edge is proven by
+/// tags, including exclusion of the battlefield choice from the hand choice.
+pub(super) fn describe_revealed_two_stage_graveyard_partition(
+    effects: &[&Effect],
+) -> Option<(String, usize)> {
+    let [
+        look_effect,
+        battlefield_choice_effect,
+        battlefield_move_effect,
+        hand_choice_effect,
+        hand_move_effect,
+        remainder_tag_effect,
+        remainder_move_effect,
+    ] = effects.get(..7)?
+    else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let battlefield_choice = structural_unwrap_render_wrappers(battlefield_choice_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let hand_choice = structural_unwrap_render_wrappers(hand_choice_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let remainder_tag = structural_unwrap_render_wrappers(remainder_tag_effect)
+        .downcast_ref::<crate::effects::TagMatchingObjectsEffect>()?;
+    let remainder_move = exact_selected_move(remainder_move_effect, &remainder_tag.tag)?;
+
+    let choice_filter = |choose: &crate::effects::ChooseObjectsEffect,
+                         expected: &[(&crate::TagKey, crate::filter::TaggedOpbjectRelation)]|
+     -> Option<ObjectFilter> {
+        if choose.chooser != PlayerFilter::You
+            || choose_primary_zone(choose) != Some(Zone::Library)
+            || !choose.additional_zones.is_empty()
+            || choose.count.min != 0
+            || choose.count.max != Some(1)
+            || choose.count.dynamic_x
+            || choose.count.up_to_x
+            || choose.count.random
+            || choose.count_value.is_some()
+            || choose.aggregate_constraint.is_some()
+            || choose.is_search
+            || choose.reveal
+            || choose.top_only
+            || choose.bottom_only
+            || choose.replace_tagged_objects
+            || choose.filter.zone != Some(Zone::Library)
+            || choose.filter.tagged_constraints.len() != expected.len()
+            || expected.iter().any(|(tag, relation)| {
+                choose
+                    .filter
+                    .tagged_constraints
+                    .iter()
+                    .filter(|constraint| {
+                        constraint.tag == **tag && constraint.relation == *relation
+                    })
+                    .count()
+                    != 1
+            })
+        {
+            return None;
+        }
+        let mut plain = choose.filter.clone();
+        plain.zone = None;
+        plain.tagged_constraints.clear();
+        Some(plain)
+    };
+    let battlefield_filter = choice_filter(
+        battlefield_choice,
+        &[(
+            &look.tag,
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        )],
+    )?;
+    let hand_filter = choice_filter(
+        hand_choice,
+        &[
+            (
+                &look.tag,
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            ),
+            (
+                &battlefield_choice.tag,
+                crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+            ),
+        ],
+    )?;
+    let (battlefield_move, entry_counter) = exact_selected_battlefield_move_with_counter(
+        battlefield_move_effect,
+        &battlefield_choice.tag,
+    )?;
+    let mut exact_remainder_filter = remainder_tag.filter.clone();
+    exact_remainder_filter.zone = remainder_tag.zone;
+    if !look.reveal
+        || look.player != PlayerFilter::You
+        || battlefield_filter != hand_filter
+        || battlefield_filter == ObjectFilter::default()
+        || battlefield_move.zone != Zone::Battlefield
+        || battlefield_move.to_top
+        || battlefield_move.library_order.is_some()
+        || battlefield_move.battlefield_controller
+            != crate::effects::BattlefieldController::Preserve
+        || battlefield_move.controller_surface_explicit
+        || battlefield_move.enters_tapped
+        || battlefield_move.enters_attacking
+        || battlefield_move.attack_target_mode.is_some()
+        || battlefield_move.enters_face_down
+        || battlefield_move.transfer_exiled_with_source_links
+        || entry_counter.target_count.is_some()
+        || entry_counter.distributed
+        || !exact_selected_move_to_hand(hand_move_effect, &hand_choice.tag)
+        || remainder_tag.zone != Some(Zone::Library)
+        || !remainder_tag.additional_zones.is_empty()
+        || !exact_tagged_library_filter(
+            &exact_remainder_filter,
+            &[
+                (
+                    &look.tag,
+                    crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                ),
+                (
+                    &battlefield_choice.tag,
+                    crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+                ),
+                (
+                    &hand_choice.tag,
+                    crate::filter::TaggedOpbjectRelation::IsNotTaggedObject,
+                ),
+            ],
+        )
+        || remainder_move.zone != Zone::Graveyard
+        || remainder_move.to_top
+        || remainder_move.library_order.is_some()
+    {
+        return None;
+    }
+
+    let mut filter_text = strip_leading_article(&battlefield_filter.description()).to_string();
+    if !filter_text.contains("card") {
+        filter_text.push_str(" card");
+    }
+    let selection = with_indefinite_article(&filter_text);
+    let counter_phrase =
+        describe_put_counter_phrase(&entry_counter.amount, entry_counter.counter_type);
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some((
+        format!(
+            "Reveal the top {count} {noun} of your library{where_clause}. You may put {selection} from among them onto the battlefield with {counter_phrase} on it. You may put {selection} from among them into your hand. Put the rest into your graveyard"
+        ),
+        7,
+    ))
+}
+
+/// Renders a selected looked card whose optional battlefield destination is
+/// available only during your turn, with the same card moving to hand when
+/// that move does not happen.
+pub(super) fn describe_look_reveal_your_turn_battlefield_else_hand_rest_bottom(
+    effects: &[&Effect],
+) -> Option<(String, usize)> {
+    let [
+        look_effect,
+        choose_effect,
+        reveal_effect,
+        conditional_effect,
+        remainder_effect,
+    ] = effects.get(..5)?
+    else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let reveal = structural_unwrap_render_wrappers(reveal_effect)
+        .downcast_ref::<crate::effects::RevealTaggedEffect>()?;
+    let conditional = structural_unwrap_render_wrappers(conditional_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let remainder = structural_unwrap_render_wrappers(remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
+    let [optional_battlefield, declined_hand] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let with_id = optional_battlefield.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let may = with_id.effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [battlefield_move] = may.effects.as_slice() else {
+        return None;
+    };
+    let if_effect = declined_hand.downcast_ref::<crate::effects::IfEffect>()?;
+    let [declined_hand_move] = if_effect.then.as_slice() else {
+        return None;
+    };
+    let [off_turn_hand_move] = conditional.if_false.as_slice() else {
+        return None;
+    };
+
+    let mut plain_filter = choose.filter.clone();
+    plain_filter.zone = None;
+    plain_filter.tagged_constraints.clear();
+    if look.reveal
+        || look.player != PlayerFilter::You
+        || !exact_looked_library_choice(choose, &look.tag)
+        || choose.count.min != 0
+        || choose.count.max != Some(1)
+        || choose.count.dynamic_x
+        || choose.count.up_to_x
+        || choose.count.random
+        || reveal.tag != choose.tag
+        || conditional.condition != crate::ConditionExpr::YourTurn
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || may
+            .decider
+            .as_ref()
+            .is_some_and(|decider| decider != &PlayerFilter::You)
+        || may.fallback != crate::decision::FallbackStrategy::Decline
+        || !exact_plain_selected_group_move_to_zone(
+            battlefield_move,
+            &choose.tag,
+            Zone::Battlefield,
+        )
+        || if_effect.condition != with_id.id
+        || !matches!(
+            if_effect.predicate,
+            EffectPredicate::DidNotHappen | EffectPredicate::WasDeclined
+        )
+        || !if_effect.else_.is_empty()
+        || !exact_selected_move_to_hand(declined_hand_move, &choose.tag)
+        || !exact_selected_move_to_hand(off_turn_hand_move, &choose.tag)
+        || remainder.tag != look.tag
+        || remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || remainder.player != look.player
+        || remainder.surface != ironsmith_core::LibraryRemainderSurface::Rest
+    {
+        return None;
+    }
+
+    let mut filter_text = strip_leading_article(&plain_filter.description()).to_string();
+    if !filter_text.contains("card") {
+        filter_text.push_str(" card");
+    }
+    let selection = with_indefinite_article(&filter_text);
+    let order = match remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    Some((
+        format!(
+            "Look at the top {count} {noun} of your library{where_clause}. You may reveal {selection} from among them. You may put it onto the battlefield if it's your turn. If you don't put it onto the battlefield, put it into your hand. Put the rest on the bottom of your library{order}"
+        ),
+        5,
+    ))
+}
+
 /// Compacts a public top-of-library pool followed by an exact one-card choice
 /// and a graveyard move. The optional target declaration and trailing draw
 /// cover both controller-chosen and opponent-chosen forms without inferring a
@@ -1436,33 +1843,34 @@ pub(super) fn describe_look_may_sacrifice_select_battlefield_rest_bottom(
     ))
 }
 
-fn exact_tagged_remainder_to_graveyard(
+fn exact_tagged_remainder_to_zone_surface(
     effect: &Effect,
     looked_tag: &crate::TagKey,
     selected_tag: &crate::TagKey,
-) -> bool {
+    destination: Zone,
+) -> Option<ironsmith_core::LibraryRemainderSurface> {
     let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect>() else {
-        return false;
+        return None;
     };
     let [conditional_effect] = for_each.effects.as_slice() else {
-        return false;
+        return None;
     };
     let Some(conditional) = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
     else {
-        return false;
+        return None;
     };
     let [move_effect] = conditional.if_false.as_slice() else {
-        return false;
+        return None;
     };
     let Some(move_to_zone) =
         unwrap_basic_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()
     else {
-        return false;
+        return None;
     };
     let crate::effect::Condition::TaggedObjectMatches(condition_tag, membership) =
         &conditional.condition
     else {
-        return false;
+        return None;
     };
     let exact_membership = membership.tagged_constraints.len() == 1
         && membership.tagged_constraints[0].tag.as_str() == "__it__"
@@ -1473,14 +1881,106 @@ fn exact_tagged_remainder_to_graveyard(
             plain.tagged_constraints.clear();
             plain == ObjectFilter::default()
         };
-    for_each.tag == *looked_tag
+    (for_each.tag == *looked_tag
         && condition_tag == selected_tag
         && exact_membership
         && conditional.if_true.is_empty()
-        && move_to_zone.zone == Zone::Graveyard
+        && move_to_zone.zone == destination
         && !move_to_zone.to_top
         && move_to_zone.library_order.is_none()
-        && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
+        && matches!(move_to_zone.target.base(), ChooseSpec::Iterated))
+    .then_some(
+        move_to_zone
+            .remainder_surface
+            .unwrap_or(ironsmith_core::LibraryRemainderSurface::Rest),
+    )
+}
+
+fn exact_tagged_remainder_to_graveyard_surface(
+    effect: &Effect,
+    looked_tag: &crate::TagKey,
+    selected_tag: &crate::TagKey,
+) -> Option<ironsmith_core::LibraryRemainderSurface> {
+    exact_tagged_remainder_to_zone_surface(effect, looked_tag, selected_tag, Zone::Graveyard)
+}
+
+fn exact_tagged_remainder_to_graveyard(
+    effect: &Effect,
+    looked_tag: &crate::TagKey,
+    selected_tag: &crate::TagKey,
+) -> bool {
+    exact_tagged_remainder_to_graveyard_surface(effect, looked_tag, selected_tag).is_some()
+}
+
+/// Compacts one optional looked-card selection followed by a conditional
+/// disposition of the exact looked-minus-selected complement. Both branches
+/// must carry the same producer and selected tags; this is what makes each
+/// authored "the rest" reference unambiguous.
+pub(super) fn describe_looked_battlefield_then_conditional_remainder(
+    effects: &[&Effect],
+) -> Option<(String, usize)> {
+    let [look_effect, choose_effect, move_effect, conditional_effect] = effects.get(..4)? else {
+        return None;
+    };
+    let look = structural_unwrap_render_wrappers(look_effect)
+        .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
+    let choose = structural_unwrap_render_wrappers(choose_effect)
+        .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let conditional = structural_unwrap_render_wrappers(conditional_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let [hand_remainder] = conditional.if_true.as_slice() else {
+        return None;
+    };
+    let [bottom_remainder_effect] = conditional.if_false.as_slice() else {
+        return None;
+    };
+    let bottom_remainder = structural_unwrap_render_wrappers(bottom_remainder_effect)
+        .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>(
+    )?;
+
+    let mut plain_filter = choose.filter.clone();
+    plain_filter.zone = None;
+    plain_filter.tagged_constraints.clear();
+    if look.reveal
+        || look.player != PlayerFilter::You
+        || !exact_looked_library_choice(choose, &look.tag)
+        || choose.count != ChoiceCount::up_to(1)
+        || !exact_plain_selected_group_move_to_zone(move_effect, &choose.tag, Zone::Battlefield)
+        || conditional.surface != ironsmith_core::ConditionalSurface::LeadingIf
+        || exact_tagged_remainder_to_zone_surface(
+            hand_remainder,
+            &look.tag,
+            &choose.tag,
+            Zone::Hand,
+        ) != Some(ironsmith_core::LibraryRemainderSurface::Rest)
+        || bottom_remainder.tag != look.tag
+        || bottom_remainder.keep_tagged.as_ref() != Some(&choose.tag)
+        || bottom_remainder.player != look.player
+        || bottom_remainder.surface != ironsmith_core::LibraryRemainderSurface::Rest
+    {
+        return None;
+    }
+
+    let mut filter_text = strip_leading_article(&plain_filter.description())
+        .trim()
+        .to_string();
+    if !filter_text.contains("card") {
+        filter_text.push_str(" card");
+    }
+    let selection = with_indefinite_article(&filter_text);
+    let (count, noun, where_clause) = describe_top_count_noun_and_where_clause(&look.count);
+    let condition = describe_condition(&conditional.condition);
+    let bottom_order = match bottom_remainder.order {
+        crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
+        crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
+    };
+
+    Some((
+        format!(
+            "Look at the top {count} {noun} of your library{where_clause}. You may put {selection} from among them onto the battlefield. Then if {condition}, put the rest into your hand. Otherwise, put the rest on the bottom of your library{bottom_order}"
+        ),
+        4,
+    ))
 }
 
 pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
@@ -1504,11 +2004,11 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
         }
     }
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let remainder_surface =
+        exact_tagged_remainder_to_graveyard_surface(remainder_effect, &look.tag, &choose.tag)?;
     if choose.chooser != PlayerFilter::You
         || choose.is_search
-        || choose.count.is_any_number()
         || !choose_references_tag(choose, &look.tag)
-        || !exact_tagged_remainder_to_graveyard(remainder_effect, &look.tag, &choose.tag)
     {
         return None;
     }
@@ -1543,8 +2043,20 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
         "{}{control_suffix}",
         describe_battlefield_entry_state_for_looked_move(move_to_zone)
     );
+    let remainder = match remainder_surface {
+        ironsmith_core::LibraryRemainderSurface::Rest => "Put the rest into your graveyard",
+        ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
+            "Then put the rest of the cards revealed this way into your graveyard"
+        }
+        ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay => {
+            "Then put the cards you revealed this way into your graveyard"
+        }
+        ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield => {
+            "Then put all cards revealed this way that weren't put onto the battlefield into your graveyard"
+        }
+    };
     Some(format!(
-        "{opener} the top {count_text} {noun} of your library{where_clause}. Put {selection} from among them onto the battlefield{battlefield_suffix}. Put the rest into your graveyard"
+        "{opener} the top {count_text} {noun} of your library{where_clause}. Put {selection} from among them onto the battlefield{battlefield_suffix}. {remainder}"
     ))
 }
 
@@ -1833,6 +2345,199 @@ pub(super) fn describe_look_exile_face_down_rest_graveyard_then_cast(
 mod tests {
     use super::*;
 
+    #[test]
+    fn shared_destination_choice_accepts_explicit_controller_chooser() {
+        let selected = crate::TagKey::from("selected");
+        let mode = |zone| {
+            crate::effect::EffectMode::new(
+                "",
+                vec![Effect::for_each_tagged(
+                    selected.clone(),
+                    vec![Effect::move_to_zone(ChooseSpec::Iterated, zone, false)],
+                )],
+            )
+        };
+        let choice = crate::effects::ChooseModeEffect::choose_one(vec![
+            mode(Zone::Battlefield),
+            mode(Zone::Hand),
+        ])
+        .with_chooser(PlayerFilter::You);
+        let effect = Effect::new(choice);
+
+        assert!(exact_chosen_group_battlefield_or_hand_choice(
+            &effect, &selected
+        ));
+    }
+
+    fn conditional_remainder_partition(correlated_bottom: bool) -> Vec<Effect> {
+        let looked = crate::TagKey::from("looked_pool");
+        let selected = crate::TagKey::from("selected_gate");
+        let mut choice_filter = ObjectFilter::default().in_zone(Zone::Library).match_tagged(
+            looked.clone(),
+            crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+        );
+        choice_filter.subtypes.push(Subtype::Gate);
+        let choose = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                choice_filter,
+                ChoiceCount::up_to(1),
+                PlayerFilter::You,
+                selected.clone(),
+            )
+            .in_zone(Zone::Library),
+        );
+        let move_selected = Effect::for_each_tagged(
+            selected.clone(),
+            vec![Effect::move_to_zone(
+                ChooseSpec::Iterated,
+                Zone::Battlefield,
+                false,
+            )],
+        );
+
+        let membership = ObjectFilter::default().match_tagged(
+            crate::TagKey::from("__it__"),
+            crate::filter::TaggedOpbjectRelation::SameStableId,
+        );
+        let hand_remainder = Effect::for_each_tagged(
+            looked.clone(),
+            vec![Effect::conditional(
+                Condition::TaggedObjectMatches(selected.clone(), membership),
+                Vec::new(),
+                vec![Effect::new(
+                    crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Hand, false)
+                        .with_remainder_surface(ironsmith_core::LibraryRemainderSurface::Rest),
+                )],
+            )],
+        );
+        let bottom_keep = correlated_bottom
+            .then_some(selected)
+            .unwrap_or_else(|| crate::TagKey::from("unrelated_selection"));
+        let bottom_remainder = Effect::new(
+            crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
+                looked.clone(),
+                Some(bottom_keep),
+                crate::effects::consult_helpers::LibraryBottomOrder::Random,
+                PlayerFilter::You,
+            )
+            .with_surface(ironsmith_core::LibraryRemainderSurface::Rest),
+        );
+        let mut gate_filter = ObjectFilter::default()
+            .in_zone(Zone::Battlefield)
+            .controlled_by(PlayerFilter::You);
+        gate_filter.subtypes.push(Subtype::Gate);
+        let disposition = Effect::conditional(
+            Condition::PlayerHasAtLeast {
+                player: PlayerFilter::You,
+                filter: gate_filter,
+                count: 9,
+            },
+            vec![hand_remainder],
+            vec![bottom_remainder],
+        );
+
+        vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                PlayerFilter::You,
+                9,
+                looked,
+            )),
+            choose,
+            move_selected,
+            disposition,
+        ]
+    }
+
+    #[test]
+    fn renders_exact_conditional_remainder_partition_and_rejects_mismatched_branch_tags() {
+        let effects = conditional_remainder_partition(true);
+        let refs = effects.iter().collect::<Vec<_>>();
+        assert_eq!(
+            describe_looked_battlefield_then_conditional_remainder(&refs),
+            Some((
+                "Look at the top nine cards of your library. You may put a Gate card from among them onto the battlefield. Then if you control nine or more Gates, put the rest into your hand. Otherwise, put the rest on the bottom of your library in a random order".to_string(),
+                4,
+            ))
+        );
+
+        let mismatched = conditional_remainder_partition(false);
+        let refs = mismatched.iter().collect::<Vec<_>>();
+        assert_eq!(
+            describe_looked_battlefield_then_conditional_remainder(&refs),
+            None
+        );
+    }
+
+    #[test]
+    fn pre_clause_renderer_keeps_typed_revealed_battlefield_complement_surface() {
+        let looked = crate::TagKey::from("revealed_pool");
+        let selected = crate::TagKey::from("selected_permanents");
+        let choice_filter = ObjectFilter::creature()
+            .in_zone(Zone::Library)
+            .match_tagged(
+                looked.clone(),
+                crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            );
+        let choose = Effect::new(
+            crate::effects::ChooseObjectsEffect::new(
+                choice_filter,
+                ChoiceCount::any_number(),
+                PlayerFilter::You,
+                selected.clone(),
+            )
+            .in_zone(Zone::Library),
+        );
+        let move_selected = Effect::for_each_tagged(
+            selected.clone(),
+            vec![Effect::move_to_zone(
+                ChooseSpec::Iterated,
+                Zone::Battlefield,
+                false,
+            )],
+        );
+        let membership = ObjectFilter::default().match_tagged(
+            crate::TagKey::from("__it__"),
+            crate::filter::TaggedOpbjectRelation::SameStableId,
+        );
+        let move_remainder = Effect::for_each_tagged(
+            looked.clone(),
+            vec![Effect::conditional(
+                Condition::TaggedObjectMatches(selected, membership),
+                Vec::new(),
+                vec![Effect::new(
+                    crate::effects::MoveToZoneEffect::new(
+                        ChooseSpec::Iterated,
+                        Zone::Graveyard,
+                        false,
+                    )
+                    .with_remainder_surface(
+                        ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield,
+                    ),
+                )],
+            )],
+        );
+        let program =
+            crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
+                default_effects: vec![
+                    Effect::new(crate::effects::LookAtTopCardsEffect::revealing(
+                        PlayerFilter::You,
+                        5,
+                        looked,
+                    )),
+                    choose,
+                    move_selected,
+                    move_remainder,
+                ],
+                self_replacements: Vec::new(),
+                starts_new_source_line: false,
+            }]);
+
+        assert_eq!(
+            super::super::super::ast_render::describe_resolution_program(&program),
+            "Reveal the top five cards of your library. Put any number of creature cards from among them onto the battlefield. Then put all cards revealed this way that weren't put onto the battlefield into your graveyard"
+        );
+    }
+
     fn looked_count_replacement_partition(
         looked: crate::TagKey,
         selected: crate::TagKey,
@@ -1943,6 +2648,7 @@ mod tests {
                     count_replacement_test_condition(),
                     replacement_effects,
                 )],
+                starts_new_source_line: false,
             }]);
 
         assert_eq!(
@@ -1979,6 +2685,7 @@ mod tests {
             crate::resolution::ResolutionProgram::new(vec![crate::resolution::ResolutionSegment {
                 default_effects,
                 self_replacements: vec![branch],
+                starts_new_source_line: false,
             }]);
 
         assert_eq!(
@@ -2444,6 +3151,223 @@ mod tests {
         let inexact = bounded_hand_graveyard_partition(false);
         let refs = inexact.iter().collect::<Vec<_>>();
         assert_eq!(describe_looked_card_selected_partition(&refs), None);
+    }
+
+    #[test]
+    fn renders_exact_complement_hand_and_library_bottom_partition() {
+        let looked = crate::TagKey::from("looked_pool");
+        let selected = crate::TagKey::from("selected_card");
+        let remainder = crate::TagKey::from("remainder_cards");
+        let effects = vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                PlayerFilter::You,
+                Value::Fixed(4),
+                looked.clone(),
+            )),
+            Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    ObjectFilter::tagged(looked.clone()).in_zone(Zone::Library),
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::You,
+                    selected.clone(),
+                )
+                .in_zone(Zone::Library),
+            ),
+            Effect::new(
+                crate::effects::TagMatchingObjectsEffect::new(
+                    ObjectFilter::tagged(looked)
+                        .not_tagged(selected.clone())
+                        .in_zone(Zone::Library),
+                    remainder.clone(),
+                )
+                .in_zone(Zone::Library),
+            ),
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(selected),
+                Zone::Hand,
+                false,
+            )),
+            Effect::new(
+                crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Tagged(remainder),
+                    Zone::Library,
+                    false,
+                )
+                .with_library_order(crate::effects::LibraryPlacementOrder::Random),
+            ),
+        ];
+        let refs = effects.iter().collect::<Vec<_>>();
+        let expected = "Look at the top four cards of your library. Put one of them into your hand and the rest on the bottom of your library in a random order";
+
+        assert_eq!(
+            describe_looked_card_selected_partition(&refs),
+            Some((expected.to_string(), 5))
+        );
+        assert_eq!(describe_effect_list(&effects), expected);
+    }
+
+    #[test]
+    fn full_card_looked_top_selected_remainder_surfaces_use_the_typed_partition() {
+        for (name, card_type, oracle, expected_partition) in [
+            (
+                "Organ Hoarder",
+                CardType::Creature,
+                "When this creature enters, look at the top three cards of your library, then put one of them into your hand and the rest into your graveyard.",
+                "look at the top three cards of your library. Put one of them into your hand and the rest into your graveyard",
+            ),
+            (
+                "Corpse Appraiser",
+                CardType::Creature,
+                "When this creature enters, exile up to one target creature card from a graveyard. If a card is put into exile this way, look at the top three cards of your library, then put one of those cards into your hand and the rest into your graveyard.",
+                "look at the top three cards of your library. Put one of them into your hand and the rest into your graveyard",
+            ),
+            (
+                "Witness the Future",
+                CardType::Sorcery,
+                "Target player shuffles up to four target cards from their graveyard into their library. You look at the top four cards of your library, then put one of those cards into your hand and the rest on the bottom of your library in a random order.",
+                "Look at the top four cards of your library. Put one of them into your hand and the rest on the bottom of your library in a random order",
+            ),
+            (
+                "Court Hussar",
+                CardType::Creature,
+                "Vigilance\nWhen this creature enters, look at the top three cards of your library, then put one of them into your hand and the rest on the bottom of your library in any order.\nWhen this creature enters, sacrifice it unless {W} was spent to cast it.",
+                "look at the top three cards of your library. Put one of them into your hand and the rest on the bottom of your library in any order",
+            ),
+        ] {
+            let definition =
+                crate::cards::builders::CardDefinitionBuilder::new(crate::CardId::new(), name)
+                    .card_types(vec![card_type])
+                    .parse_text(oracle)
+                    .unwrap_or_else(|error| panic!("{name} should compile: {error}"));
+            let compiled = crate::compiled_text::compiled_text_lines(&definition).join("\n");
+            assert!(
+                compiled.contains(expected_partition),
+                "{name} should render the structurally linked selected/remainder partition:\n{compiled}"
+            );
+        }
+    }
+
+    #[test]
+    fn renders_wrapped_looked_pool_choice_and_exact_remainder() {
+        let looked = crate::TagKey::from("wrapped_looked_pool");
+        let selected = crate::TagKey::from("wrapped_selected_card");
+        let remainder = crate::TagKey::from("wrapped_exact_remainder");
+        let effects = vec![
+            Effect::with_id(
+                10,
+                Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                    PlayerFilter::You,
+                    Value::Fixed(4),
+                    looked.clone(),
+                )),
+            ),
+            Effect::with_id(
+                11,
+                Effect::new(
+                    crate::effects::ChooseObjectsEffect::new(
+                        ObjectFilter::tagged(looked.clone()).in_zone(Zone::Library),
+                        ChoiceCount::exactly(1),
+                        PlayerFilter::You,
+                        selected.clone(),
+                    )
+                    .in_zone(Zone::Library),
+                ),
+            ),
+            Effect::with_id(
+                12,
+                Effect::new(
+                    crate::effects::TagMatchingObjectsEffect::new(
+                        ObjectFilter::tagged(looked)
+                            .not_tagged(selected.clone())
+                            .in_zone(Zone::Library),
+                        remainder.clone(),
+                    )
+                    .in_zone(Zone::Library),
+                ),
+            ),
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(selected),
+                Zone::Hand,
+                false,
+            )),
+            Effect::with_id(
+                13,
+                Effect::new(crate::effects::MoveToZoneEffect::new(
+                    ChooseSpec::Tagged(remainder),
+                    Zone::Graveyard,
+                    false,
+                )),
+            ),
+            Effect::new(crate::effects::GainLifeEffect::you(
+                Value::EffectMetric {
+                    effect_id: crate::effect::EffectId(13),
+                    source: crate::effect::EffectMetricSource::AffectedObjects,
+                    metric: crate::effect::EffectMetric::GreatestPower,
+                }
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo),
+            )),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Look at the top four cards of your library. Put one of them into your hand and the rest into your graveyard. You gain life equal to the greatest power among creature cards put into your graveyard this way"
+        );
+    }
+
+    #[test]
+    fn renders_face_down_counter_only_when_selected_and_remainder_tags_are_exact() {
+        let looked = crate::TagKey::from("dragon_looked_pool");
+        let selected = crate::TagKey::from("dragon_selected_card");
+        let mut effects = vec![
+            Effect::new(crate::effects::LookAtTopCardsEffect::new(
+                PlayerFilter::You,
+                Value::Fixed(3),
+                looked.clone(),
+            )),
+            Effect::new(
+                crate::effects::ChooseObjectsEffect::new(
+                    ObjectFilter::tagged(looked.clone()).in_zone(Zone::Library),
+                    ChoiceCount::exactly(1),
+                    PlayerFilter::You,
+                    selected.clone(),
+                )
+                .in_zone(Zone::Library),
+            ),
+            Effect::new(
+                crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(selected.clone()))
+                    .with_face_down(true),
+            ),
+            Effect::new(crate::effects::PutCountersEffect::new(
+                crate::object::CounterType::Named("hatching"),
+                1,
+                ChooseSpec::Tagged(selected.clone()),
+            )),
+            Effect::new(
+                crate::effects::PutTaggedRemainderOnLibraryBottomEffect::new(
+                    looked,
+                    Some(selected),
+                    crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses,
+                    PlayerFilter::You,
+                ),
+            ),
+        ];
+
+        assert_eq!(
+            describe_effect_list(&effects),
+            "Look at the top three cards of your library. Exile one of them face down with a hatching counter on it, then put the rest on the bottom of your library in any order"
+        );
+
+        let wrong_tag = crate::TagKey::from("not_the_selected_card");
+        effects[3] = Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::Named("hatching"),
+            1,
+            ChooseSpec::Tagged(wrong_tag),
+        ));
+        let refs = effects.iter().collect::<Vec<_>>();
+        assert_eq!(
+            describe_look_exile_face_down_counter_rest_bottom(&refs),
+            None
+        );
     }
 
     fn three_way_partition(middle_zone: Zone) -> Vec<Effect> {

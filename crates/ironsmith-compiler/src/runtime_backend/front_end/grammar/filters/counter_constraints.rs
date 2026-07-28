@@ -188,7 +188,7 @@ fn parse_filter_counter_constraint_word_slice(
             !matches!(*word, "or" | "more") && leaf::parse_number_complete(word).is_err()
         })
         .collect::<Vec<_>>();
-    let constraint = if descriptor_words.is_empty() {
+    let base_constraint = if descriptor_words.is_empty() {
         CounterConstraint::Any
     } else if descriptor_words.len() == 1 && descriptor_words[0] == "no" {
         return Err(primitives::backtrack_err(
@@ -206,6 +206,24 @@ fn parse_filter_counter_constraint_word_slice(
         CounterConstraint::Typed(
             parse_counter_type_words_spec_word_slice(&mut descriptor_input)?.counter_type,
         )
+    };
+    let minimum = descriptor.windows(3).find_map(|words| {
+        (words[1..] == ["or", "more"])
+            .then(|| leaf::parse_number_complete(words[0]).ok())
+            .flatten()
+    });
+    let constraint = match (base_constraint, minimum) {
+        (CounterConstraint::Any, Some(count)) if count > 1 => CounterConstraint::AtLeast {
+            counter_type: None,
+            count,
+        },
+        (CounterConstraint::Typed(counter_type), Some(count)) if count > 1 => {
+            CounterConstraint::AtLeast {
+                counter_type: Some(counter_type),
+                count,
+            }
+        }
+        (constraint, _) => constraint,
     };
 
     Ok(FilterCounterConstraintSpec {
@@ -407,6 +425,18 @@ mod tests {
         assert!(one_or_more.one_or_more);
         assert!(one_or_more.plural_counter_noun);
         assert!(!one_or_more.plural_subject);
+
+        let three_or_more = parse_filter_counter_constraint_spec_words(&[
+            "three", "or", "more", "+1/+1", "counters", "on", "them",
+        ])
+        .expect("three-or-more filter counter threshold");
+        assert_eq!(
+            three_or_more.constraint,
+            CounterConstraint::AtLeast {
+                counter_type: Some(CounterType::PlusOnePlusOne),
+                count: 3,
+            }
+        );
 
         let singular =
             parse_filter_counter_constraint_spec_words(&["a", "+1/+1", "counter", "on", "it"])

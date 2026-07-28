@@ -2378,6 +2378,15 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                     oracle_text: primary_text.clone(),
                     type_line: card.type_line.clone(),
                 });
+            // A real face entry is more specific than the convenience aliases
+            // derived from the combined `Front // Back` name. Register faces
+            // first so the back-face name retains its own oracle text.
+            for (face_name, face_text) in face_entries {
+                out.entry(face_name).or_insert(RegressionOracleCardInfo {
+                    oracle_text: face_text,
+                    type_line: card.type_line.clone(),
+                });
+            }
             if full_name.contains(" // ") {
                 for part in full_name.split(" // ") {
                     out.entry(part.to_string())
@@ -2386,12 +2395,6 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                             type_line: card.type_line.clone(),
                         });
                 }
-            }
-            for (face_name, face_text) in face_entries {
-                out.entry(face_name).or_insert(RegressionOracleCardInfo {
-                    oracle_text: face_text,
-                    type_line: card.type_line.clone(),
-                });
             }
         }
         out
@@ -3436,5 +3439,45 @@ pub(super) fn azorius_guildmage_counter_activation_rejects_target_that_left_stac
             .zone,
         Zone::Battlefield,
         "invalid counter target should not move the source permanent"
+    );
+}
+
+#[test]
+pub(super) fn splintering_wind_preserves_the_authored_token_ability_sentences() {
+    let definition = parse_oracle_card_definition("Splintering Wind");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&definition),
+        vec![
+            "{2}{G}: This enchantment deals 1 damage to target creature. Create a 1/1 green Splinter creature token. It has flying and \"Cumulative upkeep {G}.\" When it leaves the battlefield, it deals 1 damage to you and each creature you control."
+                .to_string()
+        ]
+    );
+}
+
+#[test]
+pub(super) fn voice_of_many_preserves_the_relative_opponent_count() {
+    let definition = parse_oracle_card_definition("Voice of Many");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&definition),
+        vec![
+            "When this creature enters, draw a card for each opponent who controls fewer creatures than you."
+                .to_string()
+        ],
+        "{definition:#?}"
+    );
+}
+
+#[test]
+pub(super) fn arabella_shares_one_dynamic_count_across_damage_and_life_gain() {
+    let definition = parse_oracle_card_definition("Arabella, Abandoned Doll");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&definition),
+        vec![
+            "Whenever Arabella attacks, it deals X damage to each opponent and you gain X life, where X is the number of creatures you control with power 2 or less."
+                .to_string()
+        ]
     );
 }

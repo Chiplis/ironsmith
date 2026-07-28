@@ -1088,7 +1088,6 @@ pub(super) fn herald_of_leshrac_strict_parser_and_compiled_text_regression() {
         rendered.contains("When this creature leaves the battlefield, each player gains control of each land they own that you control."),
         "expected owner-restoration leaves trigger text, got {rendered}"
     );
-
 }
 
 #[test]
@@ -3283,8 +3282,16 @@ pub(super) fn parse_target_creature_becomes_color_of_your_choice_until_end_of_tu
 
     let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
     assert!(
-        abilities_debug.contains("becomecolorchoiceeffect"),
+        abilities_debug.contains("becomecolorchoiceeffect")
+            && abilities_debug.contains("allow_multiple: true"),
         "expected become-color-choice effect in activated ability, got {abilities_debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "{G/U}: Target creature you control becomes the color or colors of your choice until end of turn"
+                .to_string(),
+        ],
     );
 }
 
@@ -3300,6 +3307,25 @@ pub(super) fn parse_target_creature_becomes_color_or_colors_of_your_choice_until
     assert!(
         abilities_debug.contains("becomecolorchoiceeffect"),
         "expected become-color-choice effect in activated ability, got {abilities_debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn parse_permanent_color_or_colors_choice_omits_indefinite_duration() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Prismatic Choice Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text("Target permanent becomes the color or colors of your choice.")
+        .expect("indefinite color-or-colors choice should parse");
+
+    let debug = format!("{:#?}", def.spell_effect).to_ascii_lowercase();
+    assert!(
+        debug.contains("becomecolorchoiceeffect") && debug.contains("allow_multiple: true"),
+        "expected a multi-color typed choice, got {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec!["Target permanent becomes the color or colors of your choice".to_string(),],
     );
 }
 

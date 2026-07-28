@@ -5,7 +5,7 @@ use winnow::prelude::*;
 use crate::mana::ManaCost;
 use crate::runtime_backend::front_end::shared::util::trim_edge_punctuation_tokens;
 use crate::runtime_backend::grammar::{leaf, primitives};
-use crate::runtime_backend::lexer::{LexStream, OwnedLexToken};
+use crate::runtime_backend::lexer::{LexStream, LexedClause, OwnedLexToken};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct DestroyConsultLoopShape<'a> {
@@ -26,6 +26,16 @@ pub(crate) struct EachPlayerRevealTypesShape<'a> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DelayedUpkeepPaymentShape {
     pub(crate) mana: ManaCost,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StartingEachPlayerOptionalRepeatShape<'a> {
+    /// The first sentence with the participant-ordering prefix removed.
+    ///
+    /// Keeping the ordinary `each player may ...` clause lets the existing
+    /// effect parser produce the complete typed optional action instead of
+    /// teaching the sequence recognizer about individual action families.
+    pub(crate) each_player_clause_tokens: &'a [OwnedLexToken],
 }
 
 fn trimmed(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
@@ -141,6 +151,70 @@ pub(crate) fn parse_each_player_pay_life_sequence_shape(
     exact_unit(&without_articles(first), pay_life_start)
         && exact_unit(&without_articles(second), pay_life_repeat)
         && exact_unit(&without_articles(third), create_rats)
+}
+
+fn starting_with_you_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["starting", "with", "you"])
+        .void()
+        .parse_next(input)?;
+    opt(primitives::comma()).void().parse_next(input)
+}
+
+fn each_player_may_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["each", "player", "may"])
+        .void()
+        .parse_next(input)
+}
+
+fn repeat_until_no_one_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["repeat", "this", "process", "until", "no", "one"])
+        .void()
+        .parse_next(input)
+}
+
+fn verbs_match_optional_action(first: &[OwnedLexToken], repeated: &[OwnedLexToken]) -> bool {
+    let first_words = LexedClause::new(first).word_refs();
+    let repeated_words = LexedClause::new(repeated).word_refs();
+    let (Some(first_verb), Some(repeated_verb)) = (first_words.first(), repeated_words.first())
+    else {
+        return false;
+    };
+    first_verb.eq_ignore_ascii_case(repeated_verb)
+        || repeated_verb.eq_ignore_ascii_case(&format!("{first_verb}s"))
+        || repeated_verb.eq_ignore_ascii_case(&format!("{first_verb}es"))
+}
+
+/// Recognize the reusable two-sentence process:
+///
+/// `Starting with you, each player may <action>. Repeat this process until no
+/// one <action>.`
+///
+/// The second clause describes the loop's termination, not another action.
+/// Only the leading verbs need agree: Oracle commonly abbreviates the repeated
+/// action's object phrase (for example, "a permanent card from their hand" to
+/// "a card").
+pub(crate) fn parse_starting_each_player_optional_repeat_shape<'a>(
+    first: &'a [OwnedLexToken],
+    second: &[OwnedLexToken],
+) -> Option<StartingEachPlayerOptionalRepeatShape<'a>> {
+    let ((), after_starting) =
+        primitives::parse_prefix(trimmed(first), starting_with_you_prefix)?;
+    let each_player_clause_tokens = trimmed(after_starting);
+    let ((), first_action) =
+        primitives::parse_prefix(each_player_clause_tokens, each_player_may_prefix)?;
+    let ((), repeated_action) =
+        primitives::parse_prefix(trimmed(second), repeat_until_no_one_prefix)?;
+    let first_action = trimmed(first_action);
+    let repeated_action = trimmed(repeated_action);
+    if first_action.is_empty()
+        || repeated_action.is_empty()
+        || !verbs_match_optional_action(first_action, repeated_action)
+    {
+        return None;
+    }
+    Some(StartingEachPlayerOptionalRepeatShape {
+        each_player_clause_tokens,
+    })
 }
 
 fn for_each_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -578,6 +652,52 @@ mod tests {
         assert!(parse_each_player_pay_life_sequence_shape(
             &first, &second, &third
         ));
+    }
+
+    #[test]
+    fn parses_generic_starting_each_player_optional_repeat() {
+        let eureka_first = lex(
+            "Starting with you, each player may put a permanent card from their hand onto the battlefield.",
+        );
+        let eureka_repeat =
+            lex("Repeat this process until no one puts a card onto the battlefield.");
+        let eureka = parse_starting_each_player_optional_repeat_shape(
+            &eureka_first,
+            &eureka_repeat,
+        )
+        .expect("the repeated optional action should be recognized");
+        assert_eq!(
+            LexedClause::new(eureka.each_player_clause_tokens).word_refs(),
+            vec![
+                "each",
+                "player",
+                "may",
+                "put",
+                "a",
+                "permanent",
+                "card",
+                "from",
+                "their",
+                "hand",
+                "onto",
+                "the",
+                "battlefield",
+            ]
+        );
+
+        let pay_first = lex("Starting with you, each player may pay any amount of life.");
+        let pay_repeat = lex("Repeat this process until no one pays life.");
+        assert!(
+            parse_starting_each_player_optional_repeat_shape(&pay_first, &pay_repeat).is_some(),
+            "the recognizer should be action-generic and tolerate third-person verb agreement"
+        );
+    }
+
+    #[test]
+    fn rejects_unrelated_repeat_action() {
+        let first = lex("Starting with you, each player may discard a card.");
+        let second = lex("Repeat this process until no one draws a card.");
+        assert!(parse_starting_each_player_optional_repeat_shape(&first, &second).is_none());
     }
 
     #[test]

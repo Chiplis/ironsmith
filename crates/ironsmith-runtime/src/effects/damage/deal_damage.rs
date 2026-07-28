@@ -11,6 +11,7 @@ use crate::effects::helpers::{
 use crate::effects::{ExecutionContext, ExecutionError, ResolvedTarget};
 use crate::events::DamageEvent;
 use crate::events::DamageTarget;
+use crate::events::LifeGainEvent;
 use crate::events::LifeLossEvent;
 use crate::events::combat::{CreatureAttackedEvent, CreatureBecameBlockedEvent};
 use crate::events::processing::{
@@ -166,6 +167,7 @@ fn apply_processed_damage_results(
     let mut total_damage_dealt = 0u32;
     let mut affected_objects = Vec::new();
     let mut any_replacement_prevented = false;
+    let mut lifelink_event = None;
     for processed in processed_results {
         any_replacement_prevented |= processed.replacement_prevented;
         for assignment in processed.assignments {
@@ -256,6 +258,16 @@ fn apply_processed_damage_results(
         );
         if life_to_gain > 0 {
             game.gain_life(controller, life_to_gain);
+            let mut event = TriggerEvent::new_with_provenance(
+                LifeGainEvent::new(controller, life_to_gain).with_source(source),
+                provenance,
+            );
+            if game.object(source).is_none()
+                && let Some(snapshot) = source_snapshot
+            {
+                event = event.with_source_snapshot(snapshot.clone());
+            }
+            lifelink_event = Some(event);
         }
     }
 
@@ -268,6 +280,9 @@ fn apply_processed_damage_results(
     };
     if !affected_objects.is_empty() {
         outcome = outcome.with_affected_objects_from_game(game, affected_objects);
+    }
+    if let Some(event) = lifelink_event {
+        outcome = outcome.with_event(event);
     }
     outcome
 }
@@ -1041,6 +1056,13 @@ mod tests {
                 .count(),
             2
         );
+        let life_gain = outcome
+            .events
+            .iter()
+            .find_map(|event| event.downcast::<LifeGainEvent>())
+            .expect("lifelink damage should emit a causal life-gain event");
+        assert_eq!(life_gain.amount, 4);
+        assert_eq!(life_gain.source, Some(source));
     }
 
     #[test]

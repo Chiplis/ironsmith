@@ -29,7 +29,7 @@ fn mana_group_token_matches_symbol(token: &OwnedLexToken, expected: &str) -> boo
     let Some(symbol) = token.mana_group_inner() else {
         return false;
     };
-    symbol == expected
+    symbol.eq_ignore_ascii_case(expected)
 }
 
 fn token_is_word(token: &OwnedLexToken, expected: &str) -> bool {
@@ -298,6 +298,27 @@ pub(crate) fn parse_mill(
     ))
 }
 
+fn parse_named_player_counter_count(
+    tokens: &[OwnedLexToken],
+    clause_words: &[&str],
+) -> Result<Value, CardTextError> {
+    if let Some(for_each_idx) = tokens.windows(2).position(|window| {
+        window[0].as_word() == Some("for") && window[1].as_word() == Some("each")
+    }) && let Some(count) = parse_get_for_each_count_value(&tokens[for_each_idx..])?
+    {
+        return Ok(count);
+    }
+    if matches!(
+        clause_words.first().copied(),
+        Some("a" | "an" | "another" | "one")
+    ) {
+        return Ok(Value::Fixed(1));
+    }
+    Ok(parse_value(tokens)
+        .map(|(value, _)| value)
+        .unwrap_or(Value::Fixed(1)))
+}
+
 pub(crate) fn parse_get(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
@@ -376,16 +397,7 @@ pub(crate) fn parse_get(
         && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
     {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-        let count = if matches!(
-            clause_words.first().copied(),
-            Some("a" | "an" | "another" | "one")
-        ) {
-            Value::Fixed(1)
-        } else {
-            parse_value(tokens)
-                .map(|(value, _)| value)
-                .unwrap_or(Value::Fixed(1))
-        };
+        let count = parse_named_player_counter_count(tokens, &clause_words)?;
         return Ok(EffectAst::subject_verb_poison_counters(player, count));
     }
 
@@ -393,16 +405,7 @@ pub(crate) fn parse_get(
         && (grammar::contains_word(tokens, "counter") || grammar::contains_word(tokens, "counters"))
     {
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-        let count = if matches!(
-            clause_words.first().copied(),
-            Some("a" | "an" | "another" | "one")
-        ) {
-            Value::Fixed(1)
-        } else {
-            parse_value(tokens)
-                .map(|(value, _)| value)
-                .unwrap_or(Value::Fixed(1))
-        };
+        let count = parse_named_player_counter_count(tokens, &clause_words)?;
         return Ok(EffectAst::subject_verb_experience_counters(player, count));
     }
 
@@ -414,8 +417,8 @@ pub(crate) fn parse_get(
         let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
         let count = parse_add_mana_equal_amount_value(tokens)
             .or_else(|| parse_equal_to_aggregate_filter_value(tokens))
-            .or(parse_equal_to_number_of_filter_value(tokens))
             .or(parse_dynamic_cost_modifier_value(tokens)?)
+            .or(parse_equal_to_number_of_filter_value(tokens))
             .or_else(|| {
                 let equal_idx = tokens.windows(2).position(|window| {
                     window[0].as_word() == Some("equal") && window[1].as_word() == Some("to")
@@ -535,6 +538,25 @@ pub(crate) fn parse_get(
     )))
 }
 
+fn constrain_untap_filter_to_battlefield(filter: &mut ObjectFilter) {
+    filter.zone.get_or_insert(Zone::Battlefield);
+    for branch in &mut filter.any_of {
+        constrain_untap_filter_to_battlefield(branch);
+    }
+}
+
+fn constrain_untap_target_to_battlefield(target: &mut TargetAst) {
+    match target {
+        TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
+            constrain_untap_filter_to_battlefield(filter);
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            constrain_untap_target_to_battlefield(inner);
+        }
+        _ => {}
+    }
+}
+
 pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError(
@@ -543,6 +565,7 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
     }
     if let Some(filter_tokens) = misc_action_shapes::parse_chosen_object_set_filter_tokens(tokens) {
         let mut filter = parse_object_filter(filter_tokens, false)?;
+        constrain_untap_filter_to_battlefield(&mut filter);
         filter.tagged_constraints.push(TaggedObjectConstraint {
             tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
             relation: TaggedOpbjectRelation::IsTaggedObject,
@@ -550,8 +573,10 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         return Ok(EffectAst::subject_verb_untap_all(filter));
     }
     if let Some(shape) = parse_conjoined_untap_all_tokens(tokens) {
-        let left = parse_object_filter(shape.left_filter_tokens, false)?;
-        let right = parse_object_filter(shape.right_filter_tokens, false)?;
+        let mut left = parse_object_filter(shape.left_filter_tokens, false)?;
+        let mut right = parse_object_filter(shape.right_filter_tokens, false)?;
+        constrain_untap_filter_to_battlefield(&mut left);
+        constrain_untap_filter_to_battlefield(&mut right);
         return Ok(EffectAst::Coordinated {
             effects: vec![
                 EffectAst::subject_verb_untap_all(left),
@@ -562,23 +587,29 @@ pub(crate) fn parse_untap(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTex
         });
     }
     match misc_action_shapes::parse_untap_action_tokens(tokens) {
-        UntapActionShape::All { filter_tokens } => Ok(EffectAst::subject_verb_untap_all(
-            parse_object_filter(filter_tokens, false)?,
-        )),
+        UntapActionShape::All { filter_tokens } => {
+            let mut filter = parse_object_filter(filter_tokens, false)?;
+            constrain_untap_filter_to_battlefield(&mut filter);
+            Ok(EffectAst::subject_verb_untap_all(filter))
+        }
         UntapActionShape::Tagged { filter_tokens } => {
             let mut filter = filter_tokens
                 .map(|tokens| parse_object_filter(tokens, false))
                 .transpose()?
                 .unwrap_or_default();
+            constrain_untap_filter_to_battlefield(&mut filter);
+            filter.set_plural_pronoun_reference_surface(filter_tokens.is_none());
             filter.tagged_constraints.push(TaggedObjectConstraint {
                 tag: IT_TAG.into(),
                 relation: TaggedOpbjectRelation::IsTaggedObject,
             });
             Ok(EffectAst::subject_verb_untap_all(filter))
         }
-        UntapActionShape::Explicit { target_tokens } => Ok(EffectAst::subject_verb_untap(
-            parse_target_phrase(target_tokens)?,
-        )),
+        UntapActionShape::Explicit { target_tokens } => {
+            let mut target = parse_target_phrase(target_tokens)?;
+            constrain_untap_target_to_battlefield(&mut target);
+            Ok(EffectAst::subject_verb_untap(target))
+        }
     }
 }
 
@@ -697,6 +728,7 @@ pub(crate) fn parse_pay(
                 SubjectVerbActionAst::PayMana {
                     cost: ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X]),
                     x_value: Some(count),
+                    x_maximum: None,
                 },
             ));
         }
@@ -726,6 +758,19 @@ pub(crate) fn parse_pay(
         return Ok(EffectAst::subject_verb_pay_energy(player, amount));
     }
     if energy_symbol_count > 0 {
+        if let Some(equal_idx) = tokens.windows(2).position(|window| {
+            window[0].as_word() == Some("equal") && window[1].as_word() == Some("to")
+        }) {
+            let amount_tokens = &tokens[equal_idx + 2..];
+            if let Some((amount, used)) = parse_value(amount_tokens)
+                && used == amount_tokens.len()
+            {
+                return Ok(EffectAst::subject_verb_pay_energy(player, amount));
+            }
+            if let Some(amount) = parse_dynamic_cost_modifier_value(amount_tokens)? {
+                return Ok(EffectAst::subject_verb_pay_energy(player, amount));
+            }
+        }
         let mut energy_count = 0u32;
         for token in tokens {
             if energy_symbol_token(token) {
@@ -768,4 +813,22 @@ pub(crate) fn parse_pay(
         player,
         ManaCost::from_pips(pips),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn energy_for_each_keeps_for_each_value_surface() {
+        let tokens = lex_line("get {E} for each creature attacking you.", 0)
+            .expect("energy clause should lex");
+        let effect = parse_get(&tokens, None).expect("energy clause should parse");
+        let debug = format!("{effect:#?}");
+
+        assert!(debug.contains("EnergyCounters"), "{debug}");
+        assert!(debug.contains("ForEach"), "{debug}");
+        assert!(debug.contains("attacking_player_only: true"), "{debug}");
+    }
 }

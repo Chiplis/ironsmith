@@ -190,14 +190,19 @@ fn normalize_rewrite_line_chunk(
                 }
             }
             if let Some(cost_tag) = imports.last_object_tag.as_ref()
-                && effects
-                    .iter()
-                    .any(|effect| effect_references_tag(effect, ADDITIONAL_COST_OBJECT_TAG))
+                && (cost_tag.as_str().starts_with("sacrifice_cost_")
+                    || effects
+                        .iter()
+                        .any(|effect| effect_references_tag(effect, ADDITIONAL_COST_OBJECT_TAG)))
             {
                 // Bind the cost export before annotating any body effect. The
                 // ordinary last-object reference is intentionally free to
                 // advance through damage, destroy, create, and return effects;
                 // this alias must remain attached to the paid cost object.
+                // Preserve a chosen sacrifice set proactively: a later plural
+                // demonstrative can initially carry the generic `it` marker
+                // and only become recognizable as cost-linked after an
+                // intervening source move advances ordinary object memory.
                 imports
                     .snapshot_tag_aliases
                     .retain(|(alias, _)| alias != ADDITIONAL_COST_OBJECT_TAG);

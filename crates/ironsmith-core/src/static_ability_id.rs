@@ -34,6 +34,7 @@ pub enum StaticAbilityId {
     Landwalk,
     CantBeBlockedAsLongAsDefendingPlayerControlsCardType,
     CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes,
+    CantBeBlockedWhileDefendingPlayerControlsMostCreatures,
     Bloodthirst,
     Tribute,
     Daybound,
@@ -90,6 +91,7 @@ pub enum StaticAbilityId {
     MustAttackAttachedController,
     AllCreaturesAttackAttachedControllerEachCombatIfAble,
     AttachedGoadedBySourceController,
+    AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn,
     ExertAttack,
     EnlistAttack,
     MustBlock,
@@ -280,6 +282,7 @@ pub enum StaticAbilityId {
     BuybackCostReduction,
     LegendRuleDoesntApply,
     LegendRuleDoesntApplyToController,
+    LegendRuleDoesntApplyToControllerTokens,
     ManaSpendPermission,
     SpendManaAsAnyColor,
     SpendManaAsAnyColorActivationCosts,
@@ -293,6 +296,8 @@ pub enum StaticAbilityId {
     DoubleAgenda,
     KeywordText,
     KeywordMarker,
+    SourceLineKeywordGroup,
+    SourceLineStaticGroup,
     KeywordFallbackText,
     RuleFallbackText,
     UnsupportedParserLine,
@@ -332,6 +337,7 @@ impl StaticAbilityId {
             | Landwalk
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
             | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
+            | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
             | Bloodthirst
             | Tribute
             | Daybound
@@ -388,6 +394,7 @@ impl StaticAbilityId {
             | MustAttackAttachedController
             | AllCreaturesAttackAttachedControllerEachCombatIfAble
             | AttachedGoadedBySourceController
+            | AttachedControllerMaySacrificePermanentToIgnoreSourceEffectUntilEndOfTurn
             | ExertAttack
             | EnlistAttack
             | MustBlock
@@ -578,6 +585,7 @@ impl StaticAbilityId {
             | BuybackCostReduction
             | LegendRuleDoesntApply
             | LegendRuleDoesntApplyToController
+            | LegendRuleDoesntApplyToControllerTokens
             | ManaSpendPermission
             | SpendManaAsAnyColor
             | SpendManaAsAnyColorActivationCosts
@@ -591,6 +599,8 @@ impl StaticAbilityId {
             | DoubleAgenda
             | KeywordText
             | KeywordMarker
+            | SourceLineKeywordGroup
+            | SourceLineStaticGroup
             | KeywordFallbackText
             | RuleFallbackText
             | UnsupportedParserLine
@@ -683,6 +693,7 @@ impl StaticAbilityId {
                 | Landwalk
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
+                | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
         )
     }
 
@@ -723,6 +734,7 @@ impl StaticAbilityId {
                 | CantBeBlockedExceptByNOrMore
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardType
                 | CantBeBlockedAsLongAsDefendingPlayerControlsCardTypes
+                | CantBeBlockedWhileDefendingPlayerControlsMostCreatures
                 | CanAttackAsThoughNoDefender
                 | CanAttackAsThoughHaste
                 | MustAttack

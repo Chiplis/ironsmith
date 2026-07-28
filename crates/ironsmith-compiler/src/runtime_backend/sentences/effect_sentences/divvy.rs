@@ -43,6 +43,57 @@ pub(super) fn try_parse_divvy_sentence_sequence(
         return Ok(None);
     };
 
+    if shape == DivvySequenceShape::SearchLibraryGraveyardExileRemainderToTop {
+        let chosen_tag = TagKey::from("multi_zone_search_chosen");
+        let mut search_filter = ObjectFilter::default();
+        search_filter.owner = Some(PlayerFilter::You);
+
+        let mut remainder_filter = search_filter.clone();
+        remainder_filter.any_of = vec![
+            ObjectFilter {
+                zone: Some(Zone::Library),
+                ..ObjectFilter::default()
+            },
+            ObjectFilter {
+                zone: Some(Zone::Graveyard),
+                ..ObjectFilter::default()
+            },
+        ];
+        remainder_filter
+            .tagged_constraints
+            .push(crate::target::TaggedObjectConstraint {
+                tag: chosen_tag.clone(),
+                relation: TaggedOpbjectRelation::IsNotTaggedObject,
+            });
+
+        let mut effects = vec![
+            EffectAst::ChooseObjectsAcrossZones {
+                filter: search_filter,
+                count: ChoiceCount::exactly(5),
+                count_value: None,
+                player: PlayerAst::You,
+                tag: chosen_tag.clone(),
+                zones: vec![Zone::Library, Zone::Graveyard],
+                search_mode: Some(crate::effect::SearchSelectionMode::Exact),
+            },
+            EffectAst::subject_verb_exile_all(remainder_filter, false),
+            EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(chosen_tag, None),
+                Zone::Library,
+                true,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+            .with_library_order(
+                Some(crate::cards::builders::LibraryBottomOrderAst::ChooserChooses),
+                PlayerAst::You,
+            ),
+        ];
+        effects.extend(parse_effect_sentence_lexed(sentences[2].lowered())?);
+        return Ok(Some(effects));
+    }
+
     if shape == DivvySequenceShape::SearchFourCreatureCards {
         let first_effect_tokens = split_lexed_sentences(sentences[0].lowered())
             .into_iter()

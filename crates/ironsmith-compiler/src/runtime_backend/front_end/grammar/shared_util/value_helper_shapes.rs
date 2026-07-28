@@ -190,6 +190,22 @@ pub(crate) fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAc
         ),
         (&["put", "into", "exile"], PriorEffectAction::Exiled),
         (&["dealt", "damage"], PriorEffectAction::DealtDamage),
+        (
+            &["counters", "put", "on", "it"],
+            PriorEffectAction::CountersPut,
+        ),
+        (
+            &["counter", "put", "on", "it"],
+            PriorEffectAction::CountersPut,
+        ),
+        (
+            &["counters", "put", "on", "them"],
+            PriorEffectAction::CountersPut,
+        ),
+        (
+            &["counter", "put", "on", "them"],
+            PriorEffectAction::CountersPut,
+        ),
         (&["counters", "put"], PriorEffectAction::CountersPut),
         (&["counter", "put"], PriorEffectAction::CountersPut),
         (&["searched", "for"], PriorEffectAction::Searched),
@@ -205,6 +221,14 @@ pub(crate) fn parse_prior_effect_action(words: &[&str]) -> Option<(PriorEffectAc
         (&["milled"], PriorEffectAction::Milled),
         (&["prevented"], PriorEffectAction::Prevented),
         (&["removed"], PriorEffectAction::Removed),
+        (
+            &["returned", "to", "your", "hand"],
+            PriorEffectAction::Returned,
+        ),
+        (
+            &["returned", "to", "their", "hand"],
+            PriorEffectAction::Returned,
+        ),
         (&["returned"], PriorEffectAction::Returned),
         (&["revealed"], PriorEffectAction::Revealed),
         (&["sacrificed"], PriorEffectAction::Sacrificed),

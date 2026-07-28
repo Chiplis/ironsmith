@@ -9,6 +9,22 @@ use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
 use crate::triggers::{DelayedTrigger, Trigger};
 
+pub(crate) fn tagged_collection_has_object_in_zone(
+    game: &GameState,
+    tagged_objects: &HashMap<TagKey, Vec<ObjectSnapshot>>,
+    tag: &TagKey,
+    zone: crate::zone::Zone,
+) -> bool {
+    tagged_objects.get(tag).is_some_and(|snapshots| {
+        snapshots.iter().any(|snapshot| {
+            game.find_object_by_stable_id(snapshot.stable_id)
+                .or_else(|| game.object(snapshot.object_id).map(|_| snapshot.object_id))
+                .and_then(|object_id| game.object(object_id))
+                .is_some_and(|object| object.zone == zone)
+        })
+    })
+}
+
 /// Config used to enqueue a delayed trigger.
 #[derive(Debug, Clone)]
 pub struct DelayedTriggerConfig {
@@ -21,6 +37,7 @@ pub struct DelayedTriggerConfig {
     /// whose turn number is greater than this anchor.
     pub expires_before_controller_turn_after: Option<u32>,
     pub expires_at_end_of_combat: bool,
+    pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
     pub target_objects: Vec<ObjectId>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
@@ -45,6 +62,7 @@ impl DelayedTriggerConfig {
             expires_at_turn: None,
             expires_before_controller_turn_after: None,
             expires_at_end_of_combat: false,
+            while_any_tagged_object_in_zone: None,
             target_objects,
             ability_source: None,
             controller,
@@ -71,6 +89,14 @@ impl DelayedTriggerConfig {
 
     pub fn with_expires_at_end_of_combat(mut self, expires: bool) -> Self {
         self.expires_at_end_of_combat = expires;
+        self
+    }
+
+    pub fn while_any_tagged_object_in_zone_opt(
+        mut self,
+        duration: Option<(TagKey, crate::zone::Zone)>,
+    ) -> Self {
+        self.while_any_tagged_object_in_zone = duration;
         self
     }
 
@@ -127,6 +153,7 @@ pub(crate) struct DelayedTriggerTemplate {
     pub expires_at_turn: Option<u32>,
     pub expires_before_controller_turn_after: Option<u32>,
     pub expires_at_end_of_combat: bool,
+    pub while_any_tagged_object_in_zone: Option<(TagKey, crate::zone::Zone)>,
     pub ability_source: Option<ObjectId>,
     pub controller: PlayerId,
     pub x_value: Option<u32>,
@@ -149,6 +176,7 @@ impl DelayedTriggerTemplate {
             expires_at_turn: None,
             expires_before_controller_turn_after: None,
             expires_at_end_of_combat: false,
+            while_any_tagged_object_in_zone: None,
             ability_source: None,
             controller,
             x_value: None,
@@ -174,6 +202,14 @@ impl DelayedTriggerTemplate {
 
     pub fn with_expires_at_end_of_combat(mut self, expires: bool) -> Self {
         self.expires_at_end_of_combat = expires;
+        self
+    }
+
+    pub fn while_any_tagged_object_in_zone_opt(
+        mut self,
+        duration: Option<(TagKey, crate::zone::Zone)>,
+    ) -> Self {
+        self.while_any_tagged_object_in_zone = duration;
         self
     }
 
@@ -228,6 +264,7 @@ pub fn queue_delayed_trigger(game: &mut GameState, config: DelayedTriggerConfig)
         expires_at_turn: config.expires_at_turn,
         expires_before_controller_turn_after: config.expires_before_controller_turn_after,
         expires_at_end_of_combat: config.expires_at_end_of_combat,
+        while_any_tagged_object_in_zone: config.while_any_tagged_object_in_zone,
         target_objects: config.target_objects,
         ability_source: config.ability_source,
         ability_source_stable_id,
@@ -264,6 +301,7 @@ pub(crate) fn queue_delayed_from_template(
                     template.expires_before_controller_turn_after,
                 )
                 .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
+                .while_any_tagged_object_in_zone_opt(template.while_any_tagged_object_in_zone)
                 .with_ability_source(template.ability_source)
                 .with_x_value(template.x_value)
                 .with_choices(template.choices)
@@ -289,6 +327,9 @@ pub(crate) fn queue_delayed_from_template(
                         template.expires_before_controller_turn_after,
                     )
                     .with_expires_at_end_of_combat(template.expires_at_end_of_combat)
+                    .while_any_tagged_object_in_zone_opt(
+                        template.while_any_tagged_object_in_zone.clone(),
+                    )
                     .with_ability_source(template.ability_source)
                     .with_x_value(template.x_value)
                     .with_choices(template.choices.clone())

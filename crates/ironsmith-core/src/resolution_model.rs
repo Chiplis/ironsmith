@@ -10,6 +10,10 @@ pub struct ResolutionProgram<E> {
 pub struct ResolutionSegment<E> {
     pub default_effects: Vec<E>,
     pub self_replacements: Vec<SelfReplacementBranch<E>>,
+    /// This segment begins on a new authored Oracle line. Resolution semantics
+    /// are unchanged; card-level rendering uses this provenance to avoid
+    /// collapsing distinct spell instructions onto one line.
+    pub starts_new_source_line: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,6 +22,12 @@ pub struct SelfReplacementBranch<E> {
     pub replacement_effects: Vec<E>,
     pub presentation_label: Option<PresentationLabel>,
     pub condition_after_replacement: bool,
+    /// Preserve an authored leading replacement connective:
+    /// "If ..., instead [actions]" rather than "[actions] instead".
+    ///
+    /// This is presentation provenance only; replacement semantics are
+    /// already carried by the branch itself.
+    pub leading_instead_surface: bool,
 }
 
 impl<E> Default for ResolutionProgram<E> {
@@ -176,6 +186,7 @@ impl<E> ResolutionSegment<E> {
         Ok(ResolutionSegment {
             default_effects,
             self_replacements,
+            starts_new_source_line: self.starts_new_source_line,
         })
     }
 }
@@ -195,6 +206,7 @@ impl<E> SelfReplacementBranch<E> {
             replacement_effects,
             presentation_label: self.presentation_label,
             condition_after_replacement: self.condition_after_replacement,
+            leading_instead_surface: self.leading_instead_surface,
         })
     }
 }
@@ -210,6 +222,7 @@ impl<E> ResolutionSegment<E> {
         Self {
             default_effects: effects,
             self_replacements: Vec::new(),
+            starts_new_source_line: false,
         }
     }
 }
@@ -221,6 +234,7 @@ impl<E> SelfReplacementBranch<E> {
             replacement_effects,
             presentation_label: None,
             condition_after_replacement: false,
+            leading_instead_surface: false,
         }
     }
 
@@ -229,6 +243,11 @@ impl<E> SelfReplacementBranch<E> {
         presentation_label: Option<PresentationLabel>,
     ) -> Self {
         self.presentation_label = presentation_label;
+        self
+    }
+
+    pub fn with_leading_instead_surface(mut self, leading_instead_surface: bool) -> Self {
+        self.leading_instead_surface = leading_instead_surface;
         self
     }
 }

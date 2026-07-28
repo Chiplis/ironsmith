@@ -177,6 +177,13 @@ pub(crate) fn parse_leaf_choice_count_prefix_lexed<'a>(
             parse_leaf_number_or_x_prefix_lexed,
         )
             .map(|(_, number)| choice_count_from_leaf_number(number, true)),
+        (
+            primitives::kw("exactly"),
+            parse_leaf_number_or_x_prefix_lexed,
+        )
+            .map(|(_, number)| {
+                choice_count_from_leaf_number(number, false).with_explicit_exactly()
+            }),
         parse_leaf_number_or_x_prefix_lexed
             .map(|number| choice_count_from_leaf_number(number, false)),
     ))
@@ -278,6 +285,13 @@ fn parse_leaf_choice_count_prefix_word_slice(
             parse_leaf_number_or_x_prefix_word_slice,
         )
             .map(|(_, number)| choice_count_from_leaf_number(number, true)),
+        (
+            primitives::word_slice_exact("exactly"),
+            parse_leaf_number_or_x_prefix_word_slice,
+        )
+            .map(|(_, number)| {
+                choice_count_from_leaf_number(number, false).with_explicit_exactly()
+            }),
         parse_leaf_number_or_x_prefix_word_slice
             .map(|number| choice_count_from_leaf_number(number, false)),
     ))
@@ -310,6 +324,7 @@ fn choice_count_range(first: u32, last: u32) -> ChoiceCount {
         dynamic_x: false,
         up_to_x: false,
         random: false,
+        explicit_exactly: false,
     }
 }
 
@@ -320,12 +335,13 @@ mod tests {
 
     #[test]
     fn choice_count_prefixes_are_typed_for_tokens_and_words() {
-        for (raw, consumed, min, max, dynamic_x, up_to_x) in [
-            ("any number of targets", 3, 0, None, false, false),
-            ("up to x targets", 3, 0, None, true, true),
-            ("up to three targets", 3, 0, Some(3), false, false),
-            ("x targets", 1, 0, None, true, false),
-            ("two targets", 1, 2, Some(2), false, false),
+        for (raw, consumed, min, max, dynamic_x, up_to_x, explicit_exactly) in [
+            ("any number of targets", 3, 0, None, false, false, false),
+            ("up to x targets", 3, 0, None, true, true, false),
+            ("up to three targets", 3, 0, Some(3), false, false, false),
+            ("x targets", 1, 0, None, true, false, false),
+            ("two targets", 1, 2, Some(2), false, false, false),
+            ("exactly two targets", 2, 2, Some(2), false, false, true),
         ] {
             let tokens = lex_line(raw, 0).unwrap();
             let parsed = parse_leaf_choice_count_prefix_tokens(&tokens).unwrap();
@@ -334,6 +350,7 @@ mod tests {
             assert_eq!(parsed.count.max, max, "{raw}");
             assert_eq!(parsed.count.dynamic_x, dynamic_x, "{raw}");
             assert_eq!(parsed.count.up_to_x, up_to_x, "{raw}");
+            assert_eq!(parsed.count.explicit_exactly, explicit_exactly, "{raw}");
 
             let words = raw.split_whitespace().collect::<Vec<_>>();
             let parsed_words = parse_leaf_choice_count_prefix_words(&words).unwrap();

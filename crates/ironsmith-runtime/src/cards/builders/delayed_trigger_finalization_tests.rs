@@ -62,7 +62,7 @@ fn parse_delayed_next_draw_step_unless_payment_builds_draw_step_schedule() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Glass Asp Variant")
             .card_types(vec![CardType::Creature])
             .parse_text(
-                "Whenever this creature deals damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that step.",
+                "Whenever this creature deals damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that draw step.",
             )
             .expect("delayed draw-step payment should parse");
 
@@ -73,12 +73,20 @@ fn parse_delayed_next_draw_step_unless_payment_builds_draw_step_schedule() {
             && abilities_debug.contains("UnlessPaysEffect"),
         "expected delayed draw-step schedule in ability debug, got {abilities_debug}"
     );
+    assert_eq!(
+        crate::compiled_text::compiled_text_lines(&def),
+        vec![
+            "Whenever this creature deals damage to a player, that player loses 2 life at the beginning of their next draw step unless they pay {2} before that draw step."
+                .to_string(),
+        ],
+        "delayed draw-step structure: {abilities_debug}",
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn parse_delayed_next_upkeep_unless_payment_keeps_payment_player_choice() {
-    let def = CardDefinitionBuilder::new(CardId::new(), "Quenchable Fire Variant")
+    let def = CardDefinitionBuilder::new(CardId::new(), "Quenchable Fire")
             .card_types(vec![CardType::Sorcery])
             .parse_text(
                 "Quenchable Fire deals 3 damage to target player or planeswalker. It deals an additional 3 damage to that player or planeswalker at the beginning of your next upkeep step unless that player or that planeswalker's controller pays {U} before that step.",
@@ -92,5 +100,67 @@ fn parse_delayed_next_upkeep_unless_payment_keeps_payment_player_choice() {
             && spell_debug.contains("TargetPlayerOrControllerOfTarget")
             && spell_debug.contains("UnlessPaysEffect"),
         "expected delayed upkeep schedule in spell debug, got {spell_debug}"
+    );
+    assert_eq!(
+        crate::compiled_text::canonical_compiled_lines(&def).join(" "),
+        "Quenchable Fire deals 3 damage to target player or planeswalker. It deals an additional 3 damage to that player or planeswalker at the beginning of your next upkeep step unless that player or that planeswalker's controller pays {U} before that step."
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_delayed_dynamic_token_creation_keeps_resolution_time_characteristics() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Delayed Sand Warrior Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, create X 1/1 Sand Warrior creature tokens that are red, green, and white at the beginning of your next upkeep, where X is the number of lands you control at that time.\nWhen this creature leaves the battlefield, exile all Sand Warriors.",
+        )
+        .expect("delayed dynamic token creation should parse");
+
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
+    assert!(
+        rendered_lower.contains("sand warrior")
+            && rendered_lower.contains("red")
+            && rendered_lower.contains("green")
+            && rendered_lower.contains("white")
+            && rendered_lower.contains("at the beginning of your next upkeep")
+            && rendered_lower.contains("at that time")
+            && rendered_lower.contains("exile all sand warriors"),
+        "expected delayed Sand Warrior identity, colors, timing, and cleanup, got {rendered}"
+    );
+    let create_position = rendered_lower
+        .find("create x")
+        .expect("rendered create instruction");
+    let timing_position = rendered_lower
+        .find("at the beginning of your next upkeep")
+        .expect("rendered delayed timing");
+    assert!(
+        create_position < timing_position,
+        "expected action-first delayed surface, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+fn parse_last_chosen_player_combat_static_persists_choice_and_filter() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Combat Choice Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "At the beginning of combat on your turn, choose an opponent.\nCreatures attacking the last chosen player have menace.",
+        )
+        .expect("last-chosen-player static should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("remember_as_chosen_player: true")
+            && debug.contains("attacking_player_or_planeswalker_controlled_by: Some")
+            && debug.contains("ChosenPlayer"),
+        "expected persistent player choice and attacking-player filter, got {debug}"
+    );
+    let rendered = crate::compiled_text::canonical_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains("Creatures attacking the last chosen player have menace"),
+        "expected chosen-player combat static surface, got {rendered}"
     );
 }

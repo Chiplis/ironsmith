@@ -98,11 +98,12 @@ pub(crate) use choose_effect_helpers::{
     compile_choose_player_with_subject,
 };
 pub(crate) use control_flow_handlers::{
-    collect_targeted_player_specs_from_player_filter, compile_effects_in_iterated_object_context,
-    compile_effects_in_iterated_player_context, compile_effects_preserving_last_effect,
-    compile_if_do_with_opponent_did, compile_if_do_with_opponent_doesnt,
-    compile_if_do_with_player_did, compile_if_do_with_player_doesnt, compile_repeat_process_body,
-    compile_result_followup, compile_vote_sequence, effect_predicate_from_if_result,
+    collect_targeted_player_specs_from_filter, collect_targeted_player_specs_from_player_filter,
+    compile_effects_in_iterated_object_context, compile_effects_in_iterated_player_context,
+    compile_effects_preserving_last_effect, compile_if_do_with_opponent_did,
+    compile_if_do_with_opponent_doesnt, compile_if_do_with_player_did,
+    compile_if_do_with_player_doesnt, compile_repeat_process_body, compile_result_followup,
+    compile_vote_sequence, effect_predicate_from_if_result,
     force_implicit_vote_token_controller_you, target_context_prelude_for_filter,
     with_preserved_lowering_context,
 };
@@ -187,7 +188,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 constraint.tag.as_str() == crate::cards::builders::IT_TAG
                     && constraint.relation == TaggedOpbjectRelation::SameNameAsTagged
             });
-            if !is_same_name_comparison_set {
+            if !is_same_name_comparison_set && resolved.zone != Some(Zone::Stack) {
                 resolved.zone = None;
             }
             if let Some(tag) = saved_last_tag.clone() {
@@ -252,6 +253,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
             player,
             tag,
             filter,
+            mode,
         } => {
             let player = resolve_non_target_player_filter(*player, &refs)?;
             let resolved_tag = resolve_it_tag_key(tag, &refs)?;
@@ -259,6 +261,7 @@ pub(crate) fn compile_condition_from_predicate_ast(
                 player,
                 tag: resolved_tag,
                 filter: resolve_it_tag(filter, &refs)?,
+                mode: *mode,
             }
         }
         PredicateAst::PlayerControls { player, filter } => {
@@ -618,8 +621,8 @@ pub(crate) fn compile_condition_from_predicate_ast(
             Condition::NonlandPermanentLeftBattlefieldThisTurn
         }
         PredicateAst::SpellWasWarpedThisTurn => Condition::SpellWasWarpedThisTurn,
-        PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn => {
-            Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn { surface } => {
+            Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { surface: *surface }
         }
         PredicateAst::ObjectEnteredBattlefieldThisTurn(filter) => {
             Condition::ObjectEnteredBattlefieldThisTurn(filter.clone())
@@ -822,6 +825,24 @@ pub(crate) fn compile_condition_from_predicate_ast(
                     player: resolve_non_target_player_filter(*player, &refs)?,
                     zone: *zone,
                 }
+            }
+            TurnHistoryPredicateAst::PlayerCastSpellFromZoneThisTurn { player, zone } => {
+                ironsmith_core::TurnHistoryCondition::PlayerCastSpellFromZoneThisTurn {
+                    player: resolve_non_target_player_filter(*player, &refs)?,
+                    zone: *zone,
+                }
+            }
+            TurnHistoryPredicateAst::PlayerActivatedAbilityOfCardInZoneThisTurn {
+                player,
+                zone,
+            } => ironsmith_core::TurnHistoryCondition::PlayerActivatedAbilityOfCardInZoneThisTurn {
+                player: resolve_non_target_player_filter(*player, &refs)?,
+                zone: *zone,
+            },
+            TurnHistoryPredicateAst::PlayerVisitedAttractionThisTurn(player) => {
+                ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(
+                    resolve_non_target_player_filter(*player, &refs)?,
+                )
             }
             TurnHistoryPredicateAst::TriggeringPlayerAttackedControllerLastTurn => {
                 ironsmith_core::TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn
@@ -1098,7 +1119,7 @@ fn merge_compiled_choices(
 fn effect_contains_coordinated_sequence(effect: &Effect) -> bool {
     if effect
         .downcast_ref::<crate::effects::SequenceEffect>()
-        .is_some_and(|sequence| sequence.surface != ironsmith_core::SequenceSurface::Sequential)
+        .is_some_and(|sequence| sequence.surface.is_coordinated())
     {
         return true;
     }
@@ -1183,7 +1204,14 @@ fn effect_exposes_target_choice(effect: &Effect, choice: &ChooseSpec) -> bool {
     }
     effect
         .downcast_ref::<crate::effects::SequenceEffect>()
-        .filter(|sequence| sequence.surface != ironsmith_core::SequenceSurface::Sequential)
+        .filter(|sequence| {
+            sequence.surface.is_coordinated()
+                || matches!(
+                    sequence.surface,
+                    ironsmith_core::SequenceSurface::SentenceLeadingThen
+                        | ironsmith_core::SequenceSurface::CommaThen
+                )
+        })
         .is_some_and(|sequence| {
             sequence
                 .effects
@@ -1275,6 +1303,30 @@ fn preserve_chooser_relative_player_filters(
             chooser,
         );
     }
+    if let (Some(original_partner), Some(resolved_partner)) = (
+        original.blocked_or_was_blocked_by_this_turn.as_deref(),
+        resolved.blocked_or_was_blocked_by_this_turn.as_deref_mut(),
+    ) {
+        preserve_chooser_relative_player_filters(original_partner, resolved_partner, chooser);
+    }
+    for (original_nested, resolved_nested) in original
+        .no_shared_creature_types_with
+        .iter()
+        .zip(resolved.no_shared_creature_types_with.iter_mut())
+    {
+        preserve_chooser_relative_player_filters(original_nested, resolved_nested, chooser);
+    }
+    for (original_relation, resolved_relation) in original
+        .characteristic_relations
+        .iter()
+        .zip(resolved.characteristic_relations.iter_mut())
+    {
+        preserve_chooser_relative_player_filters(
+            &original_relation.comparison,
+            &mut resolved_relation.comparison,
+            chooser,
+        );
+    }
     for (original_any_of, resolved_any_of) in original.any_of.iter().zip(resolved.any_of.iter_mut())
     {
         preserve_chooser_relative_player_filters(original_any_of, resolved_any_of, chooser);
@@ -1312,6 +1364,15 @@ fn bind_relative_iterated_player_filters_to_chooser(
     }
     if let Some(attached_to) = filter.attached_to_object.as_deref_mut() {
         bind_relative_iterated_player_filters_to_chooser(attached_to, &chooser);
+    }
+    if let Some(combat_partner) = filter.blocked_or_was_blocked_by_this_turn.as_deref_mut() {
+        bind_relative_iterated_player_filters_to_chooser(combat_partner, &chooser);
+    }
+    for nested in &mut filter.no_shared_creature_types_with {
+        bind_relative_iterated_player_filters_to_chooser(nested, &chooser);
+    }
+    for relation in &mut filter.characteristic_relations {
+        bind_relative_iterated_player_filters_to_chooser(&mut relation.comparison, &chooser);
     }
     for any_of in &mut filter.any_of {
         bind_relative_iterated_player_filters_to_chooser(any_of, &chooser);
@@ -1407,7 +1468,8 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
             use ironsmith_core::TurnHistoryCount;
 
             match query {
-                TurnHistoryCount::Died(filter) | TurnHistoryCount::EnteredBattlefield(filter) => {
+                TurnHistoryCount::Died { filter, .. }
+                | TurnHistoryCount::EnteredBattlefield(filter) => {
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
                 TurnHistoryCount::TokensCreated(player)
@@ -1417,6 +1479,7 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
                 | TurnHistoryCount::PlayersLostLife(player)
+                | TurnHistoryCount::Descended(player)
                 | TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                 }
@@ -1440,10 +1503,12 @@ fn bind_relative_iterated_player_in_value_to_player_filter(
                     bind_relative_iterated_player_filter_to_player_filter(player, player_filter);
                     bind_relative_iterated_player_filters_to_chooser(filter, player_filter);
                 }
+                TurnHistoryCount::DamageDealtToSource => {}
             }
         }
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
+        | Value::CountPlayersWithCardsInHandAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
@@ -2511,6 +2576,11 @@ fn equipment_granted_damage_ability(
 fn static_ability_for_token_keyword(keyword: token_grammar::TokenKeywordShape) -> StaticAbility {
     match keyword {
         token_grammar::TokenKeywordShape::Flying => StaticAbility::flying(),
+        token_grammar::TokenKeywordShape::WardGeneric(amount) => {
+            StaticAbility::ward(TotalCost::mana(ManaCost::from_symbols(vec![
+                ManaSymbol::Generic(amount as u8),
+            ])))
+        }
         token_grammar::TokenKeywordShape::Defender => StaticAbility::defender(),
         token_grammar::TokenKeywordShape::Prowess => StaticAbility::prowess(),
         token_grammar::TokenKeywordShape::Vigilance => StaticAbility::vigilance(),
@@ -3338,6 +3408,7 @@ pub(crate) fn apply_standard_token_keyword(
 ) -> CardDefinitionBuilder {
     match keyword {
         token_grammar::TokenKeywordShape::Flying => builder.flying(),
+        token_grammar::TokenKeywordShape::WardGeneric(amount) => builder.ward_generic(amount),
         token_grammar::TokenKeywordShape::Defender => builder.defender(),
         token_grammar::TokenKeywordShape::Prowess => builder.prowess(),
         token_grammar::TokenKeywordShape::Vigilance => builder.vigilance(),
@@ -3661,7 +3732,7 @@ fn lower_token_definition_shape(shape: TokenDefinitionSpec) -> Option<CardDefini
             CardDefinitionBuilder::new(CardId::new(), "Dragon Egg")
                 .token()
                 .card_types(vec![CardType::Creature])
-                .subtypes(vec![Subtype::Dragon])
+                .subtypes(vec![Subtype::Dragon, Subtype::Egg])
                 .color_indicator(ColorSet::RED)
                 .power_toughness(PowerToughness::fixed(0, 2))
                 .defender()

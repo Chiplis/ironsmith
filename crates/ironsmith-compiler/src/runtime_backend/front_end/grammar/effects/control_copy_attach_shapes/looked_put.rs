@@ -23,6 +23,7 @@ pub(crate) enum FromAmongDestinationShape {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TaggedPutShape {
     pub(crate) count: Option<ChoiceCount>,
+    pub(crate) plural_reference: bool,
     pub(crate) rest_destination: Option<RestDestinationShape>,
     pub(crate) bottom_order: Option<LibraryBottomOrderAst>,
 }
@@ -48,6 +49,7 @@ pub(crate) struct RevealedRemainderShape {
     /// selected card must be excluded. `false` for the whole revealed
     /// collection.
     pub(crate) exclude_current_reference: bool,
+    pub(crate) surface: ironsmith_core::LibraryRemainderSurface,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -198,8 +200,13 @@ pub(crate) fn parse_tagged_into_hand_shape(tokens: &[OwnedLexToken]) -> Option<T
     } else {
         Some(parse_count_and_reference(head)?)
     };
+    let plural_reference = super::common::is_plural_tagged_object_reference(head)
+        || count.as_ref().is_some_and(|count| {
+            count.dynamic_x || count.max.is_none() || count.max.is_some_and(|maximum| maximum > 1)
+        });
     Some(TaggedPutShape {
         count,
+        plural_reference,
         rest_destination: parse_rest_destination(tokens),
         bottom_order: super::super::sequence_pairs::parse_bottom_order(tokens),
     })
@@ -324,18 +331,40 @@ pub(crate) fn parse_revealed_remainder_shape(
     .into_iter()
     .all(|word| primitives::contains_word(tokens, word));
     let is_full_collection =
-        (permission_shapes::prefix_tokens(tokens, &["the", "revealed", "cards"])
-            || permission_shapes::prefix_tokens(tokens, &["all", "revealed", "cards"])
-            || permission_shapes::prefix_tokens(tokens, &["all", "the", "revealed", "cards"]))
+        (permission_shapes::contains_tokens(tokens, &["the", "revealed", "cards"])
+            || permission_shapes::contains_tokens(tokens, &["all", "revealed", "cards"])
+            || permission_shapes::contains_tokens(tokens, &["all", "the", "revealed", "cards"]))
             && primitives::contains_word(tokens, "bottom")
             && primitives::contains_word(tokens, "library")
             && !primitives::contains_word(tokens, "rest");
-    if !is_remainder && !is_full_collection {
+    let is_you_revealed_collection = (permission_shapes::contains_tokens(
+        tokens,
+        &["the", "cards", "you", "revealed", "this", "way"],
+    ) || permission_shapes::contains_tokens(
+        tokens,
+        &["cards", "you", "revealed", "this", "way"],
+    )) && primitives::contains_word(tokens, "bottom")
+        && primitives::contains_word(tokens, "library")
+        && !primitives::contains_word(tokens, "rest");
+    if !is_remainder && !is_full_collection && !is_you_revealed_collection {
         return None;
     }
+    let surface = if is_you_revealed_collection {
+        ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay
+    } else if is_remainder
+        && permission_shapes::contains_tokens(
+            tokens,
+            &["rest", "of", "the", "cards", "revealed", "this", "way"],
+        )
+    {
+        ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay
+    } else {
+        ironsmith_core::LibraryRemainderSurface::Rest
+    };
     Some(RevealedRemainderShape {
         random_order: primitives::contains_word(tokens, "random"),
         exclude_current_reference: is_remainder,
+        surface,
     })
 }
 
@@ -364,6 +393,17 @@ mod tests {
             Some(RestDestinationShape::BottomOfLibrary)
         );
         assert!(shape.count.is_some());
+        assert!(shape.plural_reference);
+
+        let plural = lex_line("put them into your hand", 0).unwrap();
+        let shape = parse_tagged_into_hand_shape(&plural).unwrap();
+        assert!(shape.plural_reference);
+        assert!(shape.count.is_none());
+
+        let optional_single = lex_line("put up to one of them into your hand", 0).unwrap();
+        let shape = parse_tagged_into_hand_shape(&optional_single).unwrap();
+        assert!(!shape.plural_reference);
+        assert_eq!(shape.count, Some(ChoiceCount::up_to(1)));
 
         let any_order = lex_line(
             "put two of them into your hand and the rest on the bottom of your library in any order",
@@ -455,5 +495,23 @@ mod tests {
 
         assert!(!shape.exclude_current_reference);
         assert!(!shape.random_order);
+        assert_eq!(shape.surface, ironsmith_core::LibraryRemainderSurface::Rest);
+    }
+
+    #[test]
+    fn parses_authored_you_revealed_collection_for_library_bottom_cleanup() {
+        let tokens = lex_line(
+            "the cards you revealed this way on the bottom of your library in any order",
+            0,
+        )
+        .unwrap();
+        let shape = parse_revealed_remainder_shape(&tokens).expect("revealed collection");
+
+        assert!(!shape.exclude_current_reference);
+        assert!(!shape.random_order);
+        assert_eq!(
+            shape.surface,
+            ironsmith_core::LibraryRemainderSurface::CardsYouRevealedThisWay
+        );
     }
 }

@@ -3,9 +3,10 @@ use ironsmith::continuous::EffectTarget;
 use ironsmith::decisions::context::DecisionContext;
 use ironsmith::{
     AbilityKind, AttackTarget, CardId, CardType, CombatState, ContinuousEffect, GameProgress,
-    GameState, LegalAction, Modification, Phase, PlayerFilter, PlayerFilterExt, PlayerId,
-    PowerToughness, PriorityLoopState, PriorityResponse, Target, TriggerQueue, Until, Zone,
-    apply_priority_response, compute_legal_actions, compute_legal_attackers, resolve_stack_entry,
+    GameState, LegalAction, Modification, ObjectFilter, Phase, PlayerFilter, PlayerFilterExt,
+    PlayerId, PowerToughness, PriorityLoopState, PriorityResponse, Target, TriggerQueue, Until,
+    Zone, apply_priority_response, compute_legal_actions, compute_legal_attackers,
+    resolve_stack_entry,
 };
 
 fn four_player_game() -> (GameState, [PlayerId; 4]) {
@@ -134,6 +135,10 @@ fn u069_team_identity_is_transactional_and_drives_player_filters() {
     assert!(PlayerFilter::Teammate.matches_player(bob, &context));
     assert!(!PlayerFilter::Opponent.matches_player(bob, &context));
     assert!(PlayerFilter::Opponent.matches_player(charlie, &context));
+    let your_team = PlayerFilter::your_team();
+    assert!(your_team.matches_player(alice, &context));
+    assert!(your_team.matches_player(bob, &context));
+    assert!(!your_team.matches_player(charlie, &context));
 
     let attacker = creature(&mut game, alice, "Team Attacker");
     game.remove_summoning_sickness(attacker);
@@ -147,6 +152,33 @@ fn u069_team_identity_is_transactional_and_drives_player_filters() {
             .valid_targets
             .contains(&AttackTarget::Player(charlie))
     );
+}
+
+#[test]
+fn u069_your_team_controller_filter_affects_self_and_teammate_permanents_only() {
+    let (mut game, players @ [alice, bob, charlie, _diana]) = four_player_game();
+    enable_two_teams(&mut game, players);
+    let source = artifact(&mut game, alice, "Team Anthem");
+    let yours = creature(&mut game, alice, "Your Creature");
+    let teammates = creature(&mut game, bob, "Teammate Creature");
+    let opponents = creature(&mut game, charlie, "Opponent Creature");
+
+    game.effect_store.continuous_effects.add_effect(
+        ContinuousEffect::new(
+            source,
+            alice,
+            EffectTarget::Filter(ObjectFilter::creature().controlled_by(PlayerFilter::your_team())),
+            Modification::ModifyPowerToughness {
+                power: 1,
+                toughness: 1,
+            },
+        )
+        .until(Until::Forever),
+    );
+
+    assert_eq!(game.current_power(yours), Some(3));
+    assert_eq!(game.current_power(teammates), Some(3));
+    assert_eq!(game.current_power(opponents), Some(2));
 }
 
 #[test]

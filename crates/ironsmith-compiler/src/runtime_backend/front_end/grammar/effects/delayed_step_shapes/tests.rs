@@ -49,7 +49,21 @@ fn parses_registry_payment_and_become_shapes() {
     let become_tokens = tokens("This creature becomes a Dragon.");
     let shape = parse_implicit_become_subject_shape(&become_tokens).unwrap();
     assert_eq!(shape.kind, ImplicitBecomeSubjectKind::Source);
+    assert_eq!(shape.set_quantifier_surface, None);
     assert!(!shape.remainder_tokens.is_empty());
+
+    let plural = tokens("They are 5/5 Elemental creatures.");
+    let shape = parse_implicit_become_subject_shape(&plural).unwrap();
+    assert_eq!(shape.kind, ImplicitBecomeSubjectKind::Tagged);
+    assert_eq!(
+        shape.set_quantifier_surface,
+        Some(ironsmith_core::SetQuantifierSurface::They)
+    );
+
+    let singular = tokens("It is a 5/5 Elemental creature.");
+    let shape = parse_implicit_become_subject_shape(&singular).unwrap();
+    assert_eq!(shape.kind, ImplicitBecomeSubjectKind::Tagged);
+    assert_eq!(shape.set_quantifier_surface, None);
 }
 
 #[test]
@@ -77,6 +91,16 @@ fn parses_end_of_combat_timing_suffixes() {
         assert_eq!(shape.player, PlayerAst::Any, "{text}");
         assert!(shape.start_word > 0, "{text}");
     }
+}
+
+#[test]
+fn parses_next_cleanup_step_timing_suffix() {
+    let timing = tokens("Sacrifice this Aura at the beginning of the next cleanup step.");
+    let shape = parse_delayed_timing_marker_shape(&timing)
+        .expect("cleanup-step suffix should have a typed timing marker");
+    assert_eq!(shape.step, DelayedTimingStepShape::CleanupStep);
+    assert_eq!(shape.player, PlayerAst::Any);
+    assert_eq!(shape.start_word, 3);
 }
 
 #[test]

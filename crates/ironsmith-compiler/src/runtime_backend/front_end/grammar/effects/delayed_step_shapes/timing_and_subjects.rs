@@ -177,7 +177,7 @@ pub(crate) fn parse_implicit_become_subject_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<ImplicitBecomeSubjectShape<'_>> {
     let tokens = trimmed(tokens);
-    let (kind, remainder_tokens) = primitives::parse_prefix(
+    let ((kind, set_quantifier_surface), remainder_tokens) = primitives::parse_prefix(
         tokens,
         alt((
             alt((
@@ -186,9 +186,12 @@ pub(crate) fn parse_implicit_become_subject_shape(
                 primitives::phrase(&["this", "land"]),
                 primitives::kw("this").void(),
             ))
-            .value(ImplicitBecomeSubjectKind::Source),
+            .value((ImplicitBecomeSubjectKind::Source, None)),
+            primitives::phrase(&["each", "of", "them"]).value((
+                ImplicitBecomeSubjectKind::Tagged,
+                Some(ironsmith_core::SetQuantifierSurface::Each),
+            )),
             alt((
-                primitives::phrase(&["each", "of", "them"]),
                 alt((
                     primitives::kw("they're"),
                     primitives::kw("they’re"),
@@ -197,6 +200,12 @@ pub(crate) fn parse_implicit_become_subject_shape(
                 .void(),
                 primitives::phrase(&["they", "are"]),
                 primitives::kw("they").void(),
+            ))
+            .value((
+                ImplicitBecomeSubjectKind::Tagged,
+                Some(ironsmith_core::SetQuantifierSurface::They),
+            )),
+            alt((
                 alt((
                     primitives::kw("it's"),
                     primitives::kw("it’s"),
@@ -205,11 +214,12 @@ pub(crate) fn parse_implicit_become_subject_shape(
                 .void(),
                 primitives::kw("it").void(),
             ))
-            .value(ImplicitBecomeSubjectKind::Tagged),
+            .value((ImplicitBecomeSubjectKind::Tagged, None)),
         )),
     )?;
     Some(ImplicitBecomeSubjectShape {
         kind,
+        set_quantifier_surface,
         remainder_tokens: trimmed(remainder_tokens),
     })
 }
@@ -231,6 +241,34 @@ pub(crate) fn parse_delayed_timing_marker_shape(
             &["at", "end", "of", "combat"],
             DelayedTimingStepShape::EndOfCombat,
             PlayerAst::Any,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "the",
+                "next",
+                "cleanup",
+                "step",
+            ],
+            DelayedTimingStepShape::CleanupStep,
+            PlayerAst::Any,
+        ),
+        (
+            &[
+                "at",
+                "the",
+                "beginning",
+                "of",
+                "your",
+                "next",
+                "cleanup",
+                "step",
+            ],
+            DelayedTimingStepShape::CleanupStep,
+            PlayerAst::You,
         ),
         (
             &[

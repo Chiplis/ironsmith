@@ -93,6 +93,12 @@ pub(crate) fn parse_add_mana(
         }))
     };
 
+    if let Some(any_color_among) = parse_add_one_mana_any_color_among_filter(tokens)? {
+        return Ok(EffectAst::subject_verb_add_one_mana_any_color_among(
+            player,
+            any_color_among,
+        ));
+    }
     if let Some(colors_among) = parse_add_mana_colors_among_filter(tokens)? {
         return Ok(EffectAst::subject_verb_add_mana_colors_among(
             player,
@@ -132,6 +138,24 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
+    let fixed_output = activation_grammar::parse_fixed_mana_output(tokens);
+    if let Some(for_each_idx) = fixed_output.first_for_each_token
+        && let Some(available_colors) = parse_or_mana_color_choices(&tokens[..for_each_idx])?
+    {
+        let amount =
+            parse_dynamic_cost_modifier_value(&tokens[for_each_idx..])?.ok_or_else(|| {
+                CardTextError::ParseError(format!(
+                    "unsupported dynamic color-choice mana amount (clause: '{}')",
+                    clause_words.join(" ")
+                ))
+            })?;
+        return Ok(EffectAst::subject_verb_add_mana_any_color(
+            player,
+            bind_revealed_this_way_count_to_last_object(amount),
+            Some(available_colors),
+        ));
+    }
+
     if let Some(available_colors) = parse_or_mana_color_choices(tokens)? {
         return Ok(EffectAst::subject_verb_add_mana_any_color(
             player,
@@ -140,7 +164,6 @@ pub(crate) fn parse_add_mana(
         ));
     }
 
-    let fixed_output = activation_grammar::parse_fixed_mana_output(tokens);
     if !fixed_output.has_explicit_symbol && facts.chosen_color_reference {
         let amount = parse_add_mana_amount(tokens).unwrap_or(Value::Fixed(1));
         return Ok(EffectAst::subject_verb_add_mana_chosen_color(
@@ -397,6 +420,15 @@ fn parse_add_mana_colors_among_filter(
     }
     let filter = parse_object_filter(filter_tokens, false)?;
     Ok(Some(filter))
+}
+
+fn parse_add_one_mana_any_color_among_filter(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    let Some(span) = activation_grammar::parse_any_color_among_span(tokens) else {
+        return Ok(None);
+    };
+    Ok(Some(parse_object_filter(span.filter_tokens, false)?))
 }
 
 pub(crate) fn mana_symbol_to_color(symbol: ManaSymbol) -> Option<crate::color::Color> {

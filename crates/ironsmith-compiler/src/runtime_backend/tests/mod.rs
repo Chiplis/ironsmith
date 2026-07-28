@@ -133,6 +133,10 @@ fn parse_error_message<T>(result: Result<T, CardTextError>) -> String {
     }
 }
 
+mod draw_step_search_player_provenance;
+mod each_of_any_number;
+mod each_player_unless_pays;
+mod leading_then_discard_provenance;
 mod shard_00;
 mod shard_01;
 mod shard_02;

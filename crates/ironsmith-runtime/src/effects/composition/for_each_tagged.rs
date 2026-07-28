@@ -5,13 +5,29 @@
 //! - "Destroy all creatures. Their controllers each create a token for each creature
 //!    they controlled that was destroyed this way."
 
-use crate::effect::{Effect, EffectOutcome};
+use crate::effect::{Effect, EffectOutcome, ExecutionFact};
 use crate::effects::{EffectExecutor, SimultaneousEffectProposal};
 use crate::effects::{ExecutionContext, ExecutionError, execute_effect};
 use crate::game_state::GameState;
 use crate::ids::PlayerId;
 use crate::snapshot::ObjectSnapshot;
 use crate::tag::TagKey;
+
+fn correlated_player_count(outcomes: &[EffectOutcome]) -> i32 {
+    let summary = EffectOutcome::aggregate_summing_counts(outcomes.iter().cloned());
+    let count = summary.as_count().unwrap_or(0);
+    if count != 0 {
+        return count;
+    }
+    // Accepting an optional action is itself the correlated "did" result,
+    // even when a hidden-zone search legally finds no card.
+    i32::from(
+        summary
+            .execution_facts
+            .iter()
+            .any(|fact| matches!(fact, ExecutionFact::Accepted)),
+    )
+}
 
 /// Effect that applies effects once for each tagged object.
 ///
@@ -96,10 +112,7 @@ impl SimultaneousEffectProposal for ForEachTaggedProposal {
                         Ok::<(), ExecutionError>(())
                     })
                 })?;
-                let count =
-                    EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned())
-                        .as_count()
-                        .unwrap_or(0);
+                let count = correlated_player_count(&outcomes[start..]);
                 if let Some((_, total)) = player_counts
                     .iter_mut()
                     .find(|(player, _)| *player == snapshot.controller)
@@ -255,9 +268,7 @@ impl EffectExecutor for ForEachTaggedEffect {
                     Ok::<(), ExecutionError>(())
                 })
             })?;
-            let count = EffectOutcome::aggregate_summing_counts(outcomes[start..].iter().cloned())
-                .as_count()
-                .unwrap_or(0);
+            let count = correlated_player_count(&outcomes[start..]);
             if let Some((_, total)) = player_counts
                 .iter_mut()
                 .find(|(player, _)| *player == snapshot.controller)
@@ -479,6 +490,13 @@ mod tests {
 
     fn setup_game() -> GameState {
         crate::tests::test_helpers::setup_two_player_game()
+    }
+
+    #[test]
+    fn accepted_zero_result_still_counts_as_correlated_player_action() {
+        let accepted = EffectOutcome::count(0).with_execution_fact(ExecutionFact::Accepted);
+        assert_eq!(correlated_player_count(&[accepted]), 1);
+        assert_eq!(correlated_player_count(&[EffectOutcome::declined()]), 0);
     }
 
     fn create_creature(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {

@@ -2,6 +2,7 @@ use winnow::combinator::{alt, opt};
 use winnow::prelude::*;
 
 use crate::cards::builders::ChoiceCount;
+use crate::mana::ManaSymbol;
 use crate::runtime_backend::front_end::grammar::{leaf, primitives};
 use crate::runtime_backend::front_end::lexer::{OwnedLexToken, trim_lexed_commas};
 
@@ -31,6 +32,14 @@ pub(crate) struct ForEachTargetPlayersShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ForEachSpentManaEffectShape<'a> {
     pub(crate) source_tokens: &'a [OwnedLexToken],
+    pub(crate) effect_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ForEachManaSymbolSpentEffectShape<'a> {
+    pub(crate) symbol: ManaSymbol,
+    pub(crate) group_size: u32,
+    pub(crate) reference: ironsmith_core::ManaSpentCastReferenceSurface,
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
 
@@ -160,7 +169,13 @@ pub(crate) fn parse_for_each_target_players_shape(
     let (_, after_target) = primitives::parse_prefix(after_count, primitives::kw("target"))?;
     let (_, after_player) = primitives::parse_prefix(
         after_target,
-        alt((primitives::kw("player"), primitives::kw("players"))).void(),
+        alt((
+            primitives::kw("player"),
+            primitives::kw("players"),
+            primitives::kw("opponent"),
+            primitives::kw("opponents"),
+        ))
+        .void(),
     )?;
     // Do not mistake the counted-set suffix in an ordinary action such as
     // "target player creates ... for each card ..." for the iterator marker.

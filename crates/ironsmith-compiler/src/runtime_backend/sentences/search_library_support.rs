@@ -11,6 +11,7 @@ use super::token_primitives::{
 use super::util::{parse_number, trim_commas};
 use crate::cards::builders::CardTextError;
 use crate::effect::Value;
+use crate::runtime_backend::keyword_static::parse_value_binding_clause;
 use crate::target::ObjectFilter;
 use crate::types::{CardType, Subtype};
 
@@ -320,11 +321,11 @@ pub(crate) fn split_search_library_count_value_clause_lexed(
     };
 
     let count_value_tokens = trim_lexed_commas(&filter_tokens[where_idx..]).to_vec();
-    let Some(count_value) =
+    let Some(count_value) = parse_value_binding_clause(&count_value_tokens).or_else(|| {
         super::grammar::values::parse_players_who_control_more_than_you_value_lexed(
             count_value_tokens.as_slice(),
         )
-    else {
+    }) else {
         return Err(CardTextError::ParseError(format!(
             "unsupported search-library count clause (clause: '{}')",
             token_word_refs(&count_value_tokens).join(" ")
@@ -339,4 +340,49 @@ pub(crate) fn split_search_library_count_value_clause_lexed(
     }
 
     Ok(Some((base_filter_tokens, count_value)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::runtime_backend::front_end::lexer::{TokenWordView, lex_line};
+
+    #[test]
+    fn generic_where_x_search_count_keeps_dynamic_subtraction() {
+        let tokens = lex_line(
+            "basic land cards, where X is five minus the number of lands they control",
+            0,
+        )
+        .expect("search count clause should lex");
+        let (filter, value) = split_search_library_count_value_clause_lexed(&tokens)
+            .expect("search count clause should parse")
+            .expect("where-X suffix should be recognized");
+
+        assert_eq!(
+            TokenWordView::new(&filter).to_word_refs(),
+            vec!["basic", "land", "cards"]
+        );
+        assert!(matches!(value.unhinted(), Value::Add(_, _)), "{value:#?}");
+    }
+
+    #[test]
+    fn battlefield_creature_count_does_not_invent_a_card_noun() {
+        let tokens = lex_line(
+            "basic land cards, where X is the number of tapped creatures you control",
+            0,
+        )
+        .expect("search count clause should lex");
+        let (_, value) = split_search_library_count_value_clause_lexed(&tokens)
+            .expect("search count clause should parse")
+            .expect("where-X suffix should be recognized");
+        let Value::Count(filter) = value.unhinted() else {
+            panic!("expected typed count, got {value:#?}");
+        };
+
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(filter.zone, Some(crate::Zone::Battlefield));
+        assert_eq!(filter.controller, Some(crate::PlayerFilter::You));
+        assert!(filter.tapped);
+        assert!(!filter.has_explicit_card_noun(), "{filter:#?}");
+    }
 }

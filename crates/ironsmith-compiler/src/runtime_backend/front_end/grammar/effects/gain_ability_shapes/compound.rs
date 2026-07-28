@@ -44,6 +44,13 @@ pub(crate) struct AttachedAndRelatedGetAbilityShape<'a> {
     pub(crate) duration: Until,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct AttachedAndRelatedGetShape<'a> {
+    pub(crate) subject: AttachedReferenceSubject,
+    pub(crate) pump_tokens: &'a [OwnedLexToken],
+    pub(crate) duration: Until,
+}
+
 fn gain_verb<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     alt((primitives::kw("gain"), primitives::kw("gains")))
         .void()
@@ -81,6 +88,32 @@ fn semantic_subject_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]>
     nonempty_trimmed(tokens.get(semantic_start..)?)
 }
 
+/// A shared pump/ability subject cannot also contain a completed player
+/// action. For example, in `you draw ... and the chosen creatures get ...
+/// and gain ...`, only `the chosen creatures` is shared by `get` and `gain`;
+/// the leading draw belongs to the surrounding coordinated effect chain.
+fn independent_player_action_precedes_shared_subject(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let player_subject_words = match words.as_slice() {
+        ["you", ..] => 1,
+        [
+            "target" | "that" | "each" | "chosen" | "active" | "defending",
+            "player",
+            ..,
+        ]
+        | ["the", "player", ..]
+        | ["its" | "their", "controller" | "owner", ..] => 2,
+        _ => return false,
+    };
+    let Some(verb) = super::super::chain_splitting::find_chain_verb_words(&words) else {
+        return false;
+    };
+    verb.word_index == player_subject_words
+        && words[verb.word_index + 1..]
+            .iter()
+            .any(|word| *word == "and")
+}
+
 pub(crate) fn parse_gain_then_get_shape(tokens: &[OwnedLexToken]) -> Option<GainThenGetShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let (gain_token, (), after_gain) = primitives::find_prefix(tokens, || gain_verb)?;
@@ -101,7 +134,11 @@ pub(crate) fn parse_get_then_ability_shape(
 ) -> Option<GetThenAbilityShape<'_>> {
     let tokens = trim_lexed_commas(tokens);
     let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
-    let subject_tokens = semantic_subject_tokens(tokens.get(..get_token)?)?;
+    let raw_subject_tokens = tokens.get(..get_token)?;
+    if independent_player_action_precedes_shared_subject(raw_subject_tokens) {
+        return None;
+    }
+    let subject_tokens = semantic_subject_tokens(raw_subject_tokens)?;
     let (separator_token, ability_verb, ability_tokens) =
         primitives::find_prefix(after_get, || {
             (primitives::kw("and"), shared_ability_verb).map(|(_, verb)| verb)
@@ -145,6 +182,33 @@ pub(crate) fn parse_attached_and_related_get_ability_shape(
         subject,
         pump_tokens: shape.pump_tokens,
         ability_tokens,
+        duration: Until::EndOfTurn,
+    })
+}
+
+pub(crate) fn parse_attached_and_related_get_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<AttachedAndRelatedGetShape<'_>> {
+    let tokens = trim_lexed_commas(tokens);
+    let (get_token, (), after_get) = primitives::find_prefix(tokens, || get_verb)?;
+    let subject_tokens = nonempty_trimmed(tokens.get(..get_token)?)?;
+    let subject = primitives::parse_all(
+        subject_tokens,
+        parse_attached_and_related_subject,
+        "attached object and related creatures subject",
+    )
+    .ok()?;
+    let (pump_tokens, ()) = primitives::split_lexed_once_before_suffix(after_get, 1, || {
+        (
+            primitives::phrase(&["until", "end", "of", "turn"]),
+            primitives::sentence_end(),
+        )
+            .void()
+    })?;
+    let pump_tokens = nonempty_trimmed(pump_tokens)?;
+    Some(AttachedAndRelatedGetShape {
+        subject,
+        pump_tokens,
         duration: Until::EndOfTurn,
     })
 }

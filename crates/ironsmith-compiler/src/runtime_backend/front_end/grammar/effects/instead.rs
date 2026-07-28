@@ -19,6 +19,7 @@ const INSTEAD_OF_PUTTING_THEM_INTO: &[&str] = &["instead", "of", "putting", "the
 pub(crate) struct InsteadFollowupShape {
     pub(crate) semantics: InsteadSemantics,
     pub(crate) conditional_intro: bool,
+    pub(crate) leading_instead_surface: bool,
 }
 
 pub(crate) fn parse_instead_followup_semantics_lexed<'a>(
@@ -43,9 +44,13 @@ pub(crate) fn classify_instead_followup_semantics_tokens(
 pub(crate) fn parse_instead_followup_shape_tokens(
     tokens: &[OwnedLexToken],
 ) -> InsteadFollowupShape {
+    let leading_instead_surface = tokens
+        .windows(2)
+        .any(|pair| pair[0].is_comma() && pair[1].is_word("instead"));
     InsteadFollowupShape {
         semantics: classify_instead_followup_semantics_tokens(tokens),
         conditional_intro: primitives::parse_prefix(tokens, primitives::kw("if")).is_some(),
+        leading_instead_surface,
     }
 }
 
@@ -154,6 +159,19 @@ mod tests {
         let tokens = lex_line("If you do, exile it instead", 0).unwrap();
         let shape = parse_instead_followup_shape_tokens(&tokens);
         assert!(shape.conditional_intro);
+        assert!(!shape.leading_instead_surface);
+        assert_eq!(shape.semantics, InsteadSemantics::SelfReplacement);
+    }
+
+    #[test]
+    fn followup_shape_preserves_leading_instead_surface() {
+        let tokens = lex_line(
+            "Draw a card. If you control an artifact, instead draw two cards.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_instead_followup_shape_tokens(&tokens);
+        assert!(shape.leading_instead_surface);
         assert_eq!(shape.semantics, InsteadSemantics::SelfReplacement);
     }
 

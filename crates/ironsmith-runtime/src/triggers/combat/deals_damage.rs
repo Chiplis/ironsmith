@@ -72,6 +72,21 @@ impl DealsDamageTrigger {
     }
 }
 
+pub(super) fn correct_damage_source_indefinite_article(description: String) -> String {
+    let Some(rest) = description.strip_prefix("a ") else {
+        return description;
+    };
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|first| matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        format!("an {rest}")
+    } else {
+        description
+    }
+}
+
 impl TriggerMatcher for DealsDamageTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
         if event.kind() != EventKind::Damage {
@@ -147,6 +162,7 @@ impl TriggerMatcher for DealsDamageTrigger {
             } else {
                 surface_filter.description()
             };
+        let source_description = correct_damage_source_indefinite_article(source_description);
         let source_description = if grouped_sources {
             format!(
                 "one or more {}",
@@ -156,6 +172,21 @@ impl TriggerMatcher for DealsDamageTrigger {
             source_description
         };
         let verb = if grouped_sources { "deal" } else { "deals" };
+        if self.source_surface == ironsmith_core::trigger_model::DamageSourceSurface::PassiveBy
+            && let Some(player) = &self.damaged_player
+        {
+            let damage_kind = if self.combat_only {
+                "combat damage"
+            } else if self.noncombat_only {
+                "noncombat damage"
+            } else {
+                "damage"
+            };
+            return format!(
+                "Whenever {} is dealt {damage_kind} by {source_description}",
+                player.description()
+            );
+        }
         if self.combat_only {
             format!("Whenever {source_description} {verb} combat damage")
         } else if self.noncombat_only {
@@ -280,6 +311,7 @@ pub(super) fn generic_source_description(filter: &ObjectFilter) -> String {
 mod tests {
     use super::*;
     use crate::card::CardBuilder;
+    use crate::color::ColorSet;
     use crate::events::cause::EventCause;
     use crate::game_state::GameState;
     use crate::ids::{CardId, ObjectId, PlayerId};
@@ -426,5 +458,173 @@ mod tests {
         );
         assert!(trigger.matches(&event_from(spell_id), &ctx));
         assert!(!trigger.matches(&event_from(creature_id), &ctx));
+    }
+
+    #[cfg(ironsmith_runtime_parser_tests)]
+    #[test]
+    fn parsed_controlled_instant_or_sorcery_damage_trigger_queues_for_both_spell_types() {
+        use crate::cards::CardDefinitionBuilder;
+        use crate::mana::{ManaCost, ManaSymbol};
+
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let watcher = CardDefinitionBuilder::new(CardId::new(), "Spell Damage Watcher")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "Whenever an instant or sorcery spell you control deals damage, you gain 1 life.",
+            )
+            .expect("controlled instant-or-sorcery damage trigger should parse");
+        let parsed_trigger = watcher
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("watcher should retain its triggered ability");
+        assert_eq!(
+            parsed_trigger.trigger.display(),
+            "Whenever an instant or sorcery spell you control deals damage"
+        );
+        game.create_object_from_definition(&watcher, alice, Zone::Battlefield);
+
+        let damage_spell = |game: &mut GameState,
+                            name: &str,
+                            card_type: CardType,
+                            controller: PlayerId,
+                            zone: Zone| {
+            let card = CardBuilder::new(CardId::new(), name)
+                .mana_cost(ManaCost::from_pips(vec![vec![ManaSymbol::Red]]))
+                .card_types(vec![card_type])
+                .build();
+            let object = game.create_object_from_card(&card, controller, zone);
+            if zone == Zone::Stack {
+                game.push_to_stack(crate::game_state::StackEntry::new(object, controller));
+            }
+            object
+        };
+        let your_instant = damage_spell(
+            &mut game,
+            "Your Instant",
+            CardType::Instant,
+            alice,
+            Zone::Stack,
+        );
+        let your_sorcery = damage_spell(
+            &mut game,
+            "Your Sorcery",
+            CardType::Sorcery,
+            alice,
+            Zone::Stack,
+        );
+        let opponents_instant = damage_spell(
+            &mut game,
+            "Opponent's Instant",
+            CardType::Instant,
+            bob,
+            Zone::Stack,
+        );
+        let your_instant_card = damage_spell(
+            &mut game,
+            "Your Instant Card",
+            CardType::Instant,
+            alice,
+            Zone::Graveyard,
+        );
+        game.refresh_continuous_state();
+
+        let event_from = |source| {
+            TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    source,
+                    DamageTarget::Player(bob),
+                    3,
+                    false,
+                    EventCause::effect(),
+                ),
+                ProvNodeId::default(),
+            )
+        };
+
+        assert_eq!(
+            crate::triggers::check_triggers(&game, &event_from(your_instant)).len(),
+            1,
+            "a controlled Instant spell should queue the trigger"
+        );
+        assert_eq!(
+            crate::triggers::check_triggers(&game, &event_from(your_sorcery)).len(),
+            1,
+            "a controlled Sorcery spell should queue the trigger"
+        );
+        assert!(
+            crate::triggers::check_triggers(&game, &event_from(opponents_instant)).is_empty(),
+            "an opponent's Instant spell must not queue the trigger"
+        );
+        assert!(
+            crate::triggers::check_triggers(&game, &event_from(your_instant_card)).is_empty(),
+            "an Instant card outside the stack must not queue the trigger"
+        );
+    }
+
+    #[test]
+    fn passive_qualified_source_union_matches_each_authored_source_arm() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let red_instant = CardBuilder::new(CardId::new(), "Red Instant")
+            .card_types(vec![CardType::Instant])
+            .color_indicator(ColorSet::RED)
+            .build();
+        let red_planeswalker = CardBuilder::new(CardId::new(), "Red Planeswalker")
+            .card_types(vec![CardType::Planeswalker])
+            .color_indicator(ColorSet::RED)
+            .build();
+        let green_instant = CardBuilder::new(CardId::new(), "Green Instant")
+            .card_types(vec![CardType::Instant])
+            .color_indicator(ColorSet::GREEN)
+            .build();
+        let red_instant_id = game.create_object_from_card(&red_instant, alice, Zone::Stack);
+        let red_planeswalker_id =
+            game.create_object_from_card(&red_planeswalker, alice, Zone::Battlefield);
+        let green_instant_id = game.create_object_from_card(&green_instant, alice, Zone::Stack);
+
+        let mut instant_or_sorcery = ObjectFilter::default()
+            .with_type(CardType::Instant)
+            .with_type(CardType::Sorcery)
+            .with_colors(ColorSet::RED)
+            .controlled_by(PlayerFilter::You)
+            .in_zone(Zone::Stack);
+        instant_or_sorcery.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
+        let planeswalker = ObjectFilter::default()
+            .with_type(CardType::Planeswalker)
+            .with_colors(ColorSet::RED)
+            .controlled_by(PlayerFilter::You)
+            .in_zone(Zone::Battlefield);
+        let mut source = ObjectFilter::default();
+        source.any_of = vec![instant_or_sorcery, planeswalker];
+        source.set_union_connective(crate::filter::ObjectFilterUnionConnective::Or);
+        let trigger = DealsDamageTrigger::to_player(
+            source,
+            PlayerFilter::Opponent,
+            ironsmith_core::trigger_model::DamageSourceSurface::PassiveBy,
+        );
+        let ctx = TriggerContext::for_source(ObjectId::from_raw(100), alice, &game);
+        let event_from = |source| {
+            TriggerEvent::new_with_provenance(
+                DamageEvent::with_cause(
+                    source,
+                    DamageTarget::Player(bob),
+                    3,
+                    false,
+                    EventCause::effect(),
+                ),
+                ProvNodeId::default(),
+            )
+        };
+
+        assert!(trigger.matches(&event_from(red_instant_id), &ctx));
+        assert!(trigger.matches(&event_from(red_planeswalker_id), &ctx));
+        assert!(!trigger.matches(&event_from(green_instant_id), &ctx));
     }
 }

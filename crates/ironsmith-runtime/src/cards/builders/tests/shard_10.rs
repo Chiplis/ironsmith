@@ -319,6 +319,7 @@ pub(super) fn parse_return_converted_clause_uses_shared_return_and_convert() {
 #[test]
 pub(super) fn parse_return_next_upkeep_clause_schedules_return_for_that_objects_owner() {
     let def = CardDefinitionBuilder::new(CardId::new(), "Next Upkeep Return Variant")
+        .card_types(vec![CardType::Creature])
         .parse_text(
             "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep.",
         )
@@ -357,6 +358,10 @@ pub(super) fn parse_return_next_upkeep_clause_schedules_return_for_that_objects_
     assert_eq!(
         return_effect.battlefield_controller,
         crate::effects::BattlefieldController::Owner
+    );
+    assert_eq!(
+        crate::compiled_text::canonical_compiled_lines(&def).join(" "),
+        "When this creature dies, return it to the battlefield tapped under its owner's control at the beginning of their next upkeep."
     );
 }
 
@@ -2135,18 +2140,338 @@ pub(super) fn render_varragoth_search_uses_the_searched_card_antecedent() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn render_scholarship_sponsor_keeps_each_player_search_subject() {
+    let oracle = "When this creature enters, each player who controls fewer lands than the player who controls the most lands searches their library for a number of basic land cards less than or equal to the difference, puts those cards onto the battlefield tapped, then shuffles.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Scholarship Sponsor Variant")
-        .parse_text(
-            "When this creature enters, each player who controls fewer lands than the player who controls the most lands searches their library for a number of basic land cards less than or equal to the difference, puts those cards onto the battlefield tapped, then shuffles.",
-        )
+        .parse_text(oracle)
         .expect("scholarship sponsor should parse");
-    let debug = format!("{:?}", def.spell_effect);
-    let joined = crate::compiled_text::unprocessed_compiled_lines(&def)
-        .join("\n")
-        .to_ascii_lowercase();
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("GreatestCount")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("PutOntoBattlefieldEffect")
+            && debug.contains("ShuffleLibraryEffect")
+            && debug.contains("Difference")
+            && debug.contains("IteratedPlayer"),
+        "expected a typed relative land-count predicate and correlated per-player search procedure, got {debug}"
+    );
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
     assert!(
         !joined.contains("you searches"),
         "expected per-player search subject instead of defaulting to you, got {joined}; debug={debug}"
+    );
+    assert!(
+        joined.contains(
+            "each player who controls fewer lands than the player who controls the most lands searches their library for a number of basic land cards less than or equal to the difference"
+        ) && joined.contains("puts those cards onto the battlefield tapped, then shuffles"),
+        "expected the relative land-count predicate and difference-bound search to survive, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Scholarship Sponsor to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_natural_balance_keeps_both_land_thresholds_and_dynamic_search_count() {
+    let oracle = "Each player who controls six or more lands chooses five lands they control and sacrifices the rest. Each player who controls four or fewer lands may search their library for up to X basic land cards and put them onto the battlefield, where X is five minus the number of lands they control. Then each player who searched their library this way shuffles.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Natural Balance Variant")
+        .parse_text(oracle)
+        .expect("Natural Balance should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("Sacrifice")
+            && debug.contains("keep")
+            && debug.contains("count_value: Some")
+            && debug.contains("WithIdEffect")
+            && debug.contains("ShuffleLibraryEffect"),
+        "expected the kept-land complement and correlated dynamic search to remain executable, got {debug}"
+    );
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("each player who controls six or more lands")
+            && joined.contains("each player who controls four or fewer lands")
+            && joined.contains("five minus the number of lands they control")
+            && joined.contains("each player who searched their library this way shuffles"),
+        "expected both thresholds, the dynamic difference, and the correlated shuffle to survive, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Natural Balance to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_relative_opponent_damage_keeps_land_difference_and_total_damage_result() {
+    let oracle = "This spell deals damage to each opponent who controls more lands than you equal to the difference. Then create a number of Treasure tokens equal to the damage dealt this way.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Relative Land Damage Variant")
+        .parse_text(oracle)
+        .expect("relative opponent damage should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("PlayerControlsMoreThanYou")
+            && debug.contains("IteratedPlayer")
+            && debug.contains("Scaled")
+            && debug.contains("Difference"),
+        "expected a typed per-opponent land-count predicate and subtraction value, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("each opponent who controls more lands than you")
+            && joined.contains("equal to the difference")
+            && joined.contains("damage dealt this way"),
+        "expected the relative predicate, difference amount, and prior damage result to render, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected relative opponent damage to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_yunas_whistle_binds_the_revealed_card_to_its_follow_up() {
+    let oracle = "Reveal cards from the top of your library until you reveal a creature card. Put that card into your hand and the rest on the bottom of your library in a random order. When you reveal a creature card this way, put X +1/+1 counters on target creature you control, where X is the mana value of that card.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Yuna's Whistle Variant")
+        .parse_text(oracle)
+        .expect("Yuna's Whistle should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("ResolvedWhenResult")
+            && debug.contains("ManaValueOf")
+            && debug.contains("PutCounters"),
+        "expected the reveal result and that card's mana value to remain typed, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("until you reveal a creature card")
+            && joined.contains("put that card into your hand")
+            && joined.contains("the rest on the bottom of your library in a random order")
+            && joined.contains("when you reveal a creature card this way")
+            && joined.contains("where x is the mana value of that card"),
+        "expected the consult result and its reflexive follow-up to render, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Yuna's Whistle to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_must_block_then_assignment_control_keeps_both_semantics() {
+    let oracle = "Whenever a creature you control attacks, defending player loses 1 life and you gain 1 life.\n{3}{R/W}{R/W}: Creatures your opponents control block this turn if able, and you choose how those creatures block.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Combat Assignment Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("must-block plus assignment-control text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("MustBlock") && debug.contains("ControlCombatChoicesThisTurnEffect"),
+        "expected both the mandatory-block set and blocker-assignment control, got {debug}"
+    );
+    assert!(
+        !debug.contains("ChooseObjectsEffect"),
+        "the anaphoric combat-choice clause must not become an unrelated object choice, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains(
+            "creatures your opponents control block this turn if able, and you choose how those creatures block"
+        ),
+        "expected the coordinated combat-control surface, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected the combat assignment variant to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_next_spell_variable_copy_count_and_plural_retarget_surface() {
+    let oracle = "When you next cast an instant or sorcery spell this turn, copy that spell X times. You may choose new targets for the copies.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Variable Copy Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("variable-count delayed spell copy should parse");
+    let debug = format!("{:?}", def.spell_effect);
+    assert!(
+        debug.contains("CopySpellEffect") && debug.contains("count: X"),
+        "expected the delayed copy effect to retain its variable count, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("copy that spell x times")
+            && joined.contains("choose new targets for the copies"),
+        "expected variable copies and their plural retarget surface, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected the variable-copy variant to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_repeated_each_count_keeps_suspended_and_permanent_domains() {
+    let oracle = "Rose Tyler gets +1/+1 for each time counter on it.\nBad Wolf — Whenever Rose Tyler attacks, put a time counter on it for each suspended card you own and each other permanent you control with a time counter on it.\nDoctor's companion";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Rose Tyler")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("repeated-each cross-domain counter text should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("alternative_cast: Some(Suspend)")
+            && debug.contains("zone: Some(Exile)")
+            && debug.contains("with_counter: Some(Typed(Time))")
+            && debug.contains("any_of: ["),
+        "expected suspended cards and time-counter permanents to remain distinct count arms, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("for each suspended card you own")
+            && joined.contains("each other permanent you control with a time counter on it"),
+        "expected both repeated-each count domains to render, got {joined}; debug={debug}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected the repeated-each count variant to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_attacking_creature_or_protected_planeswalker_target_scope() {
+    let oracle = "{W}, Sacrifice this enchantment: Exile target creature that's attacking you or a planeswalker you control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Soul Snare Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("Soul Snare should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("attacking_player_or_planeswalker_controlled_by: Some(You)")
+            && debug.contains("card_types: [Creature]")
+            && !debug.contains("card_types: [Creature, Planeswalker]"),
+        "expected the planeswalker to remain the attack destination, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected Soul Snare to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn render_permanent_with_fading_filter_keeps_the_keyword_constraint() {
+    let oracle = "{1}, {T}, Sacrifice this artifact: Put a fade counter on each permanent with fading you control.";
+    let def = CardDefinitionBuilder::new(CardId::new(), "Fading Counter Variant")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle)
+        .expect("the fading-qualified permanent filter should parse");
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("ability_markers: [\"fading\"]"),
+        "expected fading to remain a typed filter constraint, got {debug}"
+    );
+
+    let compiled = crate::compiled_text::unprocessed_compiled_lines(&def);
+    let joined = compiled.join("\n").to_ascii_lowercase();
+    assert!(
+        joined.contains("each permanent with fading you control"),
+        "expected the fading-qualified permanent surface to survive, got {joined}"
+    );
+    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
+        oracle,
+        &compiled,
+        Some(crate::semantic_compare::EmbeddingConfig {
+            dims: 384,
+            mismatch_threshold: 0.99,
+        }),
+    );
+    assert!(
+        similarity >= 0.99 && !mismatch,
+        "expected the fading-filter variant to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
     );
 }
 
@@ -2236,6 +2561,7 @@ pub(super) fn parse_return_from_graveyard_attached_followup_targets_returned_cre
     assert!(
         debug.contains("ReturnFromGraveyardToBattlefieldEffect")
             && debug.contains("MoveToZoneEffect")
+            && debug.contains("TagAllEffect")
             && debug.contains("AttachObjectsEffect")
             && debug.contains("Aura")
             && debug.contains("Equipment")

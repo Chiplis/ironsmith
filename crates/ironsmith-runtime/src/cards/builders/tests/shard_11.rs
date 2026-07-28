@@ -997,6 +997,65 @@ pub(super) fn parse_sound_the_call_token_does_not_misread_named_card_reference_a
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn specialized_token_reminders_preserve_separate_sentence_presentation() {
+    fn created_token_effect(definition: &CardDefinition) -> &CreateTokenEffect {
+        if let Some(create) = definition.spell_effect.as_ref().and_then(|program| {
+            program
+                .flattened_default_effects()
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+        }) {
+            return create;
+        }
+        for ability in &definition.abilities {
+            let effects = match &ability.kind {
+                AbilityKind::Activated(activated) => activated.effects.flattened_default_effects(),
+                AbilityKind::Triggered(triggered) => triggered.effects.flattened_default_effects(),
+                AbilityKind::Static(_) => continue,
+            };
+            if let Some(create) = effects
+                .iter()
+                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+            {
+                return create;
+            }
+        }
+        panic!(
+            "expected a direct create-token effect for {}",
+            definition.card.name
+        );
+    }
+
+    for (name, oracle) in [
+        (
+            "Serpent Generator",
+            "{4}, {T}: Create a 1/1 colorless Snake artifact creature token. It has \"Whenever this creature deals damage to a player, that player gets a poison counter.\"",
+        ),
+        (
+            "Llanowar Mentor",
+            "{G}, {T}, Discard a card: Create a 1/1 green Elf Druid creature token named Llanowar Elves. It has \"{T}: Add {G}.\"",
+        ),
+        (
+            "Sound the Call",
+            "Create a 1/1 green Wolf creature token. It has \"This token gets +1/+1 for each card named Sound the Call in each graveyard.\"",
+        ),
+    ] {
+        let definition = parse_oracle_card_definition(name);
+        assert_eq!(
+            unprocessed_compiled_lines(&definition).join("\n"),
+            oracle,
+            "{name} must retain its complete authored token-ability surface"
+        );
+        assert_eq!(
+            created_token_effect(&definition).ability_presentation,
+            Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined),
+            "{name} must carry a typed separate-sentence token presentation"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_ozox_nested_token_return_keeps_named_card_literal() {
     let canonical = |name: &str| {
         name.chars()

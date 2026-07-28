@@ -45,6 +45,14 @@ fn typed_player_reference_normalizes_possessives() {
         parse_possessive_player_reference(&["your", "opponent"]),
         PossessivePlayerReference::You
     );
+    assert_eq!(
+        parse_possessive_player_reference(&["the", "chosen", "player's", "upkeep"]),
+        PossessivePlayerReference::ChosenPlayer
+    );
+    assert_eq!(
+        parse_possessive_player_reference(&["enchanted", "opponent's", "end", "step"]),
+        PossessivePlayerReference::EnchantedPlayer
+    );
 }
 
 #[test]
@@ -109,6 +117,14 @@ fn typed_spell_or_ability_controller_tail_preserves_reference_kind() {
             "spell", "or", "ability", "player", "who", "cast", "it", "controls",
         ]),
         Some(TriggerControllerReference::EffectController)
+    );
+    assert_eq!(
+        parse_spell_controller_tail(&["a", "spell", "you", "control"]),
+        Some(TriggerControllerReference::You)
+    );
+    assert_eq!(
+        parse_spell_controller_tail(&["spell", "an", "opponent", "controls"]),
+        Some(TriggerControllerReference::Opponent)
     );
 }
 

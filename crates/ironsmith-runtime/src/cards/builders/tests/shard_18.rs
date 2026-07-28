@@ -112,7 +112,7 @@ pub(super) fn pinnacle_starcage_strict_parser_and_text_regression() {
     let def = parse_oracle_card_definition("Pinnacle Starcage");
     let lines = canonical_compiled_lines(&def);
     let expected_enters = "When this artifact enters, exile all artifacts and creatures with mana value 2 or less until this artifact leaves the battlefield.";
-    let expected_activated = "{6}{W}{W}: Put each card exiled with this artifact into their owners' graveyard, then create that many 2/2 colorless Robot artifact creature tokens. Sacrifice this artifact.";
+    let expected_activated = "{6}{W}{W}: Put each card exiled with this artifact into its owner's graveyard, then create a 2/2 colorless Robot artifact creature token for each card put into a graveyard this way. Sacrifice this artifact.";
 
     assert_eq!(lines, vec![expected_enters, expected_activated]);
 
@@ -121,6 +121,7 @@ pub(super) fn pinnacle_starcage_strict_parser_and_text_regression() {
         debug.contains("ExileUntilEffect")
             && debug.contains("SourceLeavesBattlefield")
             && debug.contains("MoveToZoneEffect")
+            && debug.contains("WithIdEffect")
             && debug.contains("EffectMetric")
             && debug.contains("AffectedObjects")
             && debug.contains("CreateTokenEffect")
@@ -3533,5 +3534,48 @@ pub(super) fn creeping_peeper_restricted_mana_runtime_branches() {
     assert!(
         !game.is_face_down(face_up_probe_id),
         "turn-face-up special action should leave the permanent face up"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn sphinxs_tutelage_preserves_counted_shared_color_mill_gate() {
+    let definition = parse_oracle_card_definition("Sphinx's Tutelage");
+    let lines = canonical_compiled_lines(&definition);
+    let expected = "Whenever you draw a card, target opponent mills two cards. If two nonland cards that share a color were milled this way, repeat this process.";
+    assert!(
+        lines.iter().any(|line| line == expected),
+        "expected the exact counted shared-color mill gate, got {lines:#?}"
+    );
+
+    let debug = format!("{:#?}", definition);
+    assert!(
+        debug.contains("required_count: Some(\n")
+            && debug.contains("shared_characteristic: Some(\n")
+            && debug.contains("Color"),
+        "expected typed count and shared-color semantics, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn cemetery_prowler_preserves_shared_card_type_cost_reduction() {
+    let definition = parse_oracle_card_definition("Cemetery Prowler");
+    let lines = canonical_compiled_lines(&definition);
+    assert_eq!(
+        lines,
+        vec![
+            "Vigilance",
+            "Whenever this creature enters or attacks, exile a card from a graveyard.",
+            "Spells you cast cost {1} less to cast for each card type they share with cards exiled with this creature.",
+        ]
+    );
+
+    let debug = format!("{:#?}", definition);
+    assert!(
+        debug.contains("characteristic_intersection: Some(")
+            && debug.contains("characteristic: CardType")
+            && debug.contains("cards exiled with this creature"),
+        "expected typed spell/comparison-set card-type intersection, got {debug}"
     );
 }

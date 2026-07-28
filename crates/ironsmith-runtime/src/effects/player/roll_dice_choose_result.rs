@@ -83,6 +83,9 @@ impl EffectExecutor for RollDiceChooseResultEffect {
         game.turn_store
             .turn_history
             .record_die_roll(player, chosen.result);
+        // The chosen result is the roll recorded by this effect, so it must
+        // invalidate any continuous effects that depend on die-roll history.
+        game.mark_continuous_state_dirty();
         game.record_ui_effect_event(
             "die_roll",
             Some(player),

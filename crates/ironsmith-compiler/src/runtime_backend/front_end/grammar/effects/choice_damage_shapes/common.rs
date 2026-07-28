@@ -164,7 +164,10 @@ pub(crate) fn has_unless_shape(words: &[&str]) -> bool {
 }
 
 pub(crate) fn is_that_controller_has_shape(words: &[&str]) -> bool {
-    if !first_choice_damage_word_is(words, "that") {
+    if !words
+        .first()
+        .is_some_and(|word| matches!(*word, "that" | "its"))
+    {
         return false;
     }
     let mut has_offset = 1usize;
@@ -291,5 +294,14 @@ mod tests {
             "loses", "x", "life", "and", "you", "gain", "x", "life",
         ]));
         assert!(is_hand_reference_shape(&["target", "player", "hand"]));
+        assert!(is_that_controller_has_shape(&[
+            "its",
+            "controller",
+            "has",
+            "this",
+            "creature",
+            "deal",
+            "damage",
+        ]));
     }
 }

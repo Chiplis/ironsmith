@@ -1390,16 +1390,19 @@ pub(super) fn parse_delayed_destroy_at_next_end_step_parses() {
         debug.contains("DestroyEffect"),
         "expected delayed destroy payload, got {debug}"
     );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec!["Destroy all permanents at the beginning of the next end step.".to_string()]
+    );
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_exchange_control_keeps_first_target_before_missing_target_prelude() {
+    let oracle = "Exchange control of target artifact or creature and another target permanent that shares one of those types with it.";
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Legerdemain Probe")
         .card_types(vec![CardType::Sorcery])
-        .parse_text(
-            "Exchange control of target artifact or creature and another target permanent that shares one of those types with it.",
-        )
+        .parse_text(oracle)
         .expect("parse heterogeneous exchange control");
 
     let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
@@ -1410,6 +1413,82 @@ pub(super) fn parse_exchange_control_keeps_first_target_before_missing_target_pr
     assert!(
         !debug.contains("TargetOnlyEffect"),
         "expected heterogeneous exchange control to expose its own ordered target requirements without target-only preludes, got {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()],
+        "the typed relative shared-type exchange should retain its exact singular relation"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn phyrexian_rebirth_keeps_its_destroyed_result_set_in_the_dynamic_token() {
+    let oracle = "Destroy all creatures, then create an X/X colorless Phyrexian Horror artifact creature token, where X is the number of creatures destroyed this way.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Rebirth Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("parse destroyed-result dynamic token");
+    let debug = format!("{:#?}", def.spell_effect.as_ref().expect("spell effects"));
+
+    assert!(
+        debug.contains("DestroyEffect")
+            && debug.contains("CreateTokenEffect")
+            && debug.contains("SetBasePowerToughnessEffect")
+            && debug.contains("IsTaggedObject"),
+        "the token size must consume the exact destroyed-object result set: {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()],
+        "the typed result-set bundle should preserve the comma-then X/X token surface"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn lifestreams_blessing_preserves_cast_time_power_and_x_backreference() {
+    let oracle = "Draw X cards, where X is the greatest power among creatures you controlled as you cast this spell. If this spell was cast from exile, you gain twice X life.\nForetell {4}{G}";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Lifestream Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("parse cast-time aggregate and later X backreference");
+    let debug = format!("{:#?}", def.spell_effect.as_ref().expect("spell effects"));
+
+    assert!(
+        debug.contains(ironsmith_core::CAST_CONTROLLED_OBJECTS_TAG)
+            && debug.contains("GreatestPower")
+            && debug.contains("ThisSpellWasCastFromZone"),
+        "the aggregate must use a cast-time snapshot and remain linked to the exile condition: {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        oracle.lines().map(str::to_string).collect::<Vec<_>>(),
+        "the typed aggregate and scaled backreference should retain their exact surfaces"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shadows_verdict_preserves_battlefield_and_graveyard_domains() {
+    let oracle = "Exile all creatures and planeswalkers with mana value 3 or less from the battlefield and all creature and planeswalker cards with mana value 3 or less from all graveyards.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Verdict Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(oracle)
+        .expect("parse shared-characteristic dual-zone exile");
+    let debug = format!("{:#?}", def.spell_effect.as_ref().expect("spell effects"));
+
+    assert!(
+        debug.contains("ExileEffect")
+            && debug.contains("Battlefield")
+            && debug.contains("Graveyard")
+            && debug.contains("LessThanOrEqual"),
+        "both zone branches and the shared mana-value restriction must survive: {debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![oracle.to_string()],
+        "the semantically shared filter should retain both explicit domains"
     );
 }
 

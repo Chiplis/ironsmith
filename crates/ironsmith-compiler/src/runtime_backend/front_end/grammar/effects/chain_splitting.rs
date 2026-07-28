@@ -11,6 +11,7 @@ pub(crate) use recognition::{
     strip_leading_instead_tokens,
 };
 pub(crate) use split_rules::{
+    has_authored_comma_then_surface_tokens, has_explicit_comma_then_boundary_tokens,
     split_effect_chain_on_and_tokens, split_segments_on_comma_effect_head_tokens,
     split_segments_on_comma_then_tokens,
 };

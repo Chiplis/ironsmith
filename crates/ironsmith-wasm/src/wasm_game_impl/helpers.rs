@@ -202,6 +202,16 @@ pub(super) fn action_drag_metadata(
                 Some(zone_name(Zone::OutsideGame)),
                 Some(zone_name(Zone::Hand)),
             ),
+            ironsmith::special_actions::SpecialAction::IgnoreAttachedRestriction {
+                source_id,
+                ability_index,
+            } => (
+                "special_action",
+                Some(source_id.0),
+                Some(*ability_index),
+                Some(zone_name(Zone::Battlefield)),
+                None,
+            ),
         },
     }
 }
@@ -501,6 +511,15 @@ pub(super) fn describe_action(game: &GameState, action: &LegalAction) -> String 
                     object_name(game, *card_id)
                 )
             }
+            ironsmith::special_actions::SpecialAction::IgnoreAttachedRestriction {
+                source_id,
+                ..
+            } => {
+                format!(
+                    "Sacrifice a permanent: Ignore this effect until end of turn. ({})",
+                    object_name(game, *source_id)
+                )
+            }
         },
     }
 }
@@ -770,6 +789,13 @@ pub(super) fn special_action_ref(
         ironsmith::special_actions::SpecialAction::Companion { card_id } => {
             SpecialActionRef::Companion { card_id: card_id.0 }
         }
+        ironsmith::special_actions::SpecialAction::IgnoreAttachedRestriction {
+            source_id,
+            ability_index,
+        } => SpecialActionRef::IgnoreAttachedRestriction {
+            source_id: source_id.0,
+            ability_index: *ability_index,
+        },
     }
 }
 

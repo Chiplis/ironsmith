@@ -105,7 +105,8 @@ pub use continuous::{
 pub use cost::{OptionalCost, OptionalCostsPaid, TotalCost};
 pub use effect::Condition as ConditionExpr;
 pub use effect::{
-    AttachmentConditionHost, ChoiceCount, Effect, SourceCounterThresholdSurface, Until, Value,
+    AttachmentConditionHost, ChoiceCount, Effect, PermanentLeftBattlefieldControlSurface,
+    SourceCounterThresholdSurface, Until, Value,
 };
 pub use effects::{DealDamageEffect, EffectExecutor};
 pub use events::processing::{
@@ -132,8 +133,9 @@ pub use events::processing::{
 };
 pub use events::{DamageTarget as GameEventDamageTarget, ObjectSnapshot};
 pub use filter::{
-    Comparison, FilterContext, ObjectFilter, PlayerFilter, PlayerFilterExt, TaggedObjectConstraint,
-    TaggedOpbjectRelation,
+    Comparison, FilterContext, ObjectCharacteristic, ObjectCharacteristicRelation,
+    ObjectCharacteristicRelationKind, ObjectFilter, PlayerFilter, PlayerFilterExt,
+    TaggedObjectConstraint, TaggedOpbjectRelation,
 };
 pub use game_state::{
     AlternatingTeamsState, ArchenemyState, ArchenemyVariant, AttackDirection, CantEffectTracker,

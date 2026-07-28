@@ -39,6 +39,26 @@ fn exile_then_return_same_object_uses_captured_clauses_and_counter_followup() {
 }
 
 #[test]
+fn exile_then_face_down_return_keeps_the_same_object_link() {
+    let tokens = crate::runtime_backend::lex_line(
+        "Exile this creature, then return it to the battlefield face down under its owner's control.",
+        0,
+    )
+    .expect("face-down exile-return text should lex");
+
+    let effects = parse_exile_then_return_same_object_sentence(&tokens)
+        .expect("face-down exile-return parser should not error")
+        .expect("face-down exile-return parser should match");
+    assert_eq!(effects.len(), 2, "{effects:#?}");
+    let debug = format!("{effects:#?}");
+
+    assert!(debug.contains("Exile"), "{debug}");
+    assert!(debug.contains("zone: Battlefield"), "{debug}");
+    assert!(debug.contains("battlefield_face_down: true"), "{debug}");
+    assert!(debug.contains("Tagged"), "{debug}");
+}
+
+#[test]
 fn token_end_of_combat_recognizer_uses_captured_verb_object_and_timing() {
     let exile_tokens = crate::runtime_backend::lex_line("Exile those tokens at end of combat.", 0)
         .expect("exile token end-combat text should lex");
@@ -275,6 +295,61 @@ fn destroy_all_split_uses_captured_verb_and_object_tail() {
     assert!(debug.contains("any_of"), "{debug}");
     assert!(debug.contains("Artifact"), "{debug}");
     assert!(debug.contains("Enchantment"), "{debug}");
+}
+
+#[test]
+fn destroy_all_split_preserves_branch_scoped_collection_surface() {
+    let tokens = crate::runtime_backend::lex_line(
+        "Destroy all other enchantments you control, all other Auras attached to permanents you control, and all other Auras attached to attacking creatures your opponents control.",
+        0,
+    )
+    .expect("branch-scoped destroy-all text should lex");
+
+    let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
+        .expect("branch-scoped destroy-all parser should not error")
+        .expect("branch-scoped destroy-all parser should match");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::DestroyAll { filter, .. },
+            ..
+        }),
+    ] = effects.as_slice()
+    else {
+        panic!("expected one destroy-all effect, got {effects:#?}");
+    };
+
+    assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+    assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    assert!(
+        filter.any_of.iter().all(|branch| branch.other),
+        "{filter:#?}"
+    );
+
+    let then_tokens = crate::runtime_backend::lex_line(
+        "Then destroy all other enchantments you control, all other Auras attached to permanents you control, and all other Auras attached to attacking creatures your opponents control.",
+        0,
+    )
+    .expect("leading-then branch-scoped destroy-all text should lex");
+    let full_effects = parse_effect_sentence_lexed(&then_tokens)
+        .expect("full branch-scoped destroy-all sentence should parse");
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DestroyAll {
+                    filter: full_filter,
+                    ..
+                },
+            ..
+        }),
+    ] = full_effects.as_slice()
+    else {
+        panic!("expected one full-sentence destroy-all effect, got {full_effects:#?}");
+    };
+    assert_eq!(full_filter.any_of.len(), 3, "{full_filter:#?}");
+    assert!(
+        full_filter.has_conjunctive_set_surface(),
+        "{full_filter:#?}"
+    );
 }
 
 #[test]

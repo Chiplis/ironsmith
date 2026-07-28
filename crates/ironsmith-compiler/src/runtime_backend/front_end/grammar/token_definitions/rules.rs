@@ -8,6 +8,7 @@ use crate::runtime_backend::token_definition::{
     TokenEquipShape, TokenPowerAsThoughGreaterShape, TokenRulesSurfaces, TokenSacrificeReturnShape,
     TokenTapManaAbilityShape, TokenTapSacrificeManaLifeShape,
 };
+use crate::{effect::Value, filter::ObjectFilter};
 use winnow::combinator::{alt, opt, peek, repeat_till, separated};
 use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
@@ -326,15 +327,12 @@ pub(crate) fn parse_token_rules_surfaces_for_named_token(
                     TokenEmbeddedRuleShape::OpponentCastsCreatureRemoveCreatureTypeUntilEndOfTurn,
                 );
             }
-            if all(&[
-                "power",
-                "toughness",
-                "equal",
-                "number",
-                "creatures",
-                "you",
-                "control",
-            ]) {
+            let creatures_you_control = Value::Count(ObjectFilter::creature().you_control());
+            if matches!(
+                super::reminder::parse_token_dynamic_power_toughness_tokens(rule_tokens),
+                Some((power, toughness))
+                    if power == creatures_you_control && toughness == creatures_you_control
+            ) {
                 return Some(TokenEmbeddedRuleShape::PowerToughnessEqualCreaturesYouControl);
             }
             None

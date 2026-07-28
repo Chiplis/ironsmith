@@ -40,6 +40,7 @@ pub(crate) struct StatementLineSemanticFacts {
     pub(crate) trailing_instead_if_predicate: Option<PredicateAst>,
     pub(crate) replacement_surfaces: Vec<StatementReplacementSurfaceKind>,
     pub(crate) as_enters_effect_program: Option<AsEntersEffectProgramFacts>,
+    pub(crate) as_transforms_effect_program: Option<AsTransformsEffectProgramFacts>,
     pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
     pub(crate) creature_type_choice_buff: bool,
     pub(crate) leading_condition_intro: Option<StatementConditionIntro>,
@@ -52,6 +53,7 @@ impl Default for StatementLineSemanticFacts {
             trailing_instead_if_predicate: None,
             replacement_surfaces: Vec::new(),
             as_enters_effect_program: None,
+            as_transforms_effect_program: None,
             presentation_label: None,
             creature_type_choice_buff: false,
             leading_condition_intro: None,
@@ -64,6 +66,12 @@ pub(crate) struct AsEntersEffectProgramFacts {
     pub(crate) subject: String,
     pub(crate) also_turns_face_up: bool,
     pub(crate) uses_enters_with_counter_surface: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct AsTransformsEffectProgramFacts {
+    pub(crate) subject: String,
+    pub(crate) destination: String,
 }
 
 impl StatementLineSemanticFacts {
@@ -79,6 +87,7 @@ impl StatementLineSemanticFacts {
 pub(crate) struct InsteadFollowupFacts {
     pub(crate) semantics: crate::cards::builders::InsteadSemantics,
     pub(crate) conditional_intro: bool,
+    pub(crate) leading_instead_surface: bool,
 }
 
 impl Default for InsteadFollowupFacts {
@@ -86,6 +95,7 @@ impl Default for InsteadFollowupFacts {
         Self {
             semantics: crate::cards::builders::InsteadSemantics::NonReplacement,
             conditional_intro: false,
+            leading_instead_surface: false,
         }
     }
 }
@@ -112,6 +122,7 @@ pub(crate) struct StaticLineSemanticFacts {
     pub(crate) explicit_functional_zones: Option<Vec<Zone>>,
     pub(crate) references_this_ability_cost: bool,
     pub(crate) this_spell_cost: Option<ThisSpellCostFacts>,
+    pub(crate) presentation_label: Option<crate::ability::PresentationLabel>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -126,6 +137,7 @@ pub(crate) struct TriggeredLineSemanticFacts {
     pub(crate) functional_zones: TriggerFunctionalZoneFacts,
     pub(crate) becomes_tapped_during_your_turn: bool,
     pub(crate) frequency: TriggerFrequencyFacts,
+    pub(crate) leading_unless_surface: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

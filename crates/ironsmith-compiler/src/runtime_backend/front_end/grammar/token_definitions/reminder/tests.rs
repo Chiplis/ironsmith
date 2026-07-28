@@ -14,6 +14,8 @@ fn creature_definition() -> TokenDefinitionSpec {
         power_toughness: (0, 0),
         legendary: false,
         colors: ColorSet::WHITE,
+        use_source_chosen_color: false,
+        use_source_chosen_creature_type: false,
         keywords: Vec::new(),
         rules: Default::default(),
     })
@@ -133,4 +135,17 @@ fn classifies_capitalized_quoted_ability_and_typed_lifecycle_reminders() {
 
     let unrelated = lex_line("Sacrifice an artifact: Draw a card.", 0).unwrap();
     assert_eq!(parse_token_reminder_sentence_kind_tokens(&unrelated), None);
+}
+
+#[test]
+fn quoted_inner_gain_does_not_replace_the_outer_have_verb() {
+    let have = lex_line(
+        "They have \"When this token dies, you gain 1 life.\"",
+        0,
+    )
+    .unwrap();
+    let gain = lex_line("They gain haste.", 0).unwrap();
+
+    assert!(!token_ability_sentence_uses_gain_verb(&have));
+    assert!(token_ability_sentence_uses_gain_verb(&gain));
 }

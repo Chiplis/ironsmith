@@ -54,7 +54,7 @@ impl EffectExecutor for LookAtHandEffect {
                 // Record the revealed cards so a later "... revealed this
                 // way" reference (e.g. a card-name choice) can validate
                 // against exactly this set.
-                let mut revealed = ctx
+                let mut revealed: Vec<crate::snapshot::ObjectSnapshot> = ctx
                     .get_tagged_all(crate::effects::REVEALED_THIS_WAY_TAG)
                     .cloned()
                     .unwrap_or_default();

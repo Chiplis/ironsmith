@@ -28,8 +28,8 @@ use super::{
     parse_reveal_source_exiled_permanents_sentence_lexed, parse_search_library_sentence_lexed,
 };
 use crate::cards::builders::{
-    CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction, PlayerAst,
-    ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
+    CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, GrantedAbilityAst, IT_TAG, KeywordAction,
+    PlayerAst, ReturnControllerAst, SubjectAst, SubjectVerbActionAst, SubjectVerbEffectAst,
     SubjectVerbRoleAst, SubjectVerbSubjectAst, TagKey, TargetAst, TextSpan, TriggerSpec,
 };
 use crate::effect::{ChoiceCount, EventValueSpec, Until, Value};

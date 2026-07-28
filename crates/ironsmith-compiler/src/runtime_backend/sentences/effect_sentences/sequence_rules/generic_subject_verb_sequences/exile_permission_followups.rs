@@ -15,23 +15,35 @@ fn rebind_permission_tag(permission: EffectAst, tag: crate::tag::TagKey) -> Opti
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+                tag: _,
                 player,
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
-                ..
+                while_on_top_of_library,
+                free_cast_from_current_zone,
+                until_source_exiles_another,
+                surface,
             },
         ..
     }) = permission
     else {
         return None;
     };
-    Some(EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-        tag,
-        player,
-        allow_land,
-        without_paying_mana_cost,
-        allow_any_color_for_cast,
+    Some(EffectAst::subject_verb(
+        crate::cards::builders::SubjectVerbRoleAst::Actor,
+        crate::cards::builders::PlayerAst::Implicit,
+        SubjectVerbActionAst::GrantPlayTaggedUntilEndOfTurn {
+            tag,
+            player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+            while_on_top_of_library,
+            free_cast_from_current_zone,
+            until_source_exiles_another,
+            surface,
+        },
     ))
 }
 
@@ -89,6 +101,7 @@ pub(crate) fn parse_exile_top_play_then_event_followup(
             let trigger = TriggerSpec::Either(
                 Box::new(TriggerSpec::SpellCast {
                     filter: Some(tagged.clone()),
+                    mana_source_filter: None,
                     caster: PlayerFilter::You,
                     timing: None,
                     during_turn: None,

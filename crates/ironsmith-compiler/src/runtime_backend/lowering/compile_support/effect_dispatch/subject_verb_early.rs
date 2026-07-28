@@ -83,7 +83,15 @@ pub(super) fn compile_subject_verb_early(
                 PlayerAst::TargetOpponent => PlayerFilter::target_opponent(),
                 _ => player_filter.clone(),
             });
-            ctx.last_object_tag = None;
+            let revealed_tag = crate::tag::REVEALED_THIS_WAY_TAG.to_string();
+            ctx.last_object_tag = Some(revealed_tag.clone());
+            ctx.last_revealed_tag = Some(revealed_tag.clone());
+            ctx.last_revealed_zone = Some(Zone::Hand);
+            ctx.last_revealed_player_filter = Some(player_filter.clone());
+            ctx.snapshot_tag_aliases
+                .retain(|(alias, _)| alias != "__public_revealed");
+            ctx.snapshot_tag_aliases
+                .push(("__public_revealed".to_string(), revealed_tag));
             let effect = Effect::new(crate::effects::LookAtHandEffect::reveal(spec));
             Ok((vec![effect], choices))
         }
@@ -531,11 +539,14 @@ pub(super) fn compile_subject_verb_early(
                 )
             })
         }
-        SubjectVerbActionAst::ShuffleGraveyardIntoLibrary => {
-            compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
-                Effect::shuffle_graveyard_into_library_player(subject.into_player_filter())
-            })
-        }
+        SubjectVerbActionAst::ShuffleGraveyardIntoLibrary {
+            explicit_all_cards_from,
+        } => compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
+            Effect::shuffle_graveyard_into_library_player_with_surface(
+                subject.into_player_filter(),
+                *explicit_all_cards_from,
+            )
+        }),
         SubjectVerbActionAst::ReorderGraveyard => {
             compile_player_role_effect(role, player, ctx, true, true, true, |subject| {
                 Effect::reorder_graveyard_player(subject.into_player_filter())
@@ -829,6 +840,25 @@ pub(super) fn compile_subject_verb_early(
                 },
             )
         }
+        SubjectVerbActionAst::AddOneManaAnyColorAmong { filter } => {
+            let subject = resolve_subject_verb_subject(role, player, ctx, true, true, true)?;
+            compile_player_effect_from_resolved_filter(
+                subject.clone_player_filter(),
+                subject.into_choices(),
+                || {
+                    Effect::new(crate::effects::mana::AddOneManaOfAnyColorAmongEffect::new(
+                        filter.clone(),
+                        PlayerFilter::You,
+                    ))
+                },
+                |player_filter| {
+                    Effect::new(crate::effects::mana::AddOneManaOfAnyColorAmongEffect::new(
+                        filter.clone(),
+                        player_filter,
+                    ))
+                },
+            )
+        }
         SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
             let (amount, player_filter, choices) =
                 resolve_player_scoped_value(amount, player, ctx, true, true, true)?;
@@ -892,8 +922,14 @@ pub(super) fn compile_subject_verb_early(
         SubjectVerbActionAst::Attach { object, target } => {
             let (objects, object_choices) =
                 resolve_attach_object_spec(object, &current_reference_env(ctx))?;
+            let target_ast = target;
             let (mut target, target_choices) =
-                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+                resolve_target_spec_with_choices(target_ast, &current_reference_env(ctx))?;
+            let objects_are_collection =
+                matches!(objects.base(), ChooseSpec::All(_)) || !objects.count().is_single();
+            let individual_targets = objects_are_collection
+                && selected_object_filter(&target)
+                    .is_some_and(ObjectFilter::has_plural_object_noun_surface);
             let mut choices = Vec::new();
             for choice in object_choices {
                 push_choice(&mut choices, choice);
@@ -908,7 +944,25 @@ pub(super) fn compile_subject_verb_early(
             let chooser = chooser.as_chooser();
 
             let mut effects = Vec::new();
-            if !target.is_target()
+            let exact_identity_tag = selected_object_filter(&target).and_then(|filter| {
+                let mut identity_tags = filter
+                    .tagged_constraints
+                    .iter()
+                    .filter(|constraint| {
+                        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                    })
+                    .map(|constraint| &constraint.tag);
+                let first = identity_tags.next()?;
+                identity_tags.all(|tag| tag == first).then(|| first.clone())
+            });
+            if !individual_targets
+                && !target.is_target()
+                && target.count().is_single()
+                && let Some(tag) = exact_identity_tag
+            {
+                target = with_target_reference_surface_hint(ChooseSpec::Tagged(tag), target_ast);
+            } else if !individual_targets
+                && !target.is_target()
                 && target.count().is_single()
                 && let Some(filter) = selected_object_filter(&target)
             {
@@ -923,7 +977,11 @@ pub(super) fn compile_subject_verb_early(
                 ));
                 target = ChooseSpec::Tagged(tag);
             }
-            effects.push(Effect::attach_objects(objects, target));
+            let mut attach = crate::effects::AttachObjectsEffect::new(objects, target);
+            if individual_targets {
+                attach = attach.with_individual_targets();
+            }
+            effects.push(Effect::new(attach));
             Ok((effects, choices))
         }
         SubjectVerbActionAst::Unattach { object } => {
@@ -1171,11 +1229,14 @@ pub(super) fn compile_subject_verb_early(
             target,
             duration,
             condition,
+            controller_reference,
             source_reference_surface,
         } => {
             let (spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
-            let (controller, subject_choices) = if matches!(player, PlayerAst::Implicit) {
+            let (controller, subject_choices) = if let Some(reference) = controller_reference {
+                (PlayerFilter::ControllerOf(reference.clone()), Vec::new())
+            } else if matches!(player, PlayerAst::Implicit) {
                 if ctx.iterated_player && choose_spec_owned_by_iterated_player(&spec) {
                     (PlayerFilter::IteratedPlayer, Vec::new())
                 } else {
@@ -1224,6 +1285,7 @@ pub(super) fn compile_subject_verb_early(
         }
         SubjectVerbActionAst::ExileTopOfLibrary {
             count,
+            surface,
             tags,
             accumulated_tags,
             face_down,
@@ -1235,6 +1297,9 @@ pub(super) fn compile_subject_verb_early(
             let exiled_is_plural = !matches!(&resolved_count, crate::effect::Value::Fixed(1));
             let mut effect =
                 crate::effects::ExileTopOfLibraryEffect::new(resolved_count, player_filter.clone());
+            if let Some(surface) = surface {
+                effect = effect.with_surface(*surface);
+            }
             for tag in tags {
                 let resolved_tag = resolve_it_tag_key(tag, &current_reference_env(ctx))?;
                 effect = effect.tag_moved(resolved_tag);
@@ -1522,6 +1587,7 @@ pub(super) fn compile_subject_verb_early(
             target,
             all,
             owner_library_destination,
+            possessive_owner_subject,
         } => {
             let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
@@ -1538,6 +1604,9 @@ pub(super) fn compile_subject_verb_early(
             );
             if *owner_library_destination {
                 shuffle = shuffle.with_owner_library_destination();
+            }
+            if *possessive_owner_subject {
+                shuffle = shuffle.with_possessive_owner_subject();
             }
             let mut effect = Effect::new(shuffle);
             let id = ctx.next_effect_id();

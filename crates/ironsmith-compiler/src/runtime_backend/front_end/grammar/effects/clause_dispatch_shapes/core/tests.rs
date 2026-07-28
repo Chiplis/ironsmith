@@ -34,4 +34,11 @@ fn parses_may_subject_verb_and_pump_subject_shapes() {
         parse_pump_subject_shape(split.subject_tokens).unwrap().kind,
         PumpSubjectKind::Tagged
     ));
+
+    let chosen = lex_line("The chosen creatures get +X/+X until end of turn.", 0).unwrap();
+    let split = parse_clause_subject_verb_shape(&chosen).unwrap();
+    assert!(matches!(
+        parse_pump_subject_shape(split.subject_tokens).unwrap().kind,
+        PumpSubjectKind::DemonstrativeTarget
+    ));
 }

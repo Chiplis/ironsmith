@@ -83,6 +83,30 @@ pub(super) fn test_parse_repeated_explore_clauses() {
         repeated_debug.matches("ExploreEffect").count() >= 2,
         "expected two explore effects, got {repeated_debug}"
     );
+    assert_eq!(
+        unprocessed_compiled_lines(&repeated),
+        vec!["When this creature enters, it explores, then it explores again.".to_string()],
+        "repeated typed explore effects should retain the authored repeat surface"
+    );
+
+    let returned = CardDefinitionBuilder::new(CardId::from_raw(3), "Defossilize Probe")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Return target creature card from your graveyard to the battlefield. That creature explores, then it explores again.",
+        )
+        .expect("a returned creature should remain the repeated explore subject");
+    let returned_debug = format!("{:#?}", returned.spell_effect);
+    assert!(
+        returned_debug.matches("ExploreEffect").count() >= 2
+            && returned_debug.contains("explored_0"),
+        "the second explore should reference the first explore's object result: {returned_debug}"
+    );
+    assert_eq!(
+        unprocessed_compiled_lines(&returned),
+        vec![
+            "Return target creature card from your graveyard to the battlefield. That creature explores, then it explores again.".to_string(),
+        ]
+    );
 
     let x_times = CardDefinitionBuilder::new(CardId::from_raw(2), "Jadelight Spelunker Probe")
         .card_types(vec![CardType::Creature])
@@ -134,8 +158,9 @@ pub(super) fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence(
     let spell_debug = format!("{:#?}", def.spell_effect);
     assert!(
         joined.contains("sacrifice x zombies")
-            && joined.contains("reveal cards from the top of your library")
-            && joined.contains("zombie creature cards")
+            && joined.contains(
+                "reveal cards from the top of your library until you reveal a number of zombie creature cards equal to the number of zombies sacrificed this way",
+            )
             && joined.contains("put those cards onto the battlefield")
             && joined.contains("the rest on the bottom of your library in a random order"),
         "expected Empty the Laboratory search/reveal/bottom wording, got {joined}\n{spell_debug}"
@@ -145,9 +170,78 @@ pub(super) fn empty_the_laboratory_keeps_dynamic_sacrifice_and_consult_sequence(
     assert!(
         debug.contains("choicecount { min: 0, max: none, dynamic_x: true")
             && debug.contains("sacrificeplayereffect")
-            && debug.contains("matchcount(effectvalue(")
+            && debug.contains("matchcount(prioreffectmetric")
+            && debug.contains("sacrificed")
             && debug.contains("puttaggedremainderonlibrarybottomeffect"),
         "expected Empty the Laboratory to keep dynamic sacrifice, consult, battlefield move, and random bottoming, got {debug}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn revealed_battlefield_complement_keeps_typed_graveyard_surface() {
+    for (selection, name) in [
+        ("permanent cards", "Genesis Wave Variant"),
+        ("artifact cards", "Saheeli's Directive Variant"),
+    ] {
+        let oracle = format!(
+            "Reveal the top X cards of your library. You may put any number of {selection} with mana value X or less from among them onto the battlefield. Then put all cards revealed this way that weren't put onto the battlefield into your graveyard."
+        );
+        let def = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Sorcery])
+            .parse_text(&oracle)
+            .expect("revealed battlefield partition should parse");
+
+        let joined = unprocessed_compiled_lines(&def)
+            .join(" ")
+            .to_ascii_lowercase();
+        assert!(
+            joined.contains(
+                "then put all cards revealed this way that weren't put onto the battlefield into your graveyard",
+            ),
+            "expected explicit revealed-card complement in {name}, got {joined}"
+        );
+
+        let debug = format!("{:?}", def.spell_effect);
+        assert!(
+            debug.contains("remainder_surface: Some(RevealedCardsNotPutOntoBattlefield)"),
+            "expected typed revealed-card remainder provenance in {name}, got {debug}"
+        );
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn sensational_spider_man_distributes_stun_counter_removal_and_keeps_metric_surface() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Sensational Spider-Man")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever Sensational Spider-Man attacks, tap target creature defending player controls and put a stun counter on it. Then you may remove up to three stun counters from among all permanents. Draw cards equal to the number of stun counters removed this way.",
+        )
+        .expect("distributed stun-counter trigger should parse");
+
+    let rendered = unprocessed_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
+    assert!(
+        rendered
+            .contains("then you may remove up to three stun counters from among all permanents",)
+            && rendered
+                .contains("draw cards equal to the number of stun counters removed this way",),
+        "expected distributed removal and typed prior-count wording, got {rendered}"
+    );
+    assert!(!rendered.contains("from a permanent"), "{rendered}");
+    assert!(!rendered.contains("draw that many cards"), "{rendered}");
+
+    let debug = format!("{:?}", def.abilities);
+    assert!(
+        debug.contains("RemoveUpToCountersEffect")
+            && debug.contains("counter_type: Stun")
+            && debug.contains("target: All(")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("action: Some(Removed)")
+            && debug.contains("counter_type: Some(Stun)"),
+        "expected all-matching runtime target and typed removed-count query, got {debug}"
     );
 }
 
@@ -3411,15 +3505,17 @@ pub(super) fn parse_as_this_creature_enters_reveal_cards_counted_for_counters_li
         .abilities
         .iter()
         .find_map(|ability| match &ability.kind {
-            AbilityKind::Static(static_ability) => static_ability
-                .compiled_model()
-                .and_then(|model| match &model.payload {
-                    ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
-                        program,
-                        ..
-                    } => Some(program),
-                    _ => None,
-                }),
+            AbilityKind::Static(static_ability) => {
+                static_ability
+                    .compiled_model()
+                    .and_then(|model| match &model.payload {
+                        ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+                            program,
+                            ..
+                        } => Some(program),
+                        _ => None,
+                    })
+            }
             _ => None,
         })
         .expect("expected typed as-enters reveal program");

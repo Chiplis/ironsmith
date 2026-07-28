@@ -1524,6 +1524,128 @@ pub(super) fn dynamic_draw_count_lowers_destroyed_this_way_to_prior_effect_metri
 }
 
 #[test]
+pub(super) fn draw_equal_to_removed_counters_keeps_typed_prior_effect_metric() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Removed Counter Draw Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature enters, you may remove up to three stun counters from among all permanents. Draw cards equal to the number of stun counters removed this way.",
+        )
+        .expect("removed-counter draw count should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("RemoveUpToCountersEffect")
+            && debug.contains("DrawCardsEffect")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("action: Some(\n")
+            && debug.contains("Removed")
+            && debug.contains("counter_type: Some(\n")
+            && debug.contains("Stun"),
+        "expected the draw count to retain the exact removed-counter result, got {debug}"
+    );
+    assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
+}
+
+#[test]
+pub(super) fn counted_consult_stop_keeps_sacrificed_subtype_provenance() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Counted Consult Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Sacrifice X Zombies, then reveal cards from the top of your library until you reveal a number of Zombie creature cards equal to the number of Zombies sacrificed this way. Put those cards onto the battlefield and the rest on the bottom of your library in a random order.",
+        )
+        .expect("counted consult should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("ConsultTopOfLibraryEffect")
+            && debug.contains("MatchCount")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("Sacrificed")
+            && debug.contains("Zombie"),
+        "expected the consult stop to retain the exact sacrificed-Zombie count, got {debug}"
+    );
+    assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
+}
+
+#[test]
+pub(super) fn greatest_mana_value_exiled_this_way_resolves_to_the_exile_result() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Royal Funeral Variant")
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(
+            "When this enchantment enters, exile up to two target legendary creature cards from your graveyard. You draw X cards and you lose X life, where X is the greatest mana value among cards exiled this way.",
+        )
+        .expect("exiled-this-way aggregate should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ExileEffect")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("GreatestManaValue")
+            && debug.contains("Exiled"),
+        "expected the greatest-mana-value query to bind to the prior exile result, got {debug}"
+    );
+    assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
+}
+
+#[test]
+pub(super) fn tap_cost_power_keeps_the_typed_tapped_this_way_surface() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Impelled Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Tap an untapped red creature you control other than this creature: This creature gets +X/+0 until end of turn, where X is the power of the creature tapped this way.",
+        )
+        .expect("tap-cost characteristic reference should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("tap_cost_0")
+            && debug.contains("CharacteristicOfObjectThisWay")
+            && debug.contains("Creature")
+            && debug.contains("Tapped"),
+        "expected the power value to retain typed tap-cost provenance, got {debug}"
+    );
+}
+
+#[test]
+pub(super) fn died_this_way_count_binds_to_the_destroy_effect() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Hellfire Variant")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Destroy all nonblack creatures. This spell deals X plus 3 damage to you, where X is the number of creatures that died this way.",
+        )
+        .expect("destroy-result damage count should parse");
+
+    let debug = format!("{:#?}", def.spell_effect);
+    assert!(
+        debug.contains("DestroyEffect")
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("Destroyed")
+            && debug.contains("DiedThisWay"),
+        "expected the died count to bind to the prior destroy result, got {debug}"
+    );
+    assert!(!debug.contains("PendingPriorEffectMetric"), "{debug}");
+}
+
+#[test]
+pub(super) fn scry_amount_binds_the_dynamic_counter_target_count() {
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Elrond Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Whenever you scry, put a +1/+1 counter on each of up to X target creatures, where X is the number of cards looked at while scrying this way.",
+        )
+        .expect("scry-derived dynamic target count should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("PutCountersEffect")
+            && debug.contains("WithCountValue")
+            && debug.contains("EventValue")
+            && debug.contains("CardsLookedAtWhileScryingThisWay"),
+        "expected the scry amount to remain attached to the target count, got {debug}"
+    );
+}
+
+#[test]
 pub(super) fn generic_damage_count_lowers_tapped_this_way_to_typed_prior_effect_metric() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Tapped Damage Variant")
         .card_types(vec![CardType::Sorcery])
@@ -1728,15 +1850,87 @@ pub(super) fn bare_exiled_cards_in_sequence_bind_to_recent_exiled_result() {
         .expect("recent exiled-cards sequence should parse");
 
     let rendered = format!("{def:#?}");
+    let effects = def
+        .spell_effect
+        .as_ref()
+        .expect("destroy sequence should lower as a spell program")
+        .flattened_default_effects();
     assert!(
         rendered.contains("ForEachTaggedEffect")
+            && rendered.contains("ForEachControllerOfTaggedEffect")
             && rendered.contains("ConsultTopOfLibraryEffect")
             && rendered.contains("Artifact")
             && rendered.contains("Creature")
             && rendered.contains("zone: Exile")
             && rendered.contains("zone: Battlefield")
+            && rendered.contains("__exiled_collection")
             && !rendered.contains("__source_exiled__"),
-        "expected destroyed permanents to drive per-object reveal/exile/put sequence, got {rendered}"
+        "expected destroyed permanents to drive a staged reveal/exile collection, got {rendered}"
+    );
+
+    let [
+        destroy_effect,
+        collected_loop_effect,
+        battlefield_effect,
+        shuffle_effect,
+    ] = effects
+    else {
+        panic!("expected four staged effects, got {effects:#?}");
+    };
+    let destroyed_tag = destroy_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("destroy result should be tagged")
+        .tag
+        .clone();
+    let collected = collected_loop_effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .expect("per-object loop should collect all of its exile outcomes");
+    let collection_tag = &collected.tag;
+    let per_object = collected
+        .effect
+        .downcast_ref::<crate::effects::ForEachTaggedEffect<crate::effect::Effect>>()
+        .expect("consult and exile should remain in the per-object loop");
+    assert_eq!(per_object.tag, destroyed_tag);
+    assert_eq!(per_object.effects.len(), 2, "{per_object:#?}");
+    assert!(
+        per_object.effects[0]
+            .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()
+            .is_some()
+            && (per_object.effects[1]
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .is_some()
+                || per_object.effects[1]
+                    .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                    .is_some_and(|move_to_zone| move_to_zone.zone == Zone::Exile)),
+        "{per_object:#?}"
+    );
+
+    let battlefield = battlefield_effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .expect("the complete exiled collection should move after the loop");
+    assert!(
+        battlefield.zone == Zone::Battlefield
+            && matches!(
+                battlefield.target.base(),
+                crate::target::ChooseSpec::Tagged(tag) if tag == collection_tag
+            ),
+        "{battlefield:#?}"
+    );
+    let shuffle_by_controller = shuffle_effect
+        .downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect<crate::effect::Effect>>()
+        .expect("participating controllers should each shuffle once");
+    assert_eq!(shuffle_by_controller.tag, destroyed_tag);
+    assert!(
+        matches!(
+            shuffle_by_controller.effects.as_slice(),
+            [effect]
+                if effect
+                    .downcast_ref::<crate::effects::ShuffleLibraryEffect>()
+                    .is_some_and(|shuffle| {
+                        shuffle.player == crate::target::PlayerFilter::IteratedPlayer
+                    })
+        ),
+        "{shuffle_by_controller:#?}"
     );
 }
 
@@ -1864,6 +2058,52 @@ pub(super) fn where_x_life_total_can_drive_create_count() {
     assert!(
         debug.contains("CreateTokenEffect") && debug.contains("LifeTotal") && debug.contains("You"),
         "expected dynamic create count to use your life total, got {debug}"
+    );
+}
+
+#[test]
+pub(super) fn quoted_token_rules_keep_outer_where_x_value_bindings() {
+    let mycotyrant =
+        CardDefinitionBuilder::new(CardId::from_raw(1), "Descend Token Variant")
+            .card_types(vec![CardType::Creature])
+            .parse_text(
+                "At the beginning of your end step, create X 1/1 black Fungus creature tokens with \"This token can't block,\" where X is the number of times you descended this turn.",
+            )
+            .expect("quoted token rule should preserve the outer descend count");
+    let mycotyrant_debug = format!("{mycotyrant:#?}");
+    assert!(
+        mycotyrant_debug.contains("CreateTokenEffect")
+            && mycotyrant_debug.contains("TurnHistoryCount")
+            && mycotyrant_debug.contains("Descended"),
+        "{mycotyrant_debug}"
+    );
+
+    let colony = CardDefinitionBuilder::new(CardId::from_raw(2), "Damage Token Variant")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "When this creature dies, create X 1/1 black Rat creature tokens with \"This token can't block,\" where X is the amount of damage dealt to it this turn.",
+        )
+        .expect("quoted token rule should preserve the outer source-damage total");
+    let colony_debug = format!("{colony:#?}");
+    assert!(
+        colony_debug.contains("CreateTokenEffect")
+            && colony_debug.contains("TurnHistoryCount")
+            && colony_debug.contains("DamageDealtToSource"),
+        "{colony_debug}"
+    );
+
+    let tend = CardDefinitionBuilder::new(CardId::from_raw(3), "Sacrifice Token Variant")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "As an additional cost to cast this spell, sacrifice a creature.\nCreate X 1/1 black and green Pest creature tokens with \"When this token dies, you gain 1 life,\" where X is the sacrificed creature's power.",
+        )
+        .expect("quoted token rule should preserve the outer sacrificed-power value");
+    let tend_debug = format!("{tend:#?}");
+    assert!(
+        tend_debug.contains("CreateTokenEffect")
+            && tend_debug.contains("PowerOf")
+            && tend_debug.contains("sacrificed_0"),
+        "{tend_debug}"
     );
 }
 
@@ -2749,11 +2989,16 @@ pub(super) fn curse_of_misfortunes_search_excludes_names_of_attached_curses() {
         .parse_text(text)
         .expect("Curse of Misfortunes should parse");
     let debug = format!("{:#?}", def.abilities);
+    let compact = debug.split_whitespace().collect::<String>();
 
     assert!(debug.contains("TagMatchingObjectsEffect"), "{debug}");
     assert!(debug.contains("DifferentNameFromTagged"), "{debug}");
     assert!(debug.contains("attached_to_player: Some"), "{debug}");
     assert!(debug.contains("\"enchanted\""), "{debug}");
+    assert!(
+        compact.contains("target:Player(TaggedPlayer(TagKey(\"enchanted\")))"),
+        "the attachment's `that player` must resolve to the enchanted player: {debug}"
+    );
 }
 
 #[test]

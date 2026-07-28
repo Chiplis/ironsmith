@@ -38,6 +38,8 @@ pub struct UnlessPaysEffect {
     pub player: PlayerFilter,
     /// Total cost required to prevent the effects.
     pub cost: crate::cost::TotalCost,
+    /// Whether the Oracle clause placed the payment before the consequence.
+    pub leading_surface: bool,
 }
 
 impl UnlessPaysEffect {
@@ -58,7 +60,13 @@ impl UnlessPaysEffect {
             effects,
             player,
             cost,
+            leading_surface: false,
         }
+    }
+
+    pub fn with_leading_surface(mut self, leading_surface: bool) -> Self {
+        self.leading_surface = leading_surface;
+        self
     }
 
     /// Create a new "unless pays" effect with optional life payment.
@@ -177,6 +185,93 @@ fn players_in_turn_order(game: &GameState) -> Vec<PlayerId> {
     game.team_apnap_player_order()
 }
 
+fn choose_payable_cost_for_simultaneous_action(
+    game: &GameState,
+    payer: PlayerId,
+    source: crate::ids::ObjectId,
+    cost: &crate::cost::TotalCost,
+    ctx: &mut ExecutionContext,
+) -> Option<crate::cost::TotalCost> {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(_) => Some(cost.clone()),
+        ironsmith_core::TotalCostKind::OneOf(branches) => {
+            let payable = branches
+                .iter()
+                .filter(|branch| {
+                    can_pay_total_cost_with_reason_in_context(
+                        game,
+                        payer,
+                        source,
+                        branch,
+                        crate::costs::PaymentReason::Effect,
+                        ctx,
+                    )
+                    .is_ok()
+                })
+                .cloned()
+                .collect::<Vec<_>>();
+            match payable.as_slice() {
+                [] => None,
+                [only] => Some(only.clone()),
+                _ => {
+                    let options = payable
+                        .into_iter()
+                        .map(|branch| (branch.display(), branch))
+                        .collect::<Vec<_>>();
+                    crate::decisions::ask_choose_one(
+                        game,
+                        &mut ctx.decision_maker,
+                        payer,
+                        source,
+                        &options,
+                    )
+                }
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
+struct UnlessPaysProposal {
+    effects: Vec<Effect>,
+    payer: PlayerId,
+    cost: Option<crate::cost::TotalCost>,
+    iterated_player: Option<PlayerId>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for UnlessPaysProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let effects = self.effects;
+        let payer = self.payer;
+        let cost = self.cost;
+        ctx.with_temp_iterated_player(self.iterated_player, |ctx| {
+            if let Some(cost) = cost
+                && pay_total_cost_with_choice_in_context(
+                    game,
+                    payer,
+                    ctx.source,
+                    &cost,
+                    crate::costs::PaymentReason::Effect,
+                    ctx,
+                )
+                .is_ok()
+            {
+                return Ok(EffectOutcome::declined());
+            }
+
+            let mut outcomes = Vec::new();
+            for effect in &effects {
+                outcomes.push(execute_effect(game, effect, ctx)?);
+            }
+            Ok(EffectOutcome::aggregate(outcomes))
+        })
+    }
+}
+
 impl EffectExecutor for UnlessPaysEffect {
     fn clone_box(&self) -> Box<dyn EffectExecutor> {
         Box::new(self.clone())
@@ -186,6 +281,56 @@ impl EffectExecutor for UnlessPaysEffect {
         for effect in &self.effects {
             visitor(effect);
         }
+    }
+
+    fn supports_simultaneous_player_action(&self) -> bool {
+        self.player == PlayerFilter::IteratedPlayer
+    }
+
+    fn prepare_simultaneous_player_action(
+        &self,
+        game: &GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
+        if self.player != PlayerFilter::IteratedPlayer {
+            return Err(ExecutionError::Impossible(
+                "simultaneous unless-payment requires an iterated-player payer".to_string(),
+            ));
+        }
+        let payer = resolve_player_filter(game, &self.player, ctx)?;
+        let can_afford = can_pay_total_cost_with_reason_in_context(
+            game,
+            payer,
+            ctx.source,
+            &self.cost,
+            crate::costs::PaymentReason::Effect,
+            ctx,
+        )
+        .is_ok();
+        let payment_prompt = format!("{} to prevent effect?", self.cost.display());
+        let wants_to_pay = can_afford
+            && make_boolean_decision(
+                game,
+                &mut ctx.decision_maker,
+                payer,
+                ctx.source,
+                payment_prompt,
+                FallbackStrategy::Accept,
+            );
+        let cost = wants_to_pay
+            .then(|| {
+                choose_payable_cost_for_simultaneous_action(
+                    game, payer, ctx.source, &self.cost, ctx,
+                )
+            })
+            .flatten();
+
+        Ok(Box::new(UnlessPaysProposal {
+            effects: self.effects.clone(),
+            payer,
+            cost,
+            iterated_player: ctx.iteration.iterated_player,
+        }))
     }
 
     fn execute(

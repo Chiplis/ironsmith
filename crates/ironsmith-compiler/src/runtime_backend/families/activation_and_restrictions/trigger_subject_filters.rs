@@ -163,6 +163,7 @@ pub(crate) fn parse_possessive_clause_player_filter(words: &[&str]) -> PlayerFil
             };
             PlayerFilter::ControllerOf(crate::filter::ObjectRef::tagged(TagKey::from(tag)))
         }
+        PossessivePlayerReference::ChosenPlayer => PlayerFilter::ChosenPlayer,
         PossessivePlayerReference::You => PlayerFilter::You,
         PossessivePlayerReference::Opponent => PlayerFilter::Opponent,
         PossessivePlayerReference::Any => PlayerFilter::Any,
@@ -210,6 +211,12 @@ pub(crate) fn parse_spell_or_ability_controller_tail(words: &[&str]) -> Option<P
         crate::runtime_backend::grammar::trigger_subjects::parse_spell_or_ability_controller_tail(
             words,
         )?;
+    Some(trigger_controller_player_filter(controller))
+}
+
+pub(crate) fn parse_spell_controller_tail(words: &[&str]) -> Option<PlayerFilter> {
+    let controller =
+        crate::runtime_backend::grammar::trigger_subjects::parse_spell_controller_tail(words)?;
     Some(trigger_controller_player_filter(controller))
 }
 
@@ -410,8 +417,32 @@ pub(crate) fn parse_trigger_subject_filter_lexed(
         return Ok(Some(filter));
     }
 
-    let mut normalized_subject_tokens =
+    let normalized_subject_tokens =
         trigger_subject_grammar::normalize_each_with_tokens(subject_tokens);
+
+    // A controller phrase in one arm of a coordinated subject is local to
+    // that arm.  The legacy controller override below intentionally lifts an
+    // embedded controller out of a single filter, but doing so before parsing
+    // `an attacking creature you control or a blocking creature an opponent
+    // controls` erases the distinction between the two arms.
+    if intrinsic_attachment_state.is_none()
+        && !crate::runtime_backend::families::object_filters::has_shared_terminal_object_noun(
+            &normalized_subject_tokens,
+        )
+        && let Some(mut filter) =
+            crate::runtime_backend::front_end::grammar::filters::
+                parse_branch_scoped_object_filter_union_lexed(
+                    &normalized_subject_tokens,
+                    other,
+                )
+    {
+        if filter.zone.is_none() {
+            filter.zone = Some(Zone::Battlefield);
+        }
+        return Ok(Some(filter));
+    }
+
+    let mut normalized_subject_tokens = normalized_subject_tokens;
 
     let mut controller_override = None;
     let word_view = ActivationRestrictionCompatWords::new(&normalized_subject_tokens);
@@ -541,6 +572,20 @@ pub(crate) fn parse_attack_trigger_subject_filter_lexed(
     Ok(Some(filter))
 }
 
+#[test]
+fn suspected_attack_subject_preserves_the_designation_filter() {
+    let tokens =
+        crate::runtime_backend::lexer::lex_line("one or more suspected creatures you control", 0)
+            .expect("lex suspected attack subject");
+    let filter = parse_attack_trigger_subject_filter_lexed(&tokens)
+        .expect("parse suspected attack subject")
+        .expect("object-filter subject");
+
+    assert!(filter.suspected);
+    assert_eq!(filter.card_types, [crate::types::CardType::Creature]);
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+}
+
 pub(crate) fn parse_draw_numbers_each_turn(words: &[&str]) -> Vec<u32> {
     trigger_subject_grammar::parse_draw_turn_surface_facts(words).draw_numbers_this_turn
 }
@@ -668,6 +713,7 @@ pub(crate) fn parse_spell_activity_trigger(
             let filter = parse_filter(tokens.get(second + 1..).unwrap_or_default())?;
             let cast_trigger = TriggerSpec::SpellCast {
                 filter: filter.clone(),
+                mana_source_filter: None,
                 caster: actor.clone(),
                 timing,
                 during_turn: during_turn.clone(),
@@ -704,6 +750,7 @@ pub(crate) fn parse_spell_activity_trigger(
         let filter = parse_filter(filter_tokens)?;
         return Ok(Some(TriggerSpec::SpellCast {
             filter,
+            mana_source_filter: None,
             caster: actor,
             timing,
             during_turn,
@@ -996,6 +1043,7 @@ pub(crate) fn controller_filter_for_token_player(player: PlayerAst) -> Option<Pl
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
         PlayerAst::That => Some(PlayerFilter::IteratedPlayer),
+        PlayerAst::Defending => Some(PlayerFilter::Defending),
         _ => None,
     }
 }
@@ -1053,7 +1101,30 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<O
     if let Some(with_idx) =
         trigger_subject_grammar::parse_embedded_token_rules_boundary_tokens(tokens)
     {
-        return tokens[..with_idx].to_vec();
+        let mut stripped = tokens[..with_idx].to_vec();
+
+        // Inline token rules are parsed separately and attached to the token
+        // blueprint, but an outer value binding after the closing quote still
+        // belongs to the create action:
+        //
+        // `Create X ... tokens with "...," where X is ...`
+        //
+        // Keep that typed tail while removing only the embedded rule. Counting
+        // quotes before the marker prevents a `where X is` inside the granted
+        // ability itself from being promoted to the outer create effect.
+        if let Some(where_shape) =
+            crate::runtime_backend::grammar::effects::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
+        {
+            let quote_count = where_shape
+                .stripped_tokens
+                .iter()
+                .filter(|token| token.kind == crate::runtime_backend::lexer::TokenKind::Quote)
+                .count();
+            if quote_count >= 2 && quote_count % 2 == 0 {
+                stripped.extend(where_shape.where_tokens.iter().cloned());
+            }
+        }
+        return stripped;
     }
     tokens.to_vec()
 }
@@ -1069,6 +1140,29 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         crate::runtime_backend::grammar::token_definitions::parse_token_reminder_facts_tokens(
             tokens,
         );
+    let sentence_kind = crate::runtime_backend::grammar::token_definitions::
+        parse_token_reminder_sentence_kind_tokens(tokens);
+    let ability_presentation = match sentence_kind {
+        Some(
+            crate::runtime_backend::grammar::token_definitions::TokenReminderSentenceKind::GrantedAbility,
+        ) => Some(
+            if crate::runtime_backend::grammar::token_definitions::
+                token_ability_sentence_uses_gain_verb(tokens)
+            {
+                ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+            } else {
+                ironsmith_core::TokenAbilityPresentation::SeparateSentence
+            },
+        ),
+        _ => None,
+    };
+    let standalone_ability_sentence = matches!(
+        sentence_kind,
+        Some(
+            crate::runtime_backend::grammar::token_definitions::TokenReminderSentenceKind::PronounTrigger
+                | crate::runtime_backend::grammar::token_definitions::TokenReminderSentenceKind::ExplicitTokenReference
+        )
+    );
     for effect in effects.iter_mut().rev() {
         // A separately authored `It has "This token's power and toughness
         // ..."` sentence is a characteristic-defining ability of the token,
@@ -1085,7 +1179,12 @@ pub(crate) fn append_token_reminder_to_last_create_effect(
         // parser. Otherwise a quoted rule such as "When this token dies ..."
         // is retained as an opaque granted ability and its typed token rule is
         // lost before the merge path gets a chance to install it.
-        if append_token_reminder_to_effect(Some(effect), &reminder) {
+        if append_token_reminder_to_effect(
+            Some(effect),
+            &reminder,
+            ability_presentation,
+            standalone_ability_sentence,
+        ) {
             return Ok(true);
         }
         if append_token_granted_ability_to_effect(Some(effect), tokens)? {
@@ -1128,13 +1227,25 @@ fn append_token_granted_ability_to_effect(
             if parsed.is_empty() {
                 return Ok(false);
             }
+            let combine_separate_sentence =
+                !definition.has_intrinsic_abilities() && granted_abilities.is_empty();
             for ability in parsed {
                 if !granted_abilities.contains(&ability) {
                     granted_abilities.push(ability);
                 }
             }
-            *ability_presentation =
-                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence);
+            let presentation = if crate::runtime_backend::grammar::token_definitions::
+                token_ability_sentence_uses_gain_verb(tokens)
+            {
+                ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+            } else {
+                ironsmith_core::TokenAbilityPresentation::SeparateSentence
+            };
+            *ability_presentation = Some(if combine_separate_sentence {
+                presentation.combined_separate_sentence()
+            } else {
+                presentation
+            });
             Ok(true)
         }
         _ => {
@@ -1161,6 +1272,8 @@ fn append_token_granted_ability_to_effect(
 pub(crate) fn append_token_reminder_to_effect(
     effect: Option<&mut EffectAst>,
     reminder: &crate::runtime_backend::grammar::token_definitions::TokenReminderFacts,
+    ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
+    standalone_ability_sentence: bool,
 ) -> bool {
     let Some(effect) = effect else {
         return false;
@@ -1239,16 +1352,33 @@ pub(crate) fn append_token_reminder_to_effect(
                 sacrifice_at_next_end_step,
                 exile_at_next_end_step,
                 next_end_step_player,
+                ability_presentation: create_ability_presentation,
                 ..
             } => {
                 if let Some((power, toughness)) = &reminder.dynamic_power_toughness {
                     *dynamic_power_toughness = Some((power.clone(), toughness.clone()));
                     return true;
                 }
+                let combine_separate_sentence = !definition.has_intrinsic_abilities();
                 let merged_definition =
                     crate::runtime_backend::grammar::token_definitions::merge_token_reminder_definition(
                         definition, reminder,
                     );
+                if merged_definition {
+                    if let Some(presentation) = ability_presentation {
+                        *create_ability_presentation = Some(if combine_separate_sentence {
+                            presentation.combined_separate_sentence()
+                        } else {
+                            presentation
+                        });
+                    } else if standalone_ability_sentence {
+                        *create_ability_presentation = Some(
+                            ironsmith_core::TokenAbilityPresentation::with_added_standalone_tail(
+                                *create_ability_presentation,
+                            ),
+                        );
+                    }
+                }
                 if reminder.sacrifice_at_next_end_step {
                     *sacrifice_at_next_end_step = true;
                     *next_end_step_player = reminder.next_end_step_player.clone();
@@ -1275,7 +1405,12 @@ pub(crate) fn append_token_reminder_to_effect(
             let mut applied = false;
             for_each_nested_effects_mut(effect, false, |nested| {
                 if !applied {
-                    applied = append_token_reminder_to_effect(nested.last_mut(), reminder);
+                    applied = append_token_reminder_to_effect(
+                        nested.last_mut(),
+                        reminder,
+                        ability_presentation,
+                        standalone_ability_sentence,
+                    );
                 }
             });
             applied
@@ -1296,6 +1431,7 @@ mod typed_trigger_subject_migration_tests {
             trigger,
             TriggerSpec::SpellCast {
                 filter: None,
+                mana_source_filter: None,
                 caster: PlayerFilter::You,
                 timing: None,
                 during_turn: Some(PlayerFilter::You),
@@ -1340,6 +1476,7 @@ mod typed_trigger_subject_migration_tests {
             trigger,
             TriggerSpec::SpellCast {
                 filter: None,
+                mana_source_filter: None,
                 caster: PlayerFilter::You,
                 timing: Some(ironsmith_core::TriggerTimingRestriction::DuringCombat),
                 during_turn: None,
@@ -1418,6 +1555,30 @@ mod typed_trigger_subject_migration_tests {
     }
 
     #[test]
+    fn coordinated_trigger_subject_keeps_branch_local_combat_state_and_controller() {
+        let tokens = lex_line(
+            "an attacking creature you control or a blocking creature an opponent controls",
+            0,
+        )
+        .unwrap();
+        let filter = parse_trigger_subject_filter_lexed(&tokens)
+            .unwrap()
+            .expect("coordinated trigger subject");
+
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.controller, None);
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.attacking && !branch.blocking && branch.controller == Some(PlayerFilter::You)
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.blocking
+                && !branch.attacking
+                && branch.controller == Some(PlayerFilter::Opponent)
+        }));
+    }
+
+    #[test]
     fn typed_may_cast_facts_preserve_tagged_semantics() {
         let tokens = lex_line(
             "the exiled cards owner may play that card without paying its mana cost",
@@ -1431,5 +1592,55 @@ mod typed_trigger_subject_migration_tests {
         assert!(!spec.as_copy);
         assert!(spec.without_paying_mana_cost);
         assert!(spec.predicate.is_none());
+    }
+
+    #[test]
+    fn stripping_inline_token_rule_preserves_outer_where_x_binding() {
+        let tokens = lex_line(
+            "Create X 1/1 black Rat creature tokens with \"This token can't block,\" where X is the amount of damage dealt to it this turn.",
+            0,
+        )
+        .expect("quoted token where-x text should lex");
+        let stripped = strip_embedded_token_rules_text(&tokens);
+        let words = crate::runtime_backend::token_word_refs(&stripped)
+            .into_iter()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>();
+
+        assert!(
+            words.starts_with(&["create".into(), "x".into()]),
+            "{words:?}"
+        );
+        assert!(
+            words.windows(2).any(|window| window == ["black", "rat"]),
+            "{words:?}"
+        );
+        assert!(
+            words
+                .iter()
+                .map(String::as_str)
+                .collect::<Vec<_>>()
+                .ends_with(&[
+                    "where", "x", "is", "the", "amount", "of", "damage", "dealt", "to", "it",
+                    "this", "turn"
+                ]),
+            "{words:?}"
+        );
+        assert!(!words.iter().any(|word| word == "block"), "{words:?}");
+
+        let inner_only = lex_line(
+            "Create a 1/1 blue Illusion creature token with \"This token gets +X/+0, where X is its power.\"",
+            0,
+        )
+        .expect("inner where-x token text should lex");
+        let stripped_inner = strip_embedded_token_rules_text(&inner_only);
+        let inner_words = crate::runtime_backend::token_word_refs(&stripped_inner)
+            .into_iter()
+            .map(str::to_ascii_lowercase)
+            .collect::<Vec<_>>();
+        assert!(
+            !inner_words.iter().any(|word| word == "where"),
+            "an inner token ability binding must not become the create count: {inner_words:?}"
+        );
     }
 }

@@ -31,6 +31,18 @@ pub enum GraveyardTriggerSurface {
     PutIntoGraveyard,
 }
 
+/// Authored wording for a trigger that observes the winner of a clash.
+///
+/// Both surfaces subscribe to the same winner-aware event. This distinction
+/// exists only so compiled text can retain whether the source said "win a
+/// clash" or "clash and win".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClashWinTriggerSurface {
+    #[default]
+    WinAClash,
+    ClashAndWin,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DamagedBySource {
     ThisCreature,
@@ -51,6 +63,11 @@ pub enum TriggerTimingRestriction {
 pub enum DamageSourceSurface {
     Filter,
     Source,
+    /// Passive Oracle wording: "[recipient] is dealt damage by [source]."
+    ///
+    /// Runtime matching remains source-to-recipient damage; this only
+    /// preserves the authored direction for compiled text.
+    PassiveBy,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -112,12 +129,22 @@ pub enum TriggerKind {
     ThisBlocks,
     ThisBlocksObject {
         filter: ObjectFilter,
+        /// `None` is the ordinary per-object trigger. `Some(N)` is the
+        /// aggregated "N or more" event and fires once for the declaration.
+        min_blocked_objects: Option<usize>,
     },
     Blocks {
         filter: ObjectFilter,
     },
     BlocksOneOrMore {
         filter: ObjectFilter,
+    },
+    /// A blocking relationship whose blocked object has strictly less power
+    /// than the blocker. Both filters are evaluated against the objects as
+    /// they existed when blockers were declared.
+    BlocksObjectWithLesserPower {
+        blocker: ObjectFilter,
+        blocked: ObjectFilter,
     },
     ThisBecomesBlocked,
     BecomesBlocked {
@@ -126,8 +153,18 @@ pub enum TriggerKind {
     ThisBecomesBlockedByObject {
         filter: ObjectFilter,
     },
+    /// A blocking relationship whose blocker has strictly less power than the
+    /// object it blocked. This is a per-blocker event, not the aggregate
+    /// "becomes blocked" event.
+    BecomesBlockedByObjectWithLesserPower {
+        blocked: ObjectFilter,
+        blocker: ObjectFilter,
+    },
     ThisDies,
     ThisDiesOrIsExiled,
+    ThisDiesOrIsExiledWithSurface {
+        surface: SourceReferenceSurface,
+    },
     ThisLeavesBattlefield,
     ThisPhasesOut,
     ThisMutates,
@@ -263,6 +300,9 @@ pub enum TriggerKind {
         combat_only: bool,
     },
     YouGainLife,
+    YouGainLifeCausedBy {
+        source: ObjectFilter,
+    },
     YouGainLifeDuringTurn {
         during_turn: PlayerFilter,
     },
@@ -349,6 +389,7 @@ pub enum TriggerKind {
     },
     SpellCastQualified {
         filter: Option<ObjectFilter>,
+        mana_source_filter: Option<ObjectFilter>,
         caster: PlayerFilter,
         timing: Option<TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
@@ -423,6 +464,7 @@ pub enum TriggerKind {
     },
     WinsClash {
         player: PlayerFilter,
+        surface: ClashWinTriggerSurface,
     },
     Expend {
         amount: u32,
@@ -656,7 +698,22 @@ impl Trigger {
     pub fn this_blocks_object(filter: ObjectFilter) -> Self {
         Self::typed(
             "this_blocks_object",
-            TriggerKind::ThisBlocksObject { filter },
+            TriggerKind::ThisBlocksObject {
+                filter,
+                min_blocked_objects: None,
+            },
+        )
+    }
+    pub fn this_blocks_objects_with_minimum(
+        filter: ObjectFilter,
+        min_blocked_objects: usize,
+    ) -> Self {
+        Self::typed(
+            "this_blocks_objects_with_minimum",
+            TriggerKind::ThisBlocksObject {
+                filter,
+                min_blocked_objects: Some(min_blocked_objects.max(1)),
+            },
         )
     }
     pub fn blocks(filter: ObjectFilter) -> Self {
@@ -666,6 +723,12 @@ impl Trigger {
         Self::typed(
             "blocks_one_or_more",
             TriggerKind::BlocksOneOrMore { filter },
+        )
+    }
+    pub fn blocks_object_with_lesser_power(blocker: ObjectFilter, blocked: ObjectFilter) -> Self {
+        Self::typed(
+            "blocks_object_with_lesser_power",
+            TriggerKind::BlocksObjectWithLesserPower { blocker, blocked },
         )
     }
     pub fn this_becomes_blocked() -> Self {
@@ -680,11 +743,26 @@ impl Trigger {
             TriggerKind::ThisBecomesBlockedByObject { filter },
         )
     }
+    pub fn becomes_blocked_by_object_with_lesser_power(
+        blocked: ObjectFilter,
+        blocker: ObjectFilter,
+    ) -> Self {
+        Self::typed(
+            "becomes_blocked_by_object_with_lesser_power",
+            TriggerKind::BecomesBlockedByObjectWithLesserPower { blocked, blocker },
+        )
+    }
     pub fn this_dies() -> Self {
         Self::typed("this_dies", TriggerKind::ThisDies)
     }
     pub fn this_dies_or_is_exiled() -> Self {
         Self::typed("this_dies_or_is_exiled", TriggerKind::ThisDiesOrIsExiled)
+    }
+    pub fn this_dies_or_is_exiled_with_surface(surface: SourceReferenceSurface) -> Self {
+        Self::typed(
+            "this_dies_or_is_exiled",
+            TriggerKind::ThisDiesOrIsExiledWithSurface { surface },
+        )
     }
     pub fn this_leaves_battlefield() -> Self {
         Self::typed(
@@ -1075,6 +1153,32 @@ impl Trigger {
     pub fn you_gain_life() -> Self {
         Self::typed("you_gain_life", TriggerKind::YouGainLife)
     }
+    pub fn you_gain_life_caused_by(source: ObjectFilter) -> Self {
+        let description = source.description();
+        let source_description = if description.starts_with("a ")
+            || description.starts_with("an ")
+            || description.starts_with("the ")
+        {
+            description
+        } else {
+            let article = if matches!(
+                description
+                    .chars()
+                    .next()
+                    .map(|character| character.to_ascii_lowercase()),
+                Some('a' | 'e' | 'i' | 'o' | 'u')
+            ) {
+                "an"
+            } else {
+                "a"
+            };
+            format!("{article} {description}")
+        };
+        Self::typed(
+            format!("Whenever {source_description} causes you to gain life"),
+            TriggerKind::YouGainLifeCausedBy { source },
+        )
+    }
     pub fn you_gain_life_during_turn(during_turn: PlayerFilter) -> Self {
         Self::typed(
             "you_gain_life_during_turn",
@@ -1303,10 +1407,32 @@ impl Trigger {
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
     ) -> Self {
+        Self::spell_cast_qualified_with_mana_source(
+            filter,
+            None,
+            caster,
+            timing,
+            during_turn,
+            min_spells_this_turn,
+            exact_spells_this_turn,
+            from_not_hand,
+        )
+    }
+    pub fn spell_cast_qualified_with_mana_source(
+        filter: Option<ObjectFilter>,
+        mana_source_filter: Option<ObjectFilter>,
+        caster: PlayerFilter,
+        timing: Option<TriggerTimingRestriction>,
+        during_turn: Option<PlayerFilter>,
+        min_spells_this_turn: Option<u32>,
+        exact_spells_this_turn: Option<u32>,
+        from_not_hand: bool,
+    ) -> Self {
         Self::typed(
             "spell_cast_qualified",
             TriggerKind::SpellCastQualified {
                 filter,
+                mana_source_filter,
                 caster,
                 timing,
                 during_turn,
@@ -1527,7 +1653,10 @@ impl Trigger {
         )
     }
     pub fn wins_clash(player: PlayerFilter) -> Self {
-        Self::typed("wins_clash", TriggerKind::WinsClash { player })
+        Self::wins_clash_with_surface(player, ClashWinTriggerSurface::WinAClash)
+    }
+    pub fn wins_clash_with_surface(player: PlayerFilter, surface: ClashWinTriggerSurface) -> Self {
+        Self::typed("wins_clash", TriggerKind::WinsClash { player, surface })
     }
     pub fn expend(amount: u32, player: PlayerFilter) -> Self {
         Self::typed("expend", TriggerKind::Expend { amount, player })

@@ -182,24 +182,30 @@ pub(crate) fn parse_creation_for_each_dynamic_count_tokens(
         return Some(Value::PartySize(player).with_surface_hint(ValueSurfaceHint::ForEach));
     }
     if surface.starts(CreationPhrase::CardExiledThisWay) {
-        return Some(
-            Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::AffectedObjects,
-                metric: ironsmith_core::EffectMetric::Count,
-            }
-            .with_surface_hints([
-                ValueSurfaceHint::ForEach,
-                ValueSurfaceHint::CardsExiledThisWay,
-            ]),
-        );
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Exiled);
+        return Some(Value::PendingPriorEffectMetric(query).with_surface_hints([
+            ValueSurfaceHint::ForEach,
+            ValueSurfaceHint::CardsExiledThisWay,
+        ]));
     }
     if surface.starts(CreationPhrase::ObjectExiledThisWay) {
+        let filter = if matches!(words.first().copied(), Some("permanent" | "permanents")) {
+            ObjectFilter::permanent()
+        } else {
+            ObjectFilter::default()
+        };
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Exiled)
+        .with_filter(filter);
         return Some(
-            Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::AffectedObjects,
-                metric: ironsmith_core::EffectMetric::Count,
-            }
-            .with_surface_hint(ValueSurfaceHint::ForEach),
+            Value::PendingPriorEffectMetric(query).with_surface_hint(ValueSurfaceHint::ForEach),
         );
     }
     if surface.starts(CreationPhrase::GraveyardOrHandThisWay) {
@@ -377,6 +383,22 @@ mod tests {
             .expect("party creation count should parse");
         assert!(party.has_surface_hint(ValueSurfaceHint::ForEach));
         assert_eq!(party.into_unhinted(), Value::PartySize(PlayerFilter::You));
+
+        let tokens = lex_line("permanent exiled this way", 0).unwrap();
+        let prior_exile = parse_creation_for_each_dynamic_count_tokens(&tokens)
+            .expect("typed prior-exile creation count should parse");
+        assert!(prior_exile.has_surface_hint(ValueSurfaceHint::ForEach));
+        let Value::PendingPriorEffectMetric(query) = prior_exile.into_unhinted() else {
+            panic!("expected typed prior-effect metric");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Exiled)
+        );
+        assert_eq!(
+            query.filter.expect("permanent filter").card_types,
+            ObjectFilter::permanent().card_types
+        );
     }
 
     #[test]

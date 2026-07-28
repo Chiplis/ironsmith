@@ -44,6 +44,119 @@ fn draw_then_gain_shared_history_value_renders_one_where_x_basis() {
 }
 
 #[test]
+fn gain_then_put_counters_shared_value_renders_one_where_x_basis() {
+    let shared = Value::PowerOf(Box::new(
+        ChooseSpec::Tagged(TagKey::from("sacrificed_0")).with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SacrificedObject(
+                ironsmith_core::SacrificedObjectKind::Creature,
+            ),
+        ),
+    ))
+    .with_surface_hint(ValueSurfaceHint::WhereXIs);
+    let target = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::creature()
+            .you_control()
+            .in_zone(Zone::Battlefield),
+    ));
+    let effects = vec![
+        Effect::new(crate::effects::GainLifeEffect::you(shared.clone())),
+        Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            shared,
+            target,
+        )),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "You gain X life and put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power"
+    );
+
+    let coordinated = Effect::new(crate::effects::SequenceEffect::coordinated(effects));
+    assert_eq!(
+        describe_effect(&coordinated),
+        "You gain X life and put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power"
+    );
+}
+
+#[test]
+fn any_number_from_hand_then_linked_draw_keeps_order_and_offset_surface() {
+    let hand = ObjectFilter {
+        zone: Some(Zone::Hand),
+        owner: Some(PlayerFilter::You),
+        ..Default::default()
+    };
+    let move_to_library = crate::effects::MoveToZoneEffect::to_bottom_of_library(
+        ChooseSpec::Object(hand).with_count(ChoiceCount::any_number()),
+    )
+    .with_destination_player_surface(PlayerFilter::You);
+    let effects = vec![
+        Effect::with_id(7, Effect::new(move_to_library).tag(TagKey::from("moved_7"))),
+        Effect::new(crate::effects::DrawCardsEffect::new(
+            Value::EffectValueOffset(crate::effect::EffectId(7), 1),
+            PlayerFilter::You,
+        )),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Put any number of cards from your hand on the bottom of your library, then draw that many cards plus one"
+    );
+}
+
+#[test]
+fn whole_hand_then_linked_draw_keeps_order_and_any_order_surface() {
+    let hand = ObjectFilter {
+        zone: Some(Zone::Hand),
+        owner: Some(PlayerFilter::You),
+        ..Default::default()
+    };
+    let move_to_library =
+        crate::effects::MoveToZoneEffect::to_bottom_of_library(ChooseSpec::All(hand))
+            .with_library_order(ironsmith_core::LibraryPlacementOrder::ChosenBy(
+                PlayerFilter::You,
+            ))
+            .with_destination_player_surface(PlayerFilter::You);
+    let effects = vec![
+        Effect::with_id(9, Effect::new(move_to_library)),
+        Effect::new(crate::effects::DrawCardsEffect::new(
+            Value::EffectValue(crate::effect::EffectId(9))
+                .with_surface_hint(ValueSurfaceHint::ThatManyCards),
+            PlayerFilter::You,
+        )),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Put the cards in your hand on the bottom of your library in any order, then draw that many cards"
+    );
+}
+
+#[test]
+fn must_block_set_then_assignment_control_keeps_anaphoric_surface() {
+    let must_block = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Filter(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::Opponent)
+                .in_zone(Zone::Battlefield),
+        ),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::must_block(),
+        ),
+        Until::EndOfTurn,
+    );
+    let effects = vec![
+        Effect::new(must_block).tag("granted_0"),
+        Effect::control_combat_choices_this_turn(false, true),
+    ];
+
+    assert_eq!(
+        describe_effect_list(&effects),
+        "Creatures your opponents control block this turn if able, and you choose how those creatures block"
+    );
+}
+
+#[test]
 fn draw_then_gain_different_history_values_do_not_share_a_where_x_basis() {
     let draw = Value::TurnHistoryCount(
         ironsmith_core::TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(PlayerFilter::You),
@@ -674,6 +787,32 @@ fn return_to_hand_preserves_an_explicit_contextual_destination_surface() {
 }
 
 #[test]
+fn destination_first_targeted_return_preserves_tagged_lesser_mana_surface() {
+    let mut filter = ObjectFilter::artifact()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    filter.set_explicit_card_noun(true);
+    filter.set_return_destination_first_surface(true);
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("triggering"),
+        relation: TaggedOpbjectRelation::ManaValueLtTagged,
+    });
+    let effect = Effect::new(
+        crate::effects::ReturnFromGraveyardToHandEffect::new(
+            ChooseSpec::target(ChooseSpec::Object(filter)),
+            false,
+        )
+        .with_graveyard_player_surface(PlayerFilter::You)
+        .with_destination_player_surface(PlayerFilter::You),
+    );
+
+    assert_eq!(
+        describe_effect(&effect),
+        "Return to your hand target artifact card in your graveyard with lesser mana value"
+    );
+}
+
+#[test]
 fn aliased_target_actions_compact_under_the_original_target_subject() {
     let alias = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Opponent));
     let effects = vec![
@@ -723,8 +862,10 @@ fn target_hand_count_uses_the_same_players_pronoun() {
     let hand = ObjectFilter::default()
         .in_zone(Zone::Hand)
         .owned_by(PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any)));
-    let draw =
-        crate::effects::DrawCardsEffect::new(Value::Count(hand), PlayerFilter::target_player());
+    let draw = crate::effects::DrawCardsEffect::new(
+        Value::Count(hand).with_surface_hint(ValueSurfaceHint::EqualTo),
+        PlayerFilter::target_player(),
+    );
 
     assert_eq!(
         describe_draw_for_each(&draw).as_deref(),
@@ -872,6 +1013,36 @@ fn draw_then_conditional_discard_renders_positive_unless_condition() {
 }
 
 #[test]
+fn source_sentence_leading_then_surface_renders_the_explicit_connective() {
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::draw(Value::Fixed(1))]),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::sentence_leading_then(vec![Effect::gain_life(1)]),
+        )]),
+    ]);
+
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        "you draw a card. Then you gain 1 life"
+    );
+}
+
+#[test]
+fn ordinary_sequential_sentence_does_not_gain_a_then_connective() {
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::draw(Value::Fixed(1))]),
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::new(vec![Effect::gain_life(1)]),
+        )]),
+    ]);
+
+    assert_eq!(
+        super::super::ast_render::describe_resolution_program(&program),
+        "you draw a card. you gain 1 life"
+    );
+}
+
+#[test]
 fn modal_modes_with_shared_spells_cast_value_render_one_x_preamble() {
     let spells_cast = Value::SpellsCastThisTurn(PlayerFilter::You);
     let choose = ironsmith_core::ChooseModeEffect::choose_one(vec![
@@ -928,6 +1099,37 @@ fn modal_modes_with_different_spells_cast_values_do_not_invent_shared_x() {
     let rendered = describe_effect(&Effect::new(choose));
     assert!(rendered.starts_with("Choose one —"), "{rendered}");
     assert!(!rendered.contains(". X is "), "{rendered}");
+}
+
+#[test]
+fn inline_named_token_creation_choice_renders_as_authored_or_instruction() {
+    let named_artifact_token = |name, subtype| {
+        crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+            .token()
+            .card_types(vec![crate::types::CardType::Artifact])
+            .subtypes(vec![subtype])
+            .build()
+    };
+    let choose = ironsmith_core::ChooseModeEffect::choose_one(vec![
+        ironsmith_core::EffectMode::new(
+            "",
+            vec![Effect::new(crate::effects::CreateTokenEffect::one(
+                named_artifact_token("Food", crate::types::Subtype::Food),
+            ))],
+        ),
+        ironsmith_core::EffectMode::new(
+            "",
+            vec![Effect::new(crate::effects::CreateTokenEffect::one(
+                named_artifact_token("Treasure", crate::types::Subtype::Treasure),
+            ))],
+        ),
+    ])
+    .with_chooser(PlayerFilter::You);
+
+    assert_eq!(
+        describe_effect(&Effect::new(choose)),
+        "Create a Food token or a Treasure token"
+    );
 }
 
 fn source_exiled_filter() -> ObjectFilter {

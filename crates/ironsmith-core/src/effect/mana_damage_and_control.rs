@@ -60,6 +60,27 @@ impl AddManaOfColorsAmongEffect {
     }
 }
 
+/// Adds exactly one mana whose color is chosen from the colors of objects
+/// matching `filter`.
+///
+/// This is distinct from [`AddManaOfColorsAmongEffect`], which adds one mana
+/// of *each* represented color.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AddOneManaOfAnyColorAmongEffect {
+    pub filter: ObjectFilter,
+    pub player: PlayerFilter,
+}
+
+impl AddOneManaOfAnyColorAmongEffect {
+    pub fn new(filter: ObjectFilter, player: PlayerFilter) -> Self {
+        Self { filter, player }
+    }
+
+    pub fn you(filter: ObjectFilter) -> Self {
+        Self::new(filter, PlayerFilter::You)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct AddScaledManaEffect {
     pub mana: Vec<crate::mana::ManaSymbol>,
@@ -413,10 +434,21 @@ impl DrawForEachTaggedMatchingEffect {
     }
 }
 
+/// Oracle-facing actor placement for an exile-top-library instruction.
+///
+/// The library owner remains semantic in `player`; this only distinguishes
+/// “Target opponent exiles … from their library” from the imperative
+/// “Exile … from target opponent's library” surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExileTopLibrarySurface {
+    LibraryOwnerAsActor,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExileTopOfLibraryEffect {
     pub count: Value,
     pub player: PlayerFilter,
+    pub surface: Option<ExileTopLibrarySurface>,
     pub moved_tags: Vec<crate::tag::TagKey>,
     pub accumulated_tags: Vec<crate::tag::TagKey>,
     /// Whether the cards are exiled face down without being revealed.
@@ -428,6 +460,7 @@ impl ExileTopOfLibraryEffect {
         Self {
             count,
             player,
+            surface: None,
             moved_tags: Vec::new(),
             accumulated_tags: Vec::new(),
             face_down: false,
@@ -436,6 +469,11 @@ impl ExileTopOfLibraryEffect {
 
     pub fn tag_moved(mut self, tag: impl Into<crate::tag::TagKey>) -> Self {
         self.moved_tags.push(tag.into());
+        self
+    }
+
+    pub fn with_surface(mut self, surface: ExileTopLibrarySurface) -> Self {
+        self.surface = Some(surface);
         self
     }
 
@@ -653,6 +691,9 @@ pub struct GrantPlayTaggedEffect {
     pub tag: crate::tag::TagKey,
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
+    /// Authored duration placement and tagged-card reference wording.
+    /// Gameplay semantics remain in the ordinary typed grant fields.
+    pub surface: Option<crate::GrantPlayTaggedSurface>,
     pub allow_land: bool,
     /// Semantic mana conversion used while casting the granted cards.
     pub mana_spend_mode: crate::value_model::ManaSpendMode,
@@ -663,6 +704,12 @@ pub struct GrantPlayTaggedEffect {
     pub while_on_top_of_library: bool,
     pub filter: Option<ObjectFilter>,
     pub during_turns_counter_put_on_source: Option<CounterType>,
+    /// Additional mana cost imposed on nonland cards cast through this exact
+    /// tagged play permission.
+    pub spell_cost_increase: Option<ManaCost>,
+    /// Whether a land played through this exact tagged permission enters
+    /// tapped.
+    pub lands_enter_tapped: bool,
     /// True when the granted pool holds more than one card, selecting plural
     /// "cast spells from among those exiled cards" wording over the singular
     /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
@@ -682,18 +729,26 @@ impl GrantPlayTaggedEffect {
             tag,
             player,
             duration,
+            surface: None,
             allow_land,
             mana_spend_mode,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
             during_turns_counter_put_on_source: None,
+            spell_cost_increase: None,
+            lands_enter_tapped: false,
             cast_pool_is_plural: false,
         }
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
         self.cast_pool_is_plural = plural;
+        self
+    }
+
+    pub fn with_surface(mut self, surface: crate::GrantPlayTaggedSurface) -> Self {
+        self.surface = Some(surface);
         self
     }
 
@@ -715,6 +770,16 @@ impl GrantPlayTaggedEffect {
 
     pub fn during_turns_counter_put_on_source(mut self, counter_type: CounterType) -> Self {
         self.during_turns_counter_put_on_source = Some(counter_type);
+        self
+    }
+
+    pub fn with_spell_cost_increase(mut self, cost: ManaCost) -> Self {
+        self.spell_cost_increase = Some(cost);
+        self
+    }
+
+    pub fn with_lands_enter_tapped(mut self, enabled: bool) -> Self {
+        self.lands_enter_tapped = enabled;
         self
     }
 }
@@ -2705,6 +2770,9 @@ pub struct ShuffleObjectsIntoLibraryEffect {
     /// the destination surface distinct from clauses whose grammatical subject
     /// is the owner, such as "Its owner shuffles it into their library."
     pub owner_library_destination: bool,
+    /// Preserve a possessive grammatical subject such as "Target creature's
+    /// owner" instead of the equivalent "The owner of target creature."
+    pub possessive_owner_subject: bool,
 }
 
 impl ShuffleObjectsIntoLibraryEffect {
@@ -2713,11 +2781,17 @@ impl ShuffleObjectsIntoLibraryEffect {
             target,
             player,
             owner_library_destination: false,
+            possessive_owner_subject: false,
         }
     }
 
     pub fn with_owner_library_destination(mut self) -> Self {
         self.owner_library_destination = true;
+        self
+    }
+
+    pub fn with_possessive_owner_subject(mut self) -> Self {
+        self.possessive_owner_subject = true;
         self
     }
 }
@@ -2840,11 +2914,24 @@ pub enum RestrictionStart {
     NextTurn(PlayerFilter),
 }
 
+/// Authored placement of a temporary restriction's duration.
+///
+/// This affects compiled text only; runtime expiration is still governed by
+/// `CantEffect::duration`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RestrictionDurationSurface {
+    #[default]
+    Default,
+    LeadingUntilEndOfTurn,
+    LeadingUntilYourNextTurn,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct CantEffect {
     pub restriction: Restriction,
     pub duration: Until,
     pub start: RestrictionStart,
+    pub duration_surface: RestrictionDurationSurface,
 }
 
 impl CantEffect {
@@ -2853,6 +2940,7 @@ impl CantEffect {
             restriction,
             duration,
             start: RestrictionStart::Immediate,
+            duration_surface: RestrictionDurationSurface::Default,
         }
     }
 
@@ -2861,7 +2949,13 @@ impl CantEffect {
             restriction,
             duration,
             start,
+            duration_surface: RestrictionDurationSurface::Default,
         }
+    }
+
+    pub fn with_duration_surface(mut self, surface: RestrictionDurationSurface) -> Self {
+        self.duration_surface = surface;
+        self
     }
 
     pub fn until_end_of_turn(restriction: Restriction) -> Self {
@@ -2912,6 +3006,8 @@ impl ModifyPowerToughnessForEachEffect {
 pub struct RemoveUpToAnyCountersEffect {
     pub max_count: Value,
     pub target: ChooseSpec,
+    /// Whether removing fewer than the available maximum is allowed.
+    pub up_to: bool,
 }
 
 impl RemoveUpToAnyCountersEffect {
@@ -2919,6 +3015,15 @@ impl RemoveUpToAnyCountersEffect {
         Self {
             max_count: max_count.into(),
             target,
+            up_to: true,
+        }
+    }
+
+    pub fn exact(max_count: impl Into<Value>, target: ChooseSpec) -> Self {
+        Self {
+            max_count: max_count.into(),
+            target,
+            up_to: false,
         }
     }
 }
@@ -2970,11 +3075,26 @@ impl ReconfigureEffect {
 pub struct AttachObjectsEffect {
     pub objects: ChooseSpec,
     pub target: ChooseSpec,
+    /// Choose a legal destination separately for each object being attached.
+    ///
+    /// This models plural-destination instructions such as "return any
+    /// number of Aura cards ... attached to creatures you control." A single
+    /// destination remains the default for ordinary attach instructions.
+    pub individual_targets: bool,
 }
 
 impl AttachObjectsEffect {
     pub fn new(objects: ChooseSpec, target: ChooseSpec) -> Self {
-        Self { objects, target }
+        Self {
+            objects,
+            target,
+            individual_targets: false,
+        }
+    }
+
+    pub fn with_individual_targets(mut self) -> Self {
+        self.individual_targets = true;
+        self
     }
 }
 
@@ -3089,6 +3209,10 @@ impl ReturnFromGraveyardToBattlefieldEffect {
 pub struct ReturnFromGraveyardToHandEffect {
     pub target: ChooseSpec,
     pub random: bool,
+    /// Player explicitly presented as performing the return action. Runtime
+    /// movement remains object-based; this preserves causative clauses such
+    /// as "you may have that player return ...".
+    pub actor_surface: Option<PlayerFilter>,
     /// Contextual graveyard owner named by the oracle origin. Runtime movement
     /// continues to use object ownership; this is presentation-only.
     pub graveyard_player_surface: Option<PlayerFilter>,
@@ -3102,9 +3226,15 @@ impl ReturnFromGraveyardToHandEffect {
         Self {
             target,
             random,
+            actor_surface: None,
             graveyard_player_surface: None,
             destination_player_surface: None,
         }
+    }
+
+    pub fn with_actor_surface(mut self, player: PlayerFilter) -> Self {
+        self.actor_surface = Some(player);
+        self
     }
 
     pub fn with_graveyard_player_surface(mut self, player: PlayerFilter) -> Self {
@@ -3328,6 +3458,10 @@ pub enum LibraryBottomOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryRemainderSurface {
     Rest,
+    /// "the rest of the cards revealed this way"
+    RestOfCardsRevealedThisWay,
+    /// "the cards you revealed this way"
+    CardsYouRevealedThisWay,
     RevealedCardsNotPutOntoBattlefield,
 }
 
@@ -3374,6 +3508,11 @@ pub struct RemoveAnyCountersAmongEffect {
     pub min_count: u32,
     pub dynamic_count: bool,
     pub display_x: bool,
+    /// All counters paid by this effect must come from one chosen object.
+    ///
+    /// This preserves the distinction between "from a permanent" and
+    /// "from among permanents", which have different payment semantics.
+    pub single_object: bool,
     pub filter: ObjectFilter,
     pub counter_type: Option<crate::counter::CounterType>,
 }
@@ -3385,6 +3524,7 @@ impl RemoveAnyCountersAmongEffect {
             min_count: count,
             dynamic_count: false,
             display_x: false,
+            single_object: false,
             filter,
             counter_type: None,
         }
@@ -3396,6 +3536,7 @@ impl RemoveAnyCountersAmongEffect {
             min_count,
             dynamic_count: true,
             display_x,
+            single_object: false,
             filter,
             counter_type: None,
         }
@@ -3403,6 +3544,11 @@ impl RemoveAnyCountersAmongEffect {
 
     pub fn with_counter_type(mut self, counter_type: Option<crate::counter::CounterType>) -> Self {
         self.counter_type = counter_type;
+        self
+    }
+
+    pub fn from_single_object(mut self) -> Self {
+        self.single_object = true;
         self
     }
 }
@@ -3688,11 +3834,33 @@ impl ChoosePlayerEffect {
 pub enum SequenceSurface {
     #[default]
     Sequential,
+    /// The sequence begins an authored source sentence introduced by
+    /// "Then". It executes like an ordinary sequential sequence; the
+    /// distinction exists only so compiled text can preserve that explicit
+    /// ordering connective.
+    SentenceLeadingThen,
+    /// The sequence contains an authored same-sentence `, then` boundary.
+    /// It executes in ordinary sequential scope; the distinction exists so
+    /// compiled text does not normalize the connective to `and`.
+    CommaThen,
     Coordinated,
     CoordinatedLeadingDuration,
     ResultConjunction {
         leading_duration: bool,
     },
+}
+
+impl SequenceSurface {
+    /// Whether the sequence's children share one coordinated target scope.
+    ///
+    /// Sentence-leading and same-sentence "then" surfaces remain ordinary
+    /// sequential scopes even though they carry compiled-text provenance.
+    pub const fn is_coordinated(self) -> bool {
+        matches!(
+            self,
+            Self::Coordinated | Self::CoordinatedLeadingDuration | Self::ResultConjunction { .. }
+        )
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -3706,6 +3874,20 @@ impl<E> SequenceEffect<E> {
         Self {
             effects,
             surface: SequenceSurface::Sequential,
+        }
+    }
+
+    pub fn sentence_leading_then(effects: Vec<E>) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::SentenceLeadingThen,
+        }
+    }
+
+    pub fn comma_then(effects: Vec<E>) -> Self {
+        Self {
+            effects,
+            surface: SequenceSurface::CommaThen,
         }
     }
 
@@ -3786,6 +3968,10 @@ pub struct UnlessPaysEffect<E> {
     pub player: PlayerFilter,
     pub effects: Vec<E>,
     pub cost: crate::cost_model::TotalCost<crate::cost_model::Cost<E>>,
+    /// Preserve an authored leading surface such as
+    /// "unless you sacrifice ..., sacrifice this creature" instead of the
+    /// ordinary trailing "sacrifice this creature unless ..." surface.
+    pub leading_surface: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

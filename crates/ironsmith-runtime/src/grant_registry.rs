@@ -40,6 +40,12 @@ pub enum GrantSource {
         duration_player: PlayerId,
         expires_end_of_turn: u32,
     },
+    /// From a resolving effect that lasts until the same source object next
+    /// successfully exiles a card.
+    EffectUntilSourceExilesAnother {
+        source_id: ObjectId,
+        exile_revision: u64,
+    },
     /// From a resolving effect that lasts while the source remains controlled by a player.
     EffectWhileControlled {
         source_id: ObjectId,
@@ -90,11 +96,19 @@ impl GrantSource {
         }
     }
 
+    pub fn until_source_exiles_another(source_id: ObjectId, exile_revision: u64) -> Self {
+        GrantSource::EffectUntilSourceExilesAnother {
+            source_id,
+            exile_revision,
+        }
+    }
+
     /// Source object that provided this grant.
     pub fn source_id(&self) -> ObjectId {
         match self {
             GrantSource::Effect { source_id, .. } => *source_id,
             GrantSource::EffectUntilPlayerNextTurnEnd { source_id, .. } => *source_id,
+            GrantSource::EffectUntilSourceExilesAnother { source_id, .. } => *source_id,
             GrantSource::EffectWhileControlled { source_id, .. } => *source_id,
             GrantSource::EffectWhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
             GrantSource::EffectDuringTurnsCounterPutOnSource { source_id, .. } => *source_id,
@@ -116,6 +130,10 @@ impl GrantSource {
                 // Valid until the end of the specified turn
                 game.turn.turn_number <= *expires_end_of_turn
             }
+            GrantSource::EffectUntilSourceExilesAnother {
+                source_id,
+                exile_revision,
+            } => game.exiled_with_source_revision(*source_id) == *exile_revision,
             GrantSource::StaticAbility { source_id } => {
                 // Valid only while source is on battlefield
                 game.battlefield.contains(source_id)
@@ -173,6 +191,9 @@ impl GrantSource {
                 // Valid until the end of the specified turn
                 turn_number <= *expires_end_of_turn
             }
+            // Raw turn cleanup cannot evaluate an event revision. Permission
+            // checks use `is_valid`, which has the complete game state.
+            GrantSource::EffectUntilSourceExilesAnother { .. } => true,
             GrantSource::StaticAbility { source_id } => {
                 // Valid only while source is on battlefield
                 battlefield.contains(source_id)
@@ -192,6 +213,10 @@ impl GrantSource {
 pub enum GrantLifetime {
     /// Valid until the end of the specified turn.
     UntilEndOfTurn { source_id: ObjectId, turn: u32 },
+    UntilSourceExilesAnother {
+        source_id: ObjectId,
+        exile_revision: u64,
+    },
     /// Valid while the source remains on the battlefield.
     WhileSourceOnBattlefield(ObjectId),
     WhileSourceControlledBy {
@@ -215,6 +240,7 @@ impl GrantLifetime {
     pub fn source_id(&self) -> ObjectId {
         match self {
             GrantLifetime::UntilEndOfTurn { source_id, .. } => *source_id,
+            GrantLifetime::UntilSourceExilesAnother { source_id, .. } => *source_id,
             GrantLifetime::WhileSourceOnBattlefield(source_id) => *source_id,
             GrantLifetime::WhileSourceControlledBy { source_id, .. } => *source_id,
             GrantLifetime::WhileStableCardOnTopOfLibrary { source_id, .. } => *source_id,
@@ -240,6 +266,13 @@ impl GrantSource {
             } => GrantLifetime::UntilEndOfTurn {
                 source_id: *source_id,
                 turn: *expires_end_of_turn,
+            },
+            GrantSource::EffectUntilSourceExilesAnother {
+                source_id,
+                exile_revision,
+            } => GrantLifetime::UntilSourceExilesAnother {
+                source_id: *source_id,
+                exile_revision: *exile_revision,
             },
             GrantSource::StaticAbility { source_id } => {
                 GrantLifetime::WhileSourceOnBattlefield(*source_id)
@@ -315,6 +348,18 @@ pub struct GrantedPlayFrom {
     pub source_id: ObjectId,
     pub zone: Zone,
     pub usage_limit: Option<GrantUsageLimit>,
+    pub constraints: PlayFromConstraints,
+}
+
+/// Rules linked to using one particular play-from permission.
+///
+/// These are stored on the permission rather than on the exiled card as an
+/// ordinary granted ability, because they apply only when that exact
+/// permission is used.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct PlayFromConstraints {
+    pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    pub lands_enter_tapped: bool,
 }
 
 /// A unified grant that can represent either an ability or alternative casting method.
@@ -338,6 +383,9 @@ pub struct Grant {
     pub usage_limit: Option<GrantUsageLimit>,
     /// First turn number on which this grant may be used.
     pub available_starting_turn: Option<u32>,
+    /// Extra rules that apply only when `grantable` is `PlayFrom` and this
+    /// exact grant is used.
+    pub play_from_constraints: PlayFromConstraints,
     /// How this grant was created.
     pub source: GrantSource,
 }
@@ -378,6 +426,7 @@ impl GrantRegistry {
             grantable,
             usage_limit: None,
             available_starting_turn: None,
+            play_from_constraints: PlayFromConstraints::default(),
             source,
         });
     }
@@ -401,6 +450,7 @@ impl GrantRegistry {
             grantable,
             usage_limit: None,
             available_starting_turn: Some(available_starting_turn),
+            play_from_constraints: PlayFromConstraints::default(),
             source,
         });
     }
@@ -424,6 +474,59 @@ impl GrantRegistry {
             grantable,
             usage_limit: None,
             available_starting_turn: None,
+            play_from_constraints: PlayFromConstraints::default(),
+            source,
+        });
+    }
+
+    /// Add a stable-card play permission whose extra rules apply only when
+    /// this exact permission is used.
+    pub fn grant_play_from_to_stable_card(
+        &mut self,
+        target_id: ObjectId,
+        target_stable_id: StableId,
+        zone: Zone,
+        player: PlayerId,
+        constraints: PlayFromConstraints,
+        source: GrantSource,
+    ) {
+        self.grants.push(Grant {
+            target_id: Some(target_id),
+            target_stable_id: Some(target_stable_id),
+            filter: None,
+            zone,
+            player,
+            grantable: Grantable::PlayFrom,
+            usage_limit: None,
+            available_starting_turn: None,
+            play_from_constraints: constraints,
+            source,
+        });
+    }
+
+    /// Add a constrained play permission for this exact zone-change object.
+    ///
+    /// This is used by "for as long as it remains exiled" permissions: once
+    /// the card leaves exile, a later exile creates a different object and
+    /// must not reactivate the old permission.
+    pub fn grant_play_from_to_card(
+        &mut self,
+        target_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+        constraints: PlayFromConstraints,
+        source: GrantSource,
+    ) {
+        self.grants.push(Grant {
+            target_id: Some(target_id),
+            target_stable_id: None,
+            filter: None,
+            zone,
+            player,
+            grantable: Grantable::PlayFrom,
+            usage_limit: None,
+            available_starting_turn: None,
+            play_from_constraints: constraints,
             source,
         });
     }
@@ -447,6 +550,7 @@ impl GrantRegistry {
             grantable,
             usage_limit: None,
             available_starting_turn: None,
+            play_from_constraints: PlayFromConstraints::default(),
             source,
         });
     }
@@ -710,10 +814,52 @@ impl GrantRegistry {
                     source_id: grant.source.source_id(),
                     zone: grant.zone,
                     usage_limit: grant.usage_limit,
+                    constraints: grant.play_from_constraints.clone(),
                 }),
                 _ => None,
             })
             .collect()
+    }
+
+    /// Extra rules for the precise play-from grant selected by a spell action.
+    pub fn play_from_constraints_for_card(
+        &self,
+        game: &crate::game_state::GameState,
+        card_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+        source_id: ObjectId,
+    ) -> PlayFromConstraints {
+        self.get_grants_for_card(game, card_id, zone, player)
+            .into_iter()
+            .find(|grant| {
+                grant.source.source_id() == source_id
+                    && matches!(grant.grantable, Grantable::PlayFrom)
+            })
+            .map(|grant| grant.play_from_constraints)
+            .unwrap_or_default()
+    }
+
+    /// A land action does not currently ask the player to choose among
+    /// equivalent play permissions. Therefore the land is constrained only
+    /// when every active permission that could authorize this play says it
+    /// enters tapped.
+    pub fn land_play_from_permissions_enters_tapped(
+        &self,
+        game: &crate::game_state::GameState,
+        card_id: ObjectId,
+        zone: Zone,
+        player: PlayerId,
+    ) -> bool {
+        let grants = self
+            .get_grants_for_card(game, card_id, zone, player)
+            .into_iter()
+            .filter(|grant| matches!(grant.grantable, Grantable::PlayFrom))
+            .collect::<Vec<_>>();
+        !grants.is_empty()
+            && grants
+                .iter()
+                .all(|grant| grant.play_from_constraints.lands_enter_tapped)
     }
 
     /// Remove all grants from a specific source.
@@ -832,6 +978,7 @@ impl GrantRegistry {
                         grantable: spec.grantable.clone(),
                         usage_limit: spec.usage_limit,
                         available_starting_turn: None,
+                        play_from_constraints: PlayFromConstraints::default(),
                         source: GrantSource::StaticAbility { source_id },
                     });
                 }

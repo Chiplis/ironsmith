@@ -162,15 +162,19 @@ pub(super) fn describe_hideaway_effects(effects: &[&Effect]) -> Option<String> {
         || rest.tag != look.tag
         || rest.keep_tagged.as_ref() != Some(&choose.tag)
         || rest.player != PlayerFilter::You
-        || rest.order != LibraryBottomOrder::Random
     {
         return None;
     }
 
     let (count_text, noun, _) = describe_look_count_and_noun(&look.count);
-    Some(format!(
-        "Look at the top {count_text} {noun} of your library, then exile one of them face down. Put the rest on the bottom of your library in a random order"
-    ))
+    Some(match rest.order {
+        LibraryBottomOrder::Random => format!(
+            "Look at the top {count_text} {noun} of your library, then exile one of them face down. Put the rest on the bottom of your library in a random order"
+        ),
+        LibraryBottomOrder::ChooserChooses => format!(
+            "Look at the top {count_text} {noun} of your library, exile one face down, then put the rest on the bottom of your library in any order"
+        ),
+    })
 }
 
 /// Recover the keyword surface from Hideaway's fully lowered ETB trigger.
@@ -729,8 +733,7 @@ pub(super) fn describe_each_player_may_discard_card_then_draw(
 }
 
 pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Option<String> {
-    let choose = effects
-        .first()?
+    let choose = structural_unwrap_render_wrappers(effects.first()?)
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     if !choose.is_search
         || choose.chooser != PlayerFilter::IteratedPlayer
@@ -744,6 +747,7 @@ pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Opt
     let mut next = 1;
     if let Some(reveal) = effects
         .get(next)
+        .map(structural_unwrap_render_wrappers)
         .and_then(|effect| effect.downcast_ref::<crate::effects::RevealTaggedEffect>())
     {
         if reveal.tag != choose.tag {
@@ -753,13 +757,13 @@ pub(super) fn describe_iterated_player_search_effects(effects: &[Effect]) -> Opt
         next += 1;
     }
 
-    let for_each = effects
-        .get(next)?
+    let for_each = structural_unwrap_render_wrappers(effects.get(next)?)
         .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
     next += 1;
 
     let shuffle = if let Some(effect) = effects.get(next) {
-        let shuffle = effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+        let shuffle = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
         next += 1;
         Some(shuffle)
     } else {
@@ -1074,7 +1078,8 @@ pub(super) fn describe_for_players_search_library_then_shuffle(
 ) -> Option<String> {
     let subject = describe_for_players_subject(&for_players.filter)?;
     let search_text = if let [sequence_effect] = for_players.effects.as_slice() {
-        let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+        let sequence = structural_unwrap_render_wrappers(sequence_effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()?;
         describe_iterated_player_search_sequence(sequence)?
     } else {
         describe_iterated_player_search_effects(&for_players.effects)?
@@ -1690,7 +1695,7 @@ pub(super) fn is_all_cards_from_your_library_filter(filter: &ObjectFilter) -> bo
         && normalized == ObjectFilter::default()
 }
 
-pub(super) fn describe_choose_exiled_cards_exile_library_put_chosen_on_top(
+pub(crate) fn describe_choose_exiled_cards_exile_library_put_chosen_on_top(
     effects: &[Effect],
 ) -> Option<String> {
     let [choose_effect, exile_effect, move_effect] = effects else {
@@ -2566,6 +2571,48 @@ pub(super) fn describe_search_name_conditional_put_then_shuffle(
 pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
     effects: &[&Effect],
 ) -> Option<String> {
+    if let Some((prefix, consumed)) =
+        describe_duration_scoped_targeted_graveyard_cast_replacement(effects)
+    {
+        if consumed == effects.len() {
+            return Some(prefix);
+        }
+        let [suffix] = &effects[consumed..] else {
+            return None;
+        };
+        let rendered_suffix = describe_effect(suffix);
+        return Some(format!(
+            "{}. {}",
+            prefix.trim_end_matches('.'),
+            capitalize_first(rendered_suffix.trim_end_matches('.'))
+        ));
+    }
+
+    if let [_, may_effect, _, followup_effect] = effects {
+        let prefix =
+            describe_may_cast_target_graveyard_spell_then_exile_replacement(&effects[..3])?;
+        let cast_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+        let followup = followup_effect.downcast_ref::<crate::effects::IfEffect>()?;
+        let crate::effect::EffectPredicate::PriorEffectResult(surface) = &followup.predicate else {
+            return None;
+        };
+        if followup.condition != cast_with_id.id
+            || surface.action != crate::effect::PriorEffectAction::Cast
+            || surface.actor != crate::effect::PriorEffectResultActor::You
+            || surface.quantifier != crate::effect::PriorEffectResultQuantifier::One
+            || surface.filter.stack_kind != Some(crate::filter::StackObjectKind::Spell)
+            || !followup.else_.is_empty()
+        {
+            return None;
+        }
+        let rendered_followup = describe_effect(followup_effect);
+        return Some(format!(
+            "{}. {}",
+            prefix.trim_end_matches('.'),
+            capitalize_first(rendered_followup.trim_end_matches('.'))
+        ));
+    }
+
     if let Some(text) = describe_targeted_graveyard_cast_with_gated_replacement(effects) {
         return Some(text);
     }
@@ -2579,11 +2626,11 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
         || choose.chooser != PlayerFilter::You
         || choose_primary_zone(choose) != Some(Zone::Graveyard)
         || choose.filter.zone != Some(Zone::Graveyard)
-        || choose.filter.owner != Some(PlayerFilter::You)
         || !graveyard_cast_card_types_are_supported(&choose.filter.card_types)
     {
         return None;
     }
+    let graveyard_text = describe_targeted_cast_graveyard(&choose.filter.owner)?;
 
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
     let [cast_effect] = may.effects.as_slice() else {
@@ -2607,6 +2654,10 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
         Some(crate::filter::Comparison::LessThanOrEqual(limit)) => {
             format!(" with mana value {limit} or less")
         }
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(limit)) => format!(
+            " with mana value less than or equal to {}",
+            describe_value(limit)
+        ),
         None => String::new(),
         _ => return None,
     };
@@ -2618,20 +2669,131 @@ pub(super) fn describe_may_cast_target_graveyard_spell_then_exile_replacement(
 
     let card_types = describe_graveyard_cast_card_types(&choose.filter.card_types)?;
     Some(format!(
-        "You may cast target {card_types} card{mana_value_text} from your graveyard{free_cast_text}. If that spell would be put into your graveyard, exile it instead"
+        "You may cast target {card_types} card{mana_value_text} from {graveyard_text}{free_cast_text}. If that spell would be put into {graveyard_text}, exile it instead"
+    ))
+}
+
+fn describe_duration_scoped_targeted_graveyard_cast_replacement(
+    effects: &[&Effect],
+) -> Option<(String, usize)> {
+    let [target_effect, grant_effect, rest @ ..] = effects else {
+        return None;
+    };
+    let target_tag = wrapped_effect_tag(target_effect)?;
+    let target_only = structural_unwrap_render_wrappers(target_effect)
+        .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if !target_only.target.is_target() {
+        return None;
+    }
+    let ChooseSpec::Object(filter) = target_only.target.base() else {
+        return None;
+    };
+    let mut plain_filter = filter.clone();
+    let zone = plain_filter.zone.take();
+    let owner = plain_filter.owner.take();
+    let card_types = std::mem::take(&mut plain_filter.card_types);
+    let mana_value = plain_filter.mana_value.take();
+    let colors = plain_filter.colors.take();
+    if zone != Some(Zone::Graveyard) || plain_filter != ObjectFilter::default() {
+        return None;
+    }
+    let graveyard_text = describe_targeted_cast_graveyard(&owner)?;
+    let card_types_text = describe_graveyard_cast_card_types(&card_types)?;
+
+    let grant = structural_unwrap_render_wrappers(grant_effect)
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let surface = grant.surface.as_ref()?;
+    if &grant.tag != target_tag
+        || grant.player != PlayerFilter::You
+        || grant.duration != crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn
+        || grant.allow_land
+        || grant.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
+        || grant.while_on_top_of_library
+        || grant.filter.is_some()
+        || grant.during_turns_counter_put_on_source.is_some()
+        || grant.cast_pool_is_plural
+        || !surface.leading_duration
+        || surface.object != Some(ironsmith_core::GrantPlayTaggedObjectSurface::ThatCard)
+        || surface.mana_reference.is_some()
+    {
+        return None;
+    }
+
+    let mut replacement_idx = 0;
+    let without_paying_mana_cost = rest.first().is_some_and(|effect| {
+        structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect>()
+            .is_some_and(|free_cast| {
+                free_cast.tag == grant.tag
+                    && free_cast.player == grant.player
+                    && free_cast.duration == grant.duration
+                    && !free_cast.while_on_top_of_library
+                    && free_cast.zone.is_none()
+            })
+    });
+    if without_paying_mana_cost {
+        replacement_idx += 1;
+    }
+    let replacement = structural_unwrap_render_wrappers(*rest.get(replacement_idx)?)
+        .downcast_ref::<crate::effects::RegisterFutureZoneReplacementEffect>()?;
+    if replacement.filter != ObjectFilter::tagged(target_tag.clone()).in_zone(Zone::Stack)
+        || replacement.from_zone != Some(Zone::Stack)
+        || replacement.to_zone != Some(Zone::Graveyard)
+        || replacement.replacement_zone != Zone::Exile
+        || replacement.mode != crate::effects::ReplacementApplyMode::UntilEndOfTurn
+        || replacement.cause_filter.is_some()
+        || replacement.require_cause_source_match
+        || replacement.link_exiled_to_source
+    {
+        return None;
+    }
+
+    let mana_value_text = match mana_value {
+        Some(crate::filter::Comparison::LessThanOrEqual(limit)) => {
+            format!(" with mana value {limit} or less")
+        }
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(limit)) => format!(
+            " with mana value less than or equal to {}",
+            describe_value(&limit)
+        ),
+        None => String::new(),
+        _ => return None,
+    };
+    let color_text = colors
+        .map(describe_filter_color_alternatives)
+        .filter(|colors| !colors.is_empty())
+        .map(|colors| format!("{colors} "))
+        .unwrap_or_default();
+    let free_cast_text = if without_paying_mana_cost {
+        " without paying its mana cost"
+    } else {
+        ""
+    };
+    Some((
+        format!(
+            "Until end of turn, you may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{free_cast_text}. If that spell would be put into {graveyard_text}, exile it instead"
+        ),
+        3 + usize::from(without_paying_mana_cost),
     ))
 }
 
 fn graveyard_cast_card_types_are_supported(card_types: &[CardType]) -> bool {
-    card_types.len() >= 2
-        && card_types.contains(&CardType::Instant)
-        && card_types.contains(&CardType::Sorcery)
+    !card_types.is_empty()
+        && (card_types.contains(&CardType::Instant) || card_types.contains(&CardType::Sorcery))
         && card_types.iter().all(|card_type| {
             matches!(
                 card_type,
                 CardType::Artifact | CardType::Instant | CardType::Sorcery
             )
         })
+}
+
+fn describe_targeted_cast_graveyard(owner: &Option<PlayerFilter>) -> Option<&'static str> {
+    match owner {
+        Some(PlayerFilter::You) => Some("your graveyard"),
+        None => Some("a graveyard"),
+        _ => None,
+    }
 }
 
 fn describe_graveyard_cast_card_types(card_types: &[CardType]) -> Option<String> {
@@ -2664,12 +2826,11 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     let owner = plain_filter.owner.take();
     let card_types = std::mem::take(&mut plain_filter.card_types);
     let mana_value = plain_filter.mana_value.take();
-    if zone != Some(Zone::Graveyard)
-        || owner != Some(PlayerFilter::You)
-        || plain_filter != ObjectFilter::default()
-    {
+    let colors = plain_filter.colors.take();
+    if zone != Some(Zone::Graveyard) || plain_filter != ObjectFilter::default() {
         return None;
     }
+    let graveyard_text = describe_targeted_cast_graveyard(&owner)?;
     let card_types_text = describe_graveyard_cast_card_types(&card_types)?;
 
     let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
@@ -2720,6 +2881,10 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
         Some(crate::filter::Comparison::LessThanOrEqual(limit)) => {
             format!(" with mana value {limit} or less")
         }
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(limit)) => format!(
+            " with mana value less than or equal to {}",
+            describe_value(&limit)
+        ),
         None => String::new(),
         _ => return None,
     };
@@ -2728,8 +2893,13 @@ fn describe_targeted_graveyard_cast_with_gated_replacement(effects: &[&Effect]) 
     } else {
         ""
     };
+    let color_text = colors
+        .map(describe_filter_color_alternatives)
+        .filter(|colors| !colors.is_empty())
+        .map(|colors| format!("{colors} "))
+        .unwrap_or_default();
     Some(format!(
-        "You may cast target {card_types_text} card{mana_value_text} from your graveyard{free_cast_text}. If that spell would be put into your graveyard, exile it instead"
+        "You may cast target {color_text}{card_types_text} card{mana_value_text} from {graveyard_text}{free_cast_text}. If that spell would be put into {graveyard_text}, exile it instead"
     ))
 }
 
@@ -2909,6 +3079,7 @@ pub(super) fn describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom
         player,
         tag,
         filter,
+        mode,
     } = inner.as_ref()
     else {
         return None;
@@ -2918,6 +3089,7 @@ pub(super) fn describe_look_top_card_if_matching_may_reveal_put_hand_else_bottom
         ..Default::default()
     };
     if player != &PlayerFilter::You
+        || *mode != crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown
         || tag.as_str() != look_at_top.tag.as_str()
         || filter != &hand_filter
         || !bottom_conditional.if_false.is_empty()
@@ -3045,6 +3217,21 @@ pub(super) fn describe_counter_constraint(counter: crate::filter::CounterConstra
         crate::filter::CounterConstraint::Typed(counter_type) => {
             format!("a {} counter", describe_counter_type(counter_type))
         }
+        crate::filter::CounterConstraint::AtLeast {
+            counter_type,
+            count,
+        } => {
+            let count = ironsmith_core::cardinal_word(count).unwrap_or_else(|| count.to_string());
+            match counter_type {
+                Some(counter_type) => {
+                    format!(
+                        "{count} or more {} counters",
+                        describe_counter_type(counter_type)
+                    )
+                }
+                None => format!("{count} or more counters"),
+            }
+        }
     }
 }
 
@@ -3127,7 +3314,7 @@ pub(super) fn describe_simple_create_token_bundle(effects: &[&Effect]) -> Option
     for effect in effects {
         let effect = unwrap_basic_tag_wrappers(effect);
         let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
-        if create.count != Value::Fixed(1)
+        if !matches!(create.count.unhinted(), Value::Fixed(_) | Value::X)
             || !matches!(create.controller, PlayerFilter::You)
             || create.controller_target.is_some()
             || create.enters_tapped
@@ -3291,14 +3478,11 @@ pub(super) fn describe_consult_reveal_move_matches_then_bottom(
                 false,
             )
         }
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
-            let plural_selection = pluralize_noun_phrase(strip_leading_article(&selection));
-            (
-                format!("{} {plural_selection}", describe_value(count)),
-                "those cards".to_string(),
-                false,
-            )
-        }
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => (
+            describe_counted_consult_stop(count, &selection),
+            "those cards".to_string(),
+            false,
+        ),
     };
     let order_text = match remainder.order {
         LibraryBottomOrder::Random => " in a random order",
@@ -3339,6 +3523,19 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
         effect
     }
 
+    fn wrapped_effect_id(effect: &Effect) -> Option<crate::effect::EffectId> {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return Some(with_id.id);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return wrapped_effect_id(&tagged.effect);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return wrapped_effect_id(&tag_all.effect);
+        }
+        None
+    }
+
     let (exile_effect, consult_effect, move_effect, shuffle_effect, at_next_end_step): (
         &Effect,
         &Effect,
@@ -3353,6 +3550,20 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
             shuffle_effect,
             false,
         ),
+        [exile_effect, consult_effect, sequence_effect] => {
+            let sequence =
+                unwrap_effect(sequence_effect).downcast_ref::<crate::effects::SequenceEffect>()?;
+            let [move_effect, shuffle_effect] = sequence.effects.as_slice() else {
+                return None;
+            };
+            (
+                exile_effect,
+                consult_effect,
+                move_effect,
+                shuffle_effect,
+                false,
+            )
+        }
         [exile_effect, schedule_effect] => {
             let schedule = unwrap_effect(schedule_effect)
                 .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()?;
@@ -3396,6 +3607,7 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
     {
         return None;
     }
+    let exile_effect_id = wrapped_effect_id(exile_effect)?;
 
     let consult = unwrap_effect(consult_effect)
         .downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
@@ -3403,8 +3615,9 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
         || consult.mode != crate::effects::consult_helpers::LibraryConsultMode::Reveal
         || !is_creature_card_match_filter(&consult.filter)
         || !matches!(
-            consult.stop_rule,
-            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(_)
+            &consult.stop_rule,
+            crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count)
+                if is_effect_count_reference(count, Some(exile_effect_id))
         )
     {
         return None;
@@ -3901,7 +4114,7 @@ pub(super) fn describe_exile_all_creatures_each_player_fractal_power_counters(
         return None;
     }
 
-    let token_blueprint = describe_token_blueprint(&create.token);
+    let token_blueprint = describe_create_token_blueprint(create);
     let token = if token_blueprint.starts_with("0/0 ") {
         format!("a {token_blueprint}")
     } else {
@@ -4077,7 +4290,7 @@ pub(super) fn describe_for_players_subject(filter: &PlayerFilter) -> Option<&'st
     }
 }
 
-pub(super) fn describe_life_amount_phrase(amount: &Value) -> String {
+pub(in crate::compiled_text) fn describe_life_amount_phrase(amount: &Value) -> String {
     if amount.has_surface_hint(ValueSurfaceHint::WhereXIs)
         && let Some(basis) = describe_where_x_basis(amount)
     {
@@ -4228,6 +4441,19 @@ pub(super) fn describe_for_players_simple_iterated_action(
     let [effect] = for_players.effects.as_slice() else {
         return None;
     };
+    // An authored comma-then chain is still a multi-action quantified-player
+    // sequence. Let the structural sequence compactor retain the shared
+    // "Each player" subject instead of treating the wrapper as one generic
+    // action and rewriting each nested reference to singular "they".
+    if structural_unwrap_render_wrappers(effect)
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .is_some_and(|sequence| {
+            sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+                && sequence.effects.len() > 1
+        })
+    {
+        return None;
+    }
     let subject = describe_for_players_subject(&for_players.filter)?;
     let subject_lower = lowercase_first(subject);
     let verb = |you: &'static str, other: &'static str| {
@@ -4433,8 +4659,11 @@ pub(super) fn describe_for_players_iterated_action_sequence(
     let effects = if let [effect] = for_players.effects.as_slice()
         && let Some(sequence) = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface == ironsmith_core::SequenceSurface::Coordinated
-    {
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::Coordinated
+                | ironsmith_core::SequenceSurface::CommaThen
+        ) {
         sequence.effects.as_slice()
     } else {
         for_players.effects.as_slice()
@@ -4527,7 +4756,7 @@ pub(super) fn iterated_player_action_phrase(
     }
 }
 
-fn rewrite_iterated_player_references(text: &str) -> String {
+pub(super) fn rewrite_iterated_player_references(text: &str) -> String {
     text.replace("that player's", "their")
         .replace("to that player", "to them")
         .replace("for that player", "for them")
@@ -4591,6 +4820,39 @@ pub(super) fn choose_spec_is_all_iterated_player_hand_cards(spec: &ChooseSpec) -
 #[cfg(test)]
 mod simple_create_token_bundle_tests {
     use super::*;
+
+    #[test]
+    fn looked_face_down_partition_preserves_chooser_order_surface() {
+        let looked_tag = TagKey::from("looked");
+        let chosen_tag = TagKey::from("chosen");
+        let effects = vec![
+            Effect::look_at_top_cards(PlayerFilter::You, 4, looked_tag.clone()),
+            Effect::choose_objects(
+                ObjectFilter::tagged(looked_tag.clone()).in_zone(Zone::Library),
+                crate::effect::ChoiceCount::exactly(1),
+                PlayerFilter::You,
+                chosen_tag.clone(),
+            ),
+            Effect::new(
+                crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(chosen_tag.clone()))
+                    .with_face_down(true),
+            ),
+            Effect::put_tagged_remainder_on_library_bottom(
+                looked_tag,
+                Some(chosen_tag),
+                LibraryBottomOrder::ChooserChooses,
+                PlayerFilter::You,
+            ),
+        ];
+        let refs = effects.iter().collect::<Vec<_>>();
+
+        assert_eq!(
+            describe_hideaway_effects(&refs).as_deref(),
+            Some(
+                "Look at the top four cards of your library, exile one face down, then put the rest on the bottom of your library in any order"
+            )
+        );
+    }
 
     #[test]
     fn reveal_top_opponent_exiles_rest_hand_bundle_accepts_tagged_exile_move() {
@@ -4678,6 +4940,37 @@ mod simple_create_token_bundle_tests {
         assert_eq!(
             describe_effect_list(&coordinated),
             "Create a 1/1 green Snake creature token and a 2/2 green Wolf creature token"
+        );
+
+        let halfling =
+            crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Halfling")
+                .token()
+                .card_types(vec![CardType::Creature])
+                .subtypes(vec![Subtype::Halfling])
+                .color_indicator(crate::color::ColorSet::WHITE)
+                .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .build();
+        let food = crate::cards::CardDefinitionBuilder::new(crate::ids::CardId::new(), "Food")
+            .token()
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let dynamic = vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+            vec![
+                Effect::new(crate::effects::CreateTokenEffect::new(
+                    halfling,
+                    Value::X,
+                    PlayerFilter::You,
+                )),
+                Effect::new(crate::effects::CreateTokenEffect::new(
+                    food,
+                    Value::X,
+                    PlayerFilter::You,
+                )),
+            ],
+        ))];
+        assert_eq!(
+            describe_effect_list(&dynamic),
+            "Create X 1/1 white Halfling creature tokens and X Food tokens"
         );
 
         let draw = Effect::draw(Value::Fixed(1));

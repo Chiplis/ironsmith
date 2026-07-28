@@ -42,6 +42,14 @@ fn object_filter_mentions_iterated_player(filter: &crate::target::ObjectFilter) 
             .as_deref()
             .is_some_and(object_filter_mentions_iterated_player)
         || filter
+            .no_shared_creature_types_with
+            .iter()
+            .any(object_filter_mentions_iterated_player)
+        || filter
+            .characteristic_relations
+            .iter()
+            .any(|relation| object_filter_mentions_iterated_player(&relation.comparison))
+        || filter
             .any_of
             .iter()
             .any(object_filter_mentions_iterated_player)
@@ -77,7 +85,75 @@ fn effect_list_mentions_iterated_player(effects: &[crate::effect::Effect]) -> bo
     effects.iter().any(effect_mentions_iterated_player)
 }
 
-fn predicate_matches_with_context(
+fn result_memories_share_characteristic(
+    memories: &[&crate::effect::OutcomeObjectMemory],
+    required_count: usize,
+    characteristic: crate::ObjectCharacteristic,
+) -> bool {
+    match characteristic {
+        crate::ObjectCharacteristic::CardType => memories.iter().any(|candidate| {
+            candidate.card_types.iter().any(|card_type| {
+                memories
+                    .iter()
+                    .filter(|memory| memory.card_types.contains(card_type))
+                    .count()
+                    >= required_count
+            })
+        }),
+        crate::ObjectCharacteristic::PermanentType => memories.iter().any(|candidate| {
+            candidate
+                .card_types
+                .iter()
+                .filter(|card_type| {
+                    matches!(
+                        card_type,
+                        crate::types::CardType::Land
+                            | crate::types::CardType::Creature
+                            | crate::types::CardType::Artifact
+                            | crate::types::CardType::Enchantment
+                            | crate::types::CardType::Planeswalker
+                            | crate::types::CardType::Battle
+                    )
+                })
+                .any(|card_type| {
+                    memories
+                        .iter()
+                        .filter(|memory| memory.card_types.contains(card_type))
+                        .count()
+                        >= required_count
+                })
+        }),
+        crate::ObjectCharacteristic::Subtype(family) => memories.iter().any(|candidate| {
+            candidate
+                .subtypes
+                .iter()
+                .filter(|subtype| subtype.belongs_to_family(family))
+                .any(|subtype| {
+                    memories
+                        .iter()
+                        .filter(|memory| memory.subtypes.contains(subtype))
+                        .count()
+                        >= required_count
+                })
+        }),
+        crate::ObjectCharacteristic::Color => crate::color::Color::ALL.into_iter().any(|color| {
+            memories
+                .iter()
+                .filter(|memory| memory.colors.contains(color))
+                .count()
+                >= required_count
+        }),
+        crate::ObjectCharacteristic::ManaValue => memories.iter().any(|candidate| {
+            memories
+                .iter()
+                .filter(|memory| memory.mana_value == candidate.mana_value)
+                .count()
+                >= required_count
+        }),
+    }
+}
+
+pub(super) fn predicate_matches_with_context(
     predicate: &EffectPredicate,
     outcome: &EffectOutcome,
     game: &GameState,
@@ -86,7 +162,10 @@ fn predicate_matches_with_context(
     let EffectPredicate::PriorEffectResult(surface) = predicate else {
         return predicate.evaluate_outcome(outcome);
     };
-    if surface.filter == crate::target::ObjectFilter::default() {
+    if surface.filter == crate::target::ObjectFilter::default()
+        && surface.required_count.is_none()
+        && surface.shared_characteristic.is_none()
+    {
         return predicate.evaluate_outcome(outcome);
     }
 
@@ -94,11 +173,28 @@ fn predicate_matches_with_context(
         return false;
     };
     let filter_ctx = ctx.filter_context(game);
-    memories.iter().any(|memory| {
-        surface
-            .filter
-            .matches_snapshot(&memory.to_snapshot(game), &filter_ctx, game)
-    })
+    let matching = memories
+        .iter()
+        .filter(|memory| {
+            surface
+                .filter
+                .matches_snapshot(&memory.to_snapshot(game), &filter_ctx, game)
+        })
+        .collect::<Vec<_>>();
+    if surface
+        .required_count
+        .is_some_and(|required| matching.len() < required as usize)
+    {
+        return false;
+    }
+    if let Some(characteristic) = surface.shared_characteristic {
+        return result_memories_share_characteristic(
+            &matching,
+            surface.required_count.unwrap_or(2) as usize,
+            characteristic,
+        );
+    }
+    !matching.is_empty()
 }
 
 /// Effect that branches based on a prior effect's result.
@@ -362,6 +458,140 @@ mod tests {
 
         assert_eq!(result.value, crate::effect::OutcomeValue::Count(5));
         assert_eq!(game.player(alice).unwrap().life, initial_life + 5);
+    }
+
+    #[test]
+    fn prior_result_counted_shared_color_uses_filtered_affected_object_memory() {
+        fn memory(
+            id: u64,
+            card_type: crate::types::CardType,
+            colors: crate::color::ColorSet,
+        ) -> crate::effect::OutcomeObjectMemory {
+            let object_id = crate::ids::ObjectId::from_raw(id);
+            crate::effect::OutcomeObjectMemory {
+                object_id,
+                stable_id: crate::ids::StableId::from(object_id),
+                name: format!("Card {id}"),
+                controller: PlayerId::from_index(0),
+                owner: PlayerId::from_index(0),
+                zone: crate::zone::Zone::Graveyard,
+                power: None,
+                toughness: None,
+                mana_value: id as i32,
+                card_types: vec![card_type],
+                colors,
+                subtypes: Vec::new(),
+                is_token: false,
+            }
+        }
+
+        let game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = crate::ids::ObjectId::from_raw(100);
+        let ctx = ExecutionContext::new_default(source, alice);
+        let mut nonland = crate::target::ObjectFilter::default();
+        nonland
+            .excluded_card_types
+            .push(crate::types::CardType::Land);
+        let predicate = EffectPredicate::PriorEffectResult(
+            crate::effect::PriorEffectResultSurface::new(
+                crate::effect::PriorEffectAction::Milled,
+                nonland,
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectResultQuantifier::One,
+            )
+            .with_count_sharing(2, crate::ObjectCharacteristic::Color),
+        );
+
+        let shared_blue = EffectOutcome::count(2).with_affected_object_memory(vec![
+            memory(
+                1,
+                crate::types::CardType::Creature,
+                crate::color::ColorSet::BLUE,
+            ),
+            memory(
+                2,
+                crate::types::CardType::Instant,
+                crate::color::ColorSet::BLUE,
+            ),
+        ]);
+        assert!(predicate_matches_with_context(
+            &predicate,
+            &shared_blue,
+            &game,
+            &ctx
+        ));
+
+        let different_colors = EffectOutcome::count(2).with_affected_object_memory(vec![
+            memory(
+                3,
+                crate::types::CardType::Creature,
+                crate::color::ColorSet::BLUE,
+            ),
+            memory(
+                4,
+                crate::types::CardType::Instant,
+                crate::color::ColorSet::RED,
+            ),
+        ]);
+        assert!(!predicate_matches_with_context(
+            &predicate,
+            &different_colors,
+            &game,
+            &ctx
+        ));
+
+        let matching_land_is_excluded = EffectOutcome::count(2).with_affected_object_memory(vec![
+            memory(
+                5,
+                crate::types::CardType::Creature,
+                crate::color::ColorSet::BLUE,
+            ),
+            memory(
+                6,
+                crate::types::CardType::Land,
+                crate::color::ColorSet::BLUE,
+            ),
+        ]);
+        assert!(!predicate_matches_with_context(
+            &predicate,
+            &matching_land_is_excluded,
+            &game,
+            &ctx
+        ));
+
+        let three_share_predicate = EffectPredicate::PriorEffectResult(
+            crate::effect::PriorEffectResultSurface::new(
+                crate::effect::PriorEffectAction::Milled,
+                crate::target::ObjectFilter::default(),
+                crate::effect::PriorEffectResultActor::Passive,
+                crate::effect::PriorEffectResultQuantifier::One,
+            )
+            .with_count_sharing(3, crate::ObjectCharacteristic::Color),
+        );
+        let only_a_pair_shares_blue = EffectOutcome::count(3).with_affected_object_memory(vec![
+            memory(
+                7,
+                crate::types::CardType::Creature,
+                crate::color::ColorSet::BLUE,
+            ),
+            memory(
+                8,
+                crate::types::CardType::Instant,
+                crate::color::ColorSet::BLUE,
+            ),
+            memory(
+                9,
+                crate::types::CardType::Sorcery,
+                crate::color::ColorSet::RED,
+            ),
+        ]);
+        assert!(!predicate_matches_with_context(
+            &three_share_predicate,
+            &only_a_pair_shares_blue,
+            &game,
+            &ctx
+        ));
     }
 
     #[test]

@@ -63,6 +63,13 @@ impl EffectExecutor for PayEnergyEffect {
         if matches!(self.player, ChooseSpec::Player(PlayerFilter::You))
             && let Value::Fixed(amount) = self.amount
         {
+            if amount > 5 {
+                let amount_text = u32::try_from(amount)
+                    .ok()
+                    .and_then(ironsmith_core::cardinal_word)
+                    .unwrap_or_else(|| amount.to_string());
+                return Some(format!("Pay {amount_text} {{E}}"));
+            }
             let symbols: String = (0..amount.max(0)).map(|_| "{E}").collect();
             return Some(format!("Pay {}", symbols));
         }
@@ -359,6 +366,29 @@ mod tests {
                 .iter()
                 .any(|event| event.kind() == EventKind::MarkersChanged),
             "paying energy should emit MarkersChangedEvent"
+        );
+    }
+
+    #[test]
+    fn large_fixed_energy_cost_uses_counted_oracle_surface() {
+        let player = ChooseSpec::Player(PlayerFilter::You);
+        assert_eq!(
+            PayEnergyEffect::new(5, player.clone())
+                .cost_description()
+                .as_deref(),
+            Some("Pay {E}{E}{E}{E}{E}")
+        );
+        assert_eq!(
+            PayEnergyEffect::new(6, player.clone())
+                .cost_description()
+                .as_deref(),
+            Some("Pay six {E}")
+        );
+        assert_eq!(
+            PayEnergyEffect::new(50, player)
+                .cost_description()
+                .as_deref(),
+            Some("Pay fifty {E}")
         );
     }
 

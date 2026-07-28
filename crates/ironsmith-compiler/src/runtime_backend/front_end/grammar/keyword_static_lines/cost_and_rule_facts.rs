@@ -160,6 +160,7 @@ pub(crate) fn parse_that_much_value_marker_tokens(tokens: &[OwnedLexToken]) -> b
 pub(crate) enum LegendRuleScopeShape {
     Global,
     Controller,
+    ControllerTokens,
 }
 
 pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
@@ -179,7 +180,11 @@ pub(crate) fn parse_legend_rule_doesnt_apply_tokens(
             .is_some()
         && primitives::find_prefix(tokens, || primitives::kw("apply").void()).is_some())
     .then(|| {
-        if primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some() {
+        if primitives::find_prefix(tokens, || primitives::kw("tokens").void()).is_some()
+            && primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some()
+        {
+            LegendRuleScopeShape::ControllerTokens
+        } else if primitives::find_prefix(tokens, || primitives::kw("you").void()).is_some() {
             LegendRuleScopeShape::Controller
         } else {
             LegendRuleScopeShape::Global
@@ -234,6 +239,15 @@ mod tests {
         assert_eq!(
             parse_legend_rule_doesnt_apply_tokens(&tokens),
             Some(LegendRuleScopeShape::Global)
+        );
+        let tokens = lex_line(
+            "The \"legend rule\" doesn't apply to tokens you control.",
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parse_legend_rule_doesnt_apply_tokens(&tokens),
+            Some(LegendRuleScopeShape::ControllerTokens)
         );
     }
 

@@ -73,6 +73,9 @@ pub struct TurnHistory {
     pub players_tapped_land_for_mana_this_turn: HashSet<PlayerId>,
     pub die_rolls_this_turn: HashMap<PlayerId, Vec<u32>>,
     pub die_roll_result_adjustments_this_turn: HashSet<(ObjectId, StaticAbilityInstanceId)>,
+    /// Source/player pairs for attached-object rule restrictions that player
+    /// has paid to ignore until the turn ends.
+    pub players_ignoring_attached_static_restrictions_this_turn: HashSet<(ObjectId, PlayerId)>,
     pub creatures_attacked_this_turn: HashSet<ObjectId>,
     pub creature_attack_counts_this_turn: HashMap<ObjectId, u32>,
     pub crewed_this_turn: HashMap<ObjectId, Vec<ObjectId>>,
@@ -99,6 +102,8 @@ impl TurnHistory {
         self.players_tapped_land_for_mana_this_turn.clear();
         self.die_rolls_this_turn.clear();
         self.die_roll_result_adjustments_this_turn.clear();
+        self.players_ignoring_attached_static_restrictions_this_turn
+            .clear();
         self.creatures_attacked_this_turn.clear();
         self.creature_attack_counts_this_turn.clear();
         self.crewed_this_turn.clear();
@@ -554,27 +559,11 @@ impl TurnHistory {
     /// graveyard. Tokens do not count because they are permanents, not
     /// permanent cards.
     pub fn player_descended_count_this_turn(&self, player: PlayerId) -> u32 {
-        const PERMANENT_CARD_TYPES: [CardType; 6] = [
-            CardType::Artifact,
-            CardType::Battle,
-            CardType::Creature,
-            CardType::Enchantment,
-            CardType::Land,
-            CardType::Planeswalker,
-        ];
-
         self.projected_records()
             .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
             .filter(|event| event.to == Zone::Graveyard)
             .flat_map(|event| event.snapshots.iter())
-            .filter(|snapshot| {
-                snapshot.owner == player
-                    && !snapshot.is_token
-                    && snapshot
-                        .card_types
-                        .iter()
-                        .any(|card_type| PERMANENT_CARD_TYPES.contains(card_type))
-            })
+            .filter(|snapshot| snapshot.owner == player && snapshot_is_permanent_card(snapshot))
             .count() as u32
     }
 
@@ -1104,6 +1093,23 @@ fn historical_identity(
         .unwrap_or(HistoricalObjectIdentity::Object(object))
 }
 
+fn snapshot_is_permanent_card(snapshot: &ObjectSnapshot) -> bool {
+    const PERMANENT_CARD_TYPES: [CardType; 6] = [
+        CardType::Artifact,
+        CardType::Battle,
+        CardType::Creature,
+        CardType::Enchantment,
+        CardType::Land,
+        CardType::Planeswalker,
+    ];
+
+    !snapshot.is_token
+        && snapshot
+            .card_types
+            .iter()
+            .any(|card_type| PERMANENT_CARD_TYPES.contains(card_type))
+}
+
 /// Resolve a typed turn-history count against event snapshots.  This is shared
 /// by ordinary effect values and continuous/static values so both paths use the
 /// same retained-event semantics.
@@ -1116,7 +1122,7 @@ pub(crate) fn resolve_turn_history_count(
     let history = &game.turn_store.turn_history;
 
     match query {
-        TurnHistoryCount::Died(filter) => {
+        TurnHistoryCount::Died { filter, .. } => {
             let mut historical_filter = filter.clone();
             historical_filter.zone = None;
             history
@@ -1352,6 +1358,46 @@ pub(crate) fn resolve_turn_history_count(
             .map(|event| event.player)
             .collect::<HashSet<_>>()
             .len() as i32,
+        TurnHistoryCount::Descended(player) => history
+            .projected_records()
+            .filter_map(|record| record.event.downcast::<ZoneChangeEvent>())
+            .filter(|event| event.to == Zone::Graveyard)
+            .flat_map(ZoneChangeEvent::snapshots)
+            .filter(|snapshot| {
+                snapshot_is_permanent_card(snapshot)
+                    && player.matches_player(snapshot.owner, filter_ctx)
+            })
+            .count() as i32,
+        TurnHistoryCount::DamageDealtToSource => {
+            let source_object = filter_ctx.source;
+            let source_stable_id = source_object
+                .and_then(|source| game.object(source).map(|object| object.stable_id))
+                .or_else(|| {
+                    filter_ctx
+                        .source_snapshot
+                        .as_ref()
+                        .map(|snapshot| snapshot.stable_id)
+                });
+
+            history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<DamageEvent>())
+                .filter(|event| event.amount > 0)
+                .filter(|event| match event.target {
+                    DamageTarget::Object(target) => {
+                        source_object == Some(target)
+                            || source_stable_id.is_some_and(|stable_id| {
+                                event
+                                    .target_snapshot
+                                    .as_ref()
+                                    .is_some_and(|snapshot| snapshot.stable_id == stable_id)
+                            })
+                    }
+                    DamageTarget::Player(_) => false,
+                })
+                .map(|event| event.amount)
+                .sum::<u32>() as i32
+        }
         TurnHistoryCount::SpellsCast {
             player,
             filter,
@@ -1433,6 +1479,7 @@ pub(crate) fn resolve_turn_history_count(
 mod tests {
     use super::*;
     use crate::cards::builders::CardDefinitionBuilder;
+    use crate::events::EventCause;
     use crate::filter::{ObjectFilter, PlayerFilter, StackObjectKind};
     use crate::ids::CardId;
 
@@ -1517,6 +1564,109 @@ mod tests {
             resolve_turn_history_count(&game, &ordinary_other, &source_ctx, None),
             2,
             "ordinary other-spell counts include later casts and exclude only the source spell"
+        );
+    }
+
+    #[test]
+    fn descended_history_count_uses_owner_and_permanent_card_lki() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let creature = CardDefinitionBuilder::new(CardId::new(), "History Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let instant = CardDefinitionBuilder::new(CardId::new(), "History Instant")
+            .card_types(vec![CardType::Instant])
+            .build();
+
+        let alice_first = game.create_object_from_definition(&creature, alice, Zone::Library);
+        let alice_second = game.create_object_from_definition(&creature, alice, Zone::Hand);
+        let bob_permanent = game.create_object_from_definition(&creature, bob, Zone::Library);
+        let alice_instant = game.create_object_from_definition(&instant, alice, Zone::Library);
+
+        for (object, from) in [
+            (alice_first, Zone::Library),
+            (alice_second, Zone::Hand),
+            (bob_permanent, Zone::Library),
+            (alice_instant, Zone::Library),
+        ] {
+            let snapshot = ObjectSnapshot::from_object(
+                game.object(object).expect("history object should exist"),
+                &game,
+            );
+            let event = TriggerEvent::new_with_provenance(
+                ZoneChangeEvent::with_cause(
+                    object,
+                    from,
+                    Zone::Graveyard,
+                    EventCause::effect(),
+                    Some(snapshot),
+                ),
+                ProvNodeId::default(),
+            );
+            game.record_turn_history_event(&event);
+        }
+
+        let query = TurnHistoryCount::Descended(PlayerFilter::You);
+        let alice_ctx = crate::filter::FilterContext::new(alice);
+        let bob_ctx = crate::filter::FilterContext::new(bob);
+        assert_eq!(
+            resolve_turn_history_count(&game, &query, &alice_ctx, None),
+            2
+        );
+        assert_eq!(resolve_turn_history_count(&game, &query, &bob_ctx, None), 1);
+    }
+
+    #[test]
+    fn source_damage_history_count_follows_stable_identity_after_zone_change() {
+        let mut game = GameState::new(vec!["Alice".into(), "Bob".into()], 20);
+        let alice = PlayerId::from_index(0);
+        let creature = CardDefinitionBuilder::new(CardId::new(), "History Creature")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let other = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let dealer = game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+        let source_snapshot =
+            ObjectSnapshot::from_object(game.object(source).expect("source should exist"), &game);
+        let other_snapshot =
+            ObjectSnapshot::from_object(game.object(other).expect("other should exist"), &game);
+
+        for event in [
+            DamageEvent::with_cause(
+                dealer,
+                DamageTarget::Object(source),
+                2,
+                false,
+                EventCause::effect(),
+            )
+            .with_target_snapshot(source_snapshot.clone()),
+            DamageEvent::with_cause(
+                dealer,
+                DamageTarget::Object(ObjectId::from_raw(u64::MAX - 1)),
+                3,
+                false,
+                EventCause::effect(),
+            )
+            .with_target_snapshot(source_snapshot.clone()),
+            DamageEvent::with_cause(
+                dealer,
+                DamageTarget::Object(other),
+                7,
+                false,
+                EventCause::effect(),
+            )
+            .with_target_snapshot(other_snapshot),
+        ] {
+            let event = TriggerEvent::new_with_provenance(event, ProvNodeId::default());
+            game.record_turn_history_event(&event);
+        }
+
+        let mut ctx = crate::filter::FilterContext::new(alice);
+        ctx.source_snapshot = Some(source_snapshot);
+        assert_eq!(
+            resolve_turn_history_count(&game, &TurnHistoryCount::DamageDealtToSource, &ctx, None,),
+            5
         );
     }
 }

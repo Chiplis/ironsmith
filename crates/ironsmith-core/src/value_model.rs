@@ -105,6 +105,10 @@ pub struct PriorEffectMetricQuery {
     pub filter: Option<ObjectFilter>,
     pub player: Option<PlayerFilter>,
     pub action: Option<PriorEffectAction>,
+    /// Authored counter kind for counter-action result surfaces. Runtime
+    /// identity still comes from `effect_id`; this preserves wording such as
+    /// "stun counters removed this way".
+    pub counter_type: Option<CounterType>,
 }
 
 impl PriorEffectMetricQuery {
@@ -115,6 +119,7 @@ impl PriorEffectMetricQuery {
             filter: None,
             player: None,
             action: None,
+            counter_type: None,
         }
     }
 
@@ -132,12 +137,34 @@ impl PriorEffectMetricQuery {
         self.action = Some(action);
         self
     }
+
+    pub fn with_counter_type(mut self, counter_type: Option<CounterType>) -> Self {
+        self.counter_type = counter_type;
+        self
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ValueSurfaceHint {
     WhereXIs,
     EqualTo,
+    /// Preserve an authored numeric reference to "the result" of the prior
+    /// effect. Unlike an ambient trigger event amount, this value must bind to
+    /// the immediately exported effect result (for example, a die roll).
+    PriorEffectResult,
+    /// Preserve the authored threshold idiom "had another land enter ... this
+    /// turn". The underlying value remains the reusable count of lands that
+    /// entered under the matching player's control, compared against two.
+    AnotherLandEnteredThisTurn,
+    /// Preserve an authored possessive "that player's" reference on a value.
+    /// Player identity remains encoded by the value's `PlayerFilter`; this is
+    /// presentation provenance only, distinct from the ordinary "their"
+    /// surface for the same resolved player.
+    ThatPlayerPossessive,
+    /// Preserve an authored ability noun in an object-count predicate, such
+    /// as "cards with a cycling ability". The filter's typed ability marker
+    /// remains the source of the actual constraint.
+    ExplicitAbilityNoun,
     /// Preserve counter wording where the target precedes the equality basis:
     /// "put a number of counters on it equal to ...". This is presentation
     /// metadata only; the numeric value remains unchanged.
@@ -175,15 +202,35 @@ pub enum ValueSurfaceHint {
     /// enters-with-counters clause. The counter value remains unchanged.
     SourceNameSubject,
     ForEach,
+    /// Preserve a power/toughness modifier whose duration precedes its
+    /// per-object scaling clause: "until end of turn for each ...".
+    /// Runtime evaluation is unchanged; this records only authored order.
+    DurationBeforeForEach,
     /// Preserve an explicit prefix comparison such as "less than or equal
     /// to <value>" instead of the semantically equivalent postfix surface
     /// "<value> or less". This is presentation metadata only.
     ExplicitComparison,
+    /// Preserve a masculine source possessive on a dynamic characteristic
+    /// value ("his power"). The underlying value still resolves against the
+    /// source object.
+    MasculineSourcePossessive,
+    /// Preserve a feminine source possessive on a dynamic characteristic
+    /// value ("her power"). The underlying value still resolves against the
+    /// source object.
+    FeminineSourcePossessive,
     /// Preserve an explicit Oracle reference to "the revealed card" after
     /// reference resolution has mapped it to the reusable revealed-object
     /// tag. This is presentation metadata only; the tagged object remains
     /// the source of the characteristic value.
     RevealedCardReference,
+    /// Preserve an authored characteristic of the object affected by a
+    /// preceding cost or effect, such as "the power of the creature tapped
+    /// this way". The underlying characteristic value still uses the exact
+    /// tagged object selected by the producer.
+    CharacteristicOfObjectThisWay {
+        card_type: crate::CardType,
+        action: PriorEffectAction,
+    },
     /// Preserve Oracle's "additional card(s)" wording on a draw count.
     /// This is presentation metadata only; resolving the value still yields
     /// the same number of cards.
@@ -202,6 +249,10 @@ pub enum ValueSurfaceHint {
     CardsPutIntoYourGraveyardThisWay,
     CardsExiledThisWay,
     CardsDiscardedThisWay,
+    /// Preserve the authored result surface "creatures that died this way"
+    /// while the underlying query remains bound to the exact destroy effect
+    /// that produced the captured object set.
+    DiedThisWay,
     /// Preserve the blocker-count basis used by a becomes-blocked trigger.
     CreaturesBlockingIt,
     /// Preserve the Scry event's authored magnitude description.
@@ -219,18 +270,48 @@ pub enum ValueSurfaceHint {
     DamageDealt,
     AllCardsInHand,
     PermanentsSacrificedThisWay,
+    /// Preserve a counter-removal result reference which intentionally omits
+    /// "this way", as in "For each counter removed, ...".
+    CountersRemoved,
     CountersRemovedThisWay,
     /// Preserve the aggregate wording of counts distributed across a set of
     /// objects ("counters among creatures") rather than an explicit
     /// per-object reference ("counters on that creature").
     CountersAmong,
     EnergyPaidThisWay,
-    PriorEffectResult,
+    /// Preserve Oracle's "Repeat this process once" surface while executing
+    /// the typed repeated effect body exactly twice.
+    RepeatThisProcessOnce,
     ManaValueOfPermanentExiledThisWay,
     Difference,
+    /// Preserve the authored subtraction connective "in excess of". The
+    /// underlying value remains ordinary subtraction for runtime evaluation.
+    InExcessOf,
     UpTo,
     BlightKeywordAction,
     SacrificedObject(SacrificedObjectKind),
+}
+
+/// Authored reference used after "spent to cast" in a mana-spent count.
+///
+/// This is presentation metadata only; all variants resolve against the
+/// current spell's recorded mana payment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum ManaSpentCastReferenceSurface {
+    It,
+    #[default]
+    ThisSpell,
+    ThisCreature,
+}
+
+impl ManaSpentCastReferenceSurface {
+    pub const fn text(self) -> &'static str {
+        match self {
+            Self::It => "it",
+            Self::ThisSpell => "this spell",
+            Self::ThisCreature => "this creature",
+        }
+    }
 }
 
 /// A count derived from immutable observations in the current turn's event
@@ -238,11 +319,27 @@ pub enum ValueSurfaceHint {
 /// filters used by the rest of the engine: a creature which died, a spell
 /// which left the stack, or a token which no longer exists must still be
 /// counted from its event snapshot rather than from the current zone state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum DeathHistoryControllerSurface {
+    /// Oracle placed the controller after the event:
+    /// "creatures that died under your control this turn."
+    #[default]
+    DiedUnderControl,
+    /// Oracle placed the past controller before the event:
+    /// "creatures you controlled that died this turn."
+    ControlledThenDied,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TurnHistoryCount {
     /// Objects matching the filter which moved from the battlefield to a
     /// graveyard this turn.
-    Died(ObjectFilter),
+    Died {
+        filter: ObjectFilter,
+        /// Printed placement of an authored controller qualification. This
+        /// does not change which event snapshots the filter matches.
+        controller_surface: DeathHistoryControllerSurface,
+    },
     /// Objects matching the filter which entered the battlefield this turn.
     EnteredBattlefield(ObjectFilter),
     /// Tokens created under the control of matching players this turn.
@@ -295,6 +392,13 @@ pub enum TurnHistoryCount {
     Cycled(PlayerFilter),
     /// Matching players who lost life this turn.
     PlayersLostLife(PlayerFilter),
+    /// The number of times matching players descended this turn. Descend is
+    /// evaluated from zone-change LKI because the permanent card may no longer
+    /// be in the graveyard when this value resolves.
+    Descended(PlayerFilter),
+    /// The total damage dealt to the source object this turn. Stable object
+    /// identity keeps the count valid after the source changes zones.
+    DamageDealtToSource,
     /// Spells matching the filter cast by matching players this turn.  The
     /// origin switch supports Paradox-style "from anywhere other than your
     /// hand" counts without pretending origin is a current-zone property.
@@ -313,6 +417,15 @@ pub enum TurnHistoryCount {
     /// Colors among matching permanents currently controlled by the player and
     /// spells that player cast this turn.
     ColorsAmongPermanentsAndSpellsCast(PlayerFilter),
+}
+
+impl TurnHistoryCount {
+    pub fn died(filter: ObjectFilter) -> Self {
+        Self::Died {
+            filter,
+            controller_surface: DeathHistoryControllerSurface::default(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -360,6 +473,9 @@ pub enum Value {
     CreaturesDiedThisTurnControlledBy(PlayerFilter),
     PlayersBeingAttacked,
     CountPlayers(PlayerFilter),
+    /// Number of matching players whose current hand contains at least the
+    /// authored number of cards.
+    CountPlayersWithCardsInHandAtLeast(PlayerFilter, u32),
     /// The number of matching players whose matching-object count exceeds
     /// yours.
     PlayersWhoControlMoreThanYou {
@@ -385,6 +501,12 @@ pub enum Value {
     ManaSymbolsInManaCostOf {
         spec: Box<ChooseSpec>,
         color: Color,
+    },
+    /// Number of occurrences of one character across the name stickers on
+    /// the source object.
+    NameStickerCharacterCountOnSource {
+        character: char,
+        surface: Option<SourceReferenceSurface>,
     },
     LifeTotal(PlayerFilter),
     LifeTotalAsTurnBegan(PlayerFilter),
@@ -432,6 +554,13 @@ pub enum Value {
         color: Color,
     },
     ManaSpentToCastThisSpell,
+    /// Mana of one specific type spent to cast this spell. Composing this
+    /// with `DividedRoundedDown` models repeated-symbol groups such as
+    /// "for each {U}{U} spent to cast it."
+    ManaSymbolSpentToCastThisSpell {
+        symbol: ManaSymbol,
+        reference: ManaSpentCastReferenceSurface,
+    },
     /// Mana spent to cast this spell whose producing source matched the
     /// captured last-known-information filter. The surface flag preserves
     /// whether oracle used the generic noun "source" after the filter.
@@ -625,6 +754,11 @@ impl From<u32> for Value {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Restriction {
     AdditionalLandPlays(PlayerFilter, u32),
+    /// A lasting player rule that removes the cleanup-step hand-size limit.
+    ///
+    /// This lives in the restriction/rule family because resolving effects
+    /// can establish it independently of a battlefield static ability.
+    NoMaximumHandSize(PlayerFilter),
     GainLife(PlayerFilter),
     SearchLibraries(PlayerFilter),
     CastSpellsMatching(PlayerFilter, ObjectFilter),
@@ -652,6 +786,11 @@ pub enum Restriction {
         attackers: ObjectFilter,
         player: PlayerFilter,
     },
+    /// A resolving effect's temporary tax on attacking its controller or a
+    /// planeswalker that player controls. Unlike a battlefield static
+    /// ability, this restriction remains active for its stated duration if
+    /// the source leaves the battlefield.
+    AttackYouUnlessControllerPaysPerAttacker(u32),
     AttackAlone(ObjectFilter),
     Block(ObjectFilter),
     BlockSpecificAttacker {
@@ -677,6 +816,7 @@ pub enum Restriction {
     BeCountered(ObjectFilter),
     Transform(ObjectFilter),
     PhaseOut(ObjectFilter),
+    PhaseIn(ObjectFilter),
     AttackOrBlock(ObjectFilter),
     AttackOrBlockAlone(ObjectFilter),
 }
@@ -849,6 +989,10 @@ impl Restriction {
         Self::AdditionalLandPlays(filter, count)
     }
 
+    pub fn no_maximum_hand_size(filter: PlayerFilter) -> Self {
+        Self::NoMaximumHandSize(filter)
+    }
+
     pub fn gain_life(filter: PlayerFilter) -> Self {
         Self::GainLife(filter)
     }
@@ -979,6 +1123,10 @@ impl Restriction {
         Self::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
     }
 
+    pub fn attack_you_unless_controller_pays_per_attacker(generic_mana: u32) -> Self {
+        Self::AttackYouUnlessControllerPaysPerAttacker(generic_mana)
+    }
+
     pub fn attack_alone(filter: ObjectFilter) -> Self {
         Self::AttackAlone(filter)
     }
@@ -1055,6 +1203,10 @@ impl Restriction {
         Self::PhaseOut(filter)
     }
 
+    pub fn phase_in(filter: ObjectFilter) -> Self {
+        Self::PhaseIn(filter)
+    }
+
     pub fn attack_or_block(filter: ObjectFilter) -> Self {
         Self::AttackOrBlock(filter)
     }
@@ -1075,6 +1227,18 @@ pub enum SourceCounterThresholdSurface {
     #[default]
     SourceHas,
     ThereAreOn(SourceReferenceSurface),
+}
+
+/// Oracle-facing word order for a permanent that left the battlefield after
+/// being controlled by the condition's controller.
+///
+/// Both variants have identical event-history semantics. This only preserves
+/// whether Oracle used "left ... under your control" or "you controlled left".
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PermanentLeftBattlefieldControlSurface {
+    #[default]
+    LeftUnderYourControl,
+    YouControlledLeft,
 }
 
 /// Typed predicates that depend on a triggering event, the current combat, or
@@ -1113,6 +1277,15 @@ pub enum TurnHistoryCondition {
         player: PlayerFilter,
         zone: Zone,
     },
+    PlayerCastSpellFromZoneThisTurn {
+        player: PlayerFilter,
+        zone: Zone,
+    },
+    PlayerActivatedAbilityOfCardInZoneThisTurn {
+        player: PlayerFilter,
+        zone: Zone,
+    },
+    PlayerVisitedAttractionThisTurn(PlayerFilter),
     TriggeringPlayerAttackedControllerLastTurn,
     PlayerLostLifeLastTurn(PlayerFilter),
     TriggeringPlayersTurn {
@@ -1133,6 +1306,21 @@ pub enum TurnHistoryCondition {
         prohibited: ObjectFilter,
     },
     TriggeringAbilityIsManaAbility,
+}
+
+/// Selects which captured representation of a tagged object is used when a
+/// player's relationship to that object is tested.
+///
+/// Most "this way" predicates inspect the current object when it still exists
+/// and fall back to its captured snapshot after it ceases to exist. Past-tense
+/// control predicates such as "if you controlled that permanent" must instead
+/// inspect the snapshot even when the moved object still exists in its new
+/// zone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TaggedObjectMatchMode {
+    #[default]
+    CurrentOrLastKnown,
+    LastKnown,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1288,7 +1476,9 @@ pub enum Condition {
     PermanentLeftBattlefieldThisTurn,
     NonlandPermanentLeftBattlefieldThisTurn,
     SpellWasWarpedThisTurn,
-    PermanentLeftBattlefieldUnderYourControlThisTurn,
+    PermanentLeftBattlefieldUnderYourControlThisTurn {
+        surface: PermanentLeftBattlefieldControlSurface,
+    },
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
@@ -1423,6 +1613,7 @@ pub enum Condition {
         player: PlayerFilter,
         tag: TagKey,
         filter: ObjectFilter,
+        mode: TaggedObjectMatchMode,
     },
     PlayerTaggedObjectEnteredBattlefieldThisTurn {
         player: PlayerFilter,

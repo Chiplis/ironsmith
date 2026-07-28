@@ -223,6 +223,102 @@ pub(crate) fn parse_optional_life_additional_cost_reduction_line(
     )))
 }
 
+fn parse_cost_reduction_characteristic_intersection(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<ironsmith_core::CostReductionCharacteristicIntersection>, CardTextError> {
+    let characteristic_at = |start: usize| {
+        if tokens.get(start).is_some_and(|token| token.is_word("card"))
+            && tokens
+                .get(start + 1)
+                .is_some_and(|token| token.is_word("type") || token.is_word("types"))
+        {
+            return Some((ironsmith_core::ObjectCharacteristic::CardType, 2));
+        }
+        if tokens
+            .get(start)
+            .is_some_and(|token| token.is_word("permanent"))
+            && tokens
+                .get(start + 1)
+                .is_some_and(|token| token.is_word("type") || token.is_word("types"))
+        {
+            return Some((ironsmith_core::ObjectCharacteristic::PermanentType, 2));
+        }
+        if tokens
+            .get(start)
+            .is_some_and(|token| token.is_word("creature"))
+            && tokens
+                .get(start + 1)
+                .is_some_and(|token| token.is_word("type") || token.is_word("types"))
+        {
+            return Some((
+                ironsmith_core::ObjectCharacteristic::Subtype(
+                    crate::types::SubtypeFamily::Creature,
+                ),
+                2,
+            ));
+        }
+        if tokens
+            .get(start)
+            .is_some_and(|token| token.is_word("color"))
+            || tokens
+                .get(start)
+                .is_some_and(|token| token.is_word("colors"))
+        {
+            return Some((ironsmith_core::ObjectCharacteristic::Color, 1));
+        }
+        if tokens.get(start).is_some_and(|token| token.is_word("mana"))
+            && tokens
+                .get(start + 1)
+                .is_some_and(|token| token.is_word("value"))
+        {
+            return Some((ironsmith_core::ObjectCharacteristic::ManaValue, 2));
+        }
+        None
+    };
+
+    for each_index in 0..tokens.len().saturating_sub(5) {
+        if !tokens[each_index].is_word("for") || !tokens[each_index + 1].is_word("each") {
+            continue;
+        }
+        let Some((characteristic, characteristic_len)) = characteristic_at(each_index + 2) else {
+            continue;
+        };
+        let subject_index = each_index + 2 + characteristic_len;
+        if !tokens
+            .get(subject_index)
+            .is_some_and(|token| token.is_word("they") || token.is_word("it"))
+            || !tokens
+                .get(subject_index + 1)
+                .is_some_and(|token| token.is_word("share") || token.is_word("shares"))
+            || !tokens
+                .get(subject_index + 2)
+                .is_some_and(|token| token.is_word("with"))
+        {
+            continue;
+        }
+        let comparison_tokens = trim_commas(&tokens[subject_index + 3..]);
+        if comparison_tokens.is_empty() {
+            return Err(CardTextError::ParseError(
+                "missing comparison set after shared-characteristic cost reduction".to_string(),
+            ));
+        }
+        let comparison = parse_object_filter(&comparison_tokens, false)?;
+        let comparison_surface = render_token_slice(&comparison_tokens)
+            .trim()
+            .trim_end_matches('.')
+            .to_string();
+        return Ok(Some(
+            ironsmith_core::CostReductionCharacteristicIntersection::new(
+                characteristic,
+                comparison,
+            )
+            .with_comparison_surface(comparison_surface),
+        ));
+    }
+
+    Ok(None)
+}
+
 pub(crate) fn parse_spells_cost_modifier_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -389,8 +485,38 @@ pub(crate) fn parse_spells_cost_modifier_line(
         &remaining_words,
         &["for", "each", "target", "beyond", "the", "first"],
     );
+    let characteristic_intersection = if direction == CostModifierDirection::Less {
+        parse_cost_reduction_characteristic_intersection(remaining_tokens)?
+    } else {
+        None
+    };
 
-    if !per_target && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)?
+    let compound_this_spell_reduction = if direction == CostModifierDirection::Less
+        && is_this_spell
+        && !per_target
+        && characteristic_intersection.is_none()
+    {
+        parsed_amount
+            .as_ref()
+            .and_then(|(value, _)| match value {
+                Value::Fixed(multiplier) => Some(*multiplier),
+                _ => None,
+            })
+            .map(|multiplier| {
+                parse_compound_this_spell_cost_reduction_value(remaining_tokens, multiplier)
+            })
+            .transpose()?
+            .flatten()
+    } else {
+        None
+    };
+
+    if let Some(compound) = compound_this_spell_reduction {
+        parsed_mana_cost = None;
+        amount_value = compound;
+    } else if !per_target
+        && characteristic_intersection.is_none()
+        && let Some(dynamic_value) = parse_dynamic_cost_modifier_value(remaining_tokens)?
     {
         if parsed_mana_cost.is_some() && is_this_spell {
             parsed_mana_cost_repetitions = Some(dynamic_value);
@@ -441,6 +567,18 @@ pub(crate) fn parse_spells_cost_modifier_line(
             remaining_tokens,
             &clause_words,
         )?;
+        let except_during_controller_turn = [
+            &["except", "during", "its", "controller's", "turn"][..],
+            &["except", "during", "its", "controllers", "turn"][..],
+            &["except", "during", "its", "controller", "s", "turn"][..],
+        ]
+        .iter()
+        .any(|phrase| cost_words_contain_phrase(&remaining_words, phrase));
+        if except_during_controller_turn {
+            let caster = filter.cast_by.take().unwrap_or(PlayerFilter::Any);
+            filter.cast_by = Some(PlayerFilter::excluding(caster, PlayerFilter::Active));
+            filter.set_except_during_controller_turn_surface(true);
+        }
     }
 
     let this_spell_condition = if is_this_spell {
@@ -510,6 +648,9 @@ pub(crate) fn parse_spells_cost_modifier_line(
             return Ok(Some(StaticAbility::new(ability)));
         }
         let mut ability = crate::static_abilities::CostReduction::new(filter, amount_value);
+        if let Some(intersection) = characteristic_intersection {
+            ability = ability.with_characteristic_intersection(intersection);
+        }
         if per_target {
             ability = ability.with_per_target();
         }
@@ -936,6 +1077,69 @@ pub(crate) fn parse_cost_modifier_components(
     (parsed_amount, None)
 }
 
+fn parse_compound_this_spell_cost_reduction_value(
+    tokens: &[OwnedLexToken],
+    first_multiplier: i32,
+) -> Result<Option<Value>, CardTextError> {
+    let mut boundaries = Vec::new();
+    for (and_index, token) in tokens.iter().enumerate() {
+        if !token.is_word("and") {
+            continue;
+        }
+        let Some((Value::Fixed(multiplier), amount_used)) =
+            parse_cost_modifier_amount(&tokens[and_index + 1..])
+        else {
+            continue;
+        };
+        let second_start = and_index + 1 + amount_used;
+        if !tokens
+            .get(second_start)
+            .is_some_and(|token| token.is_word("less"))
+            || !tokens
+                .get(second_start + 1)
+                .is_some_and(|token| token.is_word("to"))
+            || !tokens
+                .get(second_start + 2)
+                .is_some_and(|token| token.is_word("cast"))
+        {
+            continue;
+        }
+        boundaries.push((and_index, multiplier, second_start));
+    }
+    if boundaries.is_empty() {
+        return Ok(None);
+    }
+
+    let first_end = boundaries[0].0;
+    let Some(first_value) = parse_dynamic_cost_modifier_value(&tokens[..first_end])? else {
+        return Err(CardTextError::ParseError(format!(
+            "unsupported first dynamic term in compound cost reduction (clause: '{}')",
+            parser_token_word_refs(tokens).join(" ")
+        )));
+    };
+    let mut value = scale_dynamic_cost_modifier_value(first_value, first_multiplier);
+
+    for (index, (_, multiplier, segment_start)) in boundaries.iter().copied().enumerate() {
+        let segment_end = boundaries
+            .get(index + 1)
+            .map(|boundary| boundary.0)
+            .unwrap_or(tokens.len());
+        let Some(term) = parse_dynamic_cost_modifier_value(&tokens[segment_start..segment_end])?
+        else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported trailing dynamic term in compound cost reduction (clause: '{}')",
+                parser_token_word_refs(tokens).join(" ")
+            )));
+        };
+        value = Value::Add(
+            Box::new(value),
+            Box::new(scale_dynamic_cost_modifier_value(term, multiplier)),
+        );
+    }
+
+    Ok(Some(value))
+}
+
 pub(crate) fn parse_cost_reduction_cap(tokens: &[OwnedLexToken]) -> Option<i32> {
     for idx in 2..tokens.len().saturating_sub(1) {
         if !tokens[idx - 2].is_word("by")
@@ -967,9 +1171,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     let for_each_value_tokens = static_keyword_cost_shapes::parse_dynamic_cost_each_word(tokens)
         .and_then(|boundary| tokens.get(boundary.token.saturating_add(1)..));
     let history_tokens = for_each_value_tokens.unwrap_or(tokens);
-    let parsed_shape = keyword_static_lines::parse_dynamic_cost_value_shape_tokens(tokens);
-    if parsed_shape.is_none()
-        && let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(history_tokens)
+    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(history_tokens)
     {
         return Ok(Some(if for_each_value_tokens.is_some() {
             value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
@@ -977,7 +1179,7 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             value
         }));
     }
-
+    let parsed_shape = keyword_static_lines::parse_dynamic_cost_value_shape_tokens(tokens);
     let Some(shape) = parsed_shape else {
         return Ok(None);
     };
@@ -1007,6 +1209,9 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
         }
         DynamicCostValueShape::ControlledCreaturesDiedThisTurn => {
             Value::CreaturesDiedThisTurnControlledBy(PlayerFilter::You)
+        }
+        DynamicCostValueShape::PlayersBeingAttacked => {
+            with_for_each_surface(Value::PlayersBeingAttacked)
         }
         DynamicCostValueShape::SpellCast { player, kind } => {
             let player = player_filter(player);
@@ -1087,9 +1292,9 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             DynamicThisWayMetric::Destroyed => {
                 let mut count_words = vec!["for", "each"];
                 count_words.extend(parser_token_word_refs(history_tokens));
-                if let Some((value @ Value::PendingPriorEffectMetric(_), used)) =
-                    parse_for_each_count_value_words(&count_words)
+                if let Some((value, used)) = parse_for_each_count_value_words(&count_words)
                     && used == count_words.len()
+                    && matches!(value.unhinted(), Value::PendingPriorEffectMetric(_))
                 {
                     value
                 } else {
@@ -1101,29 +1306,67 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             }
             DynamicThisWayMetric::Sacrificed => {
                 let words = parser_token_word_refs(history_tokens);
-                let kind = if words.iter().any(|word| matches!(*word, "creature" | "creatures")) {
-                    ironsmith_core::SacrificedObjectKind::Creature
-                } else if words.iter().any(|word| matches!(*word, "artifact" | "artifacts")) {
-                    ironsmith_core::SacrificedObjectKind::Artifact
-                } else if words
-                    .iter()
-                    .any(|word| matches!(*word, "enchantment" | "enchantments"))
+                let mut count_words = vec!["for", "each"];
+                count_words.extend(words.iter().copied());
+                if let Some((value, used)) = parse_for_each_count_value_words(&count_words)
+                    && used == count_words.len()
+                    && matches!(value.unhinted(), Value::PendingPriorEffectMetric(_))
                 {
-                    ironsmith_core::SacrificedObjectKind::Enchantment
+                    with_for_each_surface(value)
                 } else {
-                    ironsmith_core::SacrificedObjectKind::Permanent
-                };
-                Value::PendingEffectMetric {
-                    source: EffectMetricSource::AffectedObjects,
-                    metric: EffectMetric::Count,
+                    let kind = if words
+                        .iter()
+                        .any(|word| matches!(*word, "creature" | "creatures"))
+                    {
+                        ironsmith_core::SacrificedObjectKind::Creature
+                    } else if words
+                        .iter()
+                        .any(|word| matches!(*word, "artifact" | "artifacts"))
+                    {
+                        ironsmith_core::SacrificedObjectKind::Artifact
+                    } else if words
+                        .iter()
+                        .any(|word| matches!(*word, "enchantment" | "enchantments"))
+                    {
+                        ironsmith_core::SacrificedObjectKind::Enchantment
+                    } else {
+                        ironsmith_core::SacrificedObjectKind::Permanent
+                    };
+                    with_for_each_surface(
+                        Value::PendingEffectMetric {
+                            source: EffectMetricSource::AffectedObjects,
+                            metric: EffectMetric::Count,
+                        }
+                        .with_surface_hint(
+                            ironsmith_core::ValueSurfaceHint::PermanentsSacrificedThisWay,
+                        )
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::SacrificedObject(kind)),
+                    )
                 }
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::PermanentsSacrificedThisWay)
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::SacrificedObject(kind))
             }
-            DynamicThisWayMetric::Discarded => Value::PendingEffectMetric {
-                source: EffectMetricSource::Outcome,
-                metric: EffectMetric::Count,
-            },
+            DynamicThisWayMetric::Discarded => {
+                let all_words = parser_token_word_refs(tokens);
+                let count_words = all_words
+                    .windows(2)
+                    .position(|window| window == ["for", "each"])
+                    .map(|start| all_words[start..].to_vec())
+                    .unwrap_or_else(|| {
+                        let mut words = vec!["for", "each"];
+                        words.extend(parser_token_word_refs(history_tokens));
+                        words
+                    });
+                if let Some((value, used)) = parse_for_each_count_value_words(&count_words)
+                    && used == count_words.len()
+                    && matches!(value.unhinted(), Value::PendingPriorEffectMetric(_))
+                {
+                    value
+                } else {
+                    Value::PendingEffectMetric {
+                        source: EffectMetricSource::Outcome,
+                        metric: EffectMetric::Count,
+                    }
+                }
+            }
             DynamicThisWayMetric::Exiled => Value::Count(
                 ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile),
             ),
@@ -1253,6 +1496,9 @@ pub(crate) fn parse_legend_rule_doesnt_apply_line(
             }
             keyword_static_lines::LegendRuleScopeShape::Controller => {
                 StaticAbility::legend_rule_doesnt_apply_to_controller()
+            }
+            keyword_static_lines::LegendRuleScopeShape::ControllerTokens => {
+                StaticAbility::legend_rule_doesnt_apply_to_tokens_you_control()
             }
         }));
     }
@@ -1659,13 +1905,25 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
         Ok(parsed) => parsed,
         Err(_) => return Ok(None),
     };
-    let subject_tokens = trim_commas(&tokens[subject_start..be_idx]);
+    let contracted_source_subject = subject_start == be_idx
+        && tokens.get(be_idx).is_some_and(|token| {
+            token.is_word("it's") || token.is_word("it’s") || token.is_word("its")
+        });
+    let subject_tokens = if contracted_source_subject {
+        tokens[be_idx..be_idx + 1].to_vec()
+    } else {
+        trim_commas(&tokens[subject_start..be_idx])
+    };
     if subject_tokens.is_empty() {
         return Ok(None);
     }
-    let mut subject = match parse_anthem_subject(&subject_tokens) {
-        Ok(subject) => subject,
-        Err(_) => return Ok(None),
+    let mut subject = if contracted_source_subject {
+        AnthemSubjectAst::Source
+    } else {
+        match parse_anthem_subject(&subject_tokens) {
+            Ok(subject) => subject,
+            Err(_) => return Ok(None),
+        }
     };
     // Animation-subject grammar intentionally consumes leading distributive
     // quantifiers before it builds the semantic filter. Preserve that authored
@@ -1679,7 +1937,19 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
         .first()
         .is_some_and(|word| matches!(word, "enchanted" | "equipped"));
 
-    let before_has = trim_commas(&tokens[be_idx + 1..has_idx]);
+    // In a copular animation bundle, the follow-up grant may repeat the
+    // animated subject as a pronoun: "... is a 0/0 creature in addition to
+    // its other types and it has annihilator 2." The pronoun belongs to the
+    // grant head, not to the preceding type-addition predicate.
+    let before_has_end = if has_idx >= 2
+        && tokens[has_idx - 2].is_word("and")
+        && tokens[has_idx - 1].is_word("it")
+    {
+        has_idx - 2
+    } else {
+        has_idx
+    };
+    let before_has = trim_commas(&tokens[be_idx + 1..before_has_end]);
     if before_has.is_empty() {
         return Ok(None);
     }
@@ -2642,9 +2912,19 @@ pub(crate) fn parse_play_from_permission_with_enter_counter_this_way_line(
             lifetime: crate::cards::builders::PermissionLifetime::Static,
         }) if matches!(spec.grantable, crate::grant::Grantable::PlayFrom) => {
             Ok(static_grant_beneficiary(player).map(|beneficiary| {
-                StaticAbility::grants(spec.with_beneficiary(beneficiary).with_cast_this_way_grant(
-                    StaticAbility::enters_with_counters_value(parsed.counter_type, Value::Fixed(1)),
-                ))
+                let count = if parsed.additional {
+                    Value::Fixed(1)
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter)
+                } else {
+                    Value::Fixed(1)
+                };
+                let mut spec = spec.with_beneficiary(beneficiary).with_cast_this_way_grant(
+                    StaticAbility::enters_with_counters_value(parsed.counter_type, count),
+                );
+                if let Some(filter) = parsed.cast_this_way_filter {
+                    spec = spec.with_cast_this_way_filter(filter);
+                }
+                StaticAbility::grants(spec)
             }))
         }
         _ => Ok(None),
@@ -3710,6 +3990,29 @@ mod tests {
     use crate::static_abilities::StaticAbilityId;
 
     #[test]
+    fn plural_creature_type_addition_is_a_static_grant() {
+        let tokens = lex_line(
+            "Creatures you control are Slivers in addition to their other creature types.",
+            0,
+        )
+        .expect("creature-type addition should lex");
+        let abilities = parse_subject_are_card_types_in_addition_to_their_other_types_line(&tokens)
+            .expect("static type addition should not hard-error")
+            .expect("static type addition should parse");
+
+        assert_eq!(abilities.len(), 1, "{abilities:#?}");
+        assert_eq!(abilities[0].id(), StaticAbilityId::AddSubtypes);
+        let crate::static_abilities::StaticAbilityPayload::AddSubtypes { filter, subtypes } =
+            &abilities[0].payload
+        else {
+            panic!("expected a typed add-subtypes payload, got {abilities:#?}");
+        };
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(subtypes, &[crate::types::Subtype::Sliver]);
+    }
+
+    #[test]
     fn supported_keyword_marker_uses_token_shapes_for_crew_markers() {
         for line in [
             "This creature crews Vehicles using its toughness rather than its power.",
@@ -3750,6 +4053,25 @@ mod tests {
                 "{line} should match through parser token words"
             );
         }
+    }
+
+    #[test]
+    fn play_permission_keeps_cast_this_way_entry_counter_rider() {
+        let tokens = lex_line(
+            "You may play lands and cast Mutant, Ninja, or Turtle spells from the top of your library. If you cast a creature spell this way, that creature enters with an additional +1/+1 counter on it.",
+            0,
+        )
+        .expect("play permission should lex");
+        let ability = parse_play_from_permission_with_enter_counter_this_way_line(&tokens)
+            .expect("play permission should not hard-error")
+            .expect("play permission should keep its entry-counter rider");
+        let debug = format!("{ability:#?}");
+
+        assert!(debug.contains("PlayFrom"), "{debug}");
+        assert!(debug.contains("cast_this_way_grants"), "{debug}");
+        assert!(debug.contains("cast_this_way_filter"), "{debug}");
+        assert!(debug.contains("Creature"), "{debug}");
+        assert!(debug.contains("PlusOnePlusOne"), "{debug}");
     }
 
     #[test]
@@ -3806,6 +4128,10 @@ mod tests {
                 "less to cast for each creature you attacked with this turn.",
                 "CreaturesAttackedWith",
             ),
+            (
+                "for each of your opponents who lost life this turn.",
+                "PlayersLostLife",
+            ),
         ] {
             let tokens = lex_line(text, 0).expect("dynamic cost text should lex");
             let value = parse_dynamic_cost_modifier_value(&tokens)
@@ -3839,6 +4165,114 @@ mod tests {
     }
 
     #[test]
+    fn dynamic_attacked_opponent_cost_uses_player_count_value() {
+        let tokens = lex_line(
+            "This spell costs {1} less to cast for each opponent you're attacking.",
+            0,
+        )
+        .expect("attacked-opponent reduction should lex");
+        let ability = parse_spells_cost_modifier_line(&tokens)
+            .expect("attacked-opponent reduction should not hard-error")
+            .expect("attacked-opponent reduction should parse");
+        let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(reduction) =
+            &ability.payload
+        else {
+            panic!("expected this-spell reduction payload: {ability:#?}");
+        };
+
+        assert!(
+            reduction.amount.has_surface_hint(ValueSurfaceHint::ForEach),
+            "{:#?}",
+            reduction.amount
+        );
+        assert_eq!(reduction.amount.unhinted(), &Value::PlayersBeingAttacked);
+    }
+
+    #[test]
+    fn dynamic_discarded_this_way_cost_retains_typed_action() {
+        let direct_words = ["for", "each", "card", "discarded", "this", "way"];
+        let (direct, used) = parse_for_each_count_value_words(&direct_words)
+            .expect("shared count grammar should parse discarded-this-way");
+        assert_eq!(used, direct_words.len());
+        assert!(
+            matches!(direct.unhinted(), Value::PendingPriorEffectMetric(_)),
+            "shared count grammar erased the discarded action: {direct:#?}"
+        );
+
+        let tokens =
+            lex_line("for each card discarded this way.", 0).expect("discard count should lex");
+        let value = parse_dynamic_cost_modifier_value(&tokens)
+            .expect("dynamic count should not hard-error")
+            .expect("dynamic count should produce a value");
+        let Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+            panic!("expected a typed discarded-card action count, got {value:#?}");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Discarded)
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+        assert!(
+            query
+                .filter
+                .as_ref()
+                .is_some_and(|filter| { filter.union_surface.explicit_card_noun() })
+        );
+    }
+
+    #[test]
+    fn dynamic_sacrificed_this_way_cost_retains_typed_action_and_for_each_surface() {
+        let tokens = lex_line("for each permanent sacrificed this way.", 0)
+            .expect("sacrifice count should lex");
+        let value = parse_dynamic_cost_modifier_value(&tokens)
+            .expect("dynamic count should not hard-error")
+            .expect("dynamic count should produce a value");
+        assert!(value.has_surface_hint(ValueSurfaceHint::ForEach));
+        let Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+            panic!("expected a typed sacrificed-permanent count, got {value:#?}");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Sacrificed)
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+    }
+
+    #[test]
+    fn compound_this_spell_reduction_keeps_each_scaled_dynamic_basis() {
+        let tokens = lex_line(
+            "This spell costs {2} less to cast for each permanent sacrificed this way and {2} less to cast for each other artifact or creature you've sacrificed this turn.",
+            0,
+        )
+        .expect("compound reduction should lex");
+        let ability = parse_spells_cost_modifier_line(&tokens)
+            .expect("compound reduction should not hard-error")
+            .expect("compound reduction should parse");
+        let ironsmith_core::StaticAbilityPayload::ThisSpellCostReduction(reduction) =
+            &ability.payload
+        else {
+            panic!("expected this-spell reduction payload: {ability:#?}");
+        };
+        let debug = format!("{:#?}", reduction.amount);
+        assert!(
+            debug.contains("PendingPriorEffectMetric")
+                && debug.contains("Sacrificed")
+                && debug.contains("TurnHistoryCount"),
+            "expected both sacrifice bases to remain typed, got {debug}"
+        );
+        assert_eq!(
+            debug.matches("PendingPriorEffectMetric").count(),
+            2,
+            "the first {{2}} reduction should scale its prior-effect basis twice: {debug}"
+        );
+        assert_eq!(
+            debug.matches("TurnHistoryCount").count(),
+            2,
+            "the second {{2}} reduction should scale its turn-history basis twice: {debug}"
+        );
+    }
+
+    #[test]
     fn specialized_card_types_among_cost_value_precedes_history_fallback() {
         let tokens = lex_line(
             "less to cast for each card type among permanents you've sacrificed this turn.",
@@ -3851,6 +4285,43 @@ mod tests {
         assert!(
             matches!(value.unhinted(), Value::CardTypesAmong(_)),
             "expected specialized card-types-among value, got {value:?}"
+        );
+    }
+
+    #[test]
+    fn shared_characteristic_cost_reduction_keeps_candidate_intersection() {
+        let tokens = lex_line(
+            "Spells you cast cost {1} less to cast for each card type they share with cards exiled with this creature.",
+            0,
+        )
+        .expect("shared-characteristic reduction should lex");
+        let ability = parse_spells_cost_modifier_line(&tokens)
+            .expect("shared-characteristic reduction should not hard-error")
+            .expect("shared-characteristic reduction should parse");
+        let ironsmith_core::StaticAbilityPayload::CostReduction(reduction) = &ability.payload
+        else {
+            panic!("expected shared cost-reduction payload: {ability:#?}");
+        };
+        let intersection = reduction
+            .characteristic_intersection
+            .as_ref()
+            .expect("expected typed characteristic intersection");
+        assert_eq!(
+            intersection.characteristic,
+            ironsmith_core::ObjectCharacteristic::CardType
+        );
+        assert_eq!(
+            intersection.comparison_surface.as_deref(),
+            Some("cards exiled with this creature")
+        );
+        assert!(
+            intersection
+                .comparison
+                .tagged_constraints
+                .iter()
+                .any(|constraint| constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG),
+            "{:#?}",
+            intersection.comparison
         );
     }
 

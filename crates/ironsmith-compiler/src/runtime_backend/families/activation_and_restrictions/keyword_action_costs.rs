@@ -1316,7 +1316,7 @@ pub(crate) fn parse_ability_phrase(tokens: &[OwnedLexToken]) -> Option<KeywordAc
         phrase_tokens,
         "eternalize",
         KeywordCostFallback::MarkerOrText,
-        KeywordAction::Eternalize,
+        |cost| KeywordAction::Eternalize(crate::cost::TotalCost::mana(cost)),
     ) {
         return Some(action);
     }

@@ -1136,6 +1136,15 @@ fn lower_abilities_chunk(
         unreachable!("abilities lowerer received mismatched chunk");
     };
 
+    if actions.len() > 1 {
+        builder = builder.with_ability(
+            Ability::static_ability(
+                crate::static_abilities::StaticAbility::source_line_keyword_group(actions.len()),
+            )
+            .in_zones(Vec::new()),
+        );
+    }
+
     for action in actions {
         match action {
             crate::payload::KeywordAction::Backup(amount) => {
@@ -1152,9 +1161,25 @@ fn lower_abilities_chunk(
 }
 
 fn compile_static_ability_with_zones(
-    ability: crate::static_abilities::StaticAbility,
+    mut ability: crate::static_abilities::StaticAbility,
     facts: &crate::runtime_backend::shared_types::StaticLineSemanticFacts,
 ) -> Ability {
+    if matches!(
+        ability.payload,
+        crate::static_abilities::StaticAbilityPayload::Conditional { .. }
+    ) && let Some(label) = facts
+        .presentation_label
+        .as_ref()
+        .and_then(crate::ability::PresentationLabel::display_prefix)
+    {
+        // Keep the authored ability word separate from the explicit
+        // condition. This marker changes only compiled-text presentation;
+        // the typed condition continues to drive runtime behavior.
+        ability.label = format!(
+            "{}{label}",
+            ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX
+        );
+    }
     let ability = rewrite_self_spell_cost_modifier(ability, facts);
     let mut compiled = Ability::static_ability(ability);
     if let AbilityKind::Static(static_ability) = &compiled.kind
@@ -1397,6 +1422,29 @@ fn fuse_pending_removed_counter_as_enters(builder: &mut CardDefinitionBuilder) {
     }
 }
 
+fn remember_single_player_choice_as_enters(program: &mut crate::resolution::ResolutionProgram) {
+    let choices =
+        program
+            .segments
+            .iter()
+            .enumerate()
+            .flat_map(|(segment_index, segment)| {
+                segment.default_effects.iter().enumerate().filter_map(
+                    move |(effect_index, effect)| {
+                        effect
+                            .downcast_ref::<crate::effects::ChoosePlayerEffect>()
+                            .map(|choice| (segment_index, effect_index, choice.clone()))
+                    },
+                )
+            })
+            .collect::<Vec<_>>();
+    let [(segment_index, effect_index, choice)] = choices.as_slice() else {
+        return;
+    };
+    program.segments[*segment_index].default_effects[*effect_index] =
+        crate::effect::Effect::new(choice.clone().remember_as_chosen_player());
+}
+
 fn rewrite_self_spell_cost_modifier(
     ability: crate::static_abilities::StaticAbility,
     facts: &crate::runtime_backend::shared_types::StaticLineSemanticFacts,
@@ -1483,6 +1531,196 @@ fn lower_static_ability_chunk(
     Ok(builder)
 }
 
+fn is_source_line_static_loss_group(abilities: &[crate::static_abilities::StaticAbility]) -> bool {
+    let Some(first) = abilities.first() else {
+        return false;
+    };
+    let crate::static_abilities::StaticAbilityPayload::RemoveAbilityForFilter {
+        filter: first_filter,
+        mode: ironsmith_core::AbilityLossMode::Lose,
+        ..
+    } = &first.payload
+    else {
+        return false;
+    };
+    abilities.len() > 1
+        && abilities.iter().skip(1).all(|ability| {
+            matches!(
+                &ability.payload,
+                crate::static_abilities::StaticAbilityPayload::RemoveAbilityForFilter {
+                    filter,
+                    mode: ironsmith_core::AbilityLossMode::Lose,
+                    ..
+                } if filter == first_filter
+            )
+        })
+}
+
+fn conditional_rule_restriction(
+    ability: &crate::static_abilities::StaticAbility,
+) -> Option<(&crate::effect::Restriction, &crate::ConditionExpr)> {
+    let crate::static_abilities::StaticAbilityPayload::Conditional {
+        ability: inner,
+        condition,
+    } = &ability.payload
+    else {
+        return None;
+    };
+    let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+        restriction,
+        additional_restrictions,
+        ..
+    } = &inner.payload
+    else {
+        return None;
+    };
+    additional_restrictions
+        .is_empty()
+        .then_some((restriction, condition))
+}
+
+fn is_source_line_cast_activation_restriction_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    let [first, second] = abilities else {
+        return false;
+    };
+    let Some((first_restriction, first_condition)) = conditional_rule_restriction(first) else {
+        return false;
+    };
+    let Some((second_restriction, second_condition)) = conditional_rule_restriction(second) else {
+        return false;
+    };
+    if first_condition != second_condition {
+        return false;
+    }
+    matches!(
+        (first_restriction, second_restriction),
+        (
+            crate::effect::Restriction::CastSpellsMatching(cast_player, _),
+            crate::effect::Restriction::ActivateNonManaAbilities(activation_player),
+        ) | (
+            crate::effect::Restriction::ActivateNonManaAbilities(activation_player),
+            crate::effect::Restriction::CastSpellsMatching(cast_player, _),
+        ) if cast_player == activation_player
+    )
+}
+
+fn is_source_line_base_pt_grant_loss_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    if abilities.len() != 3 {
+        return false;
+    }
+    let mut base_filter = None;
+    let mut removal_filter = None;
+    let mut grant_filter = None;
+    for ability in abilities {
+        match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::SetBasePowerToughness {
+                filter, ..
+            } if base_filter.is_none() => base_filter = Some(filter),
+            crate::static_abilities::StaticAbilityPayload::RemoveAllAbilities(filter)
+                if removal_filter.is_none() =>
+            {
+                removal_filter = Some(filter);
+            }
+            crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(spec)
+                if grant_filter.is_none()
+                    && spec.condition.is_none()
+                    && spec.additional_abilities.is_empty()
+                    && spec.set_quantifier_surface.is_none()
+                    && matches!(&spec.ability.kind, ironsmith_core::AbilityKind::Static(_)) =>
+            {
+                grant_filter = Some(&spec.filter);
+            }
+            _ => return false,
+        }
+    }
+    matches!(
+        (base_filter, removal_filter, grant_filter),
+        (Some(base), Some(removal), Some(grant)) if base == removal && base == grant
+    )
+}
+
+fn is_source_line_grant_all_other_loss_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    let [first, second] = abilities else {
+        return false;
+    };
+    let mut removal_filter = None;
+    let mut grant_filter = None;
+    for ability in [first, second] {
+        match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::RemoveAllAbilities(filter)
+                if removal_filter.is_none() =>
+            {
+                removal_filter = Some(filter);
+            }
+            crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(spec)
+                if grant_filter.is_none()
+                    && spec.condition.is_none()
+                    && spec.additional_abilities.is_empty() =>
+            {
+                grant_filter = Some(&spec.filter);
+            }
+            _ => return false,
+        }
+    }
+    matches!(
+        (removal_filter, grant_filter),
+        (Some(removal), Some(grant)) if removal == grant
+    )
+}
+
+fn is_source_line_type_addition_grant_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    let [first, grants @ ..] = abilities else {
+        return false;
+    };
+    let affected_filter = match &first.payload {
+        crate::static_abilities::StaticAbilityPayload::AddCardTypes { filter, card_types }
+            if !card_types.is_empty() =>
+        {
+            filter
+        }
+        crate::static_abilities::StaticAbilityPayload::AddSubtypes { filter, subtypes }
+            if !subtypes.is_empty() =>
+        {
+            filter
+        }
+        _ => return false,
+    };
+    !grants.is_empty()
+        && grants.iter().all(|ability| match &ability.payload {
+            crate::static_abilities::StaticAbilityPayload::GrantAbility(grant) => {
+                &grant.filter == affected_filter
+                    && grant.condition.is_none()
+                    && grant.set_quantifier_surface.is_none()
+                    && matches!(&grant.ability.kind, ironsmith_core::AbilityKind::Static(_))
+            }
+            crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant) => {
+                &grant.filter == affected_filter
+                    && grant.condition.is_none()
+                    && grant.additional_abilities.is_empty()
+                    && grant.set_quantifier_surface.is_none()
+            }
+            _ => false,
+        })
+}
+
+fn is_renderable_source_line_static_group(
+    abilities: &[crate::static_abilities::StaticAbility],
+) -> bool {
+    is_source_line_static_loss_group(abilities)
+        || is_source_line_cast_activation_restriction_group(abilities)
+        || is_source_line_base_pt_grant_loss_group(abilities)
+        || is_source_line_grant_all_other_loss_group(abilities)
+        || is_source_line_type_addition_grant_group(abilities)
+}
+
 fn lower_static_abilities_chunk(
     input: LineChunkLoweringInput<'_>,
 ) -> Result<CardDefinitionBuilder, CardTextError> {
@@ -1525,6 +1763,23 @@ fn lower_static_abilities_chunk(
         Err(err) => return Err(err),
     };
     lowered_abilities.extend(abilities);
+    if is_renderable_source_line_static_group(&lowered_abilities) {
+        let mut marker = crate::static_abilities::StaticAbility::source_line_static_group(
+            lowered_abilities.len(),
+        );
+        if let Some(label) = semantic_facts
+            .static_ability
+            .presentation_label
+            .as_ref()
+            .and_then(crate::ability::PresentationLabel::display_prefix)
+        {
+            marker.label = format!(
+                "{}{label}",
+                ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX
+            );
+        }
+        builder = builder.with_ability(Ability::static_ability(marker).in_zones(Vec::new()));
+    }
     for ability in lowered_abilities {
         builder = builder.with_ability(compile_static_ability_with_zones(
             ability,
@@ -1559,6 +1814,24 @@ fn lower_parsed_ability_chunk(
         );
     }
     let mut ability = parsed_ability.into_runtime();
+    if semantic_facts.triggered_ability.leading_unless_surface
+        && let AbilityKind::Triggered(triggered) = &mut ability.kind
+    {
+        for effect in triggered
+            .effects
+            .segments
+            .iter_mut()
+            .flat_map(|segment| segment.default_effects.iter_mut())
+        {
+            if let Some(unless_pays) =
+                effect.downcast_ref::<crate::effects::UnlessPaysEffect<crate::effect::Effect>>()
+            {
+                let mut preserved = unless_pays.clone();
+                preserved.leading_surface = true;
+                *effect = crate::effect::Effect::new(preserved);
+            }
+        }
+    }
     if semantic_facts
         .statement
         .trailing_instead_if_predicate
@@ -1604,6 +1877,9 @@ fn preserve_latest_self_replacement_presentation(
     }
     if statement_facts.trailing_instead_if_predicate.is_some() {
         branch.condition_after_replacement = true;
+    }
+    if statement_facts.instead_followup.leading_instead_surface {
+        branch.leading_instead_surface = true;
     }
 }
 
@@ -1745,16 +2021,29 @@ fn lower_statement_chunk(
     {
         state.latest_created_token = Some(token_info);
     }
-    let compiled = lowered.effects;
+    let mut compiled = lowered.effects;
     state.latest_spell_exports = lowered.exports;
+    if builder
+        .spell_effect
+        .as_ref()
+        .is_some_and(|program| !program.is_empty())
+        && state
+            .latest_statement_line_index
+            .is_some_and(|previous| previous != info.line_index)
+        && let Some(first_segment) = compiled.segments.first_mut()
+    {
+        first_segment.starts_new_source_line = true;
+    }
+    state.latest_statement_line_index = Some(info.line_index);
 
-    // A front-end bundle that already owns both sides of a kicked
-    // self-replacement is a complete semantic program. Do not reinterpret its
-    // trailing "instead" surface as a follow-up to the program it just built.
+    // A front-end bundle that already owns both sides of a self-replacement is
+    // a complete semantic program. Do not reinterpret a conditional in its
+    // default arm as another follow-up to the program it just built. Doing so
+    // replaces the already-materialized branch and loses the authored
+    // paid-cost alternative when both arms also have their own thresholds.
     if matches!(
         effects_ast.as_slice(),
         [EffectAst::SelfReplacement {
-            predicate: PredicateAst::ThisSpellWasKicked,
             attach_to_previous_ability: false,
             ..
         }]
@@ -1773,6 +2062,10 @@ fn lower_statement_chunk(
 
     let statement_facts = &semantic_facts.statement;
     if let Some(as_enters) = statement_facts.as_enters_effect_program.as_ref() {
+        // A single player selected by an as-enters program is persistent
+        // card state. Later static abilities and triggers resolve
+        // `PlayerFilter::ChosenPlayer` through the entering source.
+        remember_single_player_choice_as_enters(&mut compiled);
         // The reveal-opponents-hands + choose-a-revealed-nonland-name bundle
         // has a dedicated typed static with the complete ETB semantics
         // (Alhammarret, High Arbiter); prefer it over the generic program.
@@ -1817,6 +2110,20 @@ fn lower_statement_chunk(
         );
         builder = builder.with_ability(crate::ability::Ability::static_ability(static_ability));
         fuse_pending_removed_counter_as_enters(&mut builder);
+        return Ok(builder);
+    }
+    if let Some(as_transforms) = statement_facts.as_transforms_effect_program.as_ref() {
+        // A choice made as the permanent transforms is persistent card state
+        // in the same way as an as-enters choice. Later abilities resolve
+        // `PlayerFilter::ChosenPlayer` through the transformed source.
+        remember_single_player_choice_as_enters(&mut compiled);
+        let static_ability = crate::static_abilities::StaticAbility::as_transforms_effect_program(
+            compiled,
+            as_transforms.subject.clone(),
+            as_transforms.destination.clone(),
+            statement_facts.presentation_label.clone(),
+        );
+        builder = builder.with_ability(crate::ability::Ability::static_ability(static_ability));
         return Ok(builder);
     }
     let instead_semantics = statement_facts.instead_followup.semantics;
@@ -2308,7 +2615,9 @@ fn lower_gift_keyword_chunk(
         }
         GiftTimingAst::PermanentEtb => {
             let parsed = super::rewrite_parsed_triggered_ability(
-                TriggerSpec::ThisEntersBattlefield { origin_condition: None },
+                TriggerSpec::ThisEntersBattlefield {
+                    origin_condition: None,
+                },
                 prepared.effects.clone(),
                 vec![Zone::Battlefield],
                 Some(format!(
@@ -2321,7 +2630,9 @@ fn lower_gift_keyword_chunk(
             let parsed = match super::rewrite_lower_prepared_ability(NormalizedParsedAbility {
                 parsed,
                 prepared: Some(NormalizedPreparedAbility::Triggered {
-                    trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
+                    trigger: TriggerSpec::ThisEntersBattlefield {
+                        origin_condition: None,
+                    },
                     prepared: super::super::effect_pipeline::PreparedTriggeredEffectsForLowering {
                         prepared,
                         intervening_if: None,

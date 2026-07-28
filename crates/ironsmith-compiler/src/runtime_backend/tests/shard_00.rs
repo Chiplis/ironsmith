@@ -1152,6 +1152,7 @@ pub(super) fn rewrite_structure_modal_gate_scan_marks_remove_mode_only_without_w
         .expect("structure helper should detect trailing modal gate");
 
     assert!(gate.remove_mode_only, "{gate:?}");
+    assert!(!gate.reflexive, "{gate:?}");
     assert_eq!(
         gate.predicate,
         crate::cards::builders::IfResultPredicate::Did
@@ -1554,6 +1555,49 @@ pub(super) fn rewrite_structure_triggered_conditional_clause_parser_splits_inter
 }
 
 #[test]
+pub(super) fn rewrite_structure_conditional_damage_action_is_not_absorbed_into_predicate() {
+    let tokens = lex_line(
+        "When this creature enters, if an opponent lost life this turn, it deals X damage to up to one target creature or planeswalker, where X is the number of Vampires you control.",
+        0,
+    )
+    .expect("conditional damage trigger should lex");
+    let spec =
+        super::super::grammar::structure::split_triggered_conditional_clause_lexed(&tokens, 1)
+            .expect("conditional damage trigger should split");
+
+    assert!(format!("{:?}", spec.predicate).contains("OpponentLostLifeThisTurn"));
+    assert_eq!(
+        spec.effects_tokens
+            .iter()
+            .filter_map(|token| token.as_word())
+            .collect::<Vec<_>>(),
+        vec![
+            "it",
+            "deals",
+            "X",
+            "damage",
+            "to",
+            "up",
+            "to",
+            "one",
+            "target",
+            "creature",
+            "or",
+            "planeswalker",
+            "where",
+            "X",
+            "is",
+            "the",
+            "number",
+            "of",
+            "Vampires",
+            "you",
+            "control",
+        ]
+    );
+}
+
+#[test]
 pub(super) fn rewrite_structure_triggered_conditional_clause_parser_keeps_graveyard_count_gate() {
     let tokens = lex_line(
         "At the beginning of your upkeep, if twenty or more creature cards are in your graveyard, you win the game.",
@@ -1951,6 +1995,25 @@ pub(super) fn rewrite_modal_header_parser_keeps_prefix_effect_and_result_gate() 
         Some(crate::cards::builders::ParsedModalGate {
             predicate: crate::effect::EffectPredicate::Happened,
             remove_mode_only: false,
+            reflexive: false,
+        })
+    ));
+}
+
+#[test]
+pub(super) fn rewrite_modal_header_parser_preserves_reflexive_result_gate() {
+    let text =
+        "At the beginning of combat on your turn, you may pay {E}{E}. When you do, choose one —";
+    let header = parse_modal_header_for_test(text)
+        .expect("modal header should parse")
+        .expect("modal header should be recognized");
+
+    assert!(matches!(
+        header.modal_gate,
+        Some(crate::cards::builders::ParsedModalGate {
+            predicate: crate::effect::EffectPredicate::Happened,
+            remove_mode_only: false,
+            reflexive: true,
         })
     ));
 }
@@ -1967,8 +2030,33 @@ pub(super) fn rewrite_modal_header_parser_marks_remove_mode_only_gate() {
         Some(crate::cards::builders::ParsedModalGate {
             predicate: crate::effect::EffectPredicate::Happened,
             remove_mode_only: true,
+            reflexive: false,
         })
     ));
+}
+
+#[test]
+pub(super) fn rewrite_lowered_modal_when_you_do_uses_reflexive_trigger() -> Result<(), CardTextError>
+{
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Voltstorm Angel")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "At the beginning of combat on your turn, you may pay {E}{E}. When you do, choose one —\n• This creature gains vigilance and lifelink until end of turn.\n• Other creatures you control get +1/+1 until end of turn.".to_string(),
+        false,
+    )?;
+    let ability_debug = format!("{:#?}", definition.abilities);
+
+    assert!(
+        ability_debug.contains("ReflexiveTriggerEffect"),
+        "{ability_debug}"
+    );
+    assert!(
+        ability_debug.contains("ChooseModeEffect"),
+        "{ability_debug}"
+    );
+    assert!(!ability_debug.contains("IfEffect"), "{ability_debug}");
+    Ok(())
 }
 
 #[test]
@@ -3197,26 +3285,96 @@ pub(super) fn rewrite_cast_unlock_or_turn_face_up_mana_restriction_parses() {
 }
 
 #[test]
-pub(super) fn rewrite_cant_be_spent_mana_restriction_parses_as_positive_filter() {
-    let tokens = lex_line("This mana can't be spent to cast nonartifact spells.", 0)
-        .expect("rewrite lexer should classify negative mana restriction");
+pub(super) fn rewrite_cant_be_spent_mana_restriction_preserves_the_negative_transaction() {
+    for text in [
+        "This mana can't be spent to cast a nonartifact spell.",
+        "This mana can't be spent to cast nonartifact spells.",
+    ] {
+        let tokens =
+            lex_line(text, 0).expect("rewrite lexer should classify negative mana restriction");
 
-    match parse_mana_usage_restriction_sentence_lexed(&tokens) {
-        Some(crate::ability::ManaUsageRestriction::CastSpellMatching {
-            filter,
-            restrict_to_matching_spell,
-            grant_uncounterable,
-            enters_with_counters,
-            granted_abilities,
-        }) => {
-            assert_eq!(filter.card_types, vec![CardType::Artifact]);
-            assert!(restrict_to_matching_spell);
-            assert!(!grant_uncounterable);
-            assert!(enters_with_counters.is_empty());
-            assert!(granted_abilities.is_empty());
+        match parse_mana_usage_restriction_sentence_lexed(&tokens) {
+            Some(crate::ability::ManaUsageRestriction::PaymentTransaction {
+                restriction: Some(crate::ability::ManaPaymentPredicate::Not(forbidden)),
+                on_spend,
+            }) => {
+                assert!(on_spend.is_empty(), "{text}");
+                let crate::ability::ManaPaymentPredicate::All(parts) = forbidden.as_ref() else {
+                    panic!(
+                        "expected a compound forbidden cast transaction for {text}: {forbidden:?}"
+                    );
+                };
+                assert!(parts.iter().any(|part| matches!(
+                    part,
+                    crate::ability::ManaPaymentPredicate::Purpose(
+                        crate::ability::ManaPaymentPurpose::CastSpell
+                    )
+                )));
+                assert!(parts.iter().any(|part| matches!(
+                    part,
+                    crate::ability::ManaPaymentPredicate::SourceMatches(filter)
+                        if filter.excluded_card_types == vec![CardType::Artifact]
+                )));
+            }
+            other => panic!("expected a negative payment transaction for {text:?}, got {other:?}"),
         }
-        other => panic!("expected cast-spell-matching restriction, got {other:?}"),
     }
+}
+
+#[test]
+pub(super) fn rewrite_hand_and_artifact_source_mana_restrictions_are_typed_transactions() {
+    let hand = lex_line("This mana can't be spent to cast spells from your hand.", 0)
+        .expect("hand restriction should lex");
+    assert!(matches!(
+        parse_mana_usage_restriction_sentence_lexed(&hand),
+        Some(crate::ability::ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(crate::ability::ManaPaymentPredicate::Not(forbidden)),
+            ref on_spend,
+        }) if on_spend.is_empty()
+            && matches!(
+                forbidden.as_ref(),
+                crate::ability::ManaPaymentPredicate::All(parts)
+                    if parts.iter().any(|part| matches!(
+                        part,
+                        crate::ability::ManaPaymentPredicate::SourceMatches(filter)
+                            if filter.zone == Some(crate::zone::Zone::Hand)
+                                && filter.owner == Some(crate::target::PlayerFilter::You)
+                    ))
+            )
+    ));
+
+    let activation = lex_line(
+        "Spend this mana only to activate abilities of artifact sources.",
+        0,
+    )
+    .expect("artifact-source activation restriction should lex");
+    assert!(matches!(
+        parse_mana_usage_restriction_sentence_lexed(&activation),
+        Some(crate::ability::ManaUsageRestriction::PaymentTransaction {
+            restriction: Some(crate::ability::ManaPaymentPredicate::All(parts)),
+            ref on_spend,
+        }) if on_spend.is_empty()
+            && parts.iter().any(|part| matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::SourceMatches(filter)
+                    if filter.card_types == vec![CardType::Artifact]
+            ))
+            && parts.iter().any(|part| matches!(
+                part,
+                crate::ability::ManaPaymentPredicate::AnyOf(purposes)
+                    if purposes.iter().any(|purpose| matches!(
+                        purpose,
+                        crate::ability::ManaPaymentPredicate::Purpose(
+                            crate::ability::ManaPaymentPurpose::ActivateAbility
+                        )
+                    )) && purposes.iter().any(|purpose| matches!(
+                        purpose,
+                        crate::ability::ManaPaymentPredicate::Purpose(
+                            crate::ability::ManaPaymentPurpose::ActivateManaAbility
+                        )
+                    ))
+            ))
+    ));
 }
 
 #[test]

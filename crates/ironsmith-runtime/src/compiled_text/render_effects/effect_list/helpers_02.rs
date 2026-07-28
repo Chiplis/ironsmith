@@ -465,6 +465,82 @@ pub(crate) fn describe_destroy_for_each_destroyed_consult_exile_put_shuffle(
     ))
 }
 
+/// Render the executable, correctly staged form of the destroy / consult /
+/// exile collection procedure. The tagged per-object loop proves that every
+/// destroyed object gets one consult and exile; the sibling move proves the
+/// exiled results are collected before entering the battlefield; and the
+/// controller-grouped loop proves each participating player shuffles once.
+pub(crate) fn describe_destroy_consult_exile_collected_then_shuffle(
+    effects: &[&Effect],
+) -> Option<String> {
+    let [
+        destroy_effect,
+        collected_loop_effect,
+        move_effect,
+        shuffle_loop_effect,
+    ] = effects
+    else {
+        return None;
+    };
+    let destroyed_tag = effect_tag(destroy_effect)?;
+    let collection_tag = effect_tag(collected_loop_effect)?;
+    let per_object = unwrap_tag_wrappers(collected_loop_effect)
+        .downcast_ref::<crate::effects::ForEachTaggedEffect>()?;
+    let [consult_effect, exile_effect] = per_object.effects.as_slice() else {
+        return None;
+    };
+    let consult = consult_effect.downcast_ref::<crate::effects::ConsultTopOfLibraryEffect>()?;
+    if per_object.tag != *destroyed_tag {
+        return None;
+    }
+
+    let move_to_zone =
+        unwrap_tag_wrappers(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_zone.zone != Zone::Battlefield
+        || move_to_zone.to_top
+        || move_to_zone.enters_tapped
+        || move_to_zone.enters_attacking
+        || move_to_zone.enters_face_down
+        || move_to_zone.battlefield_controller != crate::effects::BattlefieldController::Preserve
+        || !matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag == collection_tag
+        )
+    {
+        return None;
+    }
+
+    let shuffle_loop = unwrap_tag_wrappers(shuffle_loop_effect)
+        .downcast_ref::<crate::effects::ForEachControllerOfTaggedEffect>()?;
+    let [shuffle_effect] = shuffle_loop.effects.as_slice() else {
+        return None;
+    };
+    let shuffle = unwrap_tag_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    if shuffle_loop.tag != *destroyed_tag
+        || shuffle.player != PlayerFilter::IteratedPlayer
+        || shuffle.target_spec.is_some()
+    {
+        return None;
+    }
+
+    // Reuse the established surface renderer through a legacy-shaped view
+    // after the executable collection and controller relationships above have
+    // been proved.
+    let mut legacy_move = move_to_zone.clone();
+    legacy_move.target = ChooseSpec::Tagged(consult.match_tag.clone());
+    let legacy_loop = crate::effects::ForEachTaggedEffect::new(
+        per_object.tag.clone(),
+        vec![
+            consult_effect.clone(),
+            exile_effect.clone(),
+            Effect::new(legacy_move),
+            shuffle_effect.clone(),
+        ],
+    );
+    describe_destroy_for_each_destroyed_consult_exile_put_shuffle(destroy_effect, &legacy_loop)
+}
+
 pub(crate) fn is_consult_reveal_put_battlefield_then_bottom(
     for_each: &crate::effects::ForEachTaggedEffect,
 ) -> bool {
@@ -657,11 +733,9 @@ pub(crate) fn render_consult_reveal_put_hand_then_bottom(effects: &[&Effect]) ->
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             with_indefinite_article(&selection)
         }
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
     let order_text = match remainder.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => {
@@ -831,11 +905,9 @@ pub(crate) fn render_consult_reveal_put_hand_rest_exile(effects: &[&Effect]) -> 
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             selection.clone()
         }
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
 
     if player == "you" {
@@ -909,11 +981,9 @@ pub(crate) fn render_consult_reveal_put_battlefield_rest_graveyard(
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => {
             selection.clone()
         }
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
 
     let control_suffix = match move_to_zone.battlefield_controller {
@@ -1042,11 +1112,9 @@ pub(crate) fn render_consult_reveal_put_hand_rest_graveyard(effects: &[&Effect])
     let stop_text = match &consult.stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
 
     if player == "you" {
@@ -1098,11 +1166,9 @@ pub(crate) fn render_consult_reveal_put_all_revealed_into_graveyard(
     let stop_text = match &consult.stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
     let graveyard_owner = describe_possessive_player_filter(&consult.player);
 
@@ -1160,11 +1226,9 @@ pub(crate) fn render_consult_reveal_put_all_revealed_into_hand(
     let stop_text = match &consult.stop_rule {
         crate::effects::ConsultTopOfLibraryStopRule::FirstMatch => selection,
         crate::effects::ConsultTopOfLibraryStopRule::MatchCount(Value::Fixed(1)) => selection,
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
     let hand_owner = describe_possessive_player_filter(&consult.player);
 
@@ -1626,7 +1690,9 @@ pub(crate) fn render_sacrifice_then_consult_reveal_put_battlefield_rest_bottom(
     }
 
     let sacrifice = sacrifice_view_unwrapped(effects[1])?;
-    if sacrifice.player != &choose.chooser
+    let exact_sentence_helper_set =
+        sacrifice_tracks_exact_sentence_helper_chosen_set(sacrifice, choose);
+    if (sacrifice.player != &choose.chooser && !exact_sentence_helper_set)
         || !sacrifice_uses_chosen_tag(sacrifice.filter, choose.tag.as_str())
     {
         return None;
@@ -1693,11 +1759,9 @@ pub(crate) fn render_sacrifice_then_consult_reveal_put_battlefield_rest_bottom(
                 sacrificed_subject
             )
         }
-        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => format!(
-            "{} {}",
-            describe_value(count),
-            pluralize_noun_phrase(&selection)
-        ),
+        crate::effects::ConsultTopOfLibraryStopRule::MatchCount(count) => {
+            describe_counted_consult_stop(count, &selection)
+        }
     };
 
     let player = describe_player_filter(&consult.player);
@@ -2200,6 +2264,23 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
         return None;
     }
     idx += 1;
+    let selected_condition = effects.get(idx).and_then(|effect| {
+        let conditional = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::ConditionalEffect>()?;
+        let crate::ConditionExpr::TaggedObjectMatches(tag, filter) = &conditional.condition else {
+            return None;
+        };
+        (tag == &choose.tag
+            && filter.zone.is_none()
+            && filter.tagged_constraints.is_empty()
+            && !conditional.if_true.is_empty()
+            && conditional.if_false.is_empty()
+            && conditional.surface == ironsmith_core::ConditionalSurface::LeadingIf)
+            .then_some(*effect)
+    });
+    if selected_condition.is_some() {
+        idx += 1;
+    }
     let remainder = effects
         .get(idx)?
         .downcast_ref::<crate::effects::PutTaggedRemainderOnLibraryBottomEffect>()?;
@@ -2275,11 +2356,23 @@ pub(crate) fn describe_look_choose_reveal_to_hand_rest_bottom(
     };
     Some((
         if reveals_selection {
-            format!(
-                "{}. You may reveal {selection} from among them and put {hand_pronoun} into your hand. Put the rest on the bottom of your library{order_text}",
-                describe_effect(effects[0])
-            )
+            let mut sentences = vec![
+                describe_effect(effects[0]),
+                format!(
+                    "You may reveal {selection} from among them and put {hand_pronoun} into your hand"
+                ),
+            ];
+            if let Some(condition) = selected_condition {
+                sentences.push(describe_effect(condition));
+            }
+            sentences.push(format!(
+                "Put the rest on the bottom of your library{order_text}"
+            ));
+            sentences.join(". ")
         } else {
+            if selected_condition.is_some() {
+                return None;
+            }
             if unfiltered_looked_cards {
                 format!(
                     "{}. Put {selection} into your hand and the rest on the bottom of your library{order_text}",
@@ -2414,7 +2507,6 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
         if let Some(grant) = permission.downcast_ref::<crate::effects::GrantPlayTaggedEffect>() {
             if grant.tag != choose.tag
                 || grant.player != PlayerFilter::You
-                || grant.allow_land
                 || grant.allow_any_color_for_cast
                 || grant.while_on_top_of_library
                 || grant.filter.is_some()
@@ -2422,7 +2514,11 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
             {
                 return None;
             }
-            "You may cast the exiled card this turn"
+            if grant.allow_land {
+                "You may play the exiled card this turn"
+            } else {
+                "You may cast the exiled card this turn"
+            }
         } else if let Some(cast) = permission.downcast_ref::<crate::effects::CastTaggedEffect>() {
             if cast.tag != choose.tag
                 || cast.player != PlayerFilter::You
@@ -2446,15 +2542,26 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
         !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
             && constraint.tag == look.tag)
     });
-    let mut selection = normalize_looked_card_filter_description(&filter, &filter.description());
-    if !selection.contains("card") {
-        selection.push_str(" card");
-    }
-    let selection = with_indefinite_article(&selection);
+    let permission_text = if filter == ObjectFilter::default() {
+        permission_text.replace("the exiled card", "that card")
+    } else {
+        permission_text.to_string()
+    };
     let exile_action = if choose.count.min == 0 {
         "You may exile"
     } else {
         "Exile"
+    };
+    let exile_clause = if filter == ObjectFilter::default() {
+        format!("{exile_action} one of those cards")
+    } else {
+        let mut selection =
+            normalize_looked_card_filter_description(&filter, &filter.description());
+        if !selection.contains("card") {
+            selection.push_str(" card");
+        }
+        let selection = with_indefinite_article(&selection);
+        format!("{exile_action} {selection} from among them")
     };
     let order_text = match rest.order {
         crate::effects::consult_helpers::LibraryBottomOrder::Random => " in a random order",
@@ -2462,7 +2569,7 @@ pub(crate) fn describe_look_may_exile_from_among_rest_bottom_cast(
     };
     Some((
         format!(
-            "{}. {exile_action} {selection} from among them. Put the rest on the bottom of your library{order_text}. {permission_text}",
+            "{}. {exile_clause}. Put the rest on the bottom of your library{order_text}. {permission_text}",
             describe_effect(effects[0])
         ),
         5,

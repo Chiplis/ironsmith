@@ -14,6 +14,7 @@ use super::condition_quantities::parse_condition_quantity_prefix;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FixedStaticConditionKind {
     SourceIsEquipped,
+    SourceSpellWasKicked,
     OpponentLostLifeThisTurn,
     YouDidNotCastSpellThisTurn,
     YouCastSpellThisTurn,
@@ -386,6 +387,11 @@ fn parse_fixed_group_one(input: &mut LexStream<'_>) -> WResult<FixedStaticCondit
             &["this", "equipment", "attached", "to", "a", "creature"],
         ])
         .value(FixedStaticConditionKind::SourceIsEquipped),
+        primitives::any_phrase(&[
+            &["this", "spell", "was", "kicked"],
+            &["it", "was", "kicked"],
+        ])
+        .value(FixedStaticConditionKind::SourceSpellWasKicked),
         primitives::any_phrase(&[
             &["an", "opponent", "lost", "life", "this", "turn"],
             &[
@@ -767,6 +773,11 @@ mod tests {
         assert_eq!(
             parse_fixed_static_condition_kind(&crime),
             Some(FixedStaticConditionKind::YouCommittedCrimeThisTurn)
+        );
+        let kicked = lex("This spell was kicked.");
+        assert_eq!(
+            parse_fixed_static_condition_kind(&kicked),
+            Some(FixedStaticConditionKind::SourceSpellWasKicked)
         );
     }
 

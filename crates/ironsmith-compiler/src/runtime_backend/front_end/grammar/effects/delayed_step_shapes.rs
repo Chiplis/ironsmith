@@ -61,6 +61,7 @@ pub(crate) enum ImplicitBecomeSubjectKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ImplicitBecomeSubjectShape<'a> {
     pub(crate) kind: ImplicitBecomeSubjectKind,
+    pub(crate) set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
     pub(crate) remainder_tokens: &'a [OwnedLexToken],
 }
 
@@ -69,6 +70,7 @@ pub(crate) enum DelayedTimingStepShape {
     Upkeep,
     DrawStep,
     EndStep,
+    CleanupStep,
     EndOfCombat,
 }
 

@@ -195,9 +195,15 @@ pub fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLexToken]
 
 pub fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
+        || looks_like_when_you_pay_this_cost_followup_lexed(tokens)
         || looks_like_when_you_do_followup_lexed(tokens)
         || looks_like_if_no_one_does_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
+}
+
+fn looks_like_when_you_pay_this_cost_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens);
+    words.starts_with(&["when", "you", "pay", "this", "cost"])
 }
 
 fn looks_like_delayed_next_turn_intro_lexed(tokens: &[OwnedLexToken]) -> bool {

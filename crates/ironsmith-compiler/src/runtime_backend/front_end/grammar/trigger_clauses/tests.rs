@@ -2,6 +2,258 @@ use super::*;
 use crate::runtime_backend::util::tokenize_line;
 
 #[test]
+fn parses_generic_sticker_trigger_with_source_recipient() {
+    let tokens = tokenize_line("you put a sticker on this enchantment", 0);
+    let parsed =
+        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+            "_____ Balls of Fire",
+            &[CardType::Enchantment],
+            &[],
+            || {
+                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+                    &tokens,
+                )
+            },
+        )
+        .expect("generic sticker trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::KeywordAction {
+        action,
+        player,
+        source_filter: Some(source_filter),
+    } = parsed
+    else {
+        panic!("expected a keyword-action trigger");
+    };
+    assert_eq!(action, crate::events::KeywordActionKind::Sticker);
+    assert_eq!(player, PlayerFilter::You);
+    assert!(source_filter.source, "{source_filter:#?}");
+    assert_eq!(
+        source_filter.source_surface,
+        Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+            "this enchantment".to_string()
+        )),
+        "{source_filter:#?}"
+    );
+}
+
+#[test]
+fn parses_typed_sticker_trigger_with_object_recipient() {
+    let tokens = tokenize_line("an opponent puts an ability sticker on a creature", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("typed sticker trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::KeywordAction {
+        action,
+        player,
+        source_filter: Some(source_filter),
+    } = &parsed
+    else {
+        panic!("expected a keyword-action trigger, got {parsed:#?}");
+    };
+    assert_eq!(*action, crate::events::KeywordActionKind::AbilitySticker);
+    assert_eq!(*player, PlayerFilter::Opponent);
+    assert_eq!(source_filter.card_types, [CardType::Creature]);
+}
+
+#[test]
+fn parses_split_possessive_unpaid_cumulative_upkeep_trigger() {
+    let tokens = tokenize_line(
+        "a player doesn't pay this enchantment's cumulative upkeep",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+            "Heart of Bogardan",
+            &[CardType::Enchantment],
+            &[],
+            || {
+                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+                    &tokens,
+                )
+            },
+        )
+        .expect("unpaid cumulative upkeep trigger should parse");
+
+    assert_eq!(
+        parsed,
+        crate::runtime_backend::ast::TriggerSpec::KeywordActionFromSource {
+            action: crate::events::KeywordActionKind::CumulativeUpkeepNotPaid,
+            player: PlayerFilter::Any,
+        }
+    );
+}
+
+#[test]
+fn parses_spell_causes_you_to_gain_life_as_a_causal_trigger() {
+    let tokens = tokenize_line(
+        "a white instant or sorcery spell causes you to gain life",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("causal life-gain trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::YouGainLifeCausedBy(source) = &parsed else {
+        panic!("expected a causal life-gain trigger, got {parsed:?}");
+    };
+    assert_eq!(source.zone, Some(crate::Zone::Stack), "{source:#?}");
+    assert_eq!(
+        source.card_types,
+        [crate::CardType::Instant, crate::CardType::Sorcery],
+        "{source:#?}"
+    );
+    assert!(
+        source
+            .colors
+            .is_some_and(|colors| colors.contains(crate::Color::White)),
+        "{source:#?}"
+    );
+    assert_eq!(
+        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        "Whenever a white instant or sorcery spell causes you to gain life"
+    );
+}
+
+#[test]
+fn shared_spell_noun_damage_source_keeps_stack_controller_and_mana_facts() {
+    let tokens = tokenize_line(
+        "an instant or sorcery spell you control with mana value 3 or greater deals damage",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("shared-noun spell damage trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::DealsDamage { source, .. } = &parsed else {
+        panic!("expected filtered damage-source trigger, got {parsed:?}");
+    };
+    assert!(source.any_of.is_empty(), "{source:#?}");
+    assert_eq!(
+        source.card_types,
+        [crate::CardType::Instant, crate::CardType::Sorcery],
+        "{source:#?}"
+    );
+    assert_eq!(source.zone, Some(crate::Zone::Stack), "{source:#?}");
+    assert_eq!(source.controller, Some(PlayerFilter::You), "{source:#?}");
+    assert_eq!(
+        source.stack_kind,
+        Some(crate::filter::StackObjectKind::Spell),
+        "{source:#?}"
+    );
+    assert!(source.has_mana_cost, "{source:#?}");
+    assert_eq!(
+        source.mana_value,
+        Some(crate::filter::Comparison::GreaterThanOrEqual(3)),
+        "{source:#?}"
+    );
+
+    let compiled = crate::runtime_backend::compile_support::compile_trigger_spec(parsed);
+    let crate::triggers::TriggerKind::DealsDamage { filter, .. } = compiled.kind else {
+        panic!("expected lowered damage-source trigger, got {compiled:?}");
+    };
+    assert_eq!(filter.zone, Some(crate::Zone::Stack), "{filter:#?}");
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert_eq!(
+        filter.stack_kind,
+        Some(crate::filter::StackObjectKind::Spell),
+        "{filter:#?}"
+    );
+    assert!(filter.has_mana_cost, "{filter:#?}");
+    assert_eq!(
+        filter.mana_value,
+        Some(crate::filter::Comparison::GreaterThanOrEqual(3)),
+        "{filter:#?}"
+    );
+}
+
+#[test]
+fn parses_clash_and_win_as_the_winner_aware_trigger() {
+    let tokens = tokenize_line("you clash and win", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("clash-and-win trigger should parse");
+
+    assert_eq!(
+        parsed,
+        crate::runtime_backend::ast::TriggerSpec::WinsClash {
+            player: PlayerFilter::You,
+            surface: ironsmith_core::ClashWinTriggerSurface::ClashAndWin,
+        }
+    );
+    assert_eq!(
+        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        "Whenever you clash and win"
+    );
+}
+
+#[test]
+fn parses_passive_damage_by_qualified_source_union() {
+    let tokens = tokenize_line(
+        "an opponent is dealt damage by a red instant or sorcery spell you control or by a red planeswalker you control",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("passive qualified-source damage trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::DealsDamageToPlayer {
+        source,
+        player,
+        source_surface,
+    } = &parsed
+    else {
+        panic!("expected qualified damage-to-player trigger, got {parsed:#?}");
+    };
+    assert_eq!(*player, PlayerFilter::Opponent);
+    assert_eq!(
+        *source_surface,
+        crate::triggers::DamageSourceSurface::PassiveBy
+    );
+    assert_eq!(source.any_of.len(), 2, "{source:#?}");
+    assert!(
+        source.any_of.iter().all(|branch| {
+            branch.controller == Some(PlayerFilter::You)
+                && branch
+                    .colors
+                    .is_some_and(|colors| colors.contains(crate::Color::Red))
+        }),
+        "{source:#?}"
+    );
+    assert!(
+        source.any_of[0]
+            .card_types
+            .contains(&crate::CardType::Instant)
+            && source.any_of[0]
+                .card_types
+                .contains(&crate::CardType::Sorcery),
+        "{source:#?}"
+    );
+    assert!(
+        source.any_of[1]
+            .card_types
+            .contains(&crate::CardType::Planeswalker),
+        "{source:#?}"
+    );
+
+    assert_eq!(
+        crate::runtime_backend::compile_support::compile_trigger_spec(parsed).display(),
+        "Whenever an opponent is dealt damage by a red instant or sorcery spell you control or a red planeswalker you control"
+    );
+}
+
+#[test]
 fn maps_semantic_atoms_across_punctuation() {
     let tokens = tokenize_line("a creature, attacks", 0);
     assert_eq!(
@@ -32,6 +284,34 @@ fn keeps_list_or_but_splits_clause_or() {
     assert_eq!(
         parse_trigger_or_split(&clauses),
         Some(TriggerOrSplit { separator: 2 })
+    );
+}
+
+#[test]
+fn shared_attack_or_block_subject_is_preserved_on_both_trigger_arms() {
+    let tokens = tokenize_line("enchanted creature attacks or blocks", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("shared attack/block trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = parsed else {
+        panic!("expected an either trigger");
+    };
+    let (
+        crate::runtime_backend::ast::TriggerSpec::Attacks(attacks),
+        crate::runtime_backend::ast::TriggerSpec::Blocks(blocks),
+    ) = (*left, *right)
+    else {
+        panic!("expected matching attacks and blocks arms");
+    };
+    assert_eq!(attacks, blocks);
+    assert!(
+        attacks
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.tag.as_str() == "enchanted")
     );
 }
 
@@ -470,7 +750,11 @@ fn parses_one_or_more_and_or_blockers_as_shared_union_metadata() {
     let crate::runtime_backend::ast::TriggerSpec::Either(blocks, becomes_blocked) = parsed else {
         panic!("expected blocks/becomes-blocked trigger union");
     };
-    let crate::runtime_backend::ast::TriggerSpec::ThisBlocksObject(blocker) = *blocks else {
+    let crate::runtime_backend::ast::TriggerSpec::ThisBlocksObject {
+        filter: blocker,
+        min_blocked_objects,
+    } = *blocks
+    else {
         panic!("expected filtered blocks branch");
     };
     let crate::runtime_backend::ast::TriggerSpec::ThisBecomesBlockedByObject(blocking) =
@@ -485,7 +769,226 @@ fn parses_one_or_more_and_or_blockers_as_shared_union_metadata() {
         crate::filter::ObjectFilterUnionConnective::AndOr
     );
     assert!(blocker.union_is_one_or_more());
+    assert_eq!(min_blocked_objects, Some(1));
     assert_eq!(blocker.card_types, [CardType::Creature]);
+}
+
+#[test]
+fn parses_lesser_power_block_relationships_as_typed_pair_triggers() {
+    let becomes_tokens = tokenize_line(
+        "a creature becomes blocked by an artifact creature with lesser power",
+        0,
+    );
+    let becomes =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &becomes_tokens,
+        )
+        .expect("relative-power becomes-blocked trigger should parse");
+    let crate::runtime_backend::ast::TriggerSpec::BecomesBlockedByObjectWithLesserPower {
+        blocked,
+        blocker,
+    } = becomes
+    else {
+        panic!("expected typed relative-power becomes-blocked trigger");
+    };
+    assert_eq!(blocked.card_types, [CardType::Creature]);
+    assert!(
+        blocker.card_types.contains(&CardType::Artifact)
+            || blocker.all_card_types.contains(&CardType::Artifact)
+    );
+    assert!(
+        blocker.card_types.contains(&CardType::Creature)
+            || blocker.all_card_types.contains(&CardType::Creature)
+    );
+
+    let blocks_tokens = tokenize_line("a red creature blocks a creature with lesser power", 0);
+    let blocks =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &blocks_tokens,
+        )
+        .expect("relative-power blocks trigger should parse");
+    let crate::runtime_backend::ast::TriggerSpec::BlocksObjectWithLesserPower { blocker, blocked } =
+        blocks
+    else {
+        panic!("expected typed relative-power blocks trigger");
+    };
+    assert_eq!(blocker.colors, Some(crate::color::ColorSet::RED));
+    assert_eq!(blocker.card_types, [CardType::Creature]);
+    assert_eq!(blocked.card_types, [CardType::Creature]);
+}
+
+#[test]
+fn this_blocks_group_preserves_minimum_cardinality() {
+    let tokens = tokenize_line("this creature blocks two or more creatures", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("minimum-cardinality block trigger should parse");
+    let crate::runtime_backend::ast::TriggerSpec::ThisBlocksObject {
+        filter,
+        min_blocked_objects,
+    } = &parsed
+    else {
+        panic!("expected a grouped this-blocks trigger, got {parsed:?}");
+    };
+
+    assert_eq!(*min_blocked_objects, Some(2));
+    assert!(filter.card_types.contains(&CardType::Creature));
+}
+
+#[test]
+fn attack_group_quantifiers_preserve_their_minimum_cardinality() {
+    for (clause, expected_minimum) in [
+        ("two or more creatures your opponents control attack", 2),
+        ("three or more creatures you control with flying attack", 3),
+    ] {
+        let tokens = tokenize_line(clause, 0);
+        let parsed =
+            crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+                &tokens,
+            )
+            .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
+
+        let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMoreWithMinTotal {
+            min_total_attackers,
+            ..
+        } = &parsed
+        else {
+            panic!("expected a minimum-cardinality attack trigger for {clause:?}: {parsed:?}");
+        };
+        assert_eq!(*min_total_attackers, expected_minimum, "{clause}");
+    }
+}
+
+#[test]
+fn opponent_or_opponent_planeswalker_attack_surfaces_reach_the_typed_trigger() {
+    for (clause, expected_one_or_more) in [
+        (
+            "a creature attacks one of your opponents or a planeswalker an opponent controls",
+            false,
+        ),
+        (
+            "one or more creatures attack one of your opponents or a planeswalker they control",
+            true,
+        ),
+    ] {
+        let tokens = tokenize_line(clause, 0);
+        let parsed =
+            crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+                &tokens,
+            )
+            .unwrap_or_else(|error| panic!("failed to parse {clause:?}: {error}"));
+
+        let filter = match &parsed {
+            crate::runtime_backend::ast::TriggerSpec::Attacks(filter) if !expected_one_or_more => {
+                filter
+            }
+            crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter)
+                if expected_one_or_more =>
+            {
+                filter
+            }
+            _ => panic!("unexpected attack-trigger shape for {clause:?}: {parsed:#?}"),
+        };
+        assert_eq!(
+            filter
+                .attacking_player_or_planeswalker_controlled_by
+                .as_ref(),
+            Some(&PlayerFilter::Opponent),
+            "{clause}"
+        );
+        assert!(filter.targets_only_player.is_none(), "{clause}");
+    }
+}
+
+#[test]
+fn initiative_holder_attack_target_keeps_dynamic_player_reference() {
+    let tokens = tokenize_line("you attack the player who has the initiative", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("initiative-holder attack trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
+        panic!("expected a group attack trigger, got {parsed:#?}");
+    };
+    let expected =
+        PlayerFilter::TaggedPlayer(crate::TagKey::from(ironsmith_core::INITIATIVE_HOLDER_TAG));
+    assert_eq!(
+        filter
+            .attacking_player_or_planeswalker_controlled_by
+            .as_ref(),
+        Some(&expected)
+    );
+    assert_eq!(filter.targets_only_player.as_ref(), Some(&expected));
+}
+
+#[test]
+fn repeated_attack_intro_resolves_enchanted_player_pronoun_on_both_branches() {
+    fn without_intro(
+        trigger: &crate::runtime_backend::ast::TriggerSpec,
+    ) -> &crate::runtime_backend::ast::TriggerSpec {
+        match trigger {
+            crate::runtime_backend::ast::TriggerSpec::WithIntro { trigger, .. } => {
+                without_intro(trigger)
+            }
+            trigger => trigger,
+        }
+    }
+
+    let tokens = tokenize_line(
+        "when you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("repeated-intro attack union should parse");
+    let crate::runtime_backend::ast::TriggerSpec::Either(left, right) = &parsed else {
+        panic!("expected a two-branch attack trigger, got {parsed:#?}");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(left_filter) =
+        without_intro(left)
+    else {
+        panic!("expected controller attack branch, got {left:#?}");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(
+        right_filter,
+    ) = without_intro(right)
+    else {
+        panic!("expected enchanted-player counterattack branch, got {right:#?}");
+    };
+    let enchanted = PlayerFilter::TaggedPlayer(crate::TagKey::from("enchanted"));
+    assert_eq!(
+        left_filter
+            .attacking_player_or_planeswalker_controlled_by
+            .as_ref(),
+        Some(&enchanted)
+    );
+    assert!(left_filter.targets_only_player.is_none());
+    assert_eq!(right_filter.controller.as_ref(), Some(&enchanted));
+}
+
+#[test]
+fn subject_first_attack_group_does_not_claim_attack_with_surface() {
+    let tokens = tokenize_line("one or more suspected creatures you control attack", 0);
+    let parsed =
+        crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+            &tokens,
+        )
+        .expect("subject-first attack group should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::AttacksOneOrMore(filter) = &parsed else {
+        panic!("expected one-or-more attack trigger, got {parsed:?}");
+    };
+    assert!(filter.suspected);
+    assert!(
+        !filter.union_is_one_or_more(),
+        "the union flag is reserved for explicit 'attack with one or more' surface"
+    );
 }
 
 #[test]
@@ -501,7 +1004,7 @@ fn zone_change_unions_reach_runtime_with_quantifier_and_connective_surfaces() {
         ),
         (
             "another Villain and/or artifact you control enters",
-            "Whenever another artifact and/or Villain you control enters the battlefield",
+            "Whenever another Villain and/or artifact you control enters the battlefield",
         ),
     ];
 

@@ -31,6 +31,7 @@ fn simple_negated_object_restriction(
         SimpleObjectRestrictionKind::BeCountered => Restriction::be_countered(filter.clone()),
         SimpleObjectRestrictionKind::Transform => Restriction::transform(filter.clone()),
         SimpleObjectRestrictionKind::PhaseOut => Restriction::phase_out(filter.clone()),
+        SimpleObjectRestrictionKind::PhaseIn => Restriction::phase_in(filter.clone()),
         SimpleObjectRestrictionKind::BeTargeted => Restriction::be_targeted(filter.clone()),
     })
 }
@@ -259,6 +260,17 @@ pub(crate) fn parse_cant_restrictions(
             {
                 let mut with_subject = shared_subject.clone();
                 with_subject.extend(segment.iter().cloned());
+                expanded = with_subject;
+            } else if idx > 0
+                && !shared_subject.is_empty()
+                && let Some((neg_start, _)) = find_negation_span(segment)
+                && matches!(
+                    trim_commas(&segment[..neg_start]).as_slice(),
+                    [token] if token.is_word("it") || token.is_word("they")
+                )
+            {
+                let mut with_subject = shared_subject.clone();
+                with_subject.extend(segment[neg_start..].iter().cloned());
                 expanded = with_subject;
             } else if idx > 0
                 && !shared_subject.is_empty()
@@ -620,6 +632,7 @@ fn parse_and_or_disjunction_filter(
 
     let mut disjunction = ObjectFilter::default();
     disjunction.any_of = filters;
+    disjunction.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
     Ok(Some(disjunction))
 }
 
@@ -784,16 +797,24 @@ fn invert_except_by_blocker_filter(allowed: &ObjectFilter) -> Option<ObjectFilte
     }
 
     let mut disallowed = ObjectFilter::creature();
+    disallowed.set_union_connective(allowed.union_connective());
     for clause in clauses {
         if !clause.any_of.is_empty() {
             return None;
         }
 
-        if !clause.card_types.is_empty()
-            && !clause.card_types.contains(&CardType::Creature)
-            && clause.card_types.len() == 1
+        // `artifact creatures` carries both the shared blocker domain
+        // (`Creature`) and the actual allowed qualifier (`Artifact`). Invert
+        // every non-Creature type qualifier while leaving the implicit
+        // blocker domain intact.
+        for card_type in clause
+            .card_types
+            .iter()
+            .chain(clause.all_card_types.iter())
+            .copied()
+            .filter(|card_type| *card_type != CardType::Creature)
         {
-            disallowed = disallowed.without_type(clause.card_types[0]);
+            disallowed = disallowed.without_type(card_type);
         }
 
         for subtype in &clause.subtypes {
@@ -994,9 +1015,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
             if remainder_words.len() > payload_words =>
         {
             let blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
-            let allowed_blocker_filter = parse_subject_object_filter(&blocker_tokens)?
+            let allowed_blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
+                .or(parse_subject_object_filter(&blocker_tokens)?)
                 .or_else(|| parse_object_filter(&blocker_tokens, false).ok())
-                .or(parse_and_or_disjunction_filter(&blocker_tokens)?)
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
@@ -1016,9 +1037,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
             if remainder_words.len() > payload_words =>
         {
             let blocker_tokens = trim_commas(&remainder_tokens[payload_words..]);
-            let blocker_filter = parse_subject_object_filter(&blocker_tokens)?
+            let blocker_filter = parse_and_or_disjunction_filter(&blocker_tokens)?
+                .or(parse_subject_object_filter(&blocker_tokens)?)
                 .or_else(|| parse_object_filter(&blocker_tokens, false).ok())
-                .or(parse_and_or_disjunction_filter(&blocker_tokens)?)
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
@@ -1052,9 +1073,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
             if remainder_words.len() > payload_words =>
         {
             let attacker_tokens = trim_commas(&remainder_tokens[payload_words..]);
-            let attacker_filter = parse_subject_object_filter(&attacker_tokens)?
+            let attacker_filter = parse_and_or_disjunction_filter(&attacker_tokens)?
+                .or(parse_subject_object_filter(&attacker_tokens)?)
                 .or_else(|| parse_object_filter(&attacker_tokens, false).ok())
-                .or(parse_and_or_disjunction_filter(&attacker_tokens)?)
                 .ok_or_else(|| {
                     CardTextError::ParseError(format!(
                         "unsupported negated restriction tail (clause: '{}')",
@@ -1220,6 +1241,9 @@ pub(crate) fn parse_subject_object_filter(
         Some(restriction_grammar::RestrictionSubjectSurface::Damage) => {
             return Ok(Some(ObjectFilter::default()));
         }
+        Some(restriction_grammar::RestrictionSubjectSurface::Source) => {
+            return Ok(Some(ObjectFilter::source()));
+        }
         Some(restriction_grammar::RestrictionSubjectSurface::TaggedObjectPronoun) => {
             return Ok(Some(ObjectFilter::tagged(TagKey::from(IT_TAG))));
         }
@@ -1227,6 +1251,17 @@ pub(crate) fn parse_subject_object_filter(
     }
 
     let words_all = crate::runtime_backend::token_word_refs(tokens);
+    if let Some(shape) = restriction_grammar::parse_dealt_damage_by_source_subject_words(&words_all)
+    {
+        let word_view = crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens);
+        let Some(base_end) = word_view.token_boundary_for_word_or_end(shape.base_word_count) else {
+            return Ok(None);
+        };
+        let base_tokens = trim_commas(&tokens[..base_end]);
+        let mut filter = parse_object_filter_lexed(&base_tokens, false)?;
+        filter.dealt_damage_by_source_this_turn = Some(shape.damager);
+        return Ok(Some(filter));
+    }
     if restriction_grammar::parse_power_or_toughness_subject_words(&words_all).is_some() {
         return Err(CardTextError::ParseError(format!(
             "unsupported subject object filter (clause: '{}')",
@@ -1256,4 +1291,118 @@ pub(crate) fn parse_subject_object_filter(
     })?;
 
     Ok(target_ast_to_object_filter(target))
+}
+
+#[cfg(test)]
+mod blocker_union_tests {
+    use super::*;
+    use crate::filter::Comparison;
+    use crate::runtime_backend::lexer::lex_line;
+
+    fn parse_blockers(text: &str) -> ObjectFilter {
+        let tokens = lex_line(text, 0).expect("blocking restriction should lex");
+        let parsed = parse_negated_object_restriction_clause(&tokens)
+            .expect("blocking restriction should route")
+            .expect("blocking restriction should parse");
+        let crate::effect::Restriction::BlockSpecificAttacker { blockers, .. } = parsed.restriction
+        else {
+            panic!("expected a blocker restriction");
+        };
+        blockers
+    }
+
+    #[test]
+    fn explicit_and_or_blocker_arms_keep_independent_qualifiers() {
+        let blockers = parse_blockers(
+            "Target creature can't be blocked by creatures with power 2 or less and/or Walls.",
+        );
+
+        assert_eq!(blockers.any_of.len(), 2, "{blockers:#?}");
+        assert_eq!(
+            blockers.union_connective(),
+            crate::filter::ObjectFilterUnionConnective::AndOr
+        );
+        assert!(
+            blockers
+                .any_of
+                .iter()
+                .any(|branch| branch.power == Some(Comparison::LessThanOrEqual(2))),
+            "{blockers:#?}"
+        );
+        assert!(
+            blockers
+                .any_of
+                .iter()
+                .any(|branch| branch.subtypes.contains(&Subtype::Wall)),
+            "{blockers:#?}"
+        );
+    }
+
+    #[test]
+    fn except_by_and_or_union_inverts_every_allowed_arm() {
+        let blockers = parse_blockers(
+            "Target creature can't be blocked except by artifact creatures and/or red creatures.",
+        );
+
+        assert!(
+            blockers.excluded_card_types.contains(&CardType::Artifact),
+            "{blockers:#?}"
+        );
+        assert!(
+            blockers.excluded_colors.contains(crate::Color::Red),
+            "{blockers:#?}"
+        );
+    }
+
+    #[test]
+    fn effect_restrictions_inherit_it_and_they_subjects() {
+        for (text, expected_subtype) in [
+            (
+                "Clerics your opponents control can't block, and they can't attack you.",
+                Subtype::Cleric,
+            ),
+            (
+                "Rogues your opponents control can't block, and they can't attack you.",
+                Subtype::Rogue,
+            ),
+        ] {
+            let tokens = lex_line(text, 0).expect("restriction should lex");
+            let restrictions = parse_cant_restrictions(&tokens)
+                .expect("restriction conjunction should parse")
+                .expect("expected typed restrictions");
+            assert_eq!(restrictions.len(), 2, "{text}: {restrictions:#?}");
+            let crate::effect::Restriction::Block(blockers) = &restrictions[0].restriction else {
+                panic!("expected block restriction for {text}: {restrictions:#?}");
+            };
+            let crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+                attackers,
+                player: PlayerFilter::You,
+            } = &restrictions[1].restriction
+            else {
+                panic!("expected attack restriction for {text}: {restrictions:#?}");
+            };
+            assert_eq!(blockers, attackers, "{text}");
+            assert!(blockers.subtypes.contains(&expected_subtype), "{text}");
+        }
+    }
+
+    #[test]
+    fn source_relative_damage_subject_keeps_the_affected_creature_set() {
+        let tokens = lex_line("Creatures dealt damage by this creature this turn", 0)
+            .expect("source-relative restriction subject should lex");
+        let filter = parse_subject_object_filter(&tokens)
+            .expect("source-relative restriction subject should parse")
+            .expect("source-relative restriction subject should produce a filter");
+
+        assert!(!filter.source, "{filter:#?}");
+        assert!(
+            filter.card_types.contains(&CardType::Creature),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.dealt_damage_by_source_this_turn,
+            Some(ironsmith_core::DamagedBySource::ThisCreature),
+            "{filter:#?}"
+        );
+    }
 }

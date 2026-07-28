@@ -49,6 +49,7 @@ pub(super) fn test_gift_optional_cost_choice_refreshes_pending_target_prompt() {
                 crate::effect::Condition::ThisSpellPaidLabel("Gift".into()),
                 vec![Effect::move_to_zone(gift_target, Zone::Hand, false)],
             )],
+            starts_new_source_line: false,
         }]);
 
     if let Some(obj) = game.object_mut(spell_id) {

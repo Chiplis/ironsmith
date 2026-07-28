@@ -272,7 +272,11 @@ pub(super) fn try_compile_object_zone_and_exchange_effect(
                 effects = mark_choose_effects_reveal(effects);
             }
             ctx.last_it_choice_is_set = tag.as_str() == IT_TAG;
-            ctx.last_object_tag = Some(tag.as_str().to_string());
+            if tag.as_str()
+                != crate::runtime_backend::condition_antecedent::CONDITION_COLLECTION_CHOICE_TAG
+            {
+                ctx.last_object_tag = Some(tag.as_str().to_string());
+            }
             record_exiled_collection_choice(ctx, tag, count);
             ctx.last_player_filter = Some(followup_player);
             (effects, choices)

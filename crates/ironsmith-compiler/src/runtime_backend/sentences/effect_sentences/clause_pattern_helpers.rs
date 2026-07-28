@@ -244,6 +244,20 @@ pub(crate) fn parse_copy_spell_clause(
         }
     }
 
+    fn target_reference_kind(tokens: &[OwnedLexToken]) -> Option<crate::filter::StackObjectKind> {
+        let words = crate::runtime_backend::token_word_refs(tokens);
+        let mentions_spell = words.iter().any(|word| matches!(*word, "spell" | "spells"));
+        let mentions_ability = words
+            .iter()
+            .any(|word| matches!(*word, "ability" | "abilities"));
+        match (mentions_spell, mentions_ability) {
+            (true, true) => Some(crate::filter::StackObjectKind::SpellOrAbility),
+            (true, false) => Some(crate::filter::StackObjectKind::Spell),
+            (false, true) => Some(crate::filter::StackObjectKind::Ability),
+            (false, false) => None,
+        }
+    }
+
     fn removed_supertypes(shape: &clause_shapes::CopyClauseShape) -> Vec<Supertype> {
         if shape.removed_legendary {
             vec![Supertype::Legendary]
@@ -260,6 +274,9 @@ pub(crate) fn parse_copy_spell_clause(
     if copy_shape.emblem_with {
         return Ok(None);
     }
+    let copy_modifiers =
+        super::super::grammar::effects::parse_copy_modifier_words(&clause.word_refs())?;
+    let added_card_types = copy_modifiers.added_card_types;
     let copy_idx = copy_shape.copy_word;
     let tail = &tokens[copy_idx + 1..];
     let split_idx = copy_shape.tail.retarget_split;
@@ -351,14 +368,23 @@ pub(crate) fn parse_copy_spell_clause(
             copy_target_tail,
         ))
         .unwrap_or(TargetAst::Source(None));
-        let base = EffectAst::subject_verb_copy_spell(
+        let target_reference_pronoun = matches!(
+            clause_shapes::parse_copy_target_shape_tokens(copy_target_tail),
+            clause_shapes::CopyTargetShape::TaggedIt
+        );
+        let mut base = EffectAst::subject_verb_copy_spell(
             target,
             count,
             PlayerAst::Implicit,
             copy_clause_split_idx.is_some(),
             copy_clause_tail_shape.retarget_single_target,
             removed_supertypes(&copy_clause_shape),
-        );
+        )
+        .with_copy_added_card_types(added_card_types)
+        .with_copy_target_reference_pronoun(target_reference_pronoun);
+        if let Some(kind) = target_reference_kind(copy_target_tail) {
+            base = base.with_copy_target_reference_kind(kind);
+        }
         if let Some(trailing_if) = trailing_if {
             return Ok(Some(EffectAst::TrailingIf {
                 predicate: trailing_if.predicate,
@@ -380,9 +406,7 @@ pub(crate) fn parse_copy_spell_clause(
         let pronoun_stack_reference = matches!(subject, SubjectAst::Player(_))
             && split_idx.is_some_and(|idx| {
                 matches!(
-                    clause_shapes::parse_copy_target_shape_tokens(trim_lexed_commas(
-                        &tail[..idx]
-                    )),
+                    clause_shapes::parse_copy_target_shape_tokens(trim_lexed_commas(&tail[..idx])),
                     clause_shapes::CopyTargetShape::TaggedIt
                         | clause_shapes::CopyTargetShape::Triggering
                 )
@@ -448,6 +472,8 @@ pub(crate) fn parse_copy_spell_clause(
     }
 
     let target_shape = clause_shapes::parse_copy_target_shape_tokens(copy_target_clause.tokens());
+    let target_reference_pronoun =
+        matches!(target_shape, clause_shapes::CopyTargetShape::TaggedIt);
     let target = if let Some(target) = target_from_shape(target_shape) {
         target
     } else if let clause_shapes::CopyTargetShape::Explicit(target_tokens) = target_shape {
@@ -477,17 +503,21 @@ pub(crate) fn parse_copy_spell_clause(
     }
 
     let copy_all_matches = token_slice_first_is(copy_target_clause.tokens(), "all");
-    Ok(Some(
-        EffectAst::subject_verb_copy_spell(
-            target,
-            count,
-            player,
-            may_choose_new_targets,
-            choose_new_target_singular,
-            removed_supertypes(&copy_shape),
-        )
-        .with_copy_all_matches(copy_all_matches),
-    ))
+    let mut effect = EffectAst::subject_verb_copy_spell(
+        target,
+        count,
+        player,
+        may_choose_new_targets,
+        choose_new_target_singular,
+        removed_supertypes(&copy_shape),
+    )
+    .with_copy_added_card_types(added_card_types)
+    .with_copy_all_matches(copy_all_matches)
+    .with_copy_target_reference_pronoun(target_reference_pronoun);
+    if let Some(kind) = target_reference_kind(copy_target_clause.tokens()) {
+        effect = effect.with_copy_target_reference_kind(kind);
+    }
+    Ok(Some(effect))
 }
 
 fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Option<Value>) {
@@ -496,6 +526,16 @@ fn strip_copy_count_suffix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], Optio
             &tokens[..tokens.len().saturating_sub(1)],
             Some(Value::Fixed(2)),
         );
+    }
+    if tokens.len() >= 2
+        && (token_slice_last_is(tokens, "time") || token_slice_last_is(tokens, "times"))
+    {
+        let amount_idx = tokens.len() - 2;
+        if let Some((count, used)) = parse_value(&tokens[amount_idx..amount_idx + 1])
+            && used == 1
+        {
+            return (&tokens[..amount_idx], Some(count));
+        }
     }
     (tokens, None)
 }
@@ -537,6 +577,135 @@ mod copy_all_tests {
             assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
         }
     }
+
+    #[test]
+    fn preserves_variable_copy_count_before_retarget_clause() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy that spell X times. You may choose new targets for the copies.",
+            0,
+        )
+        .expect("variable-count copy sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("variable-count copy sentence should parse")
+            .expect("copy parser should match");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    count,
+                    may_choose_new_targets,
+                    ..
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected a typed copy-spell action, got {parsed:#?}");
+        };
+        assert_eq!(count, Value::X);
+        assert!(may_choose_new_targets);
+    }
+
+    #[test]
+    fn copy_back_references_preserve_stack_object_kind() {
+        for (text, expected) in [
+            ("Copy that spell.", crate::filter::StackObjectKind::Spell),
+            (
+                "Copy that ability.",
+                crate::filter::StackObjectKind::Ability,
+            ),
+            (
+                "Copy that spell or ability.",
+                crate::filter::StackObjectKind::SpellOrAbility,
+            ),
+        ] {
+            let tokens =
+                crate::runtime_backend::lex_line(text, 0).expect("copy reference should lex");
+            let parsed = parse_copy_spell_clause(&tokens)
+                .expect("copy reference should parse")
+                .expect("copy parser should match");
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::CopySpell {
+                        target_reference_kind,
+                        ..
+                    },
+                ..
+            }) = parsed
+            else {
+                panic!("expected a typed copy action for {text:?}, got {parsed:#?}");
+            };
+            assert_eq!(target_reference_kind, Some(expected), "{text}");
+        }
+    }
+
+    #[test]
+    fn copy_pronoun_surface_survives_independently_of_stack_kind() {
+        let tokens =
+            crate::runtime_backend::lex_line("Copy it.", 0).expect("copy pronoun should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("copy pronoun should parse")
+            .expect("copy parser should match");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    target_reference_pronoun,
+                    ..
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected a typed copy action, got {parsed:#?}");
+        };
+        assert!(target_reference_pronoun);
+    }
+
+    #[test]
+    fn copy_target_keeps_shared_spell_domain_controller_and_mana_value() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Copy target instant or sorcery spell you control with mana value X. You may choose new targets for the copy.",
+            0,
+        )
+        .expect("qualified copy sentence should lex");
+        let parsed = parse_copy_spell_clause(&tokens)
+            .expect("qualified copy sentence should parse")
+            .expect("copy parser should match");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Object(filter, ..),
+                    count,
+                    may_choose_new_targets,
+                    ..
+                },
+            ..
+        }) = parsed
+        else {
+            panic!("expected a typed copy-spell action, got {parsed:#?}");
+        };
+
+        assert_eq!(count, Value::Fixed(1));
+        assert!(may_choose_new_targets);
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.card_types,
+            [
+                crate::types::CardType::Instant,
+                crate::types::CardType::Sorcery
+            ],
+            "{filter:#?}"
+        );
+        assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
+        assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(
+            filter.stack_kind,
+            Some(crate::filter::StackObjectKind::Spell),
+            "{filter:#?}"
+        );
+        assert!(matches!(
+            filter.mana_value.as_ref(),
+            Some(crate::filter::Comparison::EqualExpr(value))
+                if value.unhinted() == &Value::X
+        ));
+    }
 }
 
 pub(crate) fn parse_counter_target_phrase(
@@ -553,7 +722,26 @@ pub(crate) fn parse_counter_target_phrase(
         )));
     }
 
-    parse_target_phrase(tokens)
+    let mut target = parse_target_phrase(tokens)?;
+    preserve_spell_kind_on_copy_target(&mut target);
+    Ok(target)
+}
+
+fn preserve_spell_kind_on_copy_target(target: &mut TargetAst) {
+    match target {
+        TargetAst::Object(filter, ..) => {
+            // Ability targets are routed above. A remaining typed object in a
+            // copy-spell instruction is necessarily a spell on the stack,
+            // even when the general object-filter grammar represented its
+            // card-type union without a stack-kind marker.
+            filter.zone = Some(Zone::Stack);
+            filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            preserve_spell_kind_on_copy_target(inner);
+        }
+        _ => {}
+    }
 }
 
 fn parse_counter_ability_target_phrase(
@@ -1368,6 +1556,16 @@ pub(crate) fn parse_keyword_mechanic_clause(
         }
         clause_shapes::KeywordMechanicShape::Explore { subject, repeat } => {
             let target = match subject {
+                clause_shapes::KeywordSubjectShape::Source(subject_tokens)
+                    if subject_tokens.len() == 1 && token_slice_first_is(subject_tokens, "it") =>
+                {
+                    // "It" is contextual even when the keyword-shape grammar
+                    // classifies it with source-like subjects. Let ordinary
+                    // reference resolution bind it to a preceding returned or
+                    // otherwise produced object; with no antecedent it still
+                    // resolves to the source (the common ETB explore case).
+                    parse_target_phrase(subject_tokens)?
+                }
                 clause_shapes::KeywordSubjectShape::Source(subject_tokens) => {
                     TargetAst::Source(span_from_tokens(subject_tokens))
                 }

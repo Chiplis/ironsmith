@@ -71,7 +71,7 @@ fn contains_temporal_marker(tokens: &[OwnedLexToken]) -> bool {
     .is_some()
 }
 
-fn permits_implicit_eot(subject: &[OwnedLexToken], all: &[OwnedLexToken]) -> bool {
+fn permits_unqualified_duration(subject: &[OwnedLexToken], all: &[OwnedLexToken]) -> bool {
     primitives::contains_word(subject, "target")
         || duration_prefix(subject).is_some()
         || contains_temporal_marker(all)
@@ -146,10 +146,10 @@ pub(crate) fn parse_base_power_clause_shape(
     let tail = trim_edge_punctuation_tokens(value_tokens.get(consumed..).unwrap_or_default());
     let (target_tokens, leading_duration) = target_and_leading_duration(subject);
     let duration = if tail.is_empty() {
-        if !permits_implicit_eot(subject, tokens) {
+        if !permits_unqualified_duration(subject, tokens) {
             return Ok(None);
         }
-        leading_duration.unwrap_or(Until::EndOfTurn)
+        leading_duration.unwrap_or(Until::Forever)
     } else if let Some(trailing_duration) = complete_duration(tail) {
         if leading_duration
             .as_ref()
@@ -202,18 +202,18 @@ pub(crate) fn parse_base_power_toughness_clause_shape(
     let (target_tokens, leading_duration) = target_and_leading_duration(subject);
     let mut where_x_tokens = None;
     let duration = if tail.is_empty() {
-        if !permits_implicit_eot(subject, tokens) {
+        if !permits_unqualified_duration(subject, tokens) {
             return Ok(None);
         }
-        leading_duration.unwrap_or(Until::EndOfTurn)
+        leading_duration.unwrap_or(Until::Forever)
     } else if has_shared_gain_tail(tail) {
         return Ok(None);
     } else if primitives::parse_prefix(tail, primitives::phrase(&["where", "x", "is"])).is_some() {
-        if !permits_implicit_eot(subject, tokens) {
+        if !permits_unqualified_duration(subject, tokens) {
             return Ok(None);
         }
         where_x_tokens = Some(tail);
-        leading_duration.unwrap_or(Until::EndOfTurn)
+        leading_duration.unwrap_or(Until::Forever)
     } else if let Some(trailing_duration) = complete_duration(tail) {
         if leading_duration
             .as_ref()
@@ -262,8 +262,18 @@ mod tests {
             .unwrap();
         assert_eq!(shape.power, Value::Fixed(3));
         assert_eq!(shape.toughness, Value::Fixed(4));
-        assert_eq!(shape.duration, Until::EndOfTurn);
+        assert_eq!(shape.duration, Until::Forever);
         assert!(shape.where_x_tokens.is_none());
+
+        let permanent_multi_target = lex_line(
+            "any number of target Shapeshifter creatures you control have base power and toughness 4/4",
+            0,
+        )
+        .unwrap();
+        let shape = parse_base_power_toughness_clause_shape(&permanent_multi_target)
+            .unwrap()
+            .unwrap();
+        assert_eq!(shape.duration, Until::Forever);
 
         let pt = lex_line(
             "until your next turn, creatures target player controls have base power and toughness 1/1",

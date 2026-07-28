@@ -1,9 +1,10 @@
 //! Pay mana effect implementation.
 
 use crate::ability::ActivatedAbilityRuntimeExt as _;
-use crate::decision::DecisionMaker;
+use crate::decision::{DecisionMaker, FallbackStrategy};
 use crate::decisions::context::{SelectOptionsContext, SelectableOption};
-use crate::effect::EffectOutcome;
+use crate::decisions::{XValueSpec, make_decision_with_fallback};
+use crate::effect::{EffectOutcome, ExecutionFact};
 use crate::effects::helpers::{resolve_player_from_spec, resolve_value};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
 use crate::effects::{ExecutionContext, ExecutionError};
@@ -14,7 +15,8 @@ use crate::target::{ChooseSpec, PlayerFilter};
 
 /// Effect that asks a player to pay a mana cost.
 ///
-/// Returns `Count(1)` when paid, `Impossible` when the player can't pay.
+/// Returns `Count(1)` for a fixed or externally defined payment. For a bounded
+/// player-chosen X payment, returns `Count(X)` and records the chosen number.
 pub type PayManaEffect = ironsmith_core::PayManaEffect;
 
 fn payment_reason(ctx: &ExecutionContext<'_>) -> crate::costs::PaymentReason {
@@ -28,15 +30,9 @@ fn try_pay_interactively(
     game: &mut GameState,
     ctx: &mut ExecutionContext,
     player_id: PlayerId,
+    x_value: u32,
 ) -> Result<bool, ExecutionError> {
     const MAX_PAYMENT_STEPS: usize = 32;
-    let x_value = effect
-        .x_value
-        .as_ref()
-        .map(|value| resolve_value(game, value, ctx))
-        .transpose()?
-        .unwrap_or(0)
-        .max(0) as u32;
     let payment_reason = payment_reason(ctx);
 
     for _ in 0..MAX_PAYMENT_STEPS {
@@ -152,6 +148,46 @@ fn try_pay_interactively(
     ))
 }
 
+fn maximum_affordable_bounded_x(
+    effect: &PayManaEffect,
+    game: &GameState,
+    ctx: &ExecutionContext<'_>,
+    player_id: PlayerId,
+    semantic_maximum: u32,
+) -> Option<u32> {
+    let reason = payment_reason(ctx);
+    let adjusted_cost =
+        game.adjust_mana_cost_for_payment_reason(player_id, Some(ctx.source), &effect.cost, reason);
+    let view = crate::derived_view::DerivedGameView::new(game);
+    let can_pay = |x_value| {
+        view.can_potentially_pay_with_reason(
+            player_id,
+            Some(ctx.source),
+            &adjusted_cost,
+            x_value,
+            reason,
+        )
+    };
+    if !can_pay(0) {
+        return None;
+    }
+
+    // Paying a mana cost with a larger X cannot require less mana than paying
+    // the same cost with a smaller X, so affordability is monotonic.
+    let mut lower = 0;
+    let mut upper = semantic_maximum;
+    while lower < upper {
+        let distance = upper - lower;
+        let middle = lower + distance / 2 + distance % 2;
+        if can_pay(middle) {
+            lower = middle;
+        } else {
+            upper = middle - 1;
+        }
+    }
+    Some(lower)
+}
+
 impl EffectExecutor for PayManaEffect {
     fn as_cost_executable(&self) -> Option<&dyn CostExecutableEffect> {
         Some(self)
@@ -163,10 +199,47 @@ impl EffectExecutor for PayManaEffect {
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
         let player_id = resolve_player_from_spec(game, &self.player, ctx)?;
-        if try_pay_interactively(self, game, ctx, player_id)? {
-            Ok(EffectOutcome::count(1))
+        let bounded_x = if let Some(maximum) = &self.x_maximum {
+            let semantic_maximum = resolve_value(game, maximum, ctx)?.max(0) as u32;
+            let Some(affordable_maximum) =
+                maximum_affordable_bounded_x(self, game, ctx, player_id, semantic_maximum)
+            else {
+                return Ok(EffectOutcome::impossible());
+            };
+            let chosen = make_decision_with_fallback(
+                game,
+                &mut ctx.decision_maker,
+                player_id,
+                Some(ctx.source),
+                XValueSpec::new(ctx.source, affordable_maximum),
+                FallbackStrategy::Maximum,
+            );
+            if ctx.decision_maker.awaiting_choice() {
+                return Ok(EffectOutcome::count(0));
+            }
+            Some(chosen.min(affordable_maximum))
         } else {
+            None
+        };
+        let x_value = if let Some(chosen) = bounded_x {
+            chosen
+        } else {
+            self.x_value
+                .as_ref()
+                .map(|value| resolve_value(game, value, ctx))
+                .transpose()?
+                .unwrap_or(0)
+                .max(0) as u32
+        };
+
+        if !try_pay_interactively(self, game, ctx, player_id, x_value)? {
             Ok(EffectOutcome::impossible())
+        } else if let Some(chosen) = bounded_x {
+            Ok(EffectOutcome::count(chosen as i32)
+                .with_execution_fact(ExecutionFact::ChosenNumber(chosen))
+                .with_execution_fact(ExecutionFact::ManaPaid { x_value: chosen }))
+        } else {
+            Ok(EffectOutcome::count(1))
         }
     }
 
@@ -206,17 +279,22 @@ impl CostExecutableEffect for PayManaEffect {
             &self.cost,
             crate::costs::PaymentReason::Effect,
         );
-        let context = ExecutionContext::new_default(source, controller);
-        let x_value = self
-            .x_value
-            .as_ref()
-            .map(|value| resolve_value(game, value, &context))
-            .transpose()
-            .map_err(|_| {
-                CostValidationError::Other("unable to resolve mana payment X value".to_string())
-            })?
-            .unwrap_or(0)
-            .max(0) as u32;
+        let x_value = if self.x_maximum.is_some() {
+            // Zero is always inside a bounded-X range. The semantic maximum
+            // may depend on trigger context that cost preflight does not have.
+            0
+        } else {
+            let context = ExecutionContext::new_default(source, controller);
+            self.x_value
+                .as_ref()
+                .map(|value| resolve_value(game, value, &context))
+                .transpose()
+                .map_err(|_| {
+                    CostValidationError::Other("unable to resolve mana payment X value".to_string())
+                })?
+                .unwrap_or(0)
+                .max(0) as u32
+        };
         if game.can_pay_mana_cost_with_reason(
             player_id,
             Some(source),
@@ -402,6 +480,32 @@ mod tests {
         }
     }
 
+    struct ChooseBoundedXDecisionMaker {
+        choice: u32,
+        offered_maximum: Option<u32>,
+    }
+
+    impl ChooseBoundedXDecisionMaker {
+        fn new(choice: u32) -> Self {
+            Self {
+                choice,
+                offered_maximum: None,
+            }
+        }
+    }
+
+    impl DecisionMaker for ChooseBoundedXDecisionMaker {
+        fn decide_number(
+            &mut self,
+            _game: &GameState,
+            ctx: &crate::decisions::context::NumberContext,
+        ) -> u32 {
+            assert!(ctx.is_x_value);
+            self.offered_maximum = Some(ctx.max);
+            self.choice.min(ctx.max)
+        }
+    }
+
     #[cfg(ironsmith_runtime_parser_tests)]
     #[test]
     fn pay_mana_effect_activates_mana_ability_then_pays() {
@@ -489,6 +593,132 @@ mod tests {
                 .red,
             0,
             "the X payment should spend one generic mana per source counter"
+        );
+    }
+
+    #[test]
+    fn bounded_x_payment_uses_trigger_amount_and_preserves_chosen_x() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .red = 5;
+        let life_gain = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::LifeGainEvent::new(alice, 3),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let mut dm = ChooseBoundedXDecisionMaker::new(2);
+        let mut ctx =
+            ExecutionContext::new(source, alice, &mut dm).with_triggering_event(life_gain);
+        let effect = PayManaEffect::new(
+            ManaCost::from_symbols(vec![ManaSymbol::X]),
+            ChooseSpec::Player(PlayerFilter::You),
+        )
+        .with_x_maximum(crate::effect::Value::EventValue(
+            crate::effect::EventValueSpec::LifeAmount,
+        ));
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("bounded X payment should execute");
+
+        assert_eq!(dm.offered_maximum, Some(3));
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert!(
+            result
+                .execution_facts()
+                .contains(&ExecutionFact::ChosenNumber(2))
+        );
+        assert_eq!(
+            game.player(alice)
+                .expect("alice should exist")
+                .mana_pool
+                .red,
+            3
+        );
+    }
+
+    #[test]
+    fn bounded_x_payment_only_offers_affordable_values() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        game.player_mut(alice)
+            .expect("alice should exist")
+            .mana_pool
+            .red = 2;
+        let life_gain = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::LifeGainEvent::new(alice, 5),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let mut dm = ChooseBoundedXDecisionMaker::new(5);
+        let mut ctx =
+            ExecutionContext::new(source, alice, &mut dm).with_triggering_event(life_gain);
+        let effect = PayManaEffect::new(
+            ManaCost::from_symbols(vec![ManaSymbol::X]),
+            ChooseSpec::Player(PlayerFilter::You),
+        )
+        .with_x_maximum(crate::effect::Value::EventValue(
+            crate::effect::EventValueSpec::LifeAmount,
+        ));
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("bounded X payment should execute");
+
+        assert_eq!(dm.offered_maximum, Some(2));
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            game.player(alice)
+                .expect("alice should exist")
+                .mana_pool
+                .red,
+            0
+        );
+    }
+
+    #[test]
+    fn bounded_x_payment_of_zero_still_counts_as_completed() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let life_gain = crate::triggers::TriggerEvent::new_with_provenance(
+            crate::events::LifeGainEvent::new(alice, 3),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        let mut dm = ChooseBoundedXDecisionMaker::new(0);
+        let mut ctx =
+            ExecutionContext::new(source, alice, &mut dm).with_triggering_event(life_gain);
+        let effect = PayManaEffect::new(
+            ManaCost::from_symbols(vec![ManaSymbol::X]),
+            ChooseSpec::Player(PlayerFilter::You),
+        )
+        .with_x_maximum(crate::effect::Value::EventValue(
+            crate::effect::EventValueSpec::LifeAmount,
+        ));
+
+        let result = effect
+            .execute(&mut game, &mut ctx)
+            .expect("zero is a legal bounded X payment");
+
+        assert_eq!(dm.offered_maximum, Some(0));
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(0));
+        assert!(
+            result
+                .execution_facts()
+                .contains(&ExecutionFact::ManaPaid { x_value: 0 })
+        );
+        assert!(
+            crate::effect::EffectPredicateRuntimeExt::evaluate_outcome(
+                &crate::effect::EffectPredicate::Happened,
+                &result,
+            ),
+            "a successful zero-mana payment must satisfy an if-you-do branch"
         );
     }
 

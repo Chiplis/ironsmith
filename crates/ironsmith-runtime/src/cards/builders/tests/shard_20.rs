@@ -1665,7 +1665,6 @@ pub(super) fn oracle_fight_and_damage_death_replacements_render_canonically() {
             rendered.contains(expected),
             "expected {name} replacement rider to render canonically, got {rendered}"
         );
-
     }
 }
 
@@ -2977,29 +2976,35 @@ pub(super) fn parse_oracle_kindred_summons_shuffle_remainder() {
         .to_ascii_lowercase();
 
     assert!(
-        rendered.contains("onto the battlefield"),
-        "expected Kindred Summons to keep its battlefield hit, got {rendered}"
+        rendered.contains(
+            "choose a creature type. reveal cards from the top of your library until you reveal x creature cards of the chosen type, where x is the number of creatures you control of that type. put those cards onto the battlefield, then shuffle the rest of the revealed cards into your library"
+        ),
+        "expected Kindred Summons to preserve its linked counted collection, got {rendered}"
     );
+}
+
+#[test]
+pub(super) fn parse_oracle_selvalas_stampede_preserves_vote_scoped_collection() {
+    let def = parse_oracle_card_definition("Selvala's Stampede");
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+
     assert!(
-        rendered.contains("shuffle"),
-        "expected Kindred Summons to keep its shuffled remainder, got {rendered}"
+        rendered.contains(
+            "Council's dilemma — Starting with you, each player votes for wild or free. Reveal cards from the top of your library until you reveal a creature card for each wild vote. Put those creature cards onto the battlefield, then shuffle the rest into your library. You may put a permanent card from your hand onto the battlefield for each free vote"
+        ),
+        "expected Selvala's Stampede to preserve both vote-scoped collections, got {rendered}"
     );
 }
 
 #[test]
 pub(super) fn parse_oracle_mass_polymorph_shuffle_remainder() {
     let def = parse_oracle_card_definition("Mass Polymorph");
-    let rendered = unprocessed_compiled_lines(&def)
-        .join(" ")
-        .to_ascii_lowercase();
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
 
-    assert!(
-        rendered.contains("battlefield"),
-        "expected Mass Polymorph to keep its battlefield hit, got {rendered}"
-    );
-    assert!(
-        rendered.contains("shuffle"),
-        "expected Mass Polymorph to keep its shuffled remainder, got {rendered}"
+    assert_eq!(
+        rendered,
+        "Exile all creatures you control, then reveal cards from the top of your library until you reveal that many creature cards. Put all creature cards revealed this way onto the battlefield, then shuffle the rest of the revealed cards into your library.",
+        "Mass Polymorph should preserve its count provenance and both revealed-card partitions"
     );
 }
 
@@ -3663,7 +3668,7 @@ pub(super) fn parse_oracle_inkmoth_nexus_animation_keeps_types_and_keywords() {
 
     assert!(
         rendered.contains(
-            "{1}: This land becomes a 1/1 phyrexian blinkmoth artifact creature with flying and infect until end of turn. It's still a land"
+            "{1}: This land becomes a 1/1 Phyrexian Blinkmoth artifact creature with flying and infect until end of turn. It's still a land"
         ),
         "expected Inkmoth Nexus source animation to preserve artifact type, subtypes, keywords, and still-land text, got {rendered}"
     );

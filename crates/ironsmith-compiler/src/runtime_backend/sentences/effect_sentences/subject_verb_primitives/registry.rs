@@ -1119,11 +1119,28 @@ pub(crate) fn parse_sentence_exile_it_next_end_step(
         return Ok(None);
     }
     let object_clause = SubjectVerbPrimitiveClause::new(shape.object_tokens);
+    let plural_demonstrative = shape
+        .object_tokens
+        .first()
+        .is_some_and(|token| token.is_word("those") || token.is_word("them"));
     let target = if registry_shapes::is_tagged_delayed_object(shape.object_tokens) {
         TargetAst::Tagged(TagKey::from(IT_TAG), object_clause.span())
     } else {
+        let mut filter = parse_object_filter(shape.object_tokens, false)?;
+        if plural_demonstrative {
+            if !filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            }) {
+                filter.tagged_constraints.push(TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: TaggedOpbjectRelation::IsTaggedObject,
+                });
+            }
+            filter.set_plural_object_noun_surface(true);
+        }
         TargetAst::Object(
-            parse_object_filter(shape.object_tokens, false)?,
+            filter,
             None,
             object_clause.span(),
         )

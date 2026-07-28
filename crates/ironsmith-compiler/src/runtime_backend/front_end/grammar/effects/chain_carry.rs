@@ -861,6 +861,20 @@ mod tests {
     }
 
     #[test]
+    fn leading_duration_scaled_stat_and_pronoun_grant_is_a_coordinated_chain() {
+        let tokens = lex_line(
+            "Until end of turn, double target creature's power and it gains first strike.",
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(
+            coordinated_effect_chain_leading_duration(&tokens),
+            Some(true)
+        );
+    }
+
+    #[test]
     fn parses_owner_and_delay_facts() {
         let tokens = lex_line(
             "Exile all cards from your library face down, then shuffle all cards from your graveyard into your library.",

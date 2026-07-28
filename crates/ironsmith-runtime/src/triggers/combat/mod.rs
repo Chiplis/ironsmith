@@ -14,6 +14,7 @@ mod blocks_or_becomes_blocked;
 mod deals_combat_damage_to_player;
 mod deals_damage;
 mod deals_damage_to;
+mod relative_power_block;
 mod this_attacks;
 mod this_attacks_and_isnt_blocked;
 mod this_attacks_player_with_most_life;
@@ -39,6 +40,9 @@ pub use blocks_or_becomes_blocked::BlocksOrBecomesBlockedTrigger;
 pub use deals_combat_damage_to_player::DealsCombatDamageToPlayerTrigger;
 pub use deals_damage::DealsDamageTrigger;
 pub use deals_damage_to::DealsDamageToTrigger;
+pub use relative_power_block::{
+    BecomesBlockedByObjectWithLesserPowerTrigger, BlocksObjectWithLesserPowerTrigger,
+};
 pub use this_attacks::{ThisAttacksPlayerWhoControlsAtLeastTrigger, ThisAttacksTrigger};
 pub use this_attacks_and_isnt_blocked::ThisAttacksAndIsntBlockedTrigger;
 pub use this_attacks_player_with_most_life::ThisAttacksPlayerWithMostLifeTrigger;

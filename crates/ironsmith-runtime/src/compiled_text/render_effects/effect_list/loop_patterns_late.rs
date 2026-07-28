@@ -416,6 +416,15 @@
             continue;
         }
 
+        if idx + 3 < filtered.len()
+            && let Some(rendered) =
+                describe_destroy_consult_exile_collected_then_shuffle(&filtered[idx..idx + 4])
+        {
+            parts.push(rendered);
+            idx += 4;
+            continue;
+        }
+
         if idx + 1 < filtered.len()
             && let Some(for_each) =
                 filtered[idx + 1].downcast_ref::<crate::effects::ForEachTaggedEffect>()
@@ -809,7 +818,7 @@
         }
         if idx + 1 < filtered.len()
             && let Some(choose) =
-                filtered[idx].downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                filtered[idx].downcast_ref::<crate::effects::ChooseCardTypeEffect>()
             && let Some(phase_out) =
                 filtered[idx + 1].downcast_ref::<crate::effects::PhaseOutEffect>()
             && let Some(compact) = describe_choose_type_then_phase_out(choose, phase_out)
@@ -1119,6 +1128,7 @@
         {
             let mut branch_parts = Vec::new();
             let mut saw_happened_branch = false;
+            let mut happened_branch = None;
             let mut lookahead = idx + 1;
             while lookahead < filtered.len() {
                 let if_effect = filtered[lookahead]
@@ -1139,10 +1149,19 @@
                 let Some(mut branch_text) = describe_with_id_if_clause(with_id, if_effect) else {
                     break;
                 };
+                let contextual_followup = happened_branch
+                    .and_then(|prior| {
+                        describe_player_or_planeswalker_backref_count_damage(prior, if_effect)
+                    })
+                    .map(|text| lowercase_first(&text));
                 if saw_happened_branch
                     && if_effect.predicate == EffectPredicate::DidNotHappen
                     && if_effect.else_.is_empty()
-                    && let Some((_, followup)) = branch_text.split_once(", ")
+                    && let Some(followup) = contextual_followup.as_deref().or_else(|| {
+                        branch_text
+                            .split_once(", ")
+                            .map(|(_, followup)| followup)
+                    })
                 {
                     branch_text = if let Some(condition) =
                         describe_explicit_alternative_result_condition(
@@ -1157,6 +1176,9 @@
                 }
                 saw_happened_branch |= if_effect.predicate == EffectPredicate::Happened
                     && if_effect.else_.is_empty();
+                if if_effect.predicate == EffectPredicate::Happened && if_effect.else_.is_empty() {
+                    happened_branch = Some(if_effect);
+                }
                 branch_parts.push(branch_text);
                 lookahead += 1;
             }
@@ -3195,26 +3217,12 @@
             continue;
         }
         if idx + 1 < filtered.len()
-            && let Some(for_players) =
-                filtered[idx].downcast_ref::<crate::effects::ForPlayersEffect>()
-            && for_players.filter == PlayerFilter::Opponent
-            && for_players.effects.len() == 1
-            && let Some(deal) =
-                for_players.effects[0].downcast_ref::<crate::effects::DealDamageEffect>()
-            && matches!(
-                deal.target,
-                ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+            && let Some(compact) = describe_each_opponent_damage_then_controller_gain_shared_x(
+                filtered[idx],
+                filtered[idx + 1],
             )
-            && let Some(gain) = filtered[idx + 1].downcast_ref::<crate::effects::GainLifeEffect>()
-            && matches!(gain.player, ChooseSpec::Player(PlayerFilter::You))
-            && gain.amount == deal.amount
-            && !deal.source_is_combat
-            && matches!(deal.amount, Value::Count(_))
         {
-            let amount_text = describe_value(&deal.amount);
-            parts.push(format!(
-                "it deals X damage to each opponent and you gain X life, where X is {amount_text}"
-            ));
+            parts.push(compact);
             idx += 2;
             continue;
         }

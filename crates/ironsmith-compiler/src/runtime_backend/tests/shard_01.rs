@@ -42,6 +42,13 @@ pub(super) fn aetherflux_conduit_uses_triggering_spell_mana_spent_value() {
     let debug = format!("{:#?}", def.abilities);
 
     assert!(debug.contains("ManaSpentToCastTriggeringObject"), "{debug}");
+    assert!(debug.contains("ForEachObject"), "{debug}");
+    assert!(format!("{:?}", def.abilities).contains("zone: Some(Hand)"));
+    assert!(debug.contains("CastTagged"), "{debug}");
+    assert!(
+        !debug.contains("MayCastMatchingSpellWithoutPayingManaCost"),
+        "{debug}"
+    );
 }
 
 #[test]
@@ -86,6 +93,240 @@ pub(super) fn attach_up_to_one_target_equipment_to_it_parses_target_object() {
         crate::cards::builders::TargetAst::Tagged(tag, _)
             if tag.as_str() == crate::cards::builders::IT_TAG
     ));
+}
+
+#[test]
+pub(super) fn attach_to_that_creature_reuses_trigger_identity_without_a_fresh_choice()
+-> Result<(), CardTextError> {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Kemba, Kha Enduring")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Cat])
+        .parse_text(
+            "Whenever Kemba or another Cat you control enters, attach up to one target Equipment you control to that creature.",
+        )?;
+    let effects = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                Some(triggered.effects.flattened_default_effects())
+            }
+            _ => None,
+        })
+        .expect("Kemba should have a triggered ability");
+    let attach = effects
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .expect("Kemba should attach the targeted Equipment");
+
+    assert!(
+        matches!(attach.target.base(), crate::target::ChooseSpec::Tagged(_)),
+        "the attachment destination should remain the exact triggering creature: {attach:#?}"
+    );
+    assert!(
+        !effects.iter().any(|effect| effect
+            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            .is_some_and(|choice| choice.tag.as_str().starts_with("attachment_target"))),
+        "the exact triggering creature must not become a fresh attachment choice: {effects:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn storm_herald_keeps_one_destination_choice_per_returned_aura()
+-> Result<(), CardTextError> {
+    fn spec_references_tag(
+        spec: &crate::target::ChooseSpec,
+        expected: &crate::tag::TagKey,
+    ) -> bool {
+        match spec.unhinted() {
+            crate::target::ChooseSpec::Object(filter)
+            | crate::target::ChooseSpec::All(filter) => filter.tagged_constraints.iter().any(
+                |constraint| {
+                    constraint.tag == *expected
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                },
+            ),
+            crate::target::ChooseSpec::Target(inner)
+            | crate::target::ChooseSpec::WithCount(inner, _)
+            | crate::target::ChooseSpec::WithCountValue(inner, _, _) => {
+                spec_references_tag(inner, expected)
+            }
+            crate::target::ChooseSpec::Tagged(tag) => tag == expected,
+            _ => false,
+        }
+    }
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Storm Herald")
+        .card_types(vec![CardType::Creature])
+        .parse_text(
+            "Haste\nWhen this creature enters, return any number of Aura cards from your graveyard to the battlefield attached to creatures you control. Exile those Auras at the beginning of your next end step. If those Auras would leave the battlefield, exile them instead of putting them anywhere else.",
+        )?;
+    let effects = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Triggered(triggered) => {
+                Some(triggered.effects.flattened_default_effects())
+            }
+            _ => None,
+        })
+        .expect("Storm Herald should have an enters trigger");
+    let attach = effects
+        .iter()
+        .find_map(|effect| {
+            super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect)
+        })
+        .expect("the returned Auras should retain their attachment instruction");
+    assert!(
+        attach.individual_targets,
+        "plural destinations require one legal choice per Aura: {attach:#?}"
+    );
+    let crate::target::ChooseSpec::All(returned_filter) = attach.objects.base() else {
+        panic!("the complete returned Aura collection should be attached: {attach:#?}");
+    };
+    let returned_tag = returned_filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+        .map(|constraint| constraint.tag.clone())
+        .expect("the returned Aura collection should retain its move-result tag");
+
+    let delayed_exile = effects
+        .iter()
+        .find_map(|effect| {
+            let schedule = super::find_nested_effect::<
+                crate::effects::ScheduleDelayedTriggerEffect,
+            >(effect)?;
+            schedule
+                .effects
+                .iter()
+                .find_map(|nested| {
+                    super::find_nested_effect::<crate::effects::MoveToZoneEffect>(nested)
+                })
+                .filter(|moved| moved.zone == Zone::Exile)
+        })
+        .expect("the returned Auras should be exiled at the next end step");
+    assert!(
+        spec_references_tag(&delayed_exile.target, &returned_tag),
+        "the delayed exile must consume the exact returned collection: {delayed_exile:#?}"
+    );
+
+    let replacement = effects
+        .iter()
+        .find_map(|effect| {
+            super::find_nested_effect::<crate::effects::RegisterZoneReplacementEffect>(effect)
+        })
+        .expect("the returned Auras should retain their leave-battlefield replacement");
+    assert!(
+        spec_references_tag(&replacement.target, &returned_tag),
+        "the replacement must watch the exact returned collection: {replacement:#?}"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn library_search_put_attach_shuffle_preserves_the_attachment_step() {
+    for (name, text, card_types) in [
+        (
+            "Stonehewer Giant",
+            "Vigilance\n{1}{W}, {T}: Search your library for an Equipment card, put it onto the battlefield, attach it to a creature you control, then shuffle.",
+            vec![CardType::Creature],
+        ),
+        (
+            "Quest for the Holy Relic",
+            "Whenever you cast a creature spell, you may put a quest counter on this enchantment.\nRemove five quest counters from this enchantment and sacrifice it: Search your library for an Equipment card, put it onto the battlefield, attach it to a creature you control, then shuffle.",
+            vec![CardType::Enchantment],
+        ),
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(card_types)
+            .parse_text(text)
+            .unwrap_or_else(|error| panic!("{name} should parse: {error}"));
+        let debug = format!("{definition:#?}");
+
+        assert!(
+            debug.contains("ChooseObjectsEffect")
+                && debug.contains("MoveToZoneEffect")
+                && debug.contains("AttachObjectsEffect")
+                && debug.contains("ShuffleLibraryEffect"),
+            "{name} should retain the complete search/put/attach/shuffle pipeline: {debug}"
+        );
+    }
+}
+
+#[test]
+pub(super) fn return_all_attached_to_a_prior_object_keeps_the_attachment_step() {
+    fn contains_tagged_move_all_to_battlefield(
+        effect: &crate::effect::Effect,
+        expected_tag: &crate::tag::TagKey,
+    ) -> bool {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+            && &tagged.tag == expected_tag
+            && tagged
+                .effect
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|moved| {
+                    moved.zone == Zone::Battlefield
+                        && matches!(moved.target.base(), crate::target::ChooseSpec::All(_))
+                })
+        {
+            return true;
+        }
+
+        let mut found = false;
+        effect.visit_child_effects(&mut |child| {
+            if !found && contains_tagged_move_all_to_battlefield(child, expected_tag) {
+                found = true;
+            }
+        });
+        found
+    }
+
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Flickerform")
+        .card_types(vec![CardType::Enchantment])
+        .subtypes(vec![Subtype::Aura])
+        .parse_text(
+            "Enchant creature\n{2}{W}{W}: Exile enchanted creature and all Auras attached to it. At the beginning of the next end step, return that card to the battlefield under its owner's control. If you do, return the other cards exiled this way to the battlefield under their owners' control attached to that creature.",
+        )
+        .expect("return-all attached to a prior object should compile");
+    let effects = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => {
+                Some(activated.effects.flattened_default_effects())
+            }
+            _ => None,
+        })
+        .expect("Flickerform should have an activated ability");
+    let attach = effects
+        .iter()
+        .find_map(|effect| {
+            super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect)
+        })
+        .expect("the returned Aura collection should be attached");
+    let crate::target::ChooseSpec::All(attached_filter) = attach.objects.base() else {
+        panic!("the attachment step should retain the complete returned collection: {attach:#?}");
+    };
+    let moved_tag = attached_filter
+        .tagged_constraints
+        .iter()
+        .find(|constraint| {
+            constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        })
+        .map(|constraint| &constraint.tag)
+        .expect("the attachment collection should reference the return move");
+
+    assert!(
+        effects
+            .iter()
+            .any(|effect| contains_tagged_move_all_to_battlefield(effect, moved_tag)),
+        "the return-all move and attachment collection should share one tag: {definition:#?}"
+    );
 }
 
 #[test]
@@ -716,9 +957,11 @@ pub(super) fn rewrite_etb_enters_tapped_filter_preserves_played_by_opponents_suf
     let debug = format!("{ability:?}");
 
     assert!(
-        debug.contains("enters tapped")
-            || debug.contains("enters tapped for filter")
-            || debug.contains("Artifact"),
+        debug.contains("played_by_opponent: Some(YourOpponents)"),
+        "expected typed played-by-opponents surface provenance, got {debug}"
+    );
+    assert!(
+        debug.contains("controller: Some(Opponent)") && debug.contains("Artifact"),
         "{debug}"
     );
 }
@@ -938,6 +1181,69 @@ pub(super) fn rewrite_zone_handlers_parse_destroy_unless_target_color_sets_diffe
 }
 
 #[test]
+pub(super) fn rewrite_destroy_target_unless_controller_chooses_source_power_damage() {
+    let tokens = lex_line(
+        "Destroy target permanent unless its controller has this creature deal damage to them equal to his power.",
+        0,
+    )
+    .expect("rewrite lexer should classify targeted-action unless-damage clause");
+
+    let parsed = parse_effect_sentence_lexed(&tokens)
+        .expect("targeted-action unless-damage clause should parse");
+
+    let [
+        EffectAst::UnlessAction {
+            effects,
+            alternative,
+            player,
+        },
+    ] = parsed.as_slice()
+    else {
+        panic!("expected one typed unless-action clause, got {parsed:#?}");
+    };
+    assert_eq!(*player, crate::cards::builders::PlayerAst::ItsController);
+    assert!(matches!(
+        effects.as_slice(),
+        [EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::Destroy {
+                    target: crate::cards::builders::TargetAst::Object(_, _, _),
+                    no_regeneration: false,
+                },
+                ..
+            }
+        )]
+    ));
+    let [
+        EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::DealDamage {
+                    amount,
+                    target,
+                    unpreventable: false,
+                },
+            ..
+        }),
+    ] = alternative.as_slice()
+    else {
+        panic!("expected one typed source-power damage alternative, got {alternative:#?}");
+    };
+    assert_eq!(amount.unhinted(), &crate::effect::Value::SourcePower);
+    assert!(
+        amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo)
+            && amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::MasculineSourcePossessive),
+        "{amount:#?}"
+    );
+    assert!(matches!(
+        target,
+        crate::cards::builders::TargetAst::Player(
+            crate::filter::PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target),
+            None,
+        )
+    ));
+}
+
+#[test]
 pub(super) fn rewrite_dead_ringers_lowers_target_color_condition_and_regeneration_prohibition()
 -> Result<(), CardTextError> {
     let definition = CardDefinitionBuilder::new(CardId::new(), "Dead Ringers")
@@ -1058,6 +1364,67 @@ pub(super) fn rewrite_zone_handlers_keep_conditional_exile_clause_after_structur
             }
         )]
     ));
+}
+
+#[test]
+pub(super) fn optional_exile_pair_keeps_repeated_article_filters_independent() {
+    let tokens = lex_line(
+        "You may exile a Human you control and an artifact you control.",
+        0,
+    )
+    .expect("independent optional exile pair should lex");
+    let parsed =
+        parse_effect_sentence_lexed(&tokens).expect("independent optional exile pair should parse");
+
+    let optional_effects = match parsed.as_slice() {
+        [crate::cards::builders::EffectAst::May { effects }]
+        | [crate::cards::builders::EffectAst::MayByPlayer { effects, .. }] => effects,
+        _ => panic!("expected one optional effect, got {parsed:#?}"),
+    };
+    let [crate::cards::builders::EffectAst::Coordinated { effects, .. }] =
+        optional_effects.as_slice()
+    else {
+        panic!("expected one coordinated pair, got {optional_effects:#?}");
+    };
+    let [first, second] = effects.as_slice() else {
+        panic!("expected two independent exile selections, got {effects:#?}");
+    };
+    fn exile_filter(effect: &crate::cards::builders::EffectAst) -> &crate::target::ObjectFilter {
+        let crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::Exile {
+                        target,
+                        face_down: false,
+                        ..
+                    },
+                ..
+            },
+        ) = effect
+        else {
+            panic!("expected a typed exile action, got {effect:#?}");
+        };
+        match target {
+            crate::cards::builders::TargetAst::Object(filter, None, _) => filter,
+            crate::cards::builders::TargetAst::WithCount(inner, count) if count.is_single() => {
+                let crate::cards::builders::TargetAst::Object(filter, None, _) = inner.as_ref()
+                else {
+                    panic!("expected a counted object filter, got {target:#?}");
+                };
+                filter
+            }
+            _ => panic!("expected a non-target object filter, got {target:#?}"),
+        }
+    }
+
+    let human = exile_filter(first);
+    let artifact = exile_filter(second);
+    assert_eq!(human.subtypes, vec![Subtype::Human]);
+    assert!(human.card_types.is_empty(), "{human:#?}");
+    assert_eq!(human.controller, Some(crate::target::PlayerFilter::You));
+    assert_eq!(artifact.card_types, vec![CardType::Artifact]);
+    assert!(artifact.subtypes.is_empty(), "{artifact:#?}");
+    assert_eq!(artifact.controller, Some(crate::target::PlayerFilter::You));
 }
 
 #[test]
@@ -1261,6 +1628,40 @@ pub(super) fn rewrite_activation_helpers_parse_add_mana_preserves_chosen_color_t
             }
         )
     ));
+}
+
+#[test]
+pub(super) fn rewrite_activation_helpers_parse_add_mana_chooses_one_color_per_prior_object() {
+    let tokens = lex_line("{B} or {G} for each permanent destroyed this way", 0)
+        .expect("rewrite lexer should classify dynamic color-choice mana");
+
+    match super::super::activation_helpers::parse_add_mana(&tokens, None)
+        .expect("dynamic color-choice mana should parse")
+    {
+        crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::AddManaAnyColor {
+                        amount,
+                        available_colors: Some(colors),
+                        ..
+                    },
+                ..
+            },
+        ) => {
+            assert_eq!(
+                colors,
+                vec![crate::color::Color::Black, crate::color::Color::Green,]
+            );
+            assert!(matches!(
+                amount.unhinted(),
+                crate::effect::Value::PendingPriorEffectMetric(query)
+                    if query.action
+                        == Some(ironsmith_core::PriorEffectAction::Destroyed)
+            ));
+        }
+        other => panic!("expected per-object color-choice mana, got {other:?}"),
+    }
 }
 
 #[test]
@@ -2071,6 +2472,11 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
         0,
     )
     .expect("rewrite lexer should classify free-cast permission clause");
+    let duration_free_cast_tokens = lex_line(
+        "Until end of turn, you may cast spells from your hand without paying their mana costs",
+        0,
+    )
+    .expect("rewrite lexer should classify duration-scoped free-cast permission clause");
 
     assert!(matches!(
         super::super::permission_helpers::parse_permission_clause_spec_lexed(&flash_tokens),
@@ -2094,6 +2500,31 @@ pub(super) fn rewrite_lexed_permission_helpers_cover_flash_and_free_cast_grants(
         })) if !spec.filter.has_mana_cost
             && spec.filter.card_types == vec![CardType::Creature]
             && spec.zone == crate::zone::Zone::Hand
+    ));
+    assert!(matches!(
+        super::super::permission_helpers::parse_permission_clause_spec_lexed(
+            &duration_free_cast_tokens
+        ),
+        Ok(Some(super::super::PermissionClauseSpec::GrantBySpec {
+            player: crate::cards::builders::PlayerAst::You,
+            spec,
+            lifetime: super::super::PermissionLifetime::UntilEndOfTurn,
+        })) if !spec.filter.has_mana_cost
+            && spec.zone == crate::zone::Zone::Hand
+    ));
+    assert!(matches!(
+        super::super::permission_helpers::parse_cast_or_play_tagged_clause(
+            &duration_free_cast_tokens
+        ),
+        Ok(Some(crate::cards::builders::EffectAst::SubjectVerb(
+            crate::cards::builders::SubjectVerbEffectAst {
+                action: crate::cards::builders::SubjectVerbActionAst::GrantBySpec {
+                    duration: crate::grant::GrantDuration::UntilEndOfTurn,
+                    ..
+                },
+                ..
+            }
+        )))
     ));
 }
 
@@ -3660,6 +4091,27 @@ pub(super) fn rewrite_spell_cost_increase_per_target_beyond_first_hits_specific_
     assert!(
         debug.contains("CostIncreaseManaCostPerAdditionalTarget"),
         "{debug}"
+    );
+}
+
+#[test]
+pub(super) fn spell_tax_controller_turn_exception_becomes_active_player_exclusion() {
+    let tokens = lex_line(
+        "Each spell costs {3} more to cast except during its controller's turn.",
+        0,
+    )
+    .expect("rewrite lexer should classify the controller-turn spell tax");
+
+    let parsed = super::super::keyword_static::parse_spells_cost_modifier_line(&tokens)
+        .expect("controller-turn spell tax parser should not error")
+        .expect("controller-turn spell tax should be recognized");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("Excluding")
+            && debug.contains("excluded: Active")
+            && debug.contains("except_during_controller_turn: true"),
+        "expected a typed active-player caster exclusion, got {debug}"
     );
 }
 

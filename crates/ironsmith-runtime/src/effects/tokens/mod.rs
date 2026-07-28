@@ -13,6 +13,8 @@ mod lifecycle;
 
 pub use amass::AmassEffect;
 pub use create_token::CreateTokenEffect;
-pub use create_token_copy::{CopyAttackTargetMode, CreateTokenCopyEffect};
+pub use create_token_copy::{
+    CopyAttackTargetMode, CreateTokenCopyEffect, TokenCopyReferenceSurface,
+};
 pub use incubate::IncubateEffect;
 pub use investigate::InvestigateEffect;

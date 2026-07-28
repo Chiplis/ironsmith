@@ -368,7 +368,12 @@ fn scaled_target_surface<'a>(
 }
 
 pub(crate) fn parse_scaled_power_shape(tokens: &[OwnedLexToken]) -> Option<ScaledPowerShape<'_>> {
-    let tokens = trim_shape_edges(tokens);
+    let mut tokens = trim_shape_edges(tokens);
+    if let Some(((), rest)) =
+        primitives::parse_prefix(tokens, primitives::phrase(&["until", "end", "of", "turn"]))
+    {
+        tokens = trim_shape_edges(rest);
+    }
     let (multiplier, rest) = primitives::parse_prefix(tokens, scaled_verb)?;
     let rest = strip_scaled_duration(rest);
 
@@ -487,6 +492,19 @@ mod tests {
         assert!(matches!(
             parse_scaled_power_shape(&tokens),
             Some(ScaledPowerShape::ScaleTarget { multiplier: 2, .. })
+        ));
+
+        let tokens = lex_line("until end of turn, double target creature's power", 0).unwrap();
+        assert!(matches!(
+            parse_scaled_power_shape(&tokens),
+            Some(ScaledPowerShape::ScaleTarget {
+                axes: ScaleAxes {
+                    power: true,
+                    toughness: false,
+                },
+                multiplier: 1,
+                ..
+            })
         ));
     }
 

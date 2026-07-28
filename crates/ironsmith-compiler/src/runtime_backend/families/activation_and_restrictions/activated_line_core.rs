@@ -311,8 +311,12 @@ pub(crate) fn parse_activated_line_with_raw(
     }
     let mut effects_ast = parse_effect_sentences_lexed(&effect_tokens_joined)?;
     effects_ast.extend(inline_effects_ast);
+    let counter_result_comes_from_cost = activation_cost_removes_dynamic_counters(&mana_cost);
     for effect in &mut effects_ast {
         replace_removed_counter_metric_with_x(effect);
+        if counter_result_comes_from_cost {
+            replace_counter_removed_pump_with_x(effect);
+        }
     }
     if effects_ast.is_empty() {
         return Ok(None);
@@ -457,6 +461,59 @@ fn replace_removed_counter_metric_with_x(effect: &mut EffectAst) {
     });
 }
 
+fn activation_cost_removes_dynamic_counters(cost: &crate::cost::TotalCost) -> bool {
+    match cost.kind() {
+        ironsmith_core::TotalCostKind::All(costs) => costs.iter().any(|cost| {
+            matches!(
+                cost,
+                crate::costs::Cost::RemoveAnyCountersFromSource {
+                    display_x: true,
+                    ..
+                }
+            )
+        }),
+        ironsmith_core::TotalCostKind::OneOf(branches) => branches
+            .iter()
+            .any(activation_cost_removes_dynamic_counters),
+    }
+}
+
+fn replace_counter_removed_pump_with_x(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(subject_verb) = effect
+        && let SubjectVerbActionAst::PumpByLastEffect {
+            power,
+            toughness,
+            target,
+            duration,
+            includes_this_way,
+        } = &subject_verb.action
+    {
+        let basis = Value::X.with_surface_hint(if *includes_this_way {
+            ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay
+        } else {
+            ironsmith_core::ValueSurfaceHint::CountersRemoved
+        });
+        let scale = |multiplier: i32| match multiplier {
+            0 => Value::Fixed(0),
+            1 => basis.clone(),
+            _ => Value::Scaled(Box::new(basis.clone()), multiplier),
+        };
+        *effect = EffectAst::subject_verb_pump(
+            scale(*power),
+            scale(*toughness),
+            target.clone(),
+            duration.clone(),
+            None,
+        );
+        return;
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for nested_effect in nested {
+            replace_counter_removed_pump_with_x(nested_effect);
+        }
+    });
+}
+
 pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
     match effect {
         EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
@@ -468,7 +525,8 @@ pub(crate) fn mana_effect_contains_unbound_x(effect: &EffectAst) -> bool {
             | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
                 value_contains_unbound_x(amount)
             }
-            SubjectVerbActionAst::AddManaColorsAmong { .. } => false,
+            SubjectVerbActionAst::AddManaColorsAmong { .. }
+            | SubjectVerbActionAst::AddOneManaAnyColorAmong { .. } => false,
             _ => false,
         },
         _ => {
@@ -757,19 +815,27 @@ pub(crate) fn parse_cost_reduction_line(
             else {
                 return Ok(None);
             };
-            let minimum_total_mana = match remainder {
-                ActivatedAbilitiesReductionRemainder::Unbounded => None,
-                ActivatedAbilitiesReductionRemainder::MinimumOneMana => Some(1),
+            let (minimum_total_mana, uses_ability_activation_cost_surface) = match remainder {
+                ActivatedAbilitiesReductionRemainder::Unbounded => (None, false),
+                ActivatedAbilitiesReductionRemainder::MinimumOneMana => (Some(1), false),
+                ActivatedAbilitiesReductionRemainder::MinimumOneManaAbilityActivationCost => {
+                    (Some(1), true)
+                }
             };
             let subject = render_token_slice(subject_tokens);
+            let mut display =
+                format!("Activated abilities of {subject} cost {{{reduction}}} less to activate");
+            if uses_ability_activation_cost_surface {
+                display.push_str(
+                    ". This effect can't reduce the mana in that ability's activation cost to less than one mana",
+                );
+            }
             Ok(Some(
                 StaticAbility::reduce_activated_ability_costs_with_display(
                     filter,
                     reduction,
                     minimum_total_mana,
-                    format!(
-                        "Activated abilities of {subject} cost {{{reduction}}} less to activate"
-                    ),
+                    display,
                 ),
             ))
         }

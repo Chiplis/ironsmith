@@ -77,16 +77,26 @@ pub(super) fn compile_subject_verb_late(
             target,
             unpreventable,
         } => {
-            let mut resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
-            if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) =
-                target
-                && !ctx.iterated_player
+            let mut target_bound_amount = amount.clone();
+            if let TargetAst::Player(filter, Some(_))
+            | TargetAst::PlayerOrPlaneswalker(filter, Some(_)) = target
             {
+                // The explicit player target is a typed same-clause
+                // antecedent for an authored "that player" inside the damage
+                // amount. This is local to this action, so it takes precedence
+                // even when an enclosing trigger or loop also carries an
+                // iterated-player binding.
                 bind_relative_iterated_player_in_value_to_player_filter(
-                    &mut resolved_amount,
+                    &mut target_bound_amount,
                     &PlayerFilter::Target(Box::new(filter.clone())),
                 );
             }
+            // Bind the same-clause player first. Contextual reference
+            // resolution may otherwise consume the IteratedPlayer placeholder
+            // as an older trigger/loop antecedent, losing the nearer explicit
+            // target provenance before the binder can see it.
+            let resolved_amount =
+                resolve_value_it_tag(&target_bound_amount, &current_reference_env(ctx))?;
             let (mut effects, choices) =
                 compile_tagged_effect_for_target(target, ctx, "damaged", |spec| {
                     if *unpreventable {
@@ -202,11 +212,12 @@ pub(super) fn compile_subject_verb_late(
             let mut damage_amount = bind_source_value_to_damage_source(&amount, &source_spec);
 
             if source_spec.is_target() {
-                let source_tag = ctx.next_tag("damage_source");
+                let source_tag = reserved_or_next_object_tag(ctx, "damage_source");
                 effects.push(
                     Effect::new(crate::effects::TargetOnlyEffect::new(source_spec.clone()))
                         .tag(source_tag.clone()),
                 );
+                ctx.last_object_tag = Some(source_tag.clone());
                 damage_source_spec = ChooseSpec::Tagged(source_tag.as_str().into());
                 damage_amount = bind_source_value_to_damage_source(&amount, &damage_source_spec);
                 if source == target {
@@ -664,7 +675,18 @@ pub(super) fn compile_subject_verb_late(
             let (spec, choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
             let mut effect = if spec.count().is_single() && !*face_down {
-                Effect::move_to_zone(spec.clone(), Zone::Exile, true)
+                let mut move_effect =
+                    crate::effects::MoveToZoneEffect::new(spec.clone(), Zone::Exile, true);
+                if !matches!(
+                    player,
+                    PlayerAst::Implicit | PlayerAst::Target | PlayerAst::TargetOpponent
+                ) {
+                    move_effect = move_effect.with_actor_surface(resolve_non_target_player_filter(
+                        player,
+                        &current_reference_env(ctx),
+                    )?);
+                }
+                Effect::new(move_effect)
             } else {
                 Effect::new(
                     crate::effects::ExileEffect::with_spec(spec.clone()).with_face_down(*face_down),
@@ -786,7 +808,7 @@ pub(super) fn compile_subject_verb_late(
             let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let mut spec = base_spec;
             if let Some(target_count) = target_count {
-                spec = spec.with_count(*target_count);
+                spec = with_target_count_preserving_value(spec, *target_count);
             }
             let mut put_counters =
                 crate::effects::PutCountersEffect::new(*counter_type, resolved_count, spec.clone());
@@ -819,7 +841,7 @@ pub(super) fn compile_subject_verb_late(
             let resolved_count = resolve_value_it_tag(count, &current_reference_env(ctx))?;
             let mut spec = base_spec;
             if let Some(target_count) = target_count {
-                spec = spec.with_count(*target_count);
+                spec = with_target_count_preserving_value(spec, *target_count);
             }
 
             let modes = counter_types
@@ -874,6 +896,7 @@ pub(super) fn compile_subject_verb_late(
             target,
             counter_type,
             up_to,
+            distributed_across_all,
             all_of_them,
         } => {
             if *all_of_them {
@@ -884,35 +907,48 @@ pub(super) fn compile_subject_verb_late(
             let resolved_amount = resolve_value_it_tag(amount, &current_reference_env(ctx))?;
             let id = ctx.next_effect_id();
             ctx.last_effect_id = Some(id);
-            let compiled = compile_tagged_effect_for_target(target, ctx, "counters", |spec| {
-                let resolved_amount = match (&resolved_amount, counter_type) {
-                    (
-                        Value::CountersOn(counter_source, amount_counter_type),
-                        Some(counter_type),
-                    ) if matches!(counter_source.as_ref(), ChooseSpec::Source)
+            let (mut spec, choices) =
+                resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            if *distributed_across_all {
+                spec = match spec.unhinted() {
+                    ChooseSpec::Object(filter) | ChooseSpec::All(filter) => {
+                        ChooseSpec::All(filter.clone())
+                    }
+                    _ => {
+                        return Err(CardTextError::ParseError(
+                            "counter distribution requires an object filter".to_string(),
+                        ));
+                    }
+                };
+            }
+            let resolved_amount = match (&resolved_amount, counter_type) {
+                (Value::CountersOn(counter_source, amount_counter_type), Some(counter_type))
+                    if matches!(counter_source.as_ref(), ChooseSpec::Source)
                         && amount_counter_type == &Some(*counter_type) =>
-                    {
-                        Value::CountersOn(Box::new(spec.clone()), Some(*counter_type))
-                    }
-                    (Value::CountersOn(counter_source, None), None)
-                        if matches!(counter_source.as_ref(), ChooseSpec::Source) =>
-                    {
-                        Value::CountersOn(Box::new(spec.clone()), None)
-                    }
-                    _ => resolved_amount.clone(),
-                };
-                let effect = if let Some(counter_type) = counter_type {
-                    if *up_to {
-                        Effect::remove_up_to_counters(*counter_type, resolved_amount, spec)
-                    } else {
-                        Effect::remove_counters(*counter_type, resolved_amount, spec)
-                    }
+                {
+                    Value::CountersOn(Box::new(spec.clone()), Some(*counter_type))
+                }
+                (Value::CountersOn(counter_source, None), None)
+                    if matches!(counter_source.as_ref(), ChooseSpec::Source) =>
+                {
+                    Value::CountersOn(Box::new(spec.clone()), None)
+                }
+                _ => resolved_amount,
+            };
+            let effect = if let Some(counter_type) = counter_type {
+                if *up_to {
+                    Effect::remove_up_to_counters(*counter_type, resolved_amount, spec.clone())
                 } else {
-                    Effect::remove_up_to_any_counters(resolved_amount, spec)
-                };
-                Effect::with_id(id.0, effect)
-            })?;
-            Ok(compiled)
+                    Effect::remove_counters(*counter_type, resolved_amount, spec.clone())
+                }
+            } else if *up_to {
+                Effect::remove_up_to_any_counters(resolved_amount, spec.clone())
+            } else {
+                Effect::remove_any_counters(resolved_amount, spec.clone())
+            };
+            let effect =
+                tag_object_target_effect(Effect::with_id(id.0, effect), &spec, ctx, "counters");
+            Ok((vec![effect], choices))
         }
         SubjectVerbActionAst::MoveAllCounters { from, to } => {
             let (from_spec, mut choices) =
@@ -1002,8 +1038,18 @@ pub(super) fn compile_subject_verb_late(
             set_reference_surface,
         } => {
             let graveyard_player_surface = return_graveyard_player_surface(target, ctx)?;
-            let (mut spec, choices) =
+            let (mut spec, mut choices) =
                 resolve_target_spec_with_choices(target, &current_reference_env(ctx))?;
+            let actor_surface =
+                if role == SubjectRole::Actor && !matches!(player, PlayerAst::Implicit) {
+                    let actor = resolve_subject_verb_subject(role, player, ctx, true, true, false)?;
+                    for choice in actor.into_choices() {
+                        push_choice(&mut choices, choice);
+                    }
+                    Some(actor.clone_player_filter())
+                } else {
+                    None
+                };
             // A plural demonstrative in a later per-player sentence refers to
             // the collection chosen by the preceding quantified sentence.
             // `Iterated` cannot resolve an object while only a player loop is
@@ -1030,6 +1076,9 @@ pub(super) fn compile_subject_verb_late(
             let move_effect = if from_graveyard {
                 let mut effect =
                     crate::effects::ReturnFromGraveyardToHandEffect::new(spec.clone(), *random);
+                if let Some(player) = actor_surface.clone() {
+                    effect = effect.with_actor_surface(player);
+                }
                 if let Some(player) = graveyard_player_surface {
                     effect = effect.with_graveyard_player_surface(player);
                 }
@@ -1039,6 +1088,9 @@ pub(super) fn compile_subject_verb_late(
                 Effect::new(effect)
             } else {
                 let mut effect = crate::effects::ReturnToHandEffect::with_spec(spec.clone());
+                if let Some(player) = actor_surface {
+                    effect = effect.with_actor_surface(player);
+                }
                 if let Some(player) = destination_player_surface.clone() {
                     effect = effect.with_destination_player_surface(player);
                 }
@@ -1467,9 +1519,17 @@ pub(super) fn compile_subject_verb_late(
                 },
             )
         }
-        SubjectVerbActionAst::PayMana { cost, x_value } => {
+        SubjectVerbActionAst::PayMana {
+            cost,
+            x_value,
+            x_maximum,
+        } => {
             let subject = resolve_subject_verb_subject(role, player, ctx, false, false, true)?;
             let x_value = x_value
+                .as_ref()
+                .map(|value| subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx))
+                .transpose()?;
+            let x_maximum = x_maximum
                 .as_ref()
                 .map(|value| subject.resolve_object_refs_and_bind_player_refs_in_value(value, ctx))
                 .transpose()?;
@@ -1484,6 +1544,9 @@ pub(super) fn compile_subject_verb_late(
                     if let Some(x_value) = x_value.clone() {
                         effect = effect.with_x_value(x_value);
                     }
+                    if let Some(x_maximum) = x_maximum.clone() {
+                        effect = effect.with_x_maximum(x_maximum);
+                    }
                     Effect::new(effect)
                 },
                 |filter| {
@@ -1493,6 +1556,9 @@ pub(super) fn compile_subject_verb_late(
                     );
                     if let Some(x_value) = x_value.clone() {
                         effect = effect.with_x_value(x_value);
+                    }
+                    if let Some(x_maximum) = x_maximum.clone() {
+                        effect = effect.with_x_maximum(x_maximum);
                     }
                     Effect::new(effect)
                 },
@@ -1927,7 +1993,18 @@ pub(super) fn compile_subject_verb_late(
                     ));
                 }
                 let mut effects = target_prelude;
-                effects.push(Effect::sacrifice_source());
+                let source = resolved_filter
+                    .source_surface
+                    .clone()
+                    .map(|surface| {
+                        ChooseSpec::Source.with_surface_hint(
+                            crate::target::ChooseSpecSurfaceHint::SourceReference(surface),
+                        )
+                    })
+                    .unwrap_or(ChooseSpec::Source);
+                effects.push(Effect::new(
+                    crate::effects::SacrificeTargetEffect::new(source),
+                ));
                 return Ok(Some((effects, subject.into_choices())));
             }
             if !*one_of_referenced_set

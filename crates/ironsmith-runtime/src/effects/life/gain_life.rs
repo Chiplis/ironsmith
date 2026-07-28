@@ -52,10 +52,15 @@ impl EffectExecutor for GainLifeEffect {
         // Create the trigger event only if life was actually gained
         let outcome = EffectOutcome::count(final_amount as i32);
         if final_amount > 0 {
-            let event = TriggerEvent::new_with_provenance(
-                LifeGainEvent::new(player_id, final_amount),
+            let mut event = TriggerEvent::new_with_provenance(
+                LifeGainEvent::new(player_id, final_amount).with_source(ctx.source),
                 ctx.provenance,
             );
+            if game.object(ctx.source).is_none()
+                && let Some(snapshot) = ctx.source_snapshot.as_ref()
+            {
+                event = event.with_source_snapshot(snapshot.clone());
+            }
             Ok(outcome.with_event(event))
         } else {
             Ok(outcome)
@@ -112,10 +117,15 @@ impl crate::effects::SimultaneousEffectProposal for GainLifeProposal {
         let final_amount = process_life_gain_with_event(game, self.player, self.amount);
         if final_amount > 0 {
             game.gain_life(self.player, final_amount);
-            let event = TriggerEvent::new_with_provenance(
-                LifeGainEvent::new(self.player, final_amount),
+            let mut event = TriggerEvent::new_with_provenance(
+                LifeGainEvent::new(self.player, final_amount).with_source(ctx.source),
                 ctx.provenance,
             );
+            if game.object(ctx.source).is_none()
+                && let Some(snapshot) = ctx.source_snapshot.as_ref()
+            {
+                event = event.with_source_snapshot(snapshot.clone());
+            }
             Ok(EffectOutcome::count(final_amount as i32).with_event(event))
         } else {
             Ok(EffectOutcome::count(0))
@@ -170,13 +180,13 @@ mod tests {
 
         assert_eq!(game.player(alice).expect("alice exists").life, 23);
         assert_eq!(outcome.as_count(), Some(3));
-        assert!(
-            outcome
-                .events
-                .iter()
-                .any(|event| event.kind() == EventKind::LifeGain),
-            "life gain should emit a LifeGainEvent"
-        );
+        let life_gain = outcome
+            .events
+            .iter()
+            .find(|event| event.kind() == EventKind::LifeGain)
+            .and_then(|event| event.downcast::<LifeGainEvent>())
+            .expect("life gain should emit a LifeGainEvent");
+        assert_eq!(life_gain.source, Some(source));
     }
 
     #[test]

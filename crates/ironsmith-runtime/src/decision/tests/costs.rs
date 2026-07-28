@@ -1051,6 +1051,87 @@ fn global_spell_cost_increase_uses_caster_for_spell_filter_controller() {
 }
 
 #[test]
+fn granted_target_tax_uses_each_affected_flying_creature_as_its_source() {
+    let mut game = setup_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+
+    let grant_source = CardBuilder::new(CardId::from_raw(160), "Flying Tax Grant")
+        .card_types(vec![CardType::Enchantment])
+        .build();
+    let grant_source_id = game.create_object_from_card(&grant_source, alice, Zone::Battlefield);
+
+    let mut taxed_spell_filter = ObjectFilter::default();
+    taxed_spell_filter.cast_by = Some(PlayerFilter::Opponent);
+    taxed_spell_filter.targets_object = Some(Box::new(ObjectFilter::source()));
+    let granted_tax = StaticAbility::new(crate::static_abilities::CostIncrease::new(
+        taxed_spell_filter,
+        Value::Fixed(2),
+    ));
+    let affected = ObjectFilter::creature()
+        .you_control()
+        .with_static_ability(crate::static_abilities::StaticAbilityId::Flying);
+    game.object_mut(grant_source_id)
+        .expect("grant source exists")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::new(
+            crate::static_abilities::GrantAbility::new(affected, granted_tax),
+        )));
+
+    let creature_card = CardBuilder::new(CardId::from_raw(161), "Tax Target")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .build();
+    let alice_flying = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    game.object_mut(alice_flying)
+        .expect("Alice's flying creature exists")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::flying()));
+    let alice_grounded = game.create_object_from_card(&creature_card, alice, Zone::Battlefield);
+    let bob_flying = game.create_object_from_card(&creature_card, bob, Zone::Battlefield);
+    game.object_mut(bob_flying)
+        .expect("Bob's flying creature exists")
+        .abilities_mut()
+        .push(Ability::static_ability(StaticAbility::flying()));
+
+    let base_cost = ManaCost::from_symbols(vec![ManaSymbol::Blue]);
+    let spell_card = CardBuilder::new(CardId::from_raw(162), "Targeted Spell")
+        .card_types(vec![CardType::Instant])
+        .mana_cost(base_cost.clone())
+        .build();
+    let spell_id = game.create_object_from_card(&spell_card, bob, Zone::Hand);
+    let spell = game.object(spell_id).expect("targeted spell exists");
+
+    let cost_targeting = |caster, target| {
+        calculate_effective_mana_cost_with_chosen_targets(
+            &game,
+            caster,
+            spell,
+            &base_cost,
+            &[Target::Object(target)],
+        )
+        .to_oracle()
+    };
+
+    assert_eq!(cost_targeting(bob, alice_flying), "{U}{2}");
+    assert_eq!(
+        cost_targeting(bob, alice_grounded),
+        "{U}",
+        "the grant filter must exclude creatures without flying"
+    );
+    assert_eq!(
+        cost_targeting(bob, bob_flying),
+        "{U}",
+        "the grant filter must exclude flying creatures the grant source's controller doesn't control"
+    );
+    assert_eq!(
+        cost_targeting(alice, alice_flying),
+        "{U}",
+        "the quoted tax applies only to spells cast by an opponent of the affected creature's controller"
+    );
+}
+
+#[test]
 fn spell_attached_global_cost_reduction_requires_functional_zone() {
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);

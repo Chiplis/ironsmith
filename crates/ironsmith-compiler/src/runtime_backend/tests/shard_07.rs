@@ -187,3 +187,73 @@ pub(super) fn explicit_your_hand_discard_is_not_rebound_to_the_damaged_player() 
     assert!(discard.contains("player: You"), "{debug}");
     assert!(!discard.contains("player: DamagedPlayer"), "{debug}");
 }
+
+#[test]
+pub(super) fn token_copy_followups_cross_source_sentence_boundaries_inside_loops() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Looped Token Followups")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Choose a creature type. For each creature you control of the chosen type, create a token that's a copy of that creature. Those tokens gain haste. Exile them at the beginning of the next end step.",
+        )
+        .expect("token-copy followups should bind through the source-sentence wrapper");
+    let debug = format!("{:#?}", definition.spell_effect);
+
+    assert!(debug.contains("CreateTokenCopyEffect"), "{debug}");
+    assert!(debug.contains("has_haste: true"), "{debug}");
+    assert!(debug.contains("exile_at_next_end_step: true"), "{debug}");
+    assert!(
+        !debug.contains("ApplyContinuousEffect") && !debug.contains("ScheduleDelayedTriggerEffect"),
+        "the followups must stay attached to the created tokens rather than becoming broad effects: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn created_token_temporary_haste_remains_a_duration_scoped_effect() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Temporary Token Haste")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Create two 1/1 red Goblin creature tokens. Those tokens gain haste until end of turn.",
+        )
+        .expect("temporary token haste should compile as a follow-up effect");
+    let debug = format!("{:#?}", definition.spell_effect);
+    let compact = debug.split_whitespace().collect::<String>();
+
+    assert!(compact.contains("CreateTokenEffect"), "{debug}");
+    assert!(compact.contains("count:Fixed(2,)"), "{debug}");
+    assert!(compact.contains("ApplyContinuousEffect"), "{debug}");
+    assert!(compact.contains("until:EndOfTurn"), "{debug}");
+    assert!(
+        !compact.contains("ability_presentation:Some(Standalone"),
+        "duration-scoped haste must not become a permanent token-definition ability: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn unqualified_target_base_characteristics_are_indefinite() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Indefinite Base Characteristics")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text(
+            "Any number of target Shapeshifter creatures you control have base power and toughness 4/4.",
+        )
+        .expect("an unqualified base-characteristic effect should compile");
+    let debug = format!("{:#?}", definition.spell_effect);
+
+    assert!(debug.contains("SetPowerToughness"), "{debug}");
+    assert!(
+        debug.contains("until: Forever"),
+        "a missing duration means the continuous effect is indefinite: {debug}"
+    );
+    assert!(!debug.contains("until: EndOfTurn"), "{debug}");
+}
+
+#[test]
+pub(super) fn remove_a_counter_is_mandatory_when_one_is_available() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Exact Counter Removal")
+        .card_types(vec![CardType::Sorcery])
+        .parse_text("Remove a counter from target permanent.")
+        .expect("untyped counter removal should compile");
+    let debug = format!("{:#?}", definition.spell_effect);
+
+    assert!(debug.contains("RemoveUpToAnyCountersEffect"), "{debug}");
+    assert!(debug.contains("up_to: false"), "{debug}");
+}

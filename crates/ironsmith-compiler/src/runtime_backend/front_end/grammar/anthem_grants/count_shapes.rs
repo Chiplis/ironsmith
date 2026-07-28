@@ -26,6 +26,7 @@ pub(crate) struct StickerCountShape<'a> {
 pub(crate) enum ForEachSpecialShape<'a> {
     AffectedAttackedThisTurn,
     ColorsOfAffected,
+    CreatureTypesOfAffected,
     BlockingSource,
     AttachedToSource { filter_tokens: &'a [OwnedLexToken] },
     UnspentGreenManaYouHave,
@@ -54,6 +55,15 @@ pub(crate) fn parse_for_each_special_shape(
         ],
     ) {
         return Some(ForEachSpecialShape::ColorsOfAffected);
+    }
+    if parse_complete_any_phrase(
+        tokens,
+        &[
+            &["of", "its", "creature", "types"],
+            &["of", "their", "creature", "types"],
+        ],
+    ) {
+        return Some(ForEachSpecialShape::CreatureTypesOfAffected);
     }
     if parse_complete_any_phrase(
         tokens,
@@ -96,10 +106,7 @@ pub(crate) fn parse_compound_count_segments(
     tokens: &[OwnedLexToken],
 ) -> Option<Vec<&[OwnedLexToken]>> {
     let tokens = super::trim_anthem_clause_tokens(tokens);
-    if !contains_word(tokens, || primitives::kw("and").void())
-        || !contains_word(tokens, || primitives::kw("graveyard").void())
-        || !contains_word(tokens, || parse_control_or_owner_word)
-    {
+    if !contains_word(tokens, || primitives::kw("and").void()) {
         return None;
     }
 
@@ -201,17 +208,6 @@ fn parse_each_or_every(input: &mut LexStream<'_>) -> WResult<()> {
         .parse_next(input)
 }
 
-fn parse_control_or_owner_word(input: &mut LexStream<'_>) -> WResult<()> {
-    alt((
-        primitives::kw("control"),
-        primitives::kw("controls"),
-        primitives::kw("own"),
-        primitives::kw("owns"),
-    ))
-    .void()
-    .parse_next(input)
-}
-
 fn contains_word<'a, P, F>(tokens: &'a [OwnedLexToken], make_parser: F) -> bool
 where
     F: Fn() -> P + Copy,
@@ -239,6 +235,7 @@ fn parse_complete_any_phrase(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_backend::TokenWordView;
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     fn lex(text: &str) -> Vec<OwnedLexToken> {
@@ -260,5 +257,21 @@ mod tests {
             parse_for_each_special_shape(&tokens),
             Some(ForEachSpecialShape::AttachedToSource { .. })
         ));
+    }
+
+    #[test]
+    fn splits_additive_count_domains_across_non_graveyard_zones() {
+        let tokens = lex("card in your hand and each foretold card you own in exile");
+        let segments = parse_compound_count_segments(&tokens).expect("compound count domains");
+
+        assert_eq!(segments.len(), 2);
+        assert_eq!(
+            TokenWordView::new(segments[0]).to_word_refs(),
+            ["card", "in", "your", "hand"]
+        );
+        assert_eq!(
+            TokenWordView::new(segments[1]).to_word_refs(),
+            ["each", "foretold", "card", "you", "own", "in", "exile"]
+        );
     }
 }

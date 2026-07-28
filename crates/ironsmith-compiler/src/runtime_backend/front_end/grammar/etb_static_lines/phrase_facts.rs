@@ -29,6 +29,7 @@ pub(crate) enum EtbLandRevealTappedSubject {
 pub(crate) enum EtbTaggedManaValueReference {
     ExiledCard,
     TriggeringSpell,
+    ThatCard,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -452,6 +453,10 @@ fn parse_tagged_mana_value_reference_lexed<'a>(
             semantic_phrase(&["mana", "value"]),
         )
             .value(EtbTaggedManaValueReference::TriggeringSpell),
+        semantic_phrase(&["the", "mana", "value", "of", "that", "card"])
+            .value(EtbTaggedManaValueReference::ThatCard),
+        semantic_phrase(&["that", "card's", "mana", "value"])
+            .value(EtbTaggedManaValueReference::ThatCard),
     ))
     .parse_next(input)?;
     semantic_finish(input)?;
@@ -718,6 +723,12 @@ mod tests {
         assert_eq!(
             parse_tagged_mana_value_reference_tokens(&tokens),
             Some(EtbTaggedManaValueReference::TriggeringSpell)
+        );
+
+        let tokens = lex_line("the mana value of that card.", 0).unwrap();
+        assert_eq!(
+            parse_tagged_mana_value_reference_tokens(&tokens),
+            Some(EtbTaggedManaValueReference::ThatCard)
         );
 
         let tokens = lex_line("where X is the number of creatures in your party.", 0).unwrap();

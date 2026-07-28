@@ -5,6 +5,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 
 use crate::effect::{ChoiceCount, Value};
+use ironsmith_core::{EffectMetric, EffectMetricSource};
 
 use super::super::lexer::{LexStream, OwnedLexToken, TokenWordView};
 use super::leaf::{
@@ -79,11 +80,42 @@ fn parse_dynamic_target_count_prefix_lexed<'a>(
     ))
 }
 
+fn parse_that_many_target_count_prefix_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<(ChoiceCount, Value)> {
+    let up_to = opt(primitives::phrase(&["up", "to"]))
+        .parse_next(input)?
+        .is_some();
+    primitives::phrase(&["that", "many"]).parse_next(input)?;
+    peek(alt((
+        primitives::kw("target").void(),
+        primitives::phrase(&["other", "target"]).void(),
+    )))
+    .parse_next(input)?;
+
+    Ok((
+        if up_to {
+            ChoiceCount::up_to_dynamic_x()
+        } else {
+            ChoiceCount::dynamic_x()
+        },
+        Value::PendingEffectMetric {
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::Count,
+        },
+    ))
+}
+
 pub(crate) fn parse_dynamic_target_count_prefix(
     tokens: &[OwnedLexToken],
 ) -> Option<DynamicTargetCountPrefix<'_>> {
-    let ((count, value), target_tokens) =
-        primitives::parse_prefix(tokens, parse_dynamic_target_count_prefix_lexed)?;
+    let ((count, value), target_tokens) = primitives::parse_prefix(
+        tokens,
+        alt((
+            parse_that_many_target_count_prefix_lexed,
+            parse_dynamic_target_count_prefix_lexed,
+        )),
+    )?;
     Some(DynamicTargetCountPrefix {
         count,
         value,
@@ -406,6 +438,21 @@ mod tests {
         let parsed = parse_dynamic_target_count_prefix(&tokens).expect("scaled target prefix");
         assert!(parsed.count.is_dynamic_x());
         assert_eq!(parsed.value, Value::XTimes(3));
+
+        let tokens = lex_line("up to that many other target creatures", 0).unwrap();
+        let parsed = parse_dynamic_target_count_prefix(&tokens).expect("result-count prefix");
+        assert!(parsed.count.is_up_to_dynamic_x());
+        assert!(matches!(
+            parsed.value,
+            Value::PendingEffectMetric {
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::Count,
+            }
+        ));
+        assert_eq!(
+            words(parsed.target_tokens),
+            ["other", "target", "creatures"]
+        );
     }
 
     #[test]

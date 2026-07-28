@@ -301,6 +301,125 @@ fn block_cost_static_ability(
     }))
 }
 
+fn except_for_cant_attack_static_ability(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<StaticAbility>, CardTextError> {
+    if !tokens.first().is_some_and(|token| token.is_word("except"))
+        || !tokens.get(1).is_some_and(|token| token.is_word("for"))
+    {
+        return Ok(None);
+    }
+    let Some(comma_idx) = tokens
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+    else {
+        return Ok(None);
+    };
+    let exception_tokens = trim_edge_punctuation_tokens(&tokens[2..comma_idx]);
+    let restriction_tokens = trim_edge_punctuation_tokens(&tokens[comma_idx + 1..]);
+    let Some(parsed) = parse_negated_object_restriction_clause(&restriction_tokens)? else {
+        return Ok(None);
+    };
+    if parsed.target.is_some() {
+        return Ok(None);
+    }
+    let crate::effect::Restriction::Attack(mut affected) = parsed.restriction else {
+        return Ok(None);
+    };
+
+    let mut exception_filters = None;
+    // Prefer the final conjunction so a card name that itself contains
+    // "and" remains one named exception.
+    for (and_idx, token) in exception_tokens.iter().enumerate().rev() {
+        if !token.is_word("and") {
+            continue;
+        }
+        let left = trim_edge_punctuation_tokens(&exception_tokens[..and_idx]);
+        let right = trim_edge_punctuation_tokens(&exception_tokens[and_idx + 1..]);
+        if left.is_empty() || right.is_empty() {
+            continue;
+        }
+        let (Ok(left), Ok(right)) = (
+            parse_object_filter(&left, false),
+            parse_object_filter(&right, false),
+        ) else {
+            continue;
+        };
+        exception_filters = Some([left, right]);
+        break;
+    }
+    let Some(exception_filters) = exception_filters else {
+        return Ok(None);
+    };
+
+    let affected_types = affected
+        .card_types
+        .iter()
+        .chain(affected.all_card_types.iter())
+        .copied()
+        .collect::<Vec<_>>();
+    if affected_types.is_empty() {
+        return Ok(None);
+    }
+    for exception in exception_filters {
+        let exception_types = exception
+            .card_types
+            .iter()
+            .chain(exception.all_card_types.iter())
+            .copied()
+            .collect::<Vec<_>>();
+        let mut unsupported_exception_constraints = exception.clone();
+        unsupported_exception_constraints.zone = None;
+        unsupported_exception_constraints.card_types.clear();
+        unsupported_exception_constraints.all_card_types.clear();
+        unsupported_exception_constraints.name = None;
+        if unsupported_exception_constraints != ObjectFilter::default() {
+            return Ok(None);
+        }
+        if !affected_types
+            .iter()
+            .all(|card_type| exception_types.contains(card_type))
+        {
+            return Ok(None);
+        }
+        let additional_types = exception_types
+            .iter()
+            .copied()
+            .filter(|card_type| !affected_types.contains(card_type))
+            .collect::<Vec<_>>();
+        if let Some(name) = exception.name {
+            if !additional_types.is_empty()
+                || affected.excluded_name.is_some()
+                || !exception.subtypes.is_empty()
+                || exception.colors.is_some()
+            {
+                return Ok(None);
+            }
+            affected.excluded_name = Some(name);
+        } else {
+            if additional_types.is_empty()
+                || !exception.subtypes.is_empty()
+                || exception.colors.is_some()
+            {
+                return Ok(None);
+            }
+            for card_type in additional_types {
+                if !affected.excluded_card_types.contains(&card_type) {
+                    affected.excluded_card_types.push(card_type);
+                }
+            }
+        }
+    }
+
+    Ok(Some(StaticAbility::restriction(
+        crate::effect::Restriction::attack(affected),
+        crate::runtime_backend::lexer::render_token_slice(tokens)
+            .trim()
+            .trim_end_matches('.')
+            .to_string(),
+    )))
+}
+
 pub(crate) fn parse_cant_clauses(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbility>>, CardTextError> {
@@ -357,6 +476,10 @@ pub(crate) fn parse_cant_clauses(
     }
 
     if let Some(ability) = block_cost_static_ability(tokens)? {
+        return Ok(Some(vec![ability]));
+    }
+
+    if let Some(ability) = except_for_cant_attack_static_ability(tokens)? {
         return Ok(Some(vec![ability]));
     }
 
@@ -651,6 +774,113 @@ pub(crate) fn parse_cant_clause(
 mod tests {
     use super::super::super::util::tokenize_line;
     use super::*;
+
+    #[test]
+    fn permanents_cant_phase_in_is_a_typed_static_restriction() {
+        let tokens = crate::runtime_backend::lexer::lex_line("Permanents can't phase in.", 0)
+            .expect("phase-in restriction should lex");
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("phase-in restriction should parse")
+            .expect("phase-in restriction should be claimed as static");
+        assert_eq!(abilities.len(), 1);
+        assert!(
+            format!("{:#?}", abilities[0]).contains("PhaseIn"),
+            "{abilities:#?}"
+        );
+        let repeated = parse_cant_clauses(&tokens)
+            .expect("repeated phase-in restriction parse should not error")
+            .expect("repeated phase-in restriction parse should remain static");
+        assert!(
+            format!("{:#?}", repeated[0]).contains("PhaseIn"),
+            "{repeated:#?}"
+        );
+
+        let contextual =
+            crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+                "Disciple of Caelus Nin",
+                &[crate::types::CardType::Creature],
+                &[],
+                || parse_cant_clauses(&tokens),
+            )
+            .expect("phase-in restriction should parse in a card source context")
+            .expect("phase-in restriction should remain static in a card source context");
+        assert!(
+            format!("{:#?}", contextual[0]).contains("PhaseIn"),
+            "{contextual:#?}"
+        );
+    }
+
+    #[test]
+    fn except_for_named_and_type_filters_stay_one_attack_restriction() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "Except for creatures named Akron Legionnaire and artifact creatures, creatures you control can't attack.",
+            0,
+        )
+        .expect("exception restriction should lex");
+
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("except-for attack restriction should parse")
+            .expect("expected one static restriction");
+
+        assert_eq!(abilities.len(), 1);
+        assert_eq!(
+            abilities[0].display(),
+            "Except for creatures named Akron Legionnaire and artifact creatures, creatures you control can't attack"
+        );
+        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::Attack(filter),
+            ..
+        } = &abilities[0].payload
+        else {
+            panic!("expected one typed attack restriction: {:#?}", abilities[0]);
+        };
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert_eq!(filter.excluded_name.as_deref(), Some("akron legionnaire"));
+        assert!(
+            filter.excluded_card_types.contains(&CardType::Artifact),
+            "{filter:#?}"
+        );
+    }
+
+    #[test]
+    fn pronoun_conjunction_inherits_the_typed_restriction_subject() {
+        let tokens = tokenize_line(
+            "Clerics your opponents control can't block, and they can't attack you or planeswalkers you control.",
+            0,
+        );
+
+        let abilities = parse_cant_clauses(&tokens)
+            .expect("shared-subject restrictions should parse")
+            .expect("expected two typed restrictions");
+        assert_eq!(abilities.len(), 2, "{abilities:#?}");
+
+        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+            restriction: crate::effect::Restriction::Block(blockers),
+            ..
+        } = &abilities[0].payload
+        else {
+            panic!("expected a block restriction: {:#?}", abilities[0]);
+        };
+        let crate::static_abilities::StaticAbilityPayload::RuleRestriction {
+            restriction:
+                crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+                    attackers,
+                    player: PlayerFilter::You,
+                },
+            ..
+        } = &abilities[1].payload
+        else {
+            panic!("expected an attack-target restriction: {:#?}", abilities[1]);
+        };
+
+        assert_eq!(blockers, attackers);
+        assert_eq!(blockers.controller, Some(PlayerFilter::Opponent));
+        assert!(blockers.subtypes.contains(&crate::Subtype::Cleric));
+        assert_eq!(
+            abilities[1].display(),
+            "clerics your opponents control can't attack you or planeswalkers you control"
+        );
+    }
 
     #[test]
     fn parse_cant_attack_or_block_unless_cards_in_exile_condition() {

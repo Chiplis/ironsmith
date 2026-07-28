@@ -289,6 +289,22 @@ fn parse_target_phase_subject(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToke
 
 fn parse_phase<'a>(input: &mut LexStream<'a>) -> WResult<KeywordMechanicShape<'a>> {
     let raw_subject = tokens_before(input, 1, phase_marker.void())?;
+    let subject_words =
+        crate::runtime_backend::front_end::lexer::TokenWordView::new(raw_subject).word_refs();
+    let has_negated_auxiliary = subject_words.iter().any(|word| {
+        matches!(
+            *word,
+            "can't" | "cant" | "cannot" | "don't" | "dont" | "doesn't" | "doesnt"
+        )
+    }) || subject_words
+        .windows(2)
+        .any(|window| matches!(window, ["can", "not"] | ["do", "not"] | ["does", "not"]));
+    if has_negated_auxiliary {
+        return Err(primitives::backtrack_err(
+            "phase subject",
+            "non-negated action subject",
+        ));
+    }
     let direction = phase_marker.parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
     let subject = if let Some(filter_tokens) = parse_all_phase_subject(raw_subject, direction) {

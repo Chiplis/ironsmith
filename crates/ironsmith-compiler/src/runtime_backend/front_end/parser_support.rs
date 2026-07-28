@@ -10,7 +10,9 @@ use super::grammar::primitives as grammar;
 use super::grammar::restriction_facts::{
     parse_activation_restriction_tokens, parse_trigger_restriction_tokens,
 };
-use super::lexer::{LexStream, OwnedLexToken, TokenKind, split_lexed_sentences};
+use super::lexer::{
+    LexStream, OwnedLexToken, TokenKind, TokenWordView, split_lexed_sentences,
+};
 
 /// Splits an already-lexed line into semantic sentences and typed restriction
 /// facts without rendering and lexing the source a second time.
@@ -81,9 +83,15 @@ pub(crate) fn looks_like_spell_resolution_followup_intro_lexed(tokens: &[OwnedLe
 pub(crate) fn looks_like_reflexive_followup_intro_lexed(tokens: &[OwnedLexToken]) -> bool {
     looks_like_when_one_or_more_this_way_followup_lexed(tokens)
         || looks_like_when_it_connives_this_way_followup_lexed(tokens)
+        || looks_like_when_you_pay_this_cost_followup_lexed(tokens)
         || looks_like_when_you_do_followup_lexed(tokens)
         || looks_like_if_no_one_does_followup_lexed(tokens)
         || looks_like_otherwise_followup_lexed(tokens)
+}
+
+fn looks_like_when_you_pay_this_cost_followup_lexed(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens);
+    words.starts_with(&["when", "you", "pay", "this", "cost"])
 }
 
 fn parse_at_trigger_intro_inner<'a>(

@@ -57,6 +57,7 @@ impl EffectExecutor for PhaseInEffect {
                     .object(object_id)
                     .is_some_and(|object| object.zone == Zone::Battlefield)
                     && game.is_phased_out(object_id)
+                    && game.can_phase_in(object_id)
                 {
                     game.phase_in(object_id);
                     Ok(true)

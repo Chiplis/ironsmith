@@ -127,6 +127,9 @@ fn is_reserved_short_alias(alias: &str) -> bool {
     if super::super::leaf::parse_leaf_supertype_complete(&lower).is_ok() {
         return true;
     }
+    if super::super::leaf::parse_leaf_color_complete(&lower).is_ok() {
+        return true;
+    }
     if let Ok(subtype) = super::super::leaf::parse_leaf_subtype_flexible_complete(&lower) {
         // Planeswalker first names are both legitimate short source names and
         // planeswalker subtypes. Other subtype words in rules text are much
@@ -336,6 +339,10 @@ mod tests {
         assert_eq!(
             parse_short_self_reference_name("Each Player Sacrifice Variant"),
             "Each Player Sacrifice Variant"
+        );
+        assert_eq!(
+            parse_short_self_reference_name("Black Scarab"),
+            "Black Scarab"
         );
         assert_eq!(
             parse_short_self_reference_name("Exiled Flashback Return Variant"),

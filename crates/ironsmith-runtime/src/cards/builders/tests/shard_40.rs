@@ -220,6 +220,22 @@ pub(super) fn laezels_acrobatics_reexiles_only_the_high_roll_returned_set() {
 }
 
 #[test]
+pub(super) fn ancient_silver_dragon_draws_from_the_typed_roll_result() {
+    assert_compiled_clause(
+        "Ancient Silver Dragon",
+        "Whenever this creature deals combat damage to a player, roll a d20. Draw cards equal to the result. You have no maximum hand size for the rest of the game.",
+    );
+}
+
+#[test]
+pub(super) fn nothic_d20_rows_preserve_their_explicit_controller_subject() {
+    assert_compiled_line(
+        "Nothic",
+        "Weird Insight — When this creature dies, roll a d20.\n1—9 | You draw a card and you lose 1 life.\n10—19 | You draw two cards and you lose 2 life.\n20 | You draw seven cards and you lose 7 life.",
+    );
+}
+
+#[test]
 pub(super) fn coin_flip_outcomes_stay_bound_to_the_flip_that_produced_them() {
     for (card, expected) in [
         (

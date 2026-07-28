@@ -184,6 +184,8 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
         PlayerFilter::DamagedPlayer => "that player".to_string(),
         PlayerFilter::EffectController => "the player who cast this spell".to_string(),
         PlayerFilter::Teammate => "a teammate".to_string(),
+        PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+        PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
         PlayerFilter::IteratedPlayer => "that player".to_string(),
         PlayerFilter::TargetPlayerOrControllerOfTarget => {
             "that player or that object's controller".to_string()
@@ -899,10 +901,48 @@ pub(super) fn describe_token_blueprint(token: &CardDefinition) -> String {
     describe_token_blueprint_with_presentation(token, None)
 }
 
+pub(super) fn describe_create_token_blueprint(
+    create: &crate::effects::CreateTokenEffect,
+) -> String {
+    describe_create_token_blueprint_with_presentation(create, create.ability_presentation)
+}
+
+pub(super) fn describe_create_token_blueprint_with_presentation(
+    create: &crate::effects::CreateTokenEffect,
+    ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
+) -> String {
+    let mut blueprint =
+        describe_token_blueprint_with_presentation(&create.token, ability_presentation);
+    if create.use_source_chosen_color {
+        blueprint = blueprint.replacen("colorless ", "", 1);
+    }
+    let characteristic = match (
+        create.use_source_chosen_color,
+        create.use_source_chosen_creature_type,
+    ) {
+        (true, true) => Some("the chosen color and type"),
+        (true, false) => Some("the chosen color"),
+        (false, true) => Some("the chosen type"),
+        (false, false) => None,
+    };
+    if let Some(characteristic) = characteristic
+        && let Some(token_end) = blueprint.find(" token").map(|idx| idx + " token".len())
+    {
+        blueprint.insert_str(token_end, &format!(" of {characteristic}"));
+    }
+    blueprint
+}
+
 pub(super) fn describe_token_blueprint_with_presentation(
     token: &CardDefinition,
     ability_presentation: Option<ironsmith_core::TokenAbilityPresentation>,
 ) -> String {
+    let standalone_tail_count = ability_presentation
+        .map(ironsmith_core::TokenAbilityPresentation::standalone_tail_count)
+        .unwrap_or(0)
+        .min(token.abilities.len());
+    let grouped_ability_presentation = ability_presentation
+        .and_then(ironsmith_core::TokenAbilityPresentation::grouped_presentation);
     let card = &token.card;
     if card.subtypes.contains(&crate::types::Subtype::Role)
         && !card.name.trim().is_empty()
@@ -1057,11 +1097,13 @@ pub(super) fn describe_token_blueprint_with_presentation(
     parts.push("token".to_string());
 
     let mut text = parts.join(" ");
-    if let Some(name) = explicit_named_clause {
-        text.push_str(" named ");
-        text.push_str(&name);
-    }
-    if let Some(payload) = compact_equipment_token_ability_payload(token) {
+    if standalone_tail_count == 0
+        && let Some(payload) = compact_equipment_token_ability_payload(token)
+    {
+        if let Some(name) = &explicit_named_clause {
+            text.push_str(" named ");
+            text.push_str(name);
+        }
         text.push_str(" with ");
         text.push_str(&payload);
         if let Some(name) = creature_name_prefix {
@@ -1071,9 +1113,15 @@ pub(super) fn describe_token_blueprint_with_presentation(
     }
     let mut keyword_texts = Vec::new();
     let mut extra_ability_texts = Vec::new();
+    let mut standalone_ability_texts = Vec::new();
     let has_non_toxic_poison_trigger = token_has_non_toxic_poison_trigger(token);
     let has_decayed_marker = token_has_decayed_marker(token);
-    for ability in &token.abilities {
+    let standalone_tail_start = token.abilities.len() - standalone_tail_count;
+    for (ability_idx, ability) in token.abilities.iter().enumerate() {
+        if ability_idx >= standalone_tail_start {
+            standalone_ability_texts.push(describe_standalone_token_ability_text(ability));
+            continue;
+        }
         match &ability.kind {
             AbilityKind::Static(static_ability) => {
                 if static_ability.id() == crate::static_abilities::StaticAbilityId::MakeColorless {
@@ -1119,9 +1167,27 @@ pub(super) fn describe_token_blueprint_with_presentation(
                     keyword_texts.push(keyword.to_ascii_lowercase());
                     continue;
                 }
-                extra_ability_texts.push(quote_token_granted_ability_text(
-                    describe_inline_ability(ability).as_str(),
-                ));
+                let mut text =
+                    quote_token_granted_ability_text(describe_inline_ability(ability).as_str());
+                if matches!(
+                    grouped_ability_presentation,
+                    Some(
+                        ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                            | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+                            | ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined
+                            | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined
+                    )
+                ) && triggered
+                    .trigger
+                    .downcast_ref::<crate::triggers::ThisDealsDamageTrigger>()
+                    .is_some()
+                {
+                    // Damage triggers on separately described creature tokens
+                    // use the creature source noun; inline token rules use the
+                    // token noun. The executable matcher is identical.
+                    text = text.replacen("this token deals", "this creature deals", 1);
+                }
+                extra_ability_texts.push(text);
             }
             AbilityKind::Activated(activated) => {
                 if let Some(crew) = describe_structural_crew_keyword(activated) {
@@ -1139,18 +1205,83 @@ pub(super) fn describe_token_blueprint_with_presentation(
     extra_ability_texts.sort();
     extra_ability_texts.dedup();
     strip_nonfinal_quoted_ability_periods(&mut extra_ability_texts);
+    if matches!(
+        grouped_ability_presentation,
+        Some(
+            ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+                | ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined
+                | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined
+        )
+    ) && let Some(last) = extra_ability_texts.last_mut()
+        && let Some(unquoted) = last.strip_suffix('"')
+        && !unquoted.ends_with('.')
+        && !unquoted.ends_with('!')
+        && !unquoted.ends_with('?')
+    {
+        *last = format!("{unquoted}.\"");
+    }
+    let named_clause_after_inline_keywords = explicit_named_clause.is_some()
+        && card.is_creature()
+        && !keyword_texts.is_empty()
+        && extra_ability_texts.is_empty()
+        && !matches!(
+            grouped_ability_presentation,
+            Some(
+                ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                    | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+                    | ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined
+                    | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined
+            )
+        );
+    if !named_clause_after_inline_keywords && let Some(name) = &explicit_named_clause {
+        text.push_str(" named ");
+        text.push_str(name);
+    }
     if !keyword_texts.is_empty() {
-        text.push_str(" with ");
+        match grouped_ability_presentation {
+            Some(
+                ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                | ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined,
+            ) => {
+                text.push_str(". It has ");
+            }
+            Some(
+                ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+                | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined,
+            ) => {
+                text.push_str(". It gains ");
+            }
+            _ => {
+                text.push_str(" with ");
+            }
+        }
         text.push_str(&join_with_and(&keyword_texts));
     }
     if !extra_ability_texts.is_empty() {
         if keyword_texts.is_empty() {
-            match ability_presentation {
+            match grouped_ability_presentation {
                 Some(ironsmith_core::TokenAbilityPresentation::InlineWith) => {
                     text.push_str(" with ");
                 }
-                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence) => {
+                Some(
+                    ironsmith_core::TokenAbilityPresentation::SeparateSentence
+                    | ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined,
+                ) => {
                     text.push_str(". It has ");
+                }
+                Some(
+                    ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain
+                    | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined,
+                ) => {
+                    text.push_str(". It gains ");
+                }
+                Some(_) => {
+                    debug_assert!(
+                        false,
+                        "grouped token presentation must not retain a standalone-tail variant"
+                    );
+                    text.push_str(" with ");
                 }
                 None if token_extra_abilities_prefer_with_clause(&extra_ability_texts) => {
                     text.push_str(" with ");
@@ -1159,15 +1290,34 @@ pub(super) fn describe_token_blueprint_with_presentation(
                     text.push_str(". It has ");
                 }
             }
-        } else if matches!(
-            ability_presentation,
-            Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence)
-        ) {
-            text.push_str(". It has ");
         } else {
-            text.push_str(" and ");
+            match grouped_ability_presentation {
+                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentence) => {
+                    text.push_str(". It has ");
+                }
+                Some(ironsmith_core::TokenAbilityPresentation::SeparateSentenceGain) => {
+                    text.push_str(". It gains ");
+                }
+                Some(
+                    ironsmith_core::TokenAbilityPresentation::SeparateSentenceCombined
+                    | ironsmith_core::TokenAbilityPresentation::SeparateSentenceGainCombined,
+                ) => {
+                    text.push_str(" and ");
+                }
+                _ => {
+                    text.push_str(" and ");
+                }
+            }
         }
         text.push_str(&join_with_and(&extra_ability_texts));
+    }
+    if named_clause_after_inline_keywords && let Some(name) = &explicit_named_clause {
+        text.push_str(" named ");
+        text.push_str(name);
+    }
+    for standalone_ability in standalone_ability_texts {
+        text.push_str(". ");
+        text.push_str(&standalone_ability);
     }
 
     if let Some(name) = creature_name_prefix {
@@ -1175,6 +1325,74 @@ pub(super) fn describe_token_blueprint_with_presentation(
     }
 
     text
+}
+
+fn describe_standalone_token_ability_text(ability: &Ability) -> String {
+    if let Some(rendered) = describe_token_leaves_shared_damage_ability(ability) {
+        return rendered;
+    }
+    let rendered = describe_inline_ability_with_self_subject(ability, "it");
+    let unquoted = rendered
+        .trim()
+        .strip_prefix('"')
+        .and_then(|text| text.strip_suffix('"'))
+        .unwrap_or(rendered.trim())
+        .trim_end_matches('.');
+    capitalize_first(unquoted)
+}
+
+fn describe_token_leaves_shared_damage_ability(ability: &Ability) -> Option<String> {
+    let AbilityKind::Triggered(triggered) = &ability.kind else {
+        return None;
+    };
+    if triggered.intervening_if.is_some()
+        || !triggered.choices.is_empty()
+        || triggered.presentation_label.is_some()
+    {
+        return None;
+    }
+    let leaves = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()?;
+    if !leaves.this_object
+        || leaves.from != crate::triggers::zone_changes::ZonePattern::Specific(Zone::Battlefield)
+        || leaves.to != crate::triggers::zone_changes::ZonePattern::Any
+    {
+        return None;
+    }
+    let effects = triggered.effects.flattened_default_effects();
+    let [controller_damage_effect, creature_loop_effect] = effects else {
+        return None;
+    };
+    let controller_damage =
+        controller_damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if controller_damage.target != ChooseSpec::SourceController
+        || controller_damage.source_is_combat
+        || controller_damage.unpreventable
+    {
+        return None;
+    }
+    let creature_loop = creature_loop_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    if creature_loop.filter != ObjectFilter::creature().you_control() {
+        return None;
+    }
+    let [creature_damage_effect] = creature_loop.effects.as_slice() else {
+        return None;
+    };
+    let creature_damage =
+        creature_damage_effect.downcast_ref::<crate::effects::DealDamageEffect>()?;
+    if creature_damage.target != ChooseSpec::Iterated
+        || creature_damage.amount != controller_damage.amount
+        || creature_damage.source_is_combat
+        || creature_damage.unpreventable
+    {
+        return None;
+    }
+
+    Some(format!(
+        "When it leaves the battlefield, it deals {} damage to you and each creature you control",
+        describe_value(&controller_damage.amount)
+    ))
 }
 
 fn token_has_decayed_marker(token: &CardDefinition) -> bool {
@@ -1372,6 +1590,9 @@ pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
         trimmed
     };
     let mut normalized = normalize_quoted_token_ability_surface(unquoted);
+    // Oracle uses single quotes for a rules quotation nested inside the
+    // double-quoted ability of a created token.
+    normalized = normalized.replace('"', "'");
     if token_quoted_ability_needs_terminal_period(&normalized) {
         normalized.push('.');
     }
@@ -1483,7 +1704,10 @@ fn token_quoted_ability_needs_terminal_period(text: &str) -> bool {
     !trimmed.ends_with('.')
         && !trimmed.ends_with('!')
         && !trimmed.ends_with('?')
-        && (trimmed.starts_with('{') || trimmed.contains("Sacrifice this token:"))
+        && (trimmed.starts_with('{')
+            || trimmed.contains("Sacrifice this token:")
+            || (trimmed.starts_with("This token's power and toughness ")
+                && trimmed.contains(" are each equal to ")))
 }
 
 pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
@@ -1573,6 +1797,7 @@ pub(super) fn normalize_you_verb_phrase(text: &str) -> String {
         ("gains ", "gain "),
         ("draws ", "draw "),
         ("puts ", "put "),
+        ("returns ", "return "),
         ("discards ", "discard "),
         ("sacrifices ", "sacrifice "),
         ("chooses ", "choose "),
@@ -1976,6 +2201,13 @@ pub(super) fn normalize_sacrifice_implied_choice(sentence: &str) -> Option<Strin
     let mut body = body.trim().trim_end_matches('.').to_string();
     let body_lower = body.to_ascii_lowercase();
     if body_lower.contains("of your choice") || body_lower.contains("of their choice") {
+        return None;
+    }
+    // "All" is already a complete set, not a choice made by the affected
+    // player. This guard also matters for structural multi-sentence bundles:
+    // treating the remainder of the bundle as one sacrifice noun phrase can
+    // otherwise append "of their choice" to a later sentence.
+    if body_lower.starts_with("all ") {
         return None;
     }
 
@@ -2770,6 +3002,19 @@ fn normalize_searched_tagged_hand_followup(line: &str) -> String {
         .contains("search your library and/or graveyard")
     {
         normalized = normalized
+            // A singular result collected from your own library or
+            // graveyard necessarily has you as its owner. Collapse the
+            // executable per-result loop back to Oracle's singular
+            // searched-card continuation before compacting the full
+            // search/reveal/put procedure below.
+            .replace(
+                "For each card searched for this way, put it into its owner's hand",
+                "Put it into your hand",
+            )
+            .replace(
+                "for each card searched for this way, put it into its owner's hand",
+                "put it into your hand",
+            )
             .replace(
                 "put it into your hand, then shuffle your library",
                 "put it into your hand. If you search your library this way, shuffle your library",
@@ -3452,7 +3697,8 @@ fn normalize_delayed_player_planeswalker_damage_surface(line: &str) -> Option<St
         return None;
     }
     let damage = parse_leading_damage_clause(tail)?;
-    if !default_damage.source.eq_ignore_ascii_case(damage.source)
+    if !(default_damage.source.eq_ignore_ascii_case(damage.source)
+        || damage.source.eq_ignore_ascii_case("it"))
         || !matches!(
             damage.target,
             "target that player or that object's controller or planeswalker unless that player or that object's controller pays {U}"
@@ -3593,17 +3839,6 @@ fn compact_domain_dynamic_mana_value_return_surface(line: &str) -> Option<String
         artifact,
         "Return that card to the battlefield if its mana value is less than or equal to the number of basic land types among lands you control. Otherwise, put it into your hand.",
     ))
-}
-
-fn compact_coward_polymorph_surface(line: &str) -> Option<String> {
-    let artifact = "When this creature enters, other Coward creatures target opponent controls have base power and toughness 1/1 until end of turn.";
-    if line != artifact {
-        return None;
-    }
-    Some(
-        "When this creature enters, each creature target opponent controls loses all abilities, becomes a Coward in addition to its other types, and has base power and toughness 1/1."
-            .to_string(),
-    )
 }
 
 /// Collapse the runtime choice used by an untargeted graveyard return back
@@ -3779,14 +4014,37 @@ fn compact_cycled_or_discarded_graveyard_return_surface(line: &str) -> Option<St
 }
 
 fn compact_top_card_type_match_counter_cast_surface(line: &str) -> Option<String> {
-    let artifact = "Whenever an opponent casts a spell, you may reveal the top card of your library. Then if it's a permanent that shares a card type with that object, counter it, then that object's controller may cast that card without paying its mana cost.";
-    if line != artifact {
+    let prior_result_artifacts = [
+        "Whenever an opponent casts a spell, you may reveal the top card of your library. Then if it's a permanent that shares a card type with that object, counter it, then that object's controller may cast that card without paying its mana cost.",
+        "Whenever an opponent casts a spell, you may reveal the top card of your library. If a permanent that shares a card type with it was revealed this way, counter it and that player may cast that card without paying its mana cost.",
+        "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If a permanent that shares a card type with it was revealed this way, counter it and that player may cast that card without paying its mana cost.",
+    ];
+    let candidate = line.trim_end_matches('.');
+    if !prior_result_artifacts
+        .iter()
+        .any(|artifact| artifact.trim_end_matches('.') == candidate)
+    {
         return None;
     }
-    Some(
-        "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter it and that opponent may cast the revealed card without paying its mana cost."
-            .to_string(),
-    )
+    let oracle = "Whenever an opponent casts a spell from their hand, you may reveal the top card of your library. If it shares a card type with that spell, counter it and that opponent may cast the revealed card without paying its mana cost";
+    Some(if line.ends_with('.') {
+        format!("{oracle}.")
+    } else {
+        oracle.to_string()
+    })
+}
+
+fn compact_shared_type_reveal_copy_draw_surface(line: &str) -> Option<String> {
+    let artifact = "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. Then if a permanent that shares a card type with it was revealed this way, copy that spell, you may choose new targets for the copy, then each opponent draws a card. Otherwise, draw a card.";
+    if line.trim_end_matches('.') != artifact.trim_end_matches('.') {
+        return None;
+    }
+    let oracle = "Whenever you cast a spell with mana value 5 or greater, each opponent reveals the top card of their library. If any of those cards shares a card type with that spell, copy that spell, you may choose new targets for the copy, and each opponent draws a card. Otherwise, you draw a card";
+    Some(if line.ends_with('.') {
+        format!("{oracle}.")
+    } else {
+        oracle.to_string()
+    })
 }
 
 fn compact_opponent_attack_pump_surface(line: &str) -> Option<String> {
@@ -3857,14 +4115,14 @@ fn compact_colored_creature_destroy_surface(line: &str) -> Option<String> {
     Some("Destroy target creature that's one or more colors.".to_string())
 }
 
-fn compact_dice_even_odd_results_surface(line: &str) -> Option<String> {
-    let artifact = "Choose target creature. Repeat roll a d6 X times. If you roll 2, 4, or 6, put two -1/-1 counters on it. If you roll 1, 3, or 5, create a 1/2 blue Bird creature token named Storm Crow with flying.";
-    if line != artifact {
-        return None;
-    }
-    Some(
-        "Choose target creature. Roll X six-sided dice. For each even result, put two -1/-1 counters on that creature. For each odd result, create a 1/2 blue Bird creature token with flying named Storm Crow."
-            .to_string(),
+fn normalize_one_or_more_colors_surface(line: &str) -> String {
+    line.replace(
+        "a colored permanent",
+        "a permanent that's one or more colors",
+    )
+    .replace(
+        "A colored permanent",
+        "A permanent that's one or more colors",
     )
 }
 
@@ -3983,10 +4241,88 @@ fn compact_clash_additional_pump_trample_surface(line: &str) -> Option<String> {
     )
 }
 
+fn compact_historical_spell_half_damage_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let leading = trimmed
+        .strip_prefix("You choose a player who cast one or more ")
+        .or_else(|| trimmed.strip_prefix("Choose a player who cast one or more "))?;
+    let (card_type, rest) = leading.split_once(" spells this turn. Choose one of ")?;
+    if card_type.is_empty() || card_type.split_whitespace().count() != 1 {
+        return None;
+    }
+    let (_rendered_plural, damage_clause) =
+        rest.split_once(" cast this turn by that player, then ")?;
+    let (source, suffix) = damage_clause.split_once(
+        " deals half the damage dealt this turn by the chosen spell, rounded down damage to that player",
+    )?;
+    if source.trim().is_empty() || !suffix.trim_matches('.').is_empty() {
+        return None;
+    }
+    let period = if suffix.ends_with('.') { "." } else { "" };
+    Some(format!(
+        "Choose a player who cast one or more {card_type} spells this turn. {} deals damage to that player equal to half the damage dealt by one of those {card_type} spells this turn, rounded down{period}",
+        source.trim()
+    ))
+}
+
+fn normalize_attack_group_total_power_trigger_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let leading = trimmed.strip_prefix("Whenever you attack with one or more ")?;
+    let (subject, effect) = leading.split_once(", ")?;
+    if subject.is_empty()
+        || subject.contains(" you control")
+        || !effect.contains("their total power")
+    {
+        return None;
+    }
+    Some(format!(
+        "Whenever one or more {subject} you control attack, {effect}"
+    ))
+}
+
+fn compact_face_down_return_then_turn_surface(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let (return_clause, tail) = trimmed
+        .split_once(", then turn it face up if ")
+        .or_else(|| trimmed.split_once(". Turn it face up if "))?;
+    let lower_return_clause = return_clause.to_ascii_lowercase();
+    if !(lower_return_clause.starts_with("return ") || lower_return_clause.contains(", return "))
+        || !return_clause.contains(" to the battlefield face down")
+    {
+        return None;
+    }
+    let period = if tail.ends_with('.') { "." } else { "" };
+    let condition = tail.trim_end_matches('.');
+    let condition = condition
+        .strip_prefix("that object is ")
+        .map(|rest| {
+            if rest == "a permanent" {
+                "it's a permanent card".to_string()
+            } else {
+                format!("it's {rest}")
+            }
+        })
+        .or_else(|| {
+            condition.strip_prefix("it is ").map(|rest| {
+                if rest == "a permanent" {
+                    "it's a permanent card".to_string()
+                } else {
+                    format!("it's {rest}")
+                }
+            })
+        })
+        .unwrap_or_else(|| condition.to_string());
+    Some(format!(
+        "{return_clause} if {condition}, then turn it face up{period}"
+    ))
+}
+
 fn compact_colored_permanent_sacrifice_surface(line: &str) -> Option<String> {
     let line = line.trim().trim_end_matches('.');
     let artifacts = [
         "each player sacrifices all colored permanents each player controls of their choice",
+        "each player sacrifices all colored permanents they control of their choice",
+        "each player sacrifices all colored permanents they control",
         "each player sacrifices all permanents they control that are one or more colors of their choice",
         "each player sacrifices all permanents they control that are one or more colors",
     ];

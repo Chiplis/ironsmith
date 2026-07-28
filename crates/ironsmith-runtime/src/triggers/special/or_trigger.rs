@@ -3,10 +3,11 @@
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
 use crate::triggers::{
-    AbilityActivatedTrigger, AttacksTrigger, CountMode, DealsDamageToTrigger, DealsDamageTrigger,
-    PermanentBecomesTappedTrigger, PlayerRelation, SpellCastTrigger, ThisAttacksTrigger,
-    ThisBlocksTrigger, ThisDealsDamageToTrigger, ThisDealsDamageTrigger, TransformsTrigger,
-    Trigger, TriggerEvent, ZoneChangeTrigger, ZonePattern,
+    AbilityActivatedTrigger, AttacksTrigger, AttacksYouTrigger, BlocksTrigger, CountMode,
+    DealsDamageToTrigger, DealsDamageTrigger, PermanentBecomesTappedTrigger, PlayerRelation,
+    SpellCastTrigger, ThisAttacksTrigger, ThisBlocksTrigger, ThisDealsDamageToTrigger,
+    ThisDealsDamageTrigger, TransformsTrigger, Trigger, TriggerEvent, ZoneChangeTrigger,
+    ZonePattern,
 };
 use crate::types::{CardType, Subtype};
 use crate::zone::Zone;
@@ -144,6 +145,44 @@ impl OrTrigger {
         Self::new(vec![a, b])
     }
 
+    fn reciprocal_enchanted_opponent_attacks_display(&self) -> Option<String> {
+        let [you_attack, they_attack] = self.triggers.as_slice() else {
+            return None;
+        };
+        let you_attack = you_attack.downcast_ref::<AttacksTrigger>()?;
+        let they_attack = they_attack.downcast_ref::<AttacksYouTrigger>()?;
+        if !you_attack.one_or_more
+            || you_attack.min_total_attackers != 1
+            || you_attack.max_total_attackers.is_some()
+            || !they_attack.one_or_more
+        {
+            return None;
+        }
+
+        let mut your_attack_filter = you_attack.filter.clone();
+        let attacked_player = your_attack_filter
+            .attacking_player_or_planeswalker_controlled_by
+            .take()?;
+        if !matches!(
+            &attacked_player,
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted"
+        ) || your_attack_filter.targets_only_player.is_some()
+            || your_attack_filter != ObjectFilter::creature().you_control()
+        {
+            return None;
+        }
+
+        let their_attack_filter = ObjectFilter::creature().controlled_by(attacked_player);
+        if they_attack.filter != their_attack_filter {
+            return None;
+        }
+
+        Some(
+            "Whenever you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control"
+                .to_string(),
+        )
+    }
+
     fn self_attacks_or_blocks_display(&self) -> Option<String> {
         let [first, second] = self.triggers.as_slice() else {
             return None;
@@ -162,6 +201,38 @@ impl OrTrigger {
             && second.downcast_ref::<ThisAttacksTrigger>().is_some()
         {
             "blocks or attacks"
+        } else if let (Some(attacks), Some(blocks)) = (
+            first.downcast_ref::<AttacksTrigger>(),
+            second.downcast_ref::<BlocksTrigger>(),
+        ) {
+            if attacks.one_or_more
+                || attacks.min_total_attackers != 1
+                || attacks.max_total_attackers.is_some()
+                || blocks.one_or_more
+                || attacks.filter != blocks.filter
+            {
+                return None;
+            }
+            return Some(format!(
+                "Whenever {} attacks or blocks",
+                strip_leading_article(&attacks.filter.description())
+            ));
+        } else if let (Some(blocks), Some(attacks)) = (
+            first.downcast_ref::<BlocksTrigger>(),
+            second.downcast_ref::<AttacksTrigger>(),
+        ) {
+            if blocks.one_or_more
+                || attacks.one_or_more
+                || attacks.min_total_attackers != 1
+                || attacks.max_total_attackers.is_some()
+                || attacks.filter != blocks.filter
+            {
+                return None;
+            }
+            return Some(format!(
+                "Whenever {} blocks or attacks",
+                strip_leading_article(&attacks.filter.description())
+            ));
         } else {
             return None;
         };
@@ -413,6 +484,18 @@ impl OrTrigger {
             && source_change.from == ZonePattern::Specific(Zone::Battlefield)
             && source_change.to == ZonePattern::Specific(Zone::Graveyard)
         {
+            if another_change.graveyard_surface
+                == Some(ironsmith_core::GraveyardTriggerSurface::PutIntoGraveyard)
+            {
+                let explicit_display = explicit_other.display();
+                let other_clause = explicit_display
+                    .strip_prefix("Whenever ")
+                    .or_else(|| explicit_display.strip_prefix("When "))?;
+                return Some(format!(
+                    "Whenever {source_subject} dies or another {}",
+                    strip_leading_article(other_clause)
+                ));
+            }
             let other_subject = explicit_other.object_filter.description();
             return Some(format!(
                 "Whenever {source_subject} or another {} dies",
@@ -452,6 +535,26 @@ impl OrTrigger {
         } else {
             return None;
         };
+
+        if graveyard.this_object
+            && exile.this_object
+            && graveyard.object_filter == ObjectFilter::creature()
+            && exile.object_filter == ObjectFilter::default()
+            && graveyard.player == exile.player
+            && graveyard.cause_filter == exile.cause_filter
+            && graveyard.during_turn == exile.during_turn
+            && graveyard.origin_condition == exile.origin_condition
+            && graveyard.count_mode == CountMode::Each
+            && exile.count_mode == CountMode::Each
+            && graveyard.this_object_surface == exile.this_object_surface
+            && graveyard.graveyard_surface.is_none()
+            && exile.graveyard_surface.is_none()
+        {
+            return Some(format!(
+                "Whenever {} dies or is put into exile from the battlefield",
+                graveyard.this_subject_text("creature")
+            ));
+        }
 
         if graveyard.object_filter != exile.object_filter
             || graveyard.player != exile.player
@@ -691,11 +794,13 @@ impl OrTrigger {
             if object.combat_only != player.combat_only
                 || player.noncombat_only
                 || object.source_filter != player.filter
-                || object.target_filter.union_connective()
-                    != crate::filter::ObjectFilterUnionConnective::AndOr
             {
                 return None;
             }
+            let recipient_connector = match object.target_filter.union_connective() {
+                crate::filter::ObjectFilterUnionConnective::Or => "or",
+                crate::filter::ObjectFilterUnionConnective::AndOr => "and/or",
+            };
             let damaged_player = player.damaged_player.as_ref()?;
             let object_display = object.display();
             let (prefix, object_recipient) = object_display.rsplit_once(" to ")?;
@@ -715,9 +820,9 @@ impl OrTrigger {
                 player_recipient
             };
             let recipients = if player_first {
-                format!("{player_recipient} and/or {object_recipient}")
+                format!("{player_recipient} {recipient_connector} {object_recipient}")
             } else {
-                format!("{object_recipient} and/or {player_recipient}")
+                format!("{object_recipient} {recipient_connector} {player_recipient}")
             };
             let quantifier = if one_or_more { "one or more " } else { "" };
             return Some(format!("{prefix} to {quantifier}{recipients}"));
@@ -736,13 +841,13 @@ impl OrTrigger {
         } else {
             return None;
         };
-        if object.combat_only != player.combat_only
-            || player.amount.is_some()
-            || object.target_filter.union_connective()
-                != crate::filter::ObjectFilterUnionConnective::AndOr
-        {
+        if object.combat_only != player.combat_only || player.amount.is_some() {
             return None;
         }
+        let recipient_connector = match object.target_filter.union_connective() {
+            crate::filter::ObjectFilterUnionConnective::Or => "or",
+            crate::filter::ObjectFilterUnionConnective::AndOr => "and/or",
+        };
         let damaged_player = player.damaged_player.as_ref()?;
         let object_display = object.display();
         let (prefix, object_recipient) = object_display.rsplit_once(" to ")?;
@@ -762,9 +867,9 @@ impl OrTrigger {
             player_recipient
         };
         let recipients = if player_first {
-            format!("{player_recipient} and/or {object_recipient}")
+            format!("{player_recipient} {recipient_connector} {object_recipient}")
         } else {
-            format!("{object_recipient} and/or {player_recipient}")
+            format!("{object_recipient} {recipient_connector} {player_recipient}")
         };
         let quantifier = if one_or_more { "one or more " } else { "" };
         Some(format!("{prefix} to {quantifier}{recipients}"))
@@ -870,6 +975,9 @@ impl TriggerMatcher for OrTrigger {
             return display;
         }
         if let Some(display) = self.damage_to_player_or_object_display() {
+            return display;
+        }
+        if let Some(display) = self.reciprocal_enchanted_opponent_attacks_display() {
             return display;
         }
         let displays: Vec<String> = self.triggers.iter().map(|t| t.display()).collect();
@@ -988,6 +1096,46 @@ mod tests {
     }
 
     #[test]
+    fn display_compacts_matching_filtered_attacks_or_blocks_arms() {
+        let mut enchanted = ObjectFilter::creature().in_zone(Zone::Battlefield);
+        enchanted
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: crate::tag::TagKey::from("enchanted"),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let trigger = Trigger::or(vec![
+            Trigger::attacks(enchanted.clone()),
+            Trigger::blocks(enchanted),
+        ])
+        .with_intro_surface(crate::triggers::TriggerIntroSurface::When);
+
+        assert_eq!(
+            trigger.display(),
+            "When enchanted creature attacks or blocks"
+        );
+    }
+
+    #[test]
+    fn display_compacts_reciprocal_enchanted_opponent_attack_branches() {
+        let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
+        let mut your_attack = ObjectFilter::creature().you_control();
+        your_attack.attacking_player_or_planeswalker_controlled_by = Some(enchanted.clone());
+        let their_attack = ObjectFilter::creature().controlled_by(enchanted);
+        let trigger = Trigger::either(
+            Trigger::attacks_one_or_more(your_attack),
+            Trigger::attacks_you_one_or_more(their_attack)
+                .with_intro_surface(crate::triggers::TriggerIntroSurface::When),
+        )
+        .with_intro_surface(crate::triggers::TriggerIntroSurface::When);
+
+        assert_eq!(
+            trigger.display(),
+            "When you attack enchanted opponent or a planeswalker they control or when they attack you or a planeswalker you control"
+        );
+    }
+
+    #[test]
     fn display_does_not_compact_mixed_inner_introductions() {
         let trigger = OrTrigger::two(
             Trigger::this_attacks().with_intro_surface(crate::triggers::TriggerIntroSurface::When),
@@ -1023,6 +1171,26 @@ mod tests {
     }
 
     #[test]
+    fn display_preserves_authored_put_into_graveyard_surface_on_another_branch() {
+        let trigger = OrTrigger::two(
+            Trigger::this_dies(),
+            Trigger::new(
+                ZoneChangeTrigger::dies(
+                    ObjectFilter::artifact()
+                        .controlled_by(PlayerFilter::You)
+                        .other(),
+                )
+                .graveyard_surface(ironsmith_core::GraveyardTriggerSurface::PutIntoGraveyard),
+            ),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this creature dies or another artifact you control is put into a graveyard from the battlefield"
+        );
+    }
+
+    #[test]
     fn display_compacts_and_or_damage_recipients_without_losing_players() {
         let source = ObjectFilter::default()
             .with_colors(crate::color::ColorSet::RED)
@@ -1043,6 +1211,35 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever a red source you control deals damage to one or more permanents and/or players"
+        );
+    }
+
+    #[test]
+    fn display_compacts_or_damage_recipients_with_one_controlled_spell_subject() {
+        let mut source = ObjectFilter::spell()
+            .with_type(CardType::Instant)
+            .with_type(CardType::Sorcery)
+            .controlled_by(PlayerFilter::You);
+        source.has_mana_cost = true;
+        let target = ObjectFilter::default()
+            .with_type(CardType::Battle)
+            .in_zone(Zone::Battlefield);
+        let trigger = OrTrigger::two(
+            Trigger::deals_damage_to_player_with_source_surface(
+                source.clone(),
+                PlayerFilter::Opponent,
+                ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+            ),
+            Trigger::deals_damage_to_with_source_surface(
+                source,
+                target,
+                ironsmith_core::trigger_model::DamageSourceSurface::Filter,
+            ),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever an instant or sorcery spell you control deals damage to an opponent or a battle"
         );
     }
 
@@ -1127,6 +1324,18 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever this artifact or another nontoken artifact you control is put into a graveyard from the battlefield or is put into exile from the battlefield"
+        );
+    }
+
+    #[test]
+    fn display_compacts_named_source_dies_or_exile_without_repeating_the_subject() {
+        let trigger = Trigger::this_dies_or_is_exiled_with_surface(
+            crate::target::SourceReferenceSurface::FullName("God-Eternal Rhonas".to_string()),
+        );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever God-Eternal Rhonas dies or is put into exile from the battlefield"
         );
     }
 

@@ -1587,13 +1587,31 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         // Raggadragga, "five or more mana" on Exhibition Tidecaller); the
         // renderer keeps "at least N", so canonicalize toward it.
         ("two or more mana was spent", "at least two mana was spent"),
-        ("three or more mana was spent", "at least three mana was spent"),
-        ("four or more mana was spent", "at least four mana was spent"),
-        ("five or more mana was spent", "at least five mana was spent"),
+        (
+            "three or more mana was spent",
+            "at least three mana was spent",
+        ),
+        (
+            "four or more mana was spent",
+            "at least four mana was spent",
+        ),
+        (
+            "five or more mana was spent",
+            "at least five mana was spent",
+        ),
         ("six or more mana was spent", "at least six mana was spent"),
-        ("seven or more mana was spent", "at least seven mana was spent"),
-        ("eight or more mana was spent", "at least eight mana was spent"),
-        ("nine or more mana was spent", "at least nine mana was spent"),
+        (
+            "seven or more mana was spent",
+            "at least seven mana was spent",
+        ),
+        (
+            "eight or more mana was spent",
+            "at least eight mana was spent",
+        ),
+        (
+            "nine or more mana was spent",
+            "at least nine mana was spent",
+        ),
         ("ten or more mana was spent", "at least ten mana was spent"),
         // Keyword qualifier vs controller suffix order; oracle places the
         // controller first ("creature you control with flying").
@@ -1671,7 +1689,10 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             ", exile this, then return it to the battlefield",
             ". Exile this, then return it to the battlefield",
         ),
-        ("has 3 or more lore counters", "has three or more lore counters"),
+        (
+            "has 3 or more lore counters",
+            "has three or more lore counters",
+        ),
         (". Then if this Saga has", ". If this has"),
         ("If this Saga has", "If this has"),
         ("if this Saga has", "if this has"),
@@ -1787,6 +1808,30 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             ". If you searched your library this way, shuffle",
             ", then shuffle",
         ),
+        // Named-card search templates use both conjunctions for the same
+        // mandatory reveal-then-move sequence.
+        (
+            "reveal it, then put it into your hand",
+            "reveal it, and put it into your hand",
+        ),
+        // A reveal-each-player program stores one tagged set and tests it
+        // against the triggering spell. The renderer may spell that set test
+        // as a singular prior-result predicate and may retain sequence
+        // scaffolding around the true branch; all of these surfaces describe
+        // the same shared-card-type gate and outcomes.
+        (
+            "Then if a permanent that shares a card type with it was revealed this way",
+            "If any of those cards shares a card type with that spell",
+        ),
+        (
+            "Then if any of those cards shares a card type with that spell",
+            "If any of those cards shares a card type with that spell",
+        ),
+        (
+            "copy that spell, you may choose new targets for the copy, then each opponent draws a card",
+            "copy that spell, you may choose new targets for the copy, and each opponent draws a card",
+        ),
+        ("Otherwise, draw a card", "Otherwise, you draw a card"),
         ("and/or library", "and library"),
         // "and/or" is templating-equivalent to the plain conjunction; as one
         // token it would cost score against renders that split it.
@@ -4796,9 +4841,8 @@ fn split_common_clause_conjunctions(text: &str) -> String {
             Some((basis, rest)) => (basis.trim_end_matches('.'), Some(rest.to_string())),
             None => (basis_and_rest.trim_end_matches('.'), None),
         };
-        let mut rebuilt = format!(
-            "{head} gain X life, where X is {basis}. Put X {mid}, where X is {basis}."
-        );
+        let mut rebuilt =
+            format!("{head} gain X life, where X is {basis}. Put X {mid}, where X is {basis}.");
         if let Some(rest) = rest {
             rebuilt.push(' ');
             rebuilt.push_str(&rest);
@@ -4806,10 +4850,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         normalized = rebuilt;
     }
     // The renderer's joined form: basis mid-sentence, then "and put X ...".
-    normalized = normalized.replace(
-        " and put X +1/+1 counters on",
-        ". Put X +1/+1 counters on",
-    );
+    normalized = normalized.replace(" and put X +1/+1 counters on", ". Put X +1/+1 counters on");
     normalized = normalized.replace(
         " and you lose X life, where X is ",
         ". You lose X life, where X is ",
@@ -5349,8 +5390,7 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace(
             "when effect #0 the affected object isn't land,",
             "when you exile a nonland card this way,",
-        )
-        ;
+        );
     if normalized
         .to_ascii_lowercase()
         .contains("draw a card and lose ")
@@ -6797,7 +6837,6 @@ fn normalize_word(token: &str) -> Option<String> {
         "loses" | "losing" | "lost" => "lose".to_string(),
         "deals" | "dealing" | "dealt" => "deal".to_string(),
         "matches" | "matched" | "matching" => "match".to_string(),
-        "controlled" => "control".to_string(),
         "has" => "have".to_string(),
         // Short (<=4 letter) verbs escape the generic s-strip above; their
         // agreement forms are never a semantic difference.

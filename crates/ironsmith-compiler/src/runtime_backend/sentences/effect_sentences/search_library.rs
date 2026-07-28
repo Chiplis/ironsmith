@@ -1,6 +1,6 @@
 use super::super::grammar::effects as search_grammar;
 use super::super::grammar::primitives as grammar;
-use super::super::lexer::{OwnedLexToken, token_word_refs};
+use super::super::lexer::{OwnedLexToken, split_lexed_sentences, token_word_refs};
 use super::super::object_filters::{parse_object_filter, parse_object_filter_lexed};
 use super::super::util::{
     helper_tag_for_tokens, parse_number_word_u32, parse_subject, parse_target_phrase,
@@ -10,8 +10,8 @@ use super::parse_effect_chain;
 use super::sentence_helpers::*;
 use crate::cards::builders::{
     CardTextError, CarryContext, ChoiceCount, EffectAst, IT_TAG, LibraryBottomOrderAst,
-    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, ReturnControllerAst, SubjectAst,
-    SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
+    LibraryConsultModeAst, LibraryConsultStopRuleAst, PlayerAst, PredicateAst, ReturnControllerAst,
+    SubjectAst, SubjectVerbActionAst, SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::target::{ObjectFilter, PlayerFilter, TaggedObjectConstraint, TaggedOpbjectRelation};
 use crate::types::{CardType, Subtype};
@@ -34,11 +34,29 @@ fn segment_starts_effect_lexed(tokens: &[OwnedLexToken]) -> bool {
 pub(crate) fn parse_search_library_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    fn carry_conjugated_search_player(leading: &[EffectAst], search: &mut [EffectAst]) {
+        let Some(CarryContext::Player(player)) = leading
+            .iter()
+            .rev()
+            .find_map(super::chain_carry::explicit_player_for_carry)
+        else {
+            return;
+        };
+        let player = match player {
+            PlayerAst::Target | PlayerAst::TargetOpponent => PlayerAst::That,
+            player => player,
+        };
+        for effect in search {
+            super::chain_carry::bind_implicit_player_context(effect, player);
+        }
+    }
+
     super::super::grammar::effects::parse_search_library_sentence_with_grammar_entrypoint_lexed(
         tokens,
         segment_starts_effect_lexed,
         super::chain_carry::parse_effect_chain_with_subject_verb_primitives_lexed,
         super::clause_dispatch::parse_effect_clause_lexed,
+        carry_conjugated_search_player,
     )
 }
 
@@ -103,21 +121,91 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
             if trailing_tokens.is_empty() {
                 return Ok(Some(effects));
             }
-            let mut trailing_effects = parse_effect_chain(&trailing_tokens)?;
+            // The shuffle shape deliberately captures the same-sentence tail
+            // after "library" so a coordinated action such as "then draws
+            // seven cards" can inherit the each-player subject. Do not carry
+            // that grammatical subject through a real sentence boundary:
+            // doing so turns a following "If it's your turn, end the turn"
+            // into a trailing condition on the draw and makes each player end
+            // the turn.
+            let trailing_sentences = split_lexed_sentences(&trailing_tokens)
+                .into_iter()
+                .filter(|sentence| !sentence.is_empty())
+                .collect::<Vec<_>>();
+            let Some((same_sentence_tail, later_sentences)) = trailing_sentences.split_first()
+            else {
+                return Ok(Some(effects));
+            };
+            let mut trailing_effects = parse_effect_chain(same_sentence_tail)?;
             if each_player_subject {
                 for effect in &mut trailing_effects {
                     maybe_apply_carried_player(effect, CarryContext::ForEachPlayer);
+                }
+                // These effects are still part of the same authored
+                // each-player sentence. Keep them inside one player loop so
+                // the renderer can retain the shared grammatical subject
+                // ("..., then draws seven cards") without weakening the
+                // executable per-player scope.
+                for trailing_effect in trailing_effects {
+                    match trailing_effect {
+                        EffectAst::ForEachPlayer {
+                            effects: mut trailing_player_effects,
+                        } => {
+                            if let Some(EffectAst::ForEachPlayer {
+                                effects: player_effects,
+                            }) = effects.last_mut()
+                            {
+                                player_effects.append(&mut trailing_player_effects);
+                            } else {
+                                effects.push(EffectAst::ForEachPlayer {
+                                    effects: trailing_player_effects,
+                                });
+                            }
+                        }
+                        effect => effects.push(effect),
+                    }
                 }
             } else {
                 for effect in &mut trailing_effects {
                     maybe_apply_carried_player_with_clause(
                         effect,
                         CarryContext::Player(player),
-                        &trailing_tokens,
+                        same_sentence_tail,
                     );
                 }
+                // The shuffle parser owns the leading action while the
+                // generic chain parser owns the captured same-sentence tail.
+                // When that tail is explicitly coordinated, keep the whole
+                // authored clause behind one typed coordination boundary.
+                // Otherwise lowering leaves the shuffle outside the
+                // `SequenceEffect` and the renderer prints a false sentence
+                // break before the remaining actions.
+                if let (
+                    [leading],
+                    [
+                        EffectAst::Coordinated {
+                            effects: coordinated,
+                            leading_duration,
+                            result_conjunction,
+                        },
+                    ],
+                ) = (effects.as_slice(), trailing_effects.as_slice())
+                {
+                    let mut combined = Vec::with_capacity(coordinated.len() + 1);
+                    combined.push(leading.clone());
+                    combined.extend(coordinated.iter().cloned());
+                    effects = vec![EffectAst::Coordinated {
+                        effects: combined,
+                        leading_duration: *leading_duration,
+                        result_conjunction: *result_conjunction,
+                    }];
+                } else {
+                    effects.extend(trailing_effects);
+                }
             }
-            effects.extend(trailing_effects);
+            for sentence in later_sentences {
+                effects.extend(super::parse_effect_sentences_lexed(sentence)?);
+            }
             Ok(Some(effects))
         };
     let wrap_optional = |effects: Vec<EffectAst>| -> Vec<EffectAst> {
@@ -130,19 +218,21 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
 
     let target_tokens = shape.target_tokens;
     let has_target_selector = shape.has_target_selector;
+    let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
+    let explicit_all_cards_from = target_words
+        .get(..3)
+        .is_some_and(|prefix| prefix == ["all", "cards", "from"]);
     // "Shuffle all creature cards of that type from your graveyard ..." moves
     // a filtered subset, not the whole graveyard; only a bare possessive
     // graveyard phrase (optionally "all cards from ...") is the whole-zone
     // shuffle. A filtered phrase that fails to parse still falls back to the
     // whole-zone reading rather than failing the card.
     let whole_graveyard_target = {
-        let target_words = crate::runtime_backend::token_word_refs(&target_tokens);
-        let rest: &[&str] =
-            if target_words.len() >= 3 && target_words[..3] == ["all", "cards", "from"] {
-                &target_words[3..]
-            } else {
-                &target_words[..]
-            };
+        let rest: &[&str] = if explicit_all_cards_from {
+            &target_words[3..]
+        } else {
+            &target_words[..]
+        };
         matches!(
             rest,
             ["graveyard"]
@@ -195,9 +285,12 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
                 EffectAst::subject_verb_shuffle_hand_and_graveyard_into_library(player)
             });
         } else {
-            effects.push(EffectAst::subject_verb_shuffle_graveyard_into_library(
-                player,
-            ));
+            effects.push(
+                EffectAst::subject_verb_shuffle_graveyard_into_library_with_surface(
+                    player,
+                    explicit_all_cards_from,
+                ),
+            );
         }
         if each_player_subject {
             return append_trailing(vec![EffectAst::ForEachPlayer {
@@ -241,6 +334,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     let subject_tokens = shape.subject_tokens;
     let owner_of_subject_target = shape
         .owner_subject_target_tokens
+        .as_deref()
         .map(parse_target_phrase)
         .transpose()?;
 
@@ -297,6 +391,8 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
             }
             let shuffle = if owner_library_destination {
                 EffectAst::subject_verb_shuffle_objects_into_owner_library(target)
+            } else if shape.possessive_owner_subject {
+                EffectAst::subject_verb_shuffle_objects_into_library_possessive_owner(target)
             } else {
                 EffectAst::subject_verb_shuffle_objects_into_library(PlayerAst::ItsOwner, target)
             };
@@ -612,6 +708,98 @@ pub(crate) fn parse_for_each_destroyed_this_way_sentence(
     Ok(Some(vec![EffectAst::ForEachTagged {
         tag: IT_TAG.into(),
         effects,
+    }]))
+}
+
+fn bind_sacrificed_snapshot_controller(effect: &mut EffectAst) {
+    match effect {
+        EffectAst::MayByPlayer { player, .. } if *player == PlayerAst::ItsController => {
+            *player = PlayerAst::That;
+        }
+        EffectAst::SubjectVerb(subject_verb) => {
+            if subject_verb.subject.player == PlayerAst::ItsController {
+                subject_verb.subject.player = PlayerAst::That;
+            }
+            if let SubjectVerbActionAst::SearchLibrary { player, .. } = &mut subject_verb.action
+                && *player == PlayerAst::ItsController
+            {
+                *player = PlayerAst::That;
+            }
+        }
+        _ => {}
+    }
+
+    crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+        effect,
+        true,
+        |nested| {
+            for nested_effect in nested {
+                bind_sacrificed_snapshot_controller(nested_effect);
+            }
+        },
+    );
+}
+
+/// Parse a typed iterator over the actual objects sacrificed by the preceding
+/// instruction.  The last-known predicate deliberately stays inside the
+/// object loop: it preserves both the exact sacrificed subset and the
+/// controller each object had before leaving the battlefield.
+pub(crate) fn parse_for_each_sacrificed_this_way_sentence(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let Some(shape) = search_grammar::parse_search_for_each_way_shape_lexed(tokens) else {
+        return Ok(None);
+    };
+    if shape.kind != search_grammar::SearchForEachWayKind::Sacrificed {
+        return Ok(None);
+    }
+    let filter_tokens = shape.iterated_filter_tokens.ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing object type in sacrificed-this-way iterator (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        ))
+    })?;
+    if filter_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "empty object type in sacrificed-this-way iterator (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        )));
+    }
+    let mut filter = parse_object_filter_lexed(filter_tokens, false)?;
+    // Sacrifice result predicates use the permanent's battlefield snapshot,
+    // not its current graveyard object.
+    filter.zone = None;
+
+    let effect_tokens = shape.effect_tokens.ok_or_else(|| {
+        CardTextError::ParseError(format!(
+            "missing comma after 'for each ... sacrificed this way' clause (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        ))
+    })?;
+    if effect_tokens.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "missing effect after sacrificed-this-way iterator (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        )));
+    }
+    let mut effects = parse_effect_chain(effect_tokens)?;
+    if effects.is_empty() {
+        return Err(CardTextError::ParseError(format!(
+            "empty effect after sacrificed-this-way iterator (clause: '{}')",
+            token_word_refs(tokens).join(" ")
+        )));
+    }
+    for effect in &mut effects {
+        bind_sacrificed_snapshot_controller(effect);
+    }
+
+    Ok(Some(vec![EffectAst::ForEachTagged {
+        tag: IT_TAG.into(),
+        effects: vec![EffectAst::Conditional {
+            predicate: PredicateAst::ItMatchedLastKnown(filter),
+            if_true: effects,
+            if_false: Vec::new(),
+        }],
     }]))
 }
 

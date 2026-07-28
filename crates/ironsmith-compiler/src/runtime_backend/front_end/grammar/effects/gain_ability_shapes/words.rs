@@ -288,6 +288,23 @@ fn demonstrative_gain_subject_tail<'a>(words: &'a [&'a str]) -> Option<&'a [&'a 
             .iter()
             .find_map(|prefix| primitives::parse_word_sequence_prefix(words, prefix))
         })
+        .or_else(|| match words {
+            ["the", noun]
+                if matches!(
+                    *noun,
+                    "card"
+                        | "copy"
+                        | "creature"
+                        | "object"
+                        | "permanent"
+                        | "spell"
+                        | "token"
+                ) =>
+            {
+                Some(&words[1..])
+            }
+            _ => None,
+        })
 }
 
 pub(crate) fn classify_gain_subject<'a>(words: &'a [&'a str]) -> GainSubjectShape {
@@ -516,5 +533,9 @@ mod tests {
         let subject = classify_gain_subject(&["each", "of", "those", "creatures"]);
         assert!(subject.demonstrative_object);
         assert!(!subject.demonstrative_player);
+
+        let copy = classify_gain_subject(&["the", "copy"]);
+        assert!(copy.demonstrative_object);
+        assert!(!copy.demonstrative_player);
     }
 }

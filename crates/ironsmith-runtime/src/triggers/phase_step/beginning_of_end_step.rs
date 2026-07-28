@@ -1,6 +1,7 @@
 //! "At the beginning of [player]'s end step" trigger.
 
 use crate::events::EventKind;
+use crate::filter::PlayerFilterExt as _;
 use crate::ids::PlayerId;
 use crate::target::PlayerFilter;
 use crate::triggers::matcher_trait::{TriggerContext, TriggerMatcher};
@@ -77,6 +78,9 @@ impl TriggerMatcher for BeginningOfEndStepTrigger {
             }
             PlayerFilter::Any => "At the beginning of each player's end step".to_string(),
             PlayerFilter::Opponent => "At the beginning of each opponent's end step".to_string(),
+            PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+                "At the beginning of enchanted player's end step".to_string()
+            }
             PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
                 if tag.as_str() == "enchanted" =>
             {
@@ -104,6 +108,16 @@ fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerC
         PlayerFilter::Opponent => player != ctx.controller,
         PlayerFilter::Any => true,
         PlayerFilter::Specific(id) => player == *id,
+        PlayerFilter::TaggedPlayer(tag) if tag.as_str() == "enchanted" => {
+            let Some(source) = ctx.game.object(ctx.source_id) else {
+                return false;
+            };
+            matches!(
+                source.attached_to,
+                Some(crate::object::AttachmentTarget::Player(attached_player))
+                    if attached_player == player
+            )
+        }
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
             if matches!(tag.as_str(), "enchanted" | "equipped") =>
         {
@@ -121,7 +135,7 @@ fn player_filter_matches(filter: &PlayerFilter, player: PlayerId, ctx: &TriggerC
                 crate::object::AttachmentTarget::Player(id) => id == player,
             }
         }
-        _ => true,
+        _ => filter.matches_player(player, &ctx.filter_ctx),
     }
 }
 
@@ -214,5 +228,40 @@ mod tests {
             assert!(trigger.matches(&event, &ctx));
         }
         assert_eq!(trigger.display(), "At the beginning of the end step");
+    }
+
+    #[test]
+    fn enchanted_player_end_step_matches_only_the_attached_player() {
+        use crate::card::CardBuilder;
+        use crate::object::AttachmentTarget;
+        use crate::types::CardType;
+        use crate::zone::Zone;
+
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let aura = CardBuilder::new(crate::ids::CardId::from_raw(910_001), "Player Aura")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let source_id = game.create_object_from_card(&aura, alice, Zone::Battlefield);
+        game.object_mut(source_id).expect("aura exists").attached_to =
+            Some(AttachmentTarget::Player(bob));
+
+        let trigger = BeginningOfEndStepTrigger::new(PlayerFilter::TaggedPlayer(
+            crate::tag::TagKey::from("enchanted"),
+        ));
+        assert_eq!(
+            trigger.display(),
+            "At the beginning of enchanted player's end step"
+        );
+
+        for (active_player, expected) in [(alice, false), (bob, true)] {
+            let event = TriggerEvent::new_with_provenance(
+                BeginningOfEndStepEvent::new(active_player),
+                crate::provenance::ProvNodeId::default(),
+            );
+            let ctx = TriggerContext::for_source(source_id, alice, &game);
+            assert_eq!(trigger.matches(&event, &ctx), expected);
+        }
     }
 }

@@ -1,6 +1,7 @@
 use super::*;
 use crate::runtime_backend::effect_sentences::parse_artifact_enchantment_or_token_filter;
 use crate::runtime_backend::grammar::effects::sacrifice_discard_shapes as sacrifice_discard_grammar;
+use crate::runtime_backend::grammar::filters::preserve_branch_scoped_card_type_union;
 use crate::runtime_backend::sentences::effect_sentences::subject_verb_primitives::{
     SubjectVerbPrimitiveClause, rewrite_unless_cost_source_values_to_it_tag, try_build_unless,
 };
@@ -66,6 +67,83 @@ fn triggering_same_mana_value_filter() -> ObjectFilter {
             relation: crate::target::TaggedOpbjectRelation::SameManaValueAsTagged,
         });
     filter
+}
+
+/// Keep an adjective attached to its terminal noun in a serialized union.
+///
+/// The broad card-type parser can flatten `enchantments and nonbasic lands`
+/// into one branch, which incorrectly applies `nonbasic` to both types.  When
+/// the source tokens explicitly anchor the adjective immediately before
+/// `land(s)`, split that mixed branch and retain the Basic exclusion only on
+/// the land arm.
+pub(crate) fn preserve_terminal_nonbasic_land_union(
+    tokens: &[OwnedLexToken],
+    filter: &mut ObjectFilter,
+) {
+    let adjective_is_land_local = tokens.windows(2).any(|window| {
+        window[0].is_word("nonbasic") && (window[1].is_word("land") || window[1].is_word("lands"))
+    });
+    if !adjective_is_land_local {
+        return;
+    }
+
+    // Some whole-sentence subject/verb routes flatten the type list before
+    // the later correlated-result pass sees it. The source adjacency still
+    // proves `nonbasic` belongs only to the land arm, so recover the same
+    // inclusive union from the flattened selector.
+    if filter.any_of.is_empty()
+        && filter.card_types.len() > 1
+        && filter.card_types.contains(&crate::types::CardType::Land)
+        && filter
+            .excluded_supertypes
+            .contains(&crate::types::Supertype::Basic)
+    {
+        let card_types = std::mem::take(&mut filter.card_types);
+        filter
+            .excluded_supertypes
+            .retain(|supertype| *supertype != crate::types::Supertype::Basic);
+        filter.any_of = card_types
+            .into_iter()
+            .map(|card_type| {
+                let mut branch = ObjectFilter::default().with_type(card_type);
+                if card_type == crate::types::CardType::Land {
+                    branch
+                        .excluded_supertypes
+                        .push(crate::types::Supertype::Basic);
+                }
+                branch
+            })
+            .collect();
+        return;
+    }
+
+    if filter.any_of.is_empty() {
+        return;
+    }
+
+    let mut branches = Vec::new();
+    for branch in std::mem::take(&mut filter.any_of) {
+        if branch.card_types.len() > 1
+            && branch.card_types.contains(&crate::types::CardType::Land)
+            && branch
+                .excluded_supertypes
+                .contains(&crate::types::Supertype::Basic)
+        {
+            for card_type in &branch.card_types {
+                let mut split = branch.clone();
+                split.card_types = vec![*card_type];
+                if *card_type != crate::types::CardType::Land {
+                    split
+                        .excluded_supertypes
+                        .retain(|supertype| *supertype != crate::types::Supertype::Basic);
+                }
+                branches.push(split);
+            }
+        } else {
+            branches.push(branch);
+        }
+    }
+    filter.any_of = branches;
 }
 
 pub(crate) fn parse_sacrifice(
@@ -254,6 +332,8 @@ pub(crate) fn parse_sacrifice(
                 other,
             } => {
                 let mut filter = parse_object_filter_lexed(filter_tokens, other)?;
+                preserve_branch_scoped_card_type_union(&mut filter, filter_tokens, other);
+                preserve_terminal_nonbasic_land_union(filter_tokens, &mut filter);
                 if other {
                     filter.other = true;
                 }
@@ -332,7 +412,15 @@ pub(crate) fn parse_sacrifice(
             crate::runtime_backend::token_word_refs(tokens).join(" ")
         )));
     }
-    let mut filter = if let Some(tagged_reference) = object_shape.tagged_reference {
+    let all_of_referenced_set = matches!(
+        object_shape.tagged_reference,
+        Some(sacrifice_discard_grammar::SacrificeTaggedReferenceKind::AllOfTaggedSet)
+    );
+    let mut filter = if all_of_referenced_set {
+        // Preserve the authored plural noun and demonstrative surface while
+        // keeping the filter tied to the exact preceding result set.
+        parse_object_filter_lexed(filter_tokens, other)?
+    } else if let Some(tagged_reference) = object_shape.tagged_reference {
         let mut tagged_filter = ObjectFilter::tagged(TagKey::from(IT_TAG));
         tagged_filter.zone = Some(Zone::Battlefield);
         if tagged_reference == sacrifice_discard_grammar::SacrificeTaggedReferenceKind::Token {
@@ -381,11 +469,15 @@ pub(crate) fn parse_sacrifice(
     } else {
         None
     };
-    let sacrifice = EffectAst::subject_verb_sacrifice(player, filter, count, target);
-    let sacrifice = if one_of_referenced_set {
-        sacrifice.with_sacrifice_one_of_referenced_set()
+    let sacrifice = if all_of_referenced_set {
+        EffectAst::subject_verb_sacrifice_all(player, filter)
     } else {
-        sacrifice
+        let sacrifice = EffectAst::subject_verb_sacrifice(player, filter, count, target);
+        if one_of_referenced_set {
+            sacrifice.with_sacrifice_one_of_referenced_set()
+        } else {
+            sacrifice
+        }
     };
 
     // Wrap in ForEachObject when the clause has a "for each <filter>" suffix,
@@ -707,5 +799,61 @@ mod selected_sacrifice_tests {
         assert!(one_of_referenced_set);
         assert_eq!(filter.tagged_constraints.len(), 1);
         assert_eq!(filter.tagged_constraints[0].tag.as_str(), IT_TAG);
+    }
+
+    #[test]
+    fn those_permanents_sacrifices_the_complete_referenced_set() {
+        let tokens = lex_line("Sacrifice those permanents.", 0)
+            .expect("plural tagged-set sacrifice clause should lex");
+        let parsed = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::That)), None)
+            .expect("plural tagged-set sacrifice should parse");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SacrificeAll { filter },
+            ..
+        }) = parsed
+        else {
+            panic!("expected all-of-result-set sacrifice AST");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        }));
+        assert!(
+            filter.card_types.len() > 1,
+            "the permanent noun should survive alongside the result tag: {filter:#?}"
+        );
+    }
+
+    #[test]
+    fn sacrifice_all_keeps_a_terminal_nonbasic_qualifier_on_only_the_land_arm() {
+        let tokens = lex_line(
+            "all artifacts, enchantments, and nonbasic lands they control.",
+            0,
+        )
+        .expect("sacrifice-all clause should lex");
+        let parsed = parse_sacrifice(&tokens, Some(SubjectAst::Player(PlayerAst::That)), None)
+            .expect("sacrifice-all clause should parse");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SacrificeAll { filter },
+            ..
+        }) = parsed
+        else {
+            panic!("expected sacrifice-all subject-verb effect");
+        };
+
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [crate::types::CardType::Artifact]
+                && branch.excluded_supertypes.is_empty()
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [crate::types::CardType::Enchantment]
+                && branch.excluded_supertypes.is_empty()
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [crate::types::CardType::Land]
+                && branch.excluded_supertypes == [crate::types::Supertype::Basic]
+        }));
     }
 }

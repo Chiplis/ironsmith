@@ -80,17 +80,10 @@ pub(crate) fn parse_put_counter_segment_tokens(
             count,
         })
     } else {
-        let source_equivalent = primitives::parse_all(
-            target,
-            parse_put_counter_controlled_creature_lexed,
-            "put-counter-controlled-creature",
-        )
-        .is_ok();
         Ok(ActivationCostSegmentCst::PutCountersChosen {
             counter_type,
             count,
             filter: filters::parse_object_filter_with_grammar_entrypoint_lexed(target, false)?,
-            source_equivalent,
         })
     }
 }
@@ -131,34 +124,31 @@ pub(crate) fn parse_remove_counter_segment_tokens(
         RemovalQuantity::OneOrMore => (1, false, true, false),
     };
 
-    if dynamic {
-        return if target_among || count > 0 {
-            Ok(ActivationCostSegmentCst::RemoveCountersAmong {
-                counter_type,
-                count,
-                filter: if target_among {
-                    filter
-                } else {
-                    crate::target::ObjectFilter::source()
-                },
-                display_x,
-                dynamic: true,
-            })
-        } else {
-            Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
-                counter_type,
-                display_x,
-                remove_all,
-            })
-        };
-    }
-
     let source_target = primitives::parse_all(
         target,
         parse_remove_counter_source_lexed,
         "remove-counter-source",
     )
     .is_ok();
+    if dynamic {
+        return if !target_among && source_target && count == 0 {
+            Ok(ActivationCostSegmentCst::RemoveCountersDynamic {
+                counter_type,
+                display_x,
+                remove_all,
+            })
+        } else {
+            Ok(ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type,
+                count,
+                filter,
+                display_x,
+                dynamic: true,
+                single_object: !target_among,
+            })
+        };
+    }
+
     if !target_among
         && source_target
         && let Some(counter_type) = counter_type
@@ -174,6 +164,7 @@ pub(crate) fn parse_remove_counter_segment_tokens(
         filter,
         display_x: false,
         dynamic: false,
+        single_object: !target_among,
     })
 }
 
@@ -303,13 +294,6 @@ fn parse_put_counter_source_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> 
     Ok(())
 }
 
-fn parse_put_counter_controlled_creature_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
-    opt(primitives::kw("a")).parse_next(input)?;
-    primitives::phrase(&["creature", "you", "control"]).parse_next(input)?;
-    eof.parse_next(input)?;
-    Ok(())
-}
-
 fn parse_remove_counter_source_lexed<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     parse_this_source(true).parse_next(input)?;
     eof.parse_next(input)?;
@@ -392,7 +376,63 @@ mod tests {
                 filter: crate::target::ObjectFilter::creature(),
                 display_x: true,
                 dynamic: true,
+                single_object: false,
             }
         );
+
+        let chosen_put = lex_line("put a -1/-1 counter on a creature you control", 0).unwrap();
+        assert!(matches!(
+            parse_put_counter_segment_tokens(&chosen_put).unwrap(),
+            ActivationCostSegmentCst::PutCountersChosen {
+                counter_type: CounterType::MinusOneMinusOne,
+                count: 1,
+                filter,
+            } if filter.card_types == [crate::types::CardType::Creature]
+                && filter.controller == Some(crate::target::PlayerFilter::You)
+        ));
+
+        let chosen_dynamic = lex_line(
+            "remove X counters from an artifact or creature you control",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_remove_counter_segment_tokens(&chosen_dynamic).unwrap(),
+            ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type: None,
+                count: 0,
+                filter,
+                display_x: true,
+                dynamic: true,
+                single_object: true,
+            } if filter.card_types
+                == [crate::types::CardType::Artifact, crate::types::CardType::Creature]
+                && filter.controller == Some(crate::target::PlayerFilter::You)
+        ));
+
+        let explicit_permanent_types = lex_line(
+            "remove a counter from an artifact, creature, land, or planeswalker you control",
+            0,
+        )
+        .unwrap();
+        assert!(matches!(
+            parse_remove_counter_segment_tokens(&explicit_permanent_types).unwrap(),
+            ActivationCostSegmentCst::RemoveCountersAmong {
+                counter_type: None,
+                count: 1,
+                filter,
+                display_x: false,
+                dynamic: false,
+                single_object: true,
+            } if filter.any_of.is_empty()
+                && filter.card_types
+                    == [
+                        crate::types::CardType::Artifact,
+                        crate::types::CardType::Creature,
+                        crate::types::CardType::Land,
+                        crate::types::CardType::Planeswalker,
+                    ]
+                && filter.controller == Some(crate::target::PlayerFilter::You)
+        ));
     }
 }

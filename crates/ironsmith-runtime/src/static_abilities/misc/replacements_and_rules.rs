@@ -2903,6 +2903,50 @@ impl StaticAbilityKind for KeywordMarker {
     }
 }
 
+/// Inert compiled-text provenance for keywords authored on one source line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceLineKeywordGroup {
+    pub keyword_count: usize,
+}
+
+impl SourceLineKeywordGroup {
+    pub const fn new(keyword_count: usize) -> Self {
+        Self { keyword_count }
+    }
+}
+
+impl StaticAbilityKind for SourceLineKeywordGroup {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SourceLineKeywordGroup
+    }
+
+    fn display(&self) -> String {
+        String::new()
+    }
+}
+
+/// Inert compiled-text provenance for static models from one source line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SourceLineStaticGroup {
+    pub member_count: usize,
+}
+
+impl SourceLineStaticGroup {
+    pub const fn new(member_count: usize) -> Self {
+        Self { member_count }
+    }
+}
+
+impl StaticAbilityKind for SourceLineStaticGroup {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::SourceLineStaticGroup
+    }
+
+    fn display(&self) -> String {
+        String::new()
+    }
+}
+
 /// Allows a player to continuously see the top card of their library.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LookAtTopCardOfLibrary;

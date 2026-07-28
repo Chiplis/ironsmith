@@ -940,6 +940,7 @@ pub(crate) fn parse_until_duration_triggered_clause(
         one_shot: false,
         duration,
         either_of_watched_objects,
+        while_any_tagged_object_in_zone: None,
     }))
 }
 
@@ -989,7 +990,17 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
         .token_span_for_words(deal_idx + 1, word_view.len())
         .ok_or_else(|| CardTextError::ParseError("missing damage amount".to_string()))?;
     let source_tokens = &tokens[source_range];
-    let source = TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(source_tokens));
+    let body_tokens = &tokens[body_range.clone()];
+    let body_words = TokenWordView::new(body_tokens).to_word_refs();
+    // In a follow-up damage clause, "it deals an additional ..." continues
+    // the preceding spell or ability's damage event. Binding that "it" to
+    // last-object memory instead can incorrectly turn the previous damage
+    // target into the source of the delayed damage.
+    let source = if source_words == ["it"] && body_words.starts_with(&["an", "additional"]) {
+        TargetAst::Source(span_from_tokens(source_tokens))
+    } else {
+        TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(source_tokens))
+    };
     let distributed_source = if source_words == ["that", "creature"] {
         let mut filter = ObjectFilter::creature();
         filter.zone = Some(Zone::Battlefield);
@@ -1003,7 +1014,7 @@ pub(crate) fn parse_anaphoric_object_deals_damage_clause(
     } else {
         source.clone()
     };
-    let parsed = super::verb_handlers::parse_deal_damage(&tokens[body_range])?;
+    let parsed = super::verb_handlers::parse_deal_damage(body_tokens)?;
     let EffectAst::SubjectVerb(effect) = parsed else {
         return Ok(None);
     };
@@ -1049,6 +1060,45 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             LexedClause::new(tokens).text()
         )));
     }
+    let source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
+    let iterated_source_filter = if source_words.first() == Some(&"each") {
+        if shape.source_is_tagged {
+            let filter_tokens = if source_words.starts_with(&["each", "of", "those"])
+                && shape.source_tokens.len() > 3
+            {
+                &shape.source_tokens[3..]
+            } else {
+                let tapped_idx = shape
+                    .source_tokens
+                    .iter()
+                    .position(|token| token.as_word() == Some("tapped"))
+                    .ok_or_else(|| {
+                        CardTextError::ParseError("missing tagged-set source qualifier".to_string())
+                    })?;
+                &shape.source_tokens[1..tapped_idx]
+            };
+            let mut filter = parse_object_filter(filter_tokens, false)?;
+            if filter.zone.is_none() {
+                filter.zone = Some(Zone::Battlefield);
+            }
+            filter
+                .tagged_constraints
+                .push(crate::filter::TaggedObjectConstraint {
+                    tag: TagKey::from(IT_TAG),
+                    relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+                });
+            Some(filter)
+        } else if let TargetAst::Object(filter, _, _) = &source {
+            Some(filter.clone())
+        } else {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported iterated damage source phrase (clause: '{}')",
+                LexedClause::new(tokens).text()
+            )));
+        }
+    } else {
+        None
+    };
     let effect = match shape.target {
         clause_shapes::PowerDamageTargetShape::EachPlayer => Ok(Some(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage_with_source(
@@ -1057,6 +1107,16 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         })),
+        clause_shapes::PowerDamageTargetShape::EachOtherPlayer => {
+            Ok(Some(EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::NotYou,
+                effects: vec![EffectAst::subject_verb_damage_with_source(
+                    source,
+                    shape.amount,
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
+            }))
+        }
         clause_shapes::PowerDamageTargetShape::EachOpponent => {
             Ok(Some(EffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
@@ -1078,37 +1138,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             )))
         }
     }?;
-    if shape.source_is_tagged
-        && TokenWordView::new(shape.source_tokens)
-            .to_word_refs()
-            .first()
-            .is_some_and(|word| *word == "each")
-    {
-        let source_words = TokenWordView::new(shape.source_tokens).to_word_refs();
-        let filter_tokens = if source_words.starts_with(&["each", "of", "those"])
-            && shape.source_tokens.len() > 3
-        {
-            &shape.source_tokens[3..]
-        } else {
-            let tapped_idx = shape
-                .source_tokens
-                .iter()
-                .position(|token| token.as_word() == Some("tapped"))
-                .ok_or_else(|| {
-                    CardTextError::ParseError("missing tagged-set source qualifier".to_string())
-                })?;
-            &shape.source_tokens[1..tapped_idx]
-        };
-        let mut filter = parse_object_filter(filter_tokens, false)?;
-        if filter.zone.is_none() {
-            filter.zone = Some(Zone::Battlefield);
-        }
-        filter
-            .tagged_constraints
-            .push(crate::filter::TaggedObjectConstraint {
-                tag: TagKey::from(IT_TAG),
-                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
-            });
+    if let Some(filter) = iterated_source_filter {
         Ok(effect.map(|effect| EffectAst::ForEachObject {
             filter,
             effects: vec![effect],
@@ -1183,6 +1213,7 @@ pub(crate) fn parse_clash_clause(
 #[cfg(test)]
 mod result_subject_tests {
     use super::*;
+    use crate::runtime_backend::ast::SubjectVerbEffectAst;
 
     #[test]
     fn dealt_damage_this_way_attack_subject_keeps_result_tag() {
@@ -1197,5 +1228,82 @@ mod result_subject_tests {
         let debug = format!("{effect:#?}");
         assert!(debug.contains("IsTaggedObject"), "{debug}");
         assert!(debug.contains(IT_TAG), "{debug}");
+    }
+
+    #[test]
+    fn named_source_damage_to_each_other_player_excludes_only_controller() {
+        let tokens =
+            crate::runtime_backend::lex_line("This spell deals 2 damage to each other player.", 0)
+                .expect("lex each-other-player damage");
+        let effect = parse_deal_damage_equal_to_power_clause(&tokens)
+            .expect("parse damage clause")
+            .expect("match damage clause");
+
+        assert!(matches!(
+            effect,
+            EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::NotYou,
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn each_object_power_damage_preserves_the_source_set_as_an_iteration() {
+        let tokens = crate::runtime_backend::lex_line(
+            "Each creature with power 4 or greater you control deals damage equal to its power to that permanent.",
+            0,
+        )
+        .expect("lex each-object damage");
+        let effect = parse_deal_damage_equal_to_power_clause(&tokens)
+            .expect("parse each-object damage")
+            .expect("match each-object damage");
+
+        let EffectAst::ForEachObject { filter, effects } = effect else {
+            panic!("expected an object-source iteration");
+        };
+        assert_eq!(
+            filter.power,
+            Some(crate::filter::Comparison::GreaterThanOrEqual(4))
+        );
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: TargetAst::Object(_, _, _),
+                    target: TargetAst::Object(target_filter, _, _),
+                    ..
+                },
+                ..
+            })] if target_filter.tagged_constraints.iter().any(|constraint| {
+                constraint.tag.as_str() == IT_TAG
+                    && constraint.relation
+                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            })
+        ));
+    }
+
+    #[test]
+    fn additional_damage_pronoun_keeps_the_spell_or_ability_as_source() {
+        let tokens = crate::runtime_backend::lex_line(
+            "It deals an additional 3 damage to that player.",
+            0,
+        )
+        .expect("lex additional damage");
+        let effect = parse_anaphoric_object_deals_damage_clause(&tokens)
+            .expect("parse additional damage")
+            .expect("match additional damage");
+
+        assert!(matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DealDamageEqualToPower {
+                    source: TargetAst::Source(_),
+                    ..
+                },
+                ..
+            })
+        ));
     }
 }

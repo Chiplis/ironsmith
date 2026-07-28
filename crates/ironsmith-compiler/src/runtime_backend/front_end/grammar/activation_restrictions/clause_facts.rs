@@ -59,12 +59,14 @@ pub(crate) enum SimpleObjectRestrictionKind {
     BeCountered,
     Transform,
     PhaseOut,
+    PhaseIn,
     BeTargeted,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RestrictionSubjectSurface {
     Damage,
+    Source,
     TaggedObjectPronoun,
     Player,
 }
@@ -74,6 +76,12 @@ pub(crate) struct PowerOrToughnessSubject;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DealtDamageThisWay;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DealtDamageBySourceSubject {
+    pub(crate) base_word_count: usize,
+    pub(crate) damager: ironsmith_core::DamagedBySource,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ManaRetentionTailKind {
@@ -412,6 +420,15 @@ pub(crate) fn parse_simple_object_restriction_words(
         ],
     ) {
         SimpleObjectRestrictionKind::PhaseOut
+    } else if exact_any(
+        words,
+        &[
+            &["phase", "in"],
+            &["phase", "in", "this", "turn"],
+            &["phases", "in"],
+        ],
+    ) {
+        SimpleObjectRestrictionKind::PhaseIn
     } else if exact(words, &["be", "targeted"]) {
         SimpleObjectRestrictionKind::BeTargeted
     } else {
@@ -428,6 +445,8 @@ pub(crate) fn parse_restriction_subject_surface_words(
         &[&["damage"], &["the", "damage"], &["that", "damage"]],
     ) {
         Some(RestrictionSubjectSurface::Damage)
+    } else if exact(words, &["this"]) {
+        Some(RestrictionSubjectSurface::Source)
     } else if exact_any(
         words,
         &[&["it"], &["they"], &["them"], &["itself"], &["themselves"]],
@@ -460,6 +479,97 @@ pub(crate) fn parse_power_or_toughness_subject_words(
 
 pub(crate) fn parse_dealt_damage_this_way_words(words: &[&str]) -> Option<DealtDamageThisWay> {
     contains(words, &["dealt", "damage", "this", "way"]).then_some(DealtDamageThisWay)
+}
+
+pub(crate) fn parse_dealt_damage_by_source_subject_words(
+    words: &[&str],
+) -> Option<DealtDamageBySourceSubject> {
+    use ironsmith_core::DamagedBySource;
+
+    let alternatives: &[(&[&str], DamagedBySource)] = &[
+        (
+            &["dealt", "damage", "by", "this", "creature", "this", "turn"],
+            DamagedBySource::ThisCreature,
+        ),
+        (
+            &[
+                "that", "was", "dealt", "damage", "by", "this", "creature", "this", "turn",
+            ],
+            DamagedBySource::ThisCreature,
+        ),
+        (
+            &[
+                "that", "were", "dealt", "damage", "by", "this", "creature", "this", "turn",
+            ],
+            DamagedBySource::ThisCreature,
+        ),
+        (
+            &[
+                "dealt", "damage", "by", "equipped", "creature", "this", "turn",
+            ],
+            DamagedBySource::EquippedCreature,
+        ),
+        (
+            &[
+                "that", "was", "dealt", "damage", "by", "equipped", "creature", "this", "turn",
+            ],
+            DamagedBySource::EquippedCreature,
+        ),
+        (
+            &[
+                "that", "were", "dealt", "damage", "by", "equipped", "creature", "this", "turn",
+            ],
+            DamagedBySource::EquippedCreature,
+        ),
+        (
+            &[
+                "dealt",
+                "damage",
+                "by",
+                "enchanted",
+                "creature",
+                "this",
+                "turn",
+            ],
+            DamagedBySource::EnchantedCreature,
+        ),
+        (
+            &[
+                "that",
+                "was",
+                "dealt",
+                "damage",
+                "by",
+                "enchanted",
+                "creature",
+                "this",
+                "turn",
+            ],
+            DamagedBySource::EnchantedCreature,
+        ),
+        (
+            &[
+                "that",
+                "were",
+                "dealt",
+                "damage",
+                "by",
+                "enchanted",
+                "creature",
+                "this",
+                "turn",
+            ],
+            DamagedBySource::EnchantedCreature,
+        ),
+    ];
+
+    alternatives.iter().find_map(|(suffix, damager)| {
+        let base_word_count = words.len().checked_sub(suffix.len())?;
+        (base_word_count > 0 && words.ends_with(suffix)).then_some(DealtDamageBySourceSubject {
+            base_word_count,
+            damager: *damager,
+        })
+    })
 }
 
 pub(crate) fn parse_mana_retention_tail_words(words: &[&str]) -> Option<ManaRetentionTailKind> {

@@ -131,6 +131,22 @@ pub(super) fn rewrite_lexed_effect_sentence_supports_radiance_shared_color_fanou
 }
 
 #[test]
+pub(super) fn rewrite_destroy_radiance_keeps_the_shared_color_target_set() {
+    let text = "Radiance — Destroy target enchantment and each other enchantment that shares a color with it.";
+    let lexed = lex_line(text, 0).expect("destroy radiance clause should lex");
+    let parsed = parse_effect_sentence_lexed(&lexed).expect("destroy radiance clause should parse");
+    let debug = format!("{parsed:#?}");
+
+    assert!(
+        debug.contains("Destroy")
+            && debug.contains("DestroyAll")
+            && debug.contains("SharesColorWithTagged")
+            && debug.contains("IsNotTaggedObject"),
+        "expected target destroy plus linked shared-color fanout, got {debug}"
+    );
+}
+
+#[test]
 pub(super) fn rewrite_lexed_effect_sentence_supports_radiance_duration_prefix_quoted_ability_fanout()
  {
     let text = "Radiance — Until end of turn, target creature and each other creature that shares a color with it gain \"This creature can't block.\"";
@@ -1190,6 +1206,7 @@ pub(super) fn rewrite_activation_cost_parses_energy_and_counter_variants() {
             filter,
             display_x: false,
             dynamic: false,
+            single_object: true,
         }] if filter.source
     ));
     assert!(matches!(
@@ -1672,10 +1689,40 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
             counter_type: CounterType::PlusOnePlusOne,
             count: 1,
             filter,
-            source_equivalent: true,
         }] if filter.card_types == [CardType::Creature]
             && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
+    let put_lowered = format!(
+        "{:#?}",
+        lower_activation_cost_cst(&put_cst).expect("chosen counter-placement cost should lower")
+    );
+    assert!(
+        put_lowered.contains("PutCountersEffect")
+            && put_lowered.contains("ObjectFilter")
+            && !put_lowered.contains("target: Source"),
+        "chosen counter-placement cost must not collapse onto the source: {put_lowered}"
+    );
+
+    let singular_remove_tokens = lex_line(
+        "Remove X counters from an artifact or creature you control",
+        0,
+    )
+    .expect("lexer should classify singular dynamic remove-counter cost");
+    let singular_remove_cst = parse_activation_cost_tokens_rewrite(&singular_remove_tokens)
+        .expect("singular dynamic counter removal should parse");
+    let singular_remove_lowered = format!(
+        "{:#?}",
+        lower_activation_cost_cst(&singular_remove_cst)
+            .expect("singular dynamic counter removal should lower")
+    );
+    assert!(
+        singular_remove_lowered.contains("RemoveAnyCountersAmongEffect")
+            && singular_remove_lowered.contains("single_object: true")
+            && singular_remove_lowered.contains("Artifact")
+            && singular_remove_lowered.contains("Creature")
+            && !singular_remove_lowered.contains("RemoveAnyCountersFromSourceEffect"),
+        "singular counter removal must preserve its chosen-object filter: {singular_remove_lowered}"
+    );
 
     let processor_tokens = lex_line(
         "Put a card an opponent owns from exile into that player's graveyard",
@@ -1704,6 +1751,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
             filter,
             display_x: false,
             dynamic: true,
+            single_object: false,
         }] if filter.card_types == [CardType::Artifact]
             && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
@@ -1723,6 +1771,7 @@ pub(super) fn rewrite_activation_cost_token_entrypoint_parses_counter_variants()
             filter,
             display_x: false,
             dynamic: true,
+            single_object: false,
         }] if filter.card_types == [CardType::Creature]
             && filter.controller == Some(crate::target::PlayerFilter::You)
     ));
@@ -1744,6 +1793,7 @@ pub(super) fn rewrite_activation_cost_parser_keeps_among_list_with_commas_in_one
             filter,
             display_x: false,
             dynamic: false,
+            single_object: false,
         },
     ] = cst.segments.as_slice()
     else {
@@ -2840,6 +2890,33 @@ pub(super) fn rewrite_semantic_parse_accepts_becomes_targeted_by_spell_filter_tr
 }
 
 #[test]
+pub(super) fn rewrite_semantic_parse_keeps_controller_on_targeting_spell_filter()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Targeted Drake Variant")
+        .card_types(vec![CardType::Creature]);
+    let (doc, _) = parse_text_to_semantic_document(
+        builder,
+        "Whenever this creature becomes the target of a spell you control, draw a card."
+            .to_string(),
+        false,
+    )?;
+
+    let [item] = doc.items.as_slice() else {
+        panic!("expected one triggered semantic item, got {:?}", doc.items);
+    };
+    let (trigger, effects, _) =
+        rewrite_direct_triggered_chunk(item).expect("expected typed becomes-targeted trigger");
+    let debug = format!("{trigger:?}");
+    assert!(
+        debug.contains("ThisBecomesTargetedBySpell") && debug.contains("controller: Some(You)"),
+        "expected the triggering spell's controller constraint to survive, got {debug}"
+    );
+    assert!(format!("{effects:?}").contains("Draw"));
+
+    Ok(())
+}
+
+#[test]
 pub(super) fn rewrite_semantic_parse_marks_plumb_additional_cost_as_non_choice()
 -> Result<(), CardTextError> {
     let builder = CardDefinitionBuilder::new(CardId::new(), "Plumb Variant")
@@ -3326,7 +3403,9 @@ pub(super) fn rewrite_grammar_permanent_you_controlled_left_battlefield_predicat
 
     assert_eq!(
         super::super::parse_predicate_lexed(&tokens).expect("predicate should parse"),
-        crate::cards::builders::PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn
+        crate::cards::builders::PredicateAst::PermanentLeftBattlefieldUnderYourControlThisTurn {
+            surface: crate::PermanentLeftBattlefieldControlSurface::YouControlledLeft,
+        }
     );
 }
 
@@ -3568,6 +3647,41 @@ pub(super) fn rewrite_lexed_trigger_clause_keeps_attacked_player_land_count_gate
 }
 
 #[test]
+pub(super) fn rewrite_lexed_trigger_clause_keeps_attacked_player_relative_life_gate() {
+    let tokens = lex_line(
+        "this creature attacks an opponent who has more life than you",
+        0,
+    )
+    .expect("rewrite lexer should classify relative-life attack trigger clause");
+
+    let parsed = super::super::parse_trigger_clause_lexed(&tokens)
+        .expect("relative-life attack trigger clause should parse");
+
+    match parsed {
+        crate::cards::builders::TriggerSpec::Attacks(filter) => {
+            assert!(
+                filter.source,
+                "expected the attack source to remain identity-bound"
+            );
+            assert_eq!(
+                filter.attacking_player_or_planeswalker_controlled_by,
+                Some(crate::target::PlayerFilter::HasMoreLifeThanYou {
+                    base: Box::new(crate::target::PlayerFilter::Opponent),
+                })
+            );
+            assert_eq!(
+                filter.targets_only_player,
+                Some(crate::target::PlayerFilter::HasMoreLifeThanYou {
+                    base: Box::new(crate::target::PlayerFilter::Opponent),
+                }),
+                "the trigger must not match a planeswalker protected by that opponent"
+            );
+        }
+        other => panic!("expected a source attack with a relative-life defender, got {other:?}"),
+    }
+}
+
+#[test]
 pub(super) fn rewrite_lexed_triggered_line_preserves_attacking_looked_card_bundle() {
     let text = "Look at the top eight cards of your library. You may put a creature card from among them onto the battlefield tapped and attacking that player. Put the rest on the bottom of your library in a random order.";
     let sentences = registry_sentence_inputs(text);
@@ -3650,6 +3764,86 @@ pub(super) fn rewrite_lowered_background_quoted_grant_with_inner_target_pump_sta
         "{debug}"
     );
     assert!(debug.contains("ModifyPowerToughness"), "{debug}");
+    Ok(())
+}
+
+#[test]
+pub(super) fn jubilant_skybonder_full_document_keeps_quoted_tax_as_a_filtered_grant()
+-> Result<(), CardTextError> {
+    let builder = CardDefinitionBuilder::new(CardId::new(), "Jubilant Skybonder")
+        .card_types(vec![CardType::Creature]);
+    let (definition, _) = parse_text_with_annotations_lowered(
+        builder,
+        "Flying\nCreatures you control with flying have \"Spells your opponents cast that target this creature cost {2} more to cast.\""
+            .to_string(),
+        false,
+    )?;
+
+    let grant = definition
+        .abilities
+        .iter()
+        .find_map(|ability| match &ability.kind {
+            AbilityKind::Static(static_ability) => match &static_ability.payload {
+                StaticAbilityPayload::GrantAbility(grant) => Some(grant.as_ref()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .expect("full document lowering should retain the filtered static-ability grant");
+    assert_eq!(
+        grant.filter.controller,
+        Some(crate::target::PlayerFilter::You)
+    );
+    assert_eq!(grant.filter.card_types, [CardType::Creature]);
+    assert_eq!(grant.filter.static_abilities, [StaticAbilityId::Flying]);
+
+    let AbilityKind::Static(granted_tax) = &grant.ability.kind else {
+        panic!("expected the granted ability to be a static cost tax");
+    };
+    let StaticAbilityPayload::CostIncrease(increase) = &granted_tax.payload else {
+        panic!("expected the granted static ability to carry a cost increase");
+    };
+    assert_eq!(increase.amount, crate::effect::Value::Fixed(2));
+    assert_eq!(
+        increase.filter.cast_by,
+        Some(crate::target::PlayerFilter::Opponent)
+    );
+    assert!(
+        increase
+            .filter
+            .targets_object
+            .as_deref()
+            .is_some_and(|target| target.source),
+        "\"this creature\" must bind to each flying creature receiving the grant"
+    );
+    Ok(())
+}
+
+#[test]
+pub(super) fn staff_of_eden_full_compile_keeps_excluded_self_name_surface()
+-> Result<(), CardTextError> {
+    let compiled = super::super::compile_card_text(
+        CardDefinitionBuilder::new(CardId::new(), "Staff of Eden, Vault's Key")
+            .card_types(vec![CardType::Artifact]),
+        "When Staff of Eden enters, put target legendary permanent card not named Staff of Eden, Vault's Key from a graveyard onto the battlefield under your control.\n{T}: Draw a card for each permanent you control but don't own.",
+        false,
+    )?;
+    let debug = format!("{:#?}", compiled.definition);
+
+    assert!(
+        debug.contains("excluded_name: Some(") && debug.contains("\"staff of eden vaults key\""),
+        "the semantic excluded-name key should remain normalized: {debug}"
+    );
+    assert!(
+        debug.contains("\"Staff of Eden, Vault's Key\""),
+        "the exact excluded-name surface should survive full compilation: {debug}"
+    );
+    assert!(
+        debug.contains("controller: Some(")
+            && debug.contains("owner: Some(")
+            && debug.contains("NotYou"),
+        "the draw-count filter should retain both controller and inverse-owner scope: {debug}"
+    );
     Ok(())
 }
 

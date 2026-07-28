@@ -1,7 +1,8 @@
 use crate::runtime_backend::shared_types::{
-    AsEntersEffectProgramFacts, InsteadFollowupFacts, LineSemanticFacts, StatementConditionIntro,
-    StatementLineSemanticFacts, StaticLineSemanticFacts, ThisSpellCostFacts, TriggerFrequencyFacts,
-    TriggerFunctionalZoneFacts, TriggeredLineSemanticFacts,
+    AsEntersEffectProgramFacts, AsTransformsEffectProgramFacts, InsteadFollowupFacts,
+    LineSemanticFacts, StatementConditionIntro, StatementLineSemanticFacts,
+    StaticLineSemanticFacts, ThisSpellCostFacts, TriggerFrequencyFacts, TriggerFunctionalZoneFacts,
+    TriggeredLineSemanticFacts,
 };
 
 use super::super::lexer::OwnedLexToken;
@@ -46,6 +47,41 @@ fn parse_as_enters_effect_program_facts(
     })
 }
 
+fn parse_as_transforms_effect_program_facts(
+    tokens: &[OwnedLexToken],
+) -> Option<AsTransformsEffectProgramFacts> {
+    let tokens = document_shapes::parse_statement_label_strip_tokens(tokens).body_tokens;
+    if !tokens.first().is_some_and(|token| token.is_word("as"))
+        || !tokens.get(1).is_some_and(|token| token.is_word("this"))
+    {
+        return None;
+    }
+    let transforms_idx = tokens
+        .iter()
+        .position(|token| token.is_word("transforms"))?;
+    if transforms_idx <= 1
+        || !tokens
+            .get(transforms_idx + 1)
+            .is_some_and(|token| token.is_word("into"))
+    {
+        return None;
+    }
+    let comma_idx = tokens
+        .iter()
+        .enumerate()
+        .skip(transforms_idx + 2)
+        .find_map(|(idx, token)| token.is_comma().then_some(idx))?;
+    if transforms_idx + 2 >= comma_idx || comma_idx + 1 >= tokens.len() {
+        return None;
+    }
+    Some(AsTransformsEffectProgramFacts {
+        subject: super::super::lexer::render_token_slice(&tokens[1..transforms_idx]),
+        destination: super::super::lexer::render_token_slice(
+            &tokens[transforms_idx + 2..comma_idx],
+        ),
+    })
+}
+
 fn parse_trailing_instead_if_predicate(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::runtime_backend::ast::PredicateAst> {
@@ -72,10 +108,12 @@ fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSema
         instead_followup: InsteadFollowupFacts {
             semantics: instead.semantics,
             conditional_intro: instead.conditional_intro,
+            leading_instead_surface: instead.leading_instead_surface,
         },
         trailing_instead_if_predicate: parse_trailing_instead_if_predicate(tokens),
         replacement_surfaces,
         as_enters_effect_program: parse_as_enters_effect_program_facts(tokens),
+        as_transforms_effect_program: parse_as_transforms_effect_program_facts(tokens),
         presentation_label: None,
         creature_type_choice_buff: lowering_surfaces::parse_creature_type_choice_buff_tokens(
             tokens,
@@ -83,6 +121,17 @@ fn parse_statement_semantic_facts(tokens: &[OwnedLexToken]) -> StatementLineSema
         .is_some(),
         leading_condition_intro,
     }
+}
+
+fn has_leading_unless_resolution_surface(tokens: &[OwnedLexToken]) -> bool {
+    let Some(unless_idx) = tokens
+        .windows(2)
+        .position(|pair| pair[0].is_comma() && pair[1].is_word("unless"))
+        .map(|comma_idx| comma_idx + 1)
+    else {
+        return false;
+    };
+    tokens[unless_idx + 1..].iter().any(OwnedLexToken::is_comma)
 }
 
 pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> LineSemanticFacts {
@@ -100,6 +149,7 @@ pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> Line
             this_spell_cost: static_cost.map(|surface| ThisSpellCostFacts {
                 reduction_cap: surface.reduction_cap,
             }),
+            presentation_label: None,
         },
         statement: parse_statement_semantic_facts(tokens),
         triggered_ability: TriggeredLineSemanticFacts {
@@ -117,6 +167,7 @@ pub(crate) fn parse_line_semantic_facts_tokens(tokens: &[OwnedLexToken]) -> Line
                 becomes_crewed: trigger_frequency.becomes_crewed,
                 do_this_limit_each_turn: trigger_frequency.do_this_limit_each_turn,
             },
+            leading_unless_surface: has_leading_unless_resolution_surface(tokens),
         },
     }
 }
@@ -215,6 +266,32 @@ mod tests {
         .as_enters_effect_program
         .expect("entry-counter wording should retain the enclosing as-enters timing");
         assert!(counter_surface.uses_enters_with_counter_surface);
+    }
+
+    #[test]
+    fn collects_as_transforms_program_timing_after_an_ability_word_label() {
+        let parsed =
+            facts("Burning Chains — As this creature transforms into Shinryu, choose an opponent.");
+        let as_transforms = parsed
+            .statement
+            .as_transforms_effect_program
+            .expect("as-transforms timing should be retained as typed semantic facts");
+
+        assert_eq!(as_transforms.subject, "this creature");
+        assert_eq!(as_transforms.destination, "Shinryu");
+        assert!(parsed.statement.as_enters_effect_program.is_none());
+    }
+
+    #[test]
+    fn distinguishes_leading_and_trailing_unless_trigger_surfaces() {
+        let leading = facts(
+            "At the beginning of your upkeep, unless you sacrifice an Island, sacrifice this creature.",
+        );
+        assert!(leading.triggered_ability.leading_unless_surface);
+
+        let trailing =
+            facts("At the beginning of your upkeep, sacrifice this creature unless you pay {2}.");
+        assert!(!trailing.triggered_ability.leading_unless_surface);
     }
 
     #[test]

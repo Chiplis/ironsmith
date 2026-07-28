@@ -137,6 +137,9 @@ fn object_ability_keyword_label(ability: &Ability) -> Option<String> {
 fn explicit_granted_keyword_label(display: &str) -> Option<String> {
     let label = display.trim().trim_end_matches('.');
     let lower = label.to_ascii_lowercase();
+    if matches!(lower.as_str(), "storm" | "gravestorm") {
+        return Some(lower);
+    }
     let amount = lower.strip_prefix("afflict ")?;
     amount
         .chars()
@@ -162,6 +165,57 @@ fn subject_text(filter: &ObjectFilter) -> String {
     )
 }
 
+fn shared_head_characteristic_modifier(filter: &ObjectFilter) -> Option<String> {
+    if !filter.any_of.is_empty() {
+        return None;
+    }
+
+    let modifier = match (filter.supertypes.as_slice(), filter.subtypes.as_slice()) {
+        ([supertype], []) => supertype.to_string(),
+        ([], [subtype]) => subtype.to_string(),
+        _ => return None,
+    };
+    let mut remainder = filter.clone();
+    remainder.supertypes.clear();
+    remainder.subtypes.clear();
+    (remainder == ObjectFilter::default()).then_some(modifier)
+}
+
+/// Render an elided coordinated characteristic head from its typed filter.
+///
+/// For example, `snow and Zombie creatures you control` is represented as a
+/// shared outer creature/controller filter plus `Snow` and `Zombie` union
+/// arms. Keeping the shared noun outside the arms is what makes both runtime
+/// alternatives creatures; this helper only restores the authored elision.
+fn shared_head_characteristic_anthem_subject(filter: &ObjectFilter) -> Option<String> {
+    if !filter.has_conjunctive_set_surface()
+        || filter.any_of.len() < 2
+        || filter.card_types.len() != 1
+        || !filter.all_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.supertypes.is_empty()
+    {
+        return None;
+    }
+
+    let modifiers = filter
+        .any_of
+        .iter()
+        .map(shared_head_characteristic_modifier)
+        .collect::<Option<Vec<_>>>()?;
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.set_conjunctive_set_surface(false);
+    let mut subject = pluralized_subject_text(&outer);
+    let shared_noun = pluralize_subject_clause(filter.card_types[0].name());
+    if !subject.contains(&shared_noun) {
+        return None;
+    }
+    let replacement = format!("{} {shared_noun}", join_with_and(&modifiers));
+    subject = subject.replacen(&shared_noun, &replacement, 1);
+    Some(subject)
+}
+
 fn strip_plural_subject_article(subject: &str) -> &str {
     for article in ["a ", "an "] {
         if let Some(rest) = subject.strip_prefix(article) {
@@ -178,6 +232,7 @@ fn split_subject_suffix(subject: &str) -> (&str, &str) {
     const SUFFIXES: &[&str] = &[
         " you control",
         " you don't control",
+        " your team controls",
         " that player controls",
         " that player or that object's controller controls",
         " you own",
@@ -222,6 +277,18 @@ fn split_subject_suffix(subject: &str) -> (&str, &str) {
 }
 
 fn pluralized_subject_text(filter: &ObjectFilter) -> String {
+    if let Some(subject) = shared_head_characteristic_anthem_subject(filter) {
+        return subject;
+    }
+    // Coordinated relative characteristic lists put the grammatical head
+    // before the final selector ("a creature you control that's a Zombie
+    // and/or token").  The local fallback pluralizer normally pluralizes the
+    // rightmost noun, which leaves that head singular.  Reuse the compiled
+    // text pluralizer for this authored surface; it understands both the
+    // relative-clause agreement and each coordinated selector.
+    if filter.has_relative_characteristic_list_surface() {
+        return crate::compiled_text::pluralize_noun_phrase_for_trigger(&subject_text(filter));
+    }
     if filter.has_relative_attachment_state_surface() && filter.any_of.len() == 2 {
         let mut base_filter = None;
         let mut attachments = Vec::new();
@@ -268,6 +335,18 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
             );
         }
     }
+    if filter.has_relative_attachment_state_surface()
+        && let Some(attachment) = &filter.with_attached_object
+    {
+        let mut base = filter.clone();
+        base.with_attached_object = None;
+        base.set_relative_attachment_state_surface(false);
+        return format!(
+            "{} that are enchanted by {}",
+            pluralized_subject_text(&base),
+            pluralize_subject_clause(&attachment.description())
+        );
+    }
     let mut subject = subject_text(filter);
     if filter.has_relative_attachment_state_surface()
         && let Some(attachment) = filter.tagged_constraints.iter().find_map(|constraint| {
@@ -283,6 +362,11 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     }
     if subject.starts_with("another ") {
         subject = subject.replacen("another ", "other ", 1);
+    }
+    if filter.has_conjunctive_set_surface()
+        && let Some(serial) = pluralize_serial_subject_list(&subject)
+    {
+        return serial;
     }
     if let Some((base, tail)) = subject.split_once(" blocking or blocked by ") {
         return format!(
@@ -325,6 +409,34 @@ fn pluralized_subject_text(filter: &ObjectFilter) -> String {
     }
 
     subject
+}
+
+fn pluralize_serial_subject_list(subject: &str) -> Option<String> {
+    let subject = strip_plural_subject_article(subject.trim());
+    let (base, suffix) = split_subject_suffix(subject);
+    let (separator, connective) = if base.contains(", and ") {
+        (", and ", "and")
+    } else if base.contains(", or ") {
+        (", or ", "or")
+    } else {
+        return None;
+    };
+    let normalized = base.replace(separator, ", ");
+    let parts = normalized
+        .split(", ")
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(pluralize_noun_phrase)
+        .collect::<Vec<_>>();
+    if parts.len() < 3 {
+        return None;
+    }
+    let joined = format!(
+        "{}, {connective} {}",
+        parts[..parts.len() - 1].join(", "),
+        parts.last()?
+    );
+    Some(format!("{joined}{suffix}"))
 }
 
 fn exact_one_condition_antecedent_subject(
@@ -377,6 +489,16 @@ fn subtype_creature_anthem_subject(filter: &ObjectFilter) -> Option<String> {
 
 fn pluralize_subject_clause(subject: &str) -> String {
     let subject = strip_plural_subject_article(subject.trim());
+    let (qualified_base, qualified_suffix) = split_subject_suffix(subject);
+    if !qualified_suffix.is_empty()
+        && (qualified_suffix.contains(" or ") || qualified_suffix.contains(" and "))
+    {
+        return format!(
+            "{}{}",
+            pluralize_subject_clause(qualified_base),
+            qualified_suffix
+        );
+    }
     if let Some((head, tail)) = subject.split_once(" or ") {
         return format!(
             "{} or {}",
@@ -488,6 +610,10 @@ fn simple_pluralize(word: &str) -> String {
 }
 
 fn pluralize_noun_phrase(phrase: &str) -> String {
+    if let Some(rest) = phrase.strip_prefix("another ") {
+        return format!("other {}", pluralize_noun_phrase(rest));
+    }
+
     const NOUNS: &[(&str, &str)] = &[
         ("permanent", "permanents"),
         ("creature", "creatures"),
@@ -504,30 +630,39 @@ fn pluralize_noun_phrase(phrase: &str) -> String {
     ];
 
     let lower = phrase.to_ascii_lowercase();
-    let mut best_match: Option<(usize, &'static str, &'static str)> = None;
+    // `ObjectFilter::description` may already expose a plural coordinated
+    // set (for example, "lands you control and land cards you own ...").
+    // Track both singular and plural noun matches so this helper stays
+    // idempotent instead of producing "landses" or "lands cards".
+    let mut best_match: Option<(usize, usize, Option<&'static str>)> = None;
     for &(singular, plural) in NOUNS {
-        let mut search_start = 0;
-        while let Some(relative_pos) = lower[search_start..].find(singular) {
-            let pos = search_start + relative_pos;
-            let before_ok = pos == 0 || phrase.as_bytes()[pos - 1] == b' ';
-            let after_pos = pos + singular.len();
-            let after_ok = after_pos >= phrase.len()
-                || phrase.as_bytes()[after_pos] == b' '
-                || phrase.as_bytes()[after_pos] == b'.';
-            if before_ok
-                && after_ok
-                && best_match
-                    .as_ref()
-                    .is_none_or(|(best_pos, _, _)| pos > *best_pos)
-            {
-                best_match = Some((pos, singular, plural));
+        for (noun, replacement) in [(singular, Some(plural)), (plural, None)] {
+            let mut search_start = 0;
+            while let Some(relative_pos) = lower[search_start..].find(noun) {
+                let pos = search_start + relative_pos;
+                let before_ok = pos == 0 || phrase.as_bytes()[pos - 1] == b' ';
+                let after_pos = pos + noun.len();
+                let after_ok = after_pos >= phrase.len()
+                    || phrase.as_bytes()[after_pos] == b' '
+                    || phrase.as_bytes()[after_pos] == b'.';
+                if before_ok
+                    && after_ok
+                    && best_match
+                        .as_ref()
+                        .is_none_or(|(best_pos, _, _)| pos >= *best_pos)
+                {
+                    best_match = Some((pos, noun.len(), replacement));
+                }
+                search_start = after_pos;
             }
-            search_start = after_pos;
         }
     }
 
-    if let Some((pos, singular, plural)) = best_match {
-        let suffix_start = pos + singular.len();
+    if let Some((pos, noun_len, replacement)) = best_match {
+        let Some(plural) = replacement else {
+            return phrase.to_string();
+        };
+        let suffix_start = pos + noun_len;
         return format!("{}{}{}", &phrase[..pos], plural, &phrase[suffix_start..]);
     }
 
@@ -560,7 +695,7 @@ fn grant_subject_text(filter: &ObjectFilter) -> String {
     pluralized_subject_text(filter)
 }
 
-fn grant_subject_with_set_quantifier(
+pub(crate) fn grant_subject_with_set_quantifier(
     filter: &ObjectFilter,
     surface: Option<ironsmith_core::SetQuantifierSurface>,
 ) -> (String, bool) {
@@ -572,11 +707,27 @@ fn grant_subject_with_set_quantifier(
             }
             (format!("Each {}", lowercase_first_ascii(&subject)), true)
         }
-        Some(ironsmith_core::SetQuantifierSurface::All) => (
-            format!("All {}", lowercase_first_ascii(&grant_subject_text(filter))),
+        Some(ironsmith_core::SetQuantifierSurface::All) => {
+            let subject = lowercase_first_ascii(&grant_subject_text(filter));
+            // Unscoped generic filters already describe themselves with an
+            // implicit "All" (for example, `creature` -> "All creatures").
+            // The authored set quantifier owns that surface here, so avoid
+            // stacking the two sources into "All all creatures".
+            let subject = subject.strip_prefix("all ").unwrap_or(&subject);
+            (format!("All {subject}"), false)
+        }
+        Some(ironsmith_core::SetQuantifierSurface::They) => ("They".to_string(), false),
+        Some(ironsmith_core::SetQuantifierSurface::Those) => (
+            format!(
+                "Those {}",
+                lowercase_first_ascii(&pluralized_subject_text(filter))
+            ),
             false,
         ),
-        None => (grant_subject_text(filter), false),
+        None => (
+            grant_subject_text(filter),
+            filter.first_spell_cast_each_turn,
+        ),
     };
     (capitalize_excluded_subtype_terms(filter, subject), singular)
 }
@@ -682,7 +833,30 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
                 .collect::<Vec<_>>(),
         ));
     }
-    if !filter.card_types.is_empty() {
+    let coordinated_card_types = filter
+        .has_conjunctive_set_surface()
+        .then(|| {
+            filter
+                .any_of
+                .iter()
+                .map(|branch| {
+                    let [card_type] = branch.card_types.as_slice() else {
+                        return None;
+                    };
+                    (branch == &ObjectFilter::default().with_type(*card_type)).then_some(*card_type)
+                })
+                .collect::<Option<Vec<_>>>()
+        })
+        .flatten()
+        .filter(|card_types| card_types.len() >= 2);
+    if let Some(card_types) = coordinated_card_types {
+        qualifiers.push(join_with_and(
+            &card_types
+                .iter()
+                .map(|card_type| card_type.name().to_ascii_lowercase())
+                .collect::<Vec<_>>(),
+        ));
+    } else if !filter.card_types.is_empty() {
         qualifiers.push(join_with_and(
             &filter
                 .card_types
@@ -798,6 +972,12 @@ impl AnthemValueRuntimeExt for AnthemValue {
             Self::PerCount { multiplier, count } => {
                 multiplier * resolve_anthem_count_expression(count, game, source, controller)
             }
+            Self::CappedPerCount {
+                multiplier,
+                count,
+                maximum,
+            } => (multiplier * resolve_anthem_count_expression(count, game, source, controller))
+                .min(*maximum),
         }
     }
 }
@@ -815,6 +995,7 @@ fn anthem_value_as_layer_value(value: &AnthemValue) -> Option<Value> {
             Value::CountScaled(filter.clone(), *multiplier)
         }),
         AnthemValue::PerCount { .. } => None,
+        AnthemValue::CappedPerCount { .. } => None,
     }
 }
 
@@ -854,6 +1035,7 @@ fn anthem_count_filter_needs_battlefield_surface(filter: &ObjectFilter, subject:
         && !filter.nonblocking
         && !filter.blocked
         && !filter.unblocked
+        && !filter.didnt_enter_battlefield_this_turn
         && !filter.entered_battlefield_this_turn
         && filter.entered_battlefield_controller.is_none()
         && !filter
@@ -1001,6 +1183,9 @@ fn describe_anthem_count_expression(expr: &AnthemCountExpression) -> String {
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             "basic land type among lands you control".to_string()
         }
+        AnthemCountExpression::CreatureTypesAmong(filter) if filter == &ObjectFilter::source() => {
+            "creature type it has".to_string()
+        }
         AnthemCountExpression::CreatureTypesAmong(filter) => {
             format!("creature type among {}", pluralized_subject_text(filter))
         }
@@ -1047,6 +1232,20 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
     }
 
     if let AnthemCountExpression::MatchingFilter(filter) = expr
+        && filter.zone == Some(Zone::Exile)
+        && matches!(filter.owner.as_ref(), Some(PlayerFilter::Opponent))
+    {
+        let mut card_filter = filter.clone();
+        card_filter.zone = None;
+        card_filter.owner = None;
+        card_filter.set_explicit_card_noun(true);
+        return Some(format!(
+            "{} your opponents own in exile",
+            strip_article(card_filter.description())
+        ));
+    }
+
+    if let AnthemCountExpression::MatchingFilter(filter) = expr
         && filter.zone == Some(Zone::Hand)
         && matches!(
             filter.owner.as_ref(),
@@ -1054,6 +1253,49 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         )
     {
         return Some("card in its controller's hand".to_string());
+    }
+
+    if let AnthemCountExpression::MatchingFilter(filter) = expr
+        && filter.has_conjunctive_set_surface()
+        && filter.any_of.len() >= 2
+    {
+        // Conjunctive count domains are additive sets, not alternatives:
+        // "for each card in your hand and each foretold card you own in
+        // exile." Keep shared owner/controller scope on each typed branch
+        // while restoring the repeated distributive quantifier.
+        let mut shared_scope = filter.clone();
+        shared_scope.any_of.clear();
+        shared_scope.set_conjunctive_set_surface(false);
+        let supported_scope = ObjectFilter {
+            controller: filter.controller.clone(),
+            owner: filter.owner.clone(),
+            ..ObjectFilter::default()
+        };
+        if shared_scope == supported_scope {
+            let parts = filter
+                .any_of
+                .iter()
+                .map(|branch| {
+                    let mut described = branch.clone();
+                    if described.controller.is_none() {
+                        described.controller = filter.controller.clone();
+                    }
+                    if described.owner.is_none() {
+                        described.owner = filter.owner.clone();
+                    }
+                    strip_article(described.description())
+                })
+                .collect::<Vec<_>>();
+            let mut iter = parts.into_iter();
+            let first = iter.next()?;
+            let rest = iter
+                .map(|part| format!("each {part}"))
+                .collect::<Vec<_>>()
+                .join(" and ");
+            if !rest.is_empty() {
+                return Some(format!("{first} and {rest}"));
+            }
+        }
     }
 
     if let AnthemCountExpression::MatchingFilter(filter) = expr
@@ -1144,6 +1386,9 @@ fn describe_anthem_for_each_count_expression(expr: &AnthemCountExpression) -> Op
         )),
         AnthemCountExpression::BasicLandTypesAmong(_) => {
             Some("basic land type among lands you control".to_string())
+        }
+        AnthemCountExpression::CreatureTypesAmong(filter) if filter == &ObjectFilter::source() => {
+            Some("of its creature types".to_string())
         }
         AnthemCountExpression::CreatureTypesAmong(filter) => Some(format!(
             "creature type among {}",
@@ -1381,6 +1626,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             }
             return described.join(" and ");
         }
+        crate::ConditionExpr::ThisSpellWasKicked => "as long as this spell was kicked".to_string(),
         crate::ConditionExpr::YourTurn => "as long as it's your turn".to_string(),
         crate::ConditionExpr::Not(inner)
             if matches!(inner.as_ref(), crate::ConditionExpr::YourTurn) =>
@@ -1554,6 +1800,7 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             };
             format!("as long as {subject} {verb} cast {count_text} or more spells this turn")
         }
+        crate::ConditionExpr::SourceIsTapped => "as long as this creature is tapped".to_string(),
         crate::ConditionExpr::SourceIsUntapped => {
             "as long as this creature is untapped".to_string()
         }
@@ -1831,6 +2078,12 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             crate::target::PlayerFilter::Teammate => {
                 "as long as a teammate is the monarch".to_string()
             }
+            crate::target::PlayerFilter::PlayerToYourLeft => {
+                "as long as the player to your left is the monarch".to_string()
+            }
+            crate::target::PlayerFilter::PlayerToYourRight => {
+                "as long as the player to your right is the monarch".to_string()
+            }
             crate::target::PlayerFilter::Active => {
                 "as long as the active player is the monarch".to_string()
             }
@@ -1927,6 +2180,20 @@ pub(super) fn describe_static_condition(condition: &crate::ConditionExpr) -> Str
             let counter_name = format!("{counter:?}").to_ascii_lowercase();
             format!("as long as you own a card exiled with a {counter_name} counter")
         }
+        crate::ConditionExpr::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(player),
+        ) => match player {
+            crate::target::PlayerFilter::You => {
+                "as long as you've visited an Attraction this turn".to_string()
+            }
+            crate::target::PlayerFilter::Opponent => {
+                "as long as an opponent has visited an Attraction this turn".to_string()
+            }
+            crate::target::PlayerFilter::Any => {
+                "as long as a player has visited an Attraction this turn".to_string()
+            }
+            _ => "as long as that player has visited an Attraction this turn".to_string(),
+        },
         crate::ConditionExpr::PlayerCommittedCrimeThisTurn { player } => match player {
             crate::target::PlayerFilter::You => {
                 "as long as you've committed a crime this turn".to_string()
@@ -2264,6 +2531,14 @@ pub(crate) fn resolve_anthem_count_expression(
             }
             seen.len() as i32
         }
+        AnthemCountExpression::CreatureTypesAmong(filter) if filter == &ObjectFilter::source() => {
+            game.current_subtypes(source)
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|subtype| subtype.is_creature_type())
+                .collect::<std::collections::HashSet<_>>()
+                .len() as i32
+        }
         AnthemCountExpression::CreatureTypesAmong(filter) => {
             use std::collections::HashSet;
 
@@ -2486,6 +2761,10 @@ impl StaticAbilityKind for Anthem {
                     format!("All {}", pluralize_subject_clause(subject))
                 }
                 ironsmith_core::SetQuantifierSurface::Each => format!("Each {subject}"),
+                ironsmith_core::SetQuantifierSurface::They => "They".to_string(),
+                ironsmith_core::SetQuantifierSurface::Those => {
+                    format!("Those {}", pluralize_subject_clause(subject))
+                }
             }
         } else if let Some(subject) =
             exact_one_condition_antecedent_subject(&self.filter, self.condition.as_ref())
@@ -2637,6 +2916,29 @@ impl StaticAbilityKind for Anthem {
                     "{subject} {verb} {}/+X, where X is {}",
                     signed(*power),
                     crate::compiled_text::describe_value(toughness),
+                )
+            }
+            (
+                AnthemValue::CappedPerCount {
+                    multiplier: power,
+                    count: power_count,
+                    maximum: power_maximum,
+                },
+                AnthemValue::CappedPerCount {
+                    multiplier: toughness,
+                    count: toughness_count,
+                    maximum: toughness_maximum,
+                },
+            ) if power_count == toughness_count
+                && power_maximum == toughness_maximum
+                && describe_anthem_for_each_count_expression(power_count).is_some() =>
+            {
+                let count_subject = describe_anthem_for_each_count_expression(power_count)
+                    .expect("checked capped anthem count surface");
+                format!(
+                    "{subject} {verb} {}/{} for each {count_subject}, to a maximum of {power_maximum}",
+                    signed(*power),
+                    signed_toughness(*power, *toughness),
                 )
             }
             (
@@ -3129,10 +3431,18 @@ impl StaticAbilityKind for GrantAbility {
         if self.ability.is_keyword() {
             ability_text = lowercase_first_ascii(&ability_text);
         }
+        let is_quoted_cost_modifier = matches!(
+            self.ability.id(),
+            StaticAbilityId::CostReduction
+                | StaticAbilityId::CostReductionManaCost
+                | StaticAbilityId::CostIncrease
+                | StaticAbilityId::CostIncreaseManaCost
+        );
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")
         ) || self.ability.id() == StaticAbilityId::DungeonRoomTriggerDuplication
+            || is_quoted_cost_modifier
         {
             ability_text = format!("\"{ability_text}\"");
         }
@@ -3179,6 +3489,7 @@ impl StaticAbilityKind for GrantAbility {
                 let scoped = [
                     " you control",
                     " you don't control",
+                    " your team controls",
                     " an opponent controls",
                     " your opponents control",
                     " that player controls",
@@ -3330,6 +3641,9 @@ impl StaticAbilityKind for GrantAbility {
 fn leading_source_keyword_condition(condition: &crate::ConditionExpr) -> bool {
     match condition {
         crate::ConditionExpr::OwnsCardExiledWithCounter(_) => true,
+        crate::ConditionExpr::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(_),
+        ) => true,
         crate::ConditionExpr::CountComparison {
             display: Some(display),
             ..
@@ -5537,6 +5851,58 @@ impl AttachedAbilityGrant {
     }
 }
 
+fn materialize_named_granting_source_in_effect(
+    effect: &crate::effect::Effect,
+    source: ObjectId,
+) -> crate::effect::Effect {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        let mut sequence = sequence.clone();
+        sequence.effects = sequence
+            .effects
+            .iter()
+            .map(|effect| materialize_named_granting_source_in_effect(effect, source))
+            .collect();
+        return crate::effect::Effect::new(sequence);
+    }
+
+    let Some(with_source) = effect.downcast_ref::<crate::effects::ExecuteWithSourceEffect>() else {
+        return effect.clone();
+    };
+    if !matches!(with_source.source.base(), ChooseSpec::Source)
+        || !matches!(
+            with_source.source.source_reference_surface(),
+            Some(SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_))
+        )
+    {
+        return effect.clone();
+    }
+
+    let materialized_source = ChooseSpec::SpecificObject(source)
+        .with_surface_hints(with_source.source.surface_hints().iter().cloned());
+    crate::effect::Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        materialized_source,
+        (*with_source.effect).clone(),
+    ))
+}
+
+fn materialize_named_granting_source(ability: &Ability, source: ObjectId) -> Ability {
+    let mut ability = ability.clone();
+    let program = match &mut ability.kind {
+        AbilityKind::Triggered(triggered) => &mut triggered.effects,
+        AbilityKind::Activated(activated) => &mut activated.effects,
+        AbilityKind::Static(_) => return ability,
+    };
+    *program = program
+        .clone()
+        .try_map_effects(|effect| {
+            Ok::<_, std::convert::Infallible>(materialize_named_granting_source_in_effect(
+                &effect, source,
+            ))
+        })
+        .expect("infallible granting-source materialization");
+    ability
+}
+
 impl StaticAbilityKind for AttachedAbilityGrant {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::AttachedAbilityGrant
@@ -5611,7 +5977,10 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                 source,
                 controller,
                 EffectTarget::AttachedTo(source),
-                Modification::AddAbilityGeneric(self.ability.clone()),
+                Modification::AddAbilityGeneric(materialize_named_granting_source(
+                    &self.ability,
+                    source,
+                )),
             )
             .with_source_type(EffectSourceType::StaticAbility),
             &self.condition,
@@ -5622,7 +5991,9 @@ impl StaticAbilityKind for AttachedAbilityGrant {
                     source,
                     controller,
                     EffectTarget::AttachedTo(source),
-                    Modification::AddAbilityGeneric(ability),
+                    Modification::AddAbilityGeneric(materialize_named_granting_source(
+                        &ability, source,
+                    )),
                 )
                 .with_source_type(EffectSourceType::StaticAbility),
                 &self.condition,

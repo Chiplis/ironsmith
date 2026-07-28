@@ -28,6 +28,7 @@ mod cumulative_upkeep;
 mod emit_gift_given;
 mod emit_keyword_action;
 mod execute_with_source;
+mod for_each_correlated_result;
 mod for_each_object;
 mod for_each_tagged;
 mod for_players;
@@ -71,6 +72,7 @@ pub use cumulative_upkeep::CumulativeUpkeepEffect;
 pub use emit_gift_given::EmitGiftGivenEffect;
 pub use emit_keyword_action::EmitKeywordActionEffect;
 pub use execute_with_source::ExecuteWithSourceEffect;
+pub use for_each_correlated_result::ForEachObjectCorrelatedResultEffect;
 pub use for_each_object::ForEachObject;
 pub use for_each_tagged::{
     ForEachControllerOfTaggedEffect, ForEachTaggedEffect, ForEachTaggedPlayerEffect,

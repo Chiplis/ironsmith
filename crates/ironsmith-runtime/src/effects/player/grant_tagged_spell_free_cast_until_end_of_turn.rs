@@ -33,6 +33,7 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
                 game.turn.turn_number.saturating_add(1)
             }
+            crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
             | crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
         };
@@ -70,6 +71,13 @@ impl EffectExecutor for GrantTaggedSpellFreeCastUntilEndOfTurnEffect {
             } else if self.duration == crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd
             {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
+            } else if self.duration
+                == crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother
+            {
+                GrantSource::until_source_exiles_another(
+                    ctx.source,
+                    game.exiled_with_source_revision(ctx.source),
+                )
             } else {
                 GrantSource::Effect {
                     source_id: ctx.source,

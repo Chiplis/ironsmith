@@ -42,6 +42,60 @@ fn until_end_of_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
         .parse_next(input)
 }
 
+fn until_end_of_combat(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    (
+        primitives::word_slice_exact("until"),
+        primitives::word_slice_exact("end"),
+        primitives::word_slice_exact("of"),
+        primitives::word_slice_exact("combat"),
+    )
+        .value(Until::EndOfCombat)
+        .parse_next(input)
+}
+
+fn fixed_number(input: &mut WordSliceInput<'_>) -> WResult<u32> {
+    let (value, consumed) = ironsmith_core::parse_cardinal_words(input)
+        .ok_or_else(|| primitives::backtrack_err("die result", "fixed number"))?;
+    *input = input
+        .get(consumed..)
+        .ok_or_else(|| primitives::backtrack_err("die result", "available words"))?;
+    Ok(value)
+}
+
+fn until_end_of_turn_or_any_player_rolls(input: &mut WordSliceInput<'_>) -> WResult<Until> {
+    primitives::word_slice_exact("until").parse_next(input)?;
+    opt(primitives::word_slice_exact("the")).parse_next(input)?;
+    (
+        primitives::word_slice_exact("end"),
+        primitives::word_slice_exact("of"),
+        primitives::word_slice_exact("turn"),
+        primitives::word_slice_exact("or"),
+        primitives::word_slice_exact("until"),
+        primitives::word_slice_exact("any"),
+        primitives::word_slice_exact("player"),
+        alt((
+            primitives::word_slice_exact("rolls"),
+            primitives::word_slice_exact("roll"),
+        )),
+        opt(alt((
+            primitives::word_slice_exact("a"),
+            primitives::word_slice_exact("an"),
+        ))),
+    )
+        .parse_next(input)?;
+    let result = fixed_number.parse_next(input)?;
+    (
+        primitives::word_slice_exact("whichever"),
+        primitives::word_slice_exact("comes"),
+        primitives::word_slice_exact("first"),
+    )
+        .parse_next(input)?;
+    Ok(Until::EndOfTurnOrAnyPlayerRolls {
+        result,
+        matching_rolls_observed: 0,
+    })
+}
+
 fn until_next_turn(input: &mut WordSliceInput<'_>) -> WResult<Until> {
     (
         primitives::word_slice_exact("until"),
@@ -72,7 +126,14 @@ fn next_untap_step(input: &mut WordSliceInput<'_>) -> WResult<Until> {
 }
 
 fn simple_turn_duration(input: &mut WordSliceInput<'_>) -> WResult<Until> {
-    alt((until_end_of_turn, until_next_turn, next_untap_step)).parse_next(input)
+    alt((
+        until_end_of_turn_or_any_player_rolls,
+        until_end_of_combat,
+        until_end_of_turn,
+        until_next_turn,
+        next_untap_step,
+    ))
+    .parse_next(input)
 }
 
 fn for_as_long_as(input: &mut WordSliceInput<'_>) -> WResult<()> {
@@ -302,6 +363,13 @@ mod tests {
 
     #[test]
     fn parses_turn_conditional_and_quoted_durations() {
+        let combat_duration =
+            parse_simple_ability_duration_shape(&["flying", "until", "end", "of", "combat"])
+                .unwrap();
+        assert_eq!(combat_duration.start, 1);
+        assert_eq!(combat_duration.len, 4);
+        assert_eq!(combat_duration.duration, Until::EndOfCombat);
+
         let duration =
             parse_simple_ability_duration_shape(&["flying", "until", "your", "next", "upkeep"])
                 .unwrap();
@@ -351,6 +419,47 @@ mod tests {
                 .unwrap()
                 .duration,
             Until::EndOfTurn
+        );
+    }
+
+    #[test]
+    fn parses_earlier_of_end_of_turn_and_any_player_roll_result() {
+        let duration = parse_simple_ability_duration_shape(&[
+            "flying",
+            "until",
+            "end",
+            "of",
+            "turn",
+            "or",
+            "until",
+            "any",
+            "player",
+            "rolls",
+            "a",
+            "1",
+            "whichever",
+            "comes",
+            "first",
+        ])
+        .expect("compound roll-linked duration");
+
+        assert_eq!(duration.start, 1);
+        assert_eq!(duration.len, 14);
+        assert_eq!(
+            duration.duration,
+            Until::EndOfTurnOrAnyPlayerRolls {
+                result: 1,
+                matching_rolls_observed: 0,
+            }
+        );
+
+        assert!(
+            parse_simple_ability_duration_shape(&[
+                "flying", "until", "end", "of", "turn", "or", "until", "any", "player", "rolls",
+                "a", "1",
+            ])
+            .is_some_and(|shape| shape.duration == Until::EndOfTurn),
+            "an incomplete compound suffix must retain the ordinary end-of-turn duration"
         );
     }
 

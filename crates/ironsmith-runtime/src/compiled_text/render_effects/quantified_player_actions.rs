@@ -88,6 +88,38 @@ pub(super) fn describe_each_player_shuffle_hand_then_draw(
     )
 }
 
+pub(super) fn describe_each_player_shuffle_hand_and_graveyard_then_draw(
+    for_players: &crate::effects::ForPlayersEffect,
+) -> Option<String> {
+    if for_players.filter != PlayerFilter::Any
+        || for_players.starting_with_controller
+        || for_players.stop_after_first_happened
+    {
+        return None;
+    }
+    let [shuffle_effect, draw_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let shuffle = unwrap_basic_tag_wrappers(shuffle_effect)
+        .downcast_ref::<crate::effects::ShuffleHandAndGraveyardIntoLibraryEffect>()?;
+    let draw =
+        unwrap_basic_tag_wrappers(draw_effect).downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if shuffle.player != PlayerFilter::IteratedPlayer || draw.player != PlayerFilter::IteratedPlayer
+    {
+        return None;
+    }
+
+    let shuffled_objects = if shuffle.include_owned_permanents {
+        "their hand, graveyard, and all permanents they own"
+    } else {
+        "their hand and graveyard"
+    };
+    Some(format!(
+        "Each player shuffles {shuffled_objects} into their library, then draws {}",
+        describe_card_count(&draw.count)
+    ))
+}
+
 /// Render sibling actions performed by the same quantified opponent as one
 /// coordinated list. The runtime program remains unchanged; this only retains
 /// the shared subject that was present in the parsed player loop.
@@ -445,6 +477,7 @@ mod tests {
                 dynamic_x: false,
                 up_to_x: false,
                 random: false,
+                explicit_exactly: false,
             });
         let mut animation = crate::effects::ApplyContinuousEffect::with_spec(
             target,

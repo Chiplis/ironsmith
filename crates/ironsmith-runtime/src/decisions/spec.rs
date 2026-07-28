@@ -84,6 +84,8 @@ pub enum DecisionPrimitive {
 
     /// Select counters to remove (counter type + count pairs).
     SelectCounters {
+        /// Minimum total counters to remove.
+        min_total: u32,
         /// Maximum total counters to remove
         max_total: u32,
     },

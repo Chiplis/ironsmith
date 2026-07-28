@@ -49,7 +49,8 @@ pub(crate) use durations::{
     strip_leaf_this_turn_tokens,
 };
 pub(crate) use filter_atoms::{
-    LeafDemonstrativeObjectHead, parse_leaf_card_type_complete, parse_leaf_color_complete,
+    LeafDemonstrativeObjectHead, classify_token_definition_subtype,
+    parse_leaf_card_type_complete, parse_leaf_color_complete,
     parse_leaf_demonstrative_object_head_complete, parse_leaf_non_card_type_complete,
     parse_leaf_non_color_complete, parse_leaf_non_subtype_complete,
     parse_leaf_non_supertype_complete, parse_leaf_object_reference_head_complete,

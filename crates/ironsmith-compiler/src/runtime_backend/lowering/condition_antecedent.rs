@@ -7,6 +7,13 @@ use crate::object::CounterType;
 
 use super::effect_ast_traversal::for_each_nested_effects_mut;
 
+/// A resolution-time object choice that is grammatically nested inside the
+/// following action (for example, "gains control of one of those lands of
+/// their choice").  Reference tracking deliberately does not export this tag
+/// until the consuming action runs, so an earlier subject such as "that
+/// creature's controller" still resolves against the trigger object.
+pub(crate) const CONDITION_COLLECTION_CHOICE_TAG: &str = "__condition_collection_choice";
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ConditionAntecedentBinding {
     TaggedItOnly,
@@ -350,9 +357,27 @@ pub(crate) fn bind_condition_collection_antecedent_in_effects(
     effects: &mut [EffectAst],
     predicate: &PredicateAst,
 ) {
+    fn is_source_exiled_collection(filter: &ObjectFilter) -> bool {
+        filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+                && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+        })
+    }
+
     fn collection_filter(predicate: &PredicateAst) -> Option<ObjectFilter> {
         match predicate {
             PredicateAst::PlayerControls { filter, .. } => Some(filter.clone()),
+            PredicateAst::ValueComparison { left, right, .. } => {
+                match (left.unhinted(), right.unhinted()) {
+                    (Value::Count(filter), Value::Fixed(_))
+                    | (Value::Fixed(_), Value::Count(filter))
+                        if is_source_exiled_collection(filter) =>
+                    {
+                        Some(filter.clone())
+                    }
+                    _ => None,
+                }
+            }
             PredicateAst::And(left, right) => {
                 match (collection_filter(left), collection_filter(right)) {
                     (Some(left), Some(right)) if left == right => Some(left),
@@ -364,7 +389,98 @@ pub(crate) fn bind_condition_collection_antecedent_in_effects(
         }
     }
 
+    fn rewrite_inline_collection_choice(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            return false;
+        };
+        let SubjectVerbActionAst::GainControl { target, .. } = &mut subject_verb.action else {
+            return false;
+        };
+        let TargetAst::WithCount(inner, count) = target else {
+            return false;
+        };
+        if !count.is_single() {
+            return false;
+        }
+        let TargetAst::Object(filter, _, _) = inner.as_ref() else {
+            return false;
+        };
+        let references_condition_collection = filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag.as_str() == IT_TAG
+                && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
+        });
+        if !references_condition_collection {
+            return false;
+        }
+
+        let mut choice_filter = antecedent.clone();
+        // The condition's subject is plural ("one or more lands"), while the
+        // nested choice selects exactly one member. Keep the authored plural
+        // counter noun but render the selected permanent itself as singular.
+        let (one_or_more, plural_noun, _) =
+            choice_filter.union_surface.counter_requirement_surface();
+        choice_filter.union_surface = choice_filter
+            .union_surface
+            .with_counter_requirement_surface(one_or_more, plural_noun, false);
+        // `PlayerControls` keeps its actor separate from the object filter.
+        // Make the copied filter chooser-relative so the player denoted by
+        // "their choice" can only choose among permanents they control.
+        choice_filter
+            .controller
+            .get_or_insert(crate::filter::PlayerFilter::IteratedPlayer);
+        let tag = crate::tag::TagKey::from(CONDITION_COLLECTION_CHOICE_TAG);
+        let choice = EffectAst::ChooseObjects {
+            filter: choice_filter,
+            count: *count,
+            count_value: None,
+            player: crate::cards::builders::PlayerAst::That,
+            tag: tag.clone(),
+        };
+        *target = TargetAst::Tagged(tag, None);
+        let gain_control = std::mem::replace(
+            effect,
+            EffectAst::Sequence {
+                effects: Vec::new(),
+            },
+        );
+        *effect = EffectAst::Sequence {
+            effects: vec![choice, gain_control],
+        };
+        true
+    }
+
+    fn rewrite_plural_collection_move(effect: &mut EffectAst, antecedent: &ObjectFilter) -> bool {
+        let EffectAst::SubjectVerb(subject_verb) = effect else {
+            return false;
+        };
+        let SubjectVerbActionAst::MoveToZone {
+            target,
+            target_plural_surface,
+            all,
+            ..
+        } = &mut subject_verb.action
+        else {
+            return false;
+        };
+        if !*target_plural_surface || !target_references_tag(target, |tag| tag == IT_TAG) {
+            return false;
+        }
+        bind_condition_antecedent_in_target(
+            target,
+            antecedent,
+            ConditionAntecedentBinding::TaggedItOnly,
+        );
+        *all = true;
+        true
+    }
+
     fn bind(effect: &mut EffectAst, antecedent: &ObjectFilter) {
+        if rewrite_inline_collection_choice(effect, antecedent) {
+            return;
+        }
+        if rewrite_plural_collection_move(effect, antecedent) {
+            return;
+        }
         match effect {
             EffectAst::ChooseObjects { filter, .. }
             | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
@@ -732,6 +848,82 @@ mod tests {
     }
 
     #[test]
+    fn existential_collection_choice_materializes_one_of_those_objects() {
+        let mut contested_lands =
+            ObjectFilter::land().with_counter_type(CounterType::Named("contested"));
+        contested_lands.union_surface = contested_lands
+            .union_surface
+            .with_counter_requirement_surface(false, true, true);
+        let predicate = PredicateAst::PlayerControls {
+            player: PlayerAst::That,
+            filter: contested_lands,
+        };
+        let one_of_those = TargetAst::WithCount(
+            Box::new(TargetAst::Object(ObjectFilter::tagged(IT_TAG), None, None)),
+            crate::effect::ChoiceCount::exactly(1),
+        );
+        let mut effects = vec![
+            effect(SubjectVerbActionAst::GainControl {
+                target: one_of_those,
+                duration: Until::Forever,
+                condition: None,
+                controller_reference: None,
+                source_reference_surface: None,
+            }),
+            effect(SubjectVerbActionAst::Untap {
+                target: it_target(),
+            }),
+        ];
+
+        bind_condition_collection_antecedent_in_effects(&mut effects, &predicate);
+
+        let [
+            EffectAst::Sequence {
+                effects: collection_effects,
+            },
+            EffectAst::SubjectVerb(untap),
+        ] = effects.as_slice()
+        else {
+            panic!("expected an explicit collection choice followed by untap: {effects:#?}");
+        };
+        let [
+            EffectAst::ChooseObjects {
+                filter,
+                count,
+                player,
+                tag,
+                ..
+            },
+            EffectAst::SubjectVerb(gain),
+        ] = collection_effects.as_slice()
+        else {
+            panic!("expected choose-then-gain sequence: {collection_effects:#?}");
+        };
+        assert!(count.is_single());
+        assert_eq!(*player, PlayerAst::That);
+        assert_eq!(tag.as_str(), CONDITION_COLLECTION_CHOICE_TAG);
+        assert_eq!(filter.card_types, [crate::types::CardType::Land]);
+        assert_eq!(
+            filter.controller,
+            Some(crate::target::PlayerFilter::IteratedPlayer)
+        );
+        assert!(filter.with_counter.is_some());
+        assert!(matches!(
+            &gain.action,
+            SubjectVerbActionAst::GainControl {
+                target: TargetAst::Tagged(gain_tag, _),
+                ..
+            } if gain_tag == tag
+        ));
+        assert!(matches!(
+            &untap.action,
+            SubjectVerbActionAst::Untap {
+                target: TargetAst::Tagged(untap_tag, _),
+            } if untap_tag.as_str() == IT_TAG
+        ));
+    }
+
+    #[test]
     fn negated_tagged_condition_does_not_establish_object_antecedent() {
         let predicate = PredicateAst::Not(Box::new(PredicateAst::TaggedMatches(
             "enchanted".into(),
@@ -837,6 +1029,47 @@ mod tests {
     }
 
     #[test]
+    fn source_exiled_count_condition_binds_plural_move_to_the_whole_collection() {
+        let mut source_exiled =
+            ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(crate::zone::Zone::Exile);
+        source_exiled.source_surface =
+            Some(crate::target::SourceReferenceSurface::ThisPermanentType(
+                "this enchantment".to_string(),
+            ));
+        let predicate = PredicateAst::ValueComparison {
+            left: Value::Count(source_exiled.clone()),
+            operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
+            right: Value::Fixed(1),
+        };
+        let mut effects = vec![
+            EffectAst::subject_verb_move_to_zone(
+                it_target(),
+                crate::zone::Zone::Graveyard,
+                false,
+                crate::cards::builders::ReturnControllerAst::Preserve,
+                false,
+                None,
+            )
+            .with_move_to_zone_plural_surface(),
+        ];
+
+        bind_condition_collection_antecedent_in_effects(&mut effects, &predicate);
+
+        let EffectAst::SubjectVerb(move_effect) = &effects[0] else {
+            panic!("expected move effect");
+        };
+        assert!(matches!(
+            &move_effect.action,
+            SubjectVerbActionAst::MoveToZone {
+                target: TargetAst::Object(filter, _, _),
+                target_plural_surface: true,
+                all: true,
+                ..
+            } if filter == &source_exiled
+        ));
+    }
+
+    #[test]
     fn source_damage_to_player_retargets_implicit_must_attack_subject() {
         let mut effects = vec![
             EffectAst::subject_verb_damage(
@@ -872,6 +1105,7 @@ mod tests {
                 target: controlled,
                 duration: Until::EndOfTurn,
                 condition: None,
+                controller_reference: None,
                 source_reference_surface: None,
             }),
             effect(SubjectVerbActionAst::Untap {
@@ -998,6 +1232,7 @@ mod tests {
                 target: TargetAst::Object(ObjectFilter::creature(), None, None),
                 duration: Until::EndOfTurn,
                 condition: None,
+                controller_reference: None,
                 source_reference_surface: None,
             }),
             effect(SubjectVerbActionAst::GrantAbilitiesToTarget {

@@ -90,6 +90,7 @@ use super::modal_support::{parse_modal_header, replace_modal_header_x_in_effects
 use super::parser_support::split_tokens_for_parse;
 use super::reference_model::ReferenceEnv;
 use super::restriction_support::apply_pending_mana_restrictions;
+use super::token_primitives::strip_leading_if_you_do_lexed;
 use super::util::{join_sentences_with_period, parse_level_up_line_lexed};
 
 /// Parse one complete effect body while retaining every source sentence whose
@@ -105,28 +106,65 @@ use super::util::{join_sentences_with_period, parse_level_up_line_lexed};
 fn parse_effect_sentences_preserving_source_boundaries(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
-    let parsed_together = parse_effect_sentences_lexed(tokens)?;
     let sentences = split_lexed_sentences(tokens)
         .into_iter()
         .filter(|sentence| !sentence.is_empty())
         .map(|sentence| sentence.to_vec())
         .collect::<Vec<_>>();
+    if sentences.len() >= 2
+        && effect_grammar::generic_sequence_shapes::parse_starting_each_player_optional_repeat_shape(
+            &sentences[0],
+            &sentences[1],
+        )
+        .is_some()
+    {
+        // The boundary-preserving fallback below strips the participant-order
+        // prefix so ordinary per-sentence parsing can proceed. A repeat
+        // sequence needs that prefix while its two authored sentences are
+        // still adjacent: the second sentence is the first action's loop
+        // terminator, not an independent each-player action.
+        return parse_effect_sentences_lexed(tokens);
+    }
+    let mut parse_sentences = sentences.clone();
+    let mut stripped_participant_ordering = false;
+    if let Some(first) = parse_sentences.first_mut()
+        && let Some((_, remainder)) =
+            crate::runtime_backend::grammar::primitives::strip_lexed_prefix_phrases(
+                first,
+                &[&["starting", "with", "you"]],
+            )
+    {
+        *first = trim_lexed_commas(remainder).to_vec();
+        stripped_participant_ordering = true;
+    }
+    let parsed_together = if stripped_participant_ordering {
+        parse_effect_sentences_lexed(&join_sentences_with_period(&parse_sentences))?
+    } else {
+        parse_effect_sentences_lexed(tokens)?
+    };
     if sentences.len() < 2 {
         let Some(sentence) = sentences.first() else {
             return Ok(parsed_together);
         };
-        return Ok(
+        let effects =
             crate::runtime_backend::effect_sentences::preserve_coordinated_effect_chain_surface(
                 sentence,
                 parsed_together,
-            ),
-        );
+            );
+        if stripped_participant_ordering {
+            return Ok(vec![EffectAst::SourceSentence {
+                effects,
+                leading_then: false,
+                starting_with_controller: true,
+            }]);
+        }
+        return Ok(effects);
     }
 
     let mut groups = Vec::with_capacity(sentences.len());
     let mut previous_effect_count = 0usize;
     for prefix_len in 1..=sentences.len() {
-        let prefix_tokens = join_sentences_with_period(&sentences[..prefix_len]);
+        let prefix_tokens = join_sentences_with_period(&parse_sentences[..prefix_len]);
         let Ok(parsed_prefix) = parse_effect_sentences_lexed(&prefix_tokens) else {
             return Ok(parsed_together);
         };
@@ -144,8 +182,19 @@ fn parse_effect_sentences_preserving_source_boundaries(
                 &sentences[prefix_len - 1],
                 sentence_effects,
             );
+        let leading_then = token_word_refs(&sentences[prefix_len - 1])
+            .first()
+            .is_some_and(|word| word.eq_ignore_ascii_case("then"));
+        let sentence_words = token_word_refs(&sentences[prefix_len - 1]);
+        let starting_with_controller = sentence_words.get(..3).is_some_and(|words| {
+            words[0].eq_ignore_ascii_case("starting")
+                && words[1].eq_ignore_ascii_case("with")
+                && words[2].eq_ignore_ascii_case("you")
+        });
         groups.push(EffectAst::SourceSentence {
             effects: sentence_effects,
+            leading_then,
+            starting_with_controller,
         });
         previous_effect_count = prefix_effect_count;
     }

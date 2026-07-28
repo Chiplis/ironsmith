@@ -966,6 +966,7 @@ fn check_legend_rule_with_view(
     actions: &mut Vec<StateBasedAction>,
 ) {
     let mut exempt_controllers = HashSet::new();
+    let mut token_exempt_controllers = HashSet::new();
     for &obj_id in &game.battlefield {
         if game.is_phased_out(obj_id) {
             continue;
@@ -979,6 +980,13 @@ fn check_legend_rule_with_view(
         ) && let Some(object) = game.object(obj_id)
         {
             exempt_controllers.insert(game.controller_of(object));
+        }
+        if view.object_has_static_ability_id(
+            obj_id,
+            StaticAbilityId::LegendRuleDoesntApplyToControllerTokens,
+        ) && let Some(object) = game.object(obj_id)
+        {
+            token_exempt_controllers.insert(game.controller_of(object));
         }
     }
 
@@ -997,6 +1005,13 @@ fn check_legend_rule_with_view(
             continue;
         };
         if exempt_controllers.contains(&chars.controller) {
+            continue;
+        }
+        if token_exempt_controllers.contains(&chars.controller)
+            && game
+                .object(obj_id)
+                .is_some_and(|object| object.kind == crate::object::ObjectKind::Token)
+        {
             continue;
         }
 
@@ -1838,6 +1853,20 @@ mod tests {
         .build()
     }
 
+    fn controller_token_legend_rule_exemption_definition(
+        card_id: u32,
+    ) -> crate::cards::CardDefinition {
+        crate::cards::builders::CardDefinitionBuilder::new(
+            CardId::from_raw(card_id),
+            "Token Legend Exemption",
+        )
+        .card_types(vec![CardType::Artifact])
+        .with_ability(Ability::static_ability(
+            StaticAbility::legend_rule_doesnt_apply_to_tokens_you_control(),
+        ))
+        .build()
+    }
+
     fn create_final_chapter_saga(game: &mut GameState, owner: PlayerId, name: &str) -> ObjectId {
         let saga = CardBuilder::new(CardId::new(), name)
             .card_types(vec![CardType::Enchantment])
@@ -1917,6 +1946,35 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(violations, vec![(bob, "Bob Twin".to_string())]);
+    }
+
+    #[test]
+    fn token_scoped_legend_rule_exemption_leaves_nontoken_duplicates_subject_to_rule() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let token_legend = legendary_creature_definition(414, "Token Twin");
+        let nontoken_legend = legendary_creature_definition(415, "Nontoken Twin");
+
+        for _ in 0..2 {
+            let token = game.create_object_from_definition(&token_legend, alice, Zone::Battlefield);
+            game.object_mut(token)
+                .expect("token legend should exist")
+                .kind = crate::object::ObjectKind::Token;
+        }
+        game.create_object_from_definition(&nontoken_legend, alice, Zone::Battlefield);
+        game.create_object_from_definition(&nontoken_legend, alice, Zone::Battlefield);
+        let exemption = controller_token_legend_rule_exemption_definition(416);
+        game.create_object_from_definition(&exemption, alice, Zone::Battlefield);
+
+        let violations = check_state_based_actions(&game)
+            .into_iter()
+            .filter_map(|action| match action {
+                StateBasedAction::LegendRuleViolation { name, .. } => Some(name),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(violations, vec!["Nontoken Twin".to_string()]);
     }
 
     #[test]

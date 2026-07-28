@@ -18,13 +18,15 @@ use crate::snapshot::ObjectSnapshot;
 use crate::static_abilities::StaticAbilityId;
 use crate::tag::TagKey;
 use crate::target::ChooseSpec;
-use crate::types::{CardType, Subtype, Supertype};
+use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 pub use ironsmith_core::filter_model::{
-    AlternativeCastKind, Comparison, CounterConstraint, ObjectFilter, ObjectFilterUnionConnective,
-    ObjectFilterUnionSurface, ObjectRef, ParityRequirement, PlayerFilter, PowerToughnessRelation,
-    PtReference, SameNameAntecedentSurface, SourcePowerRelation, StackObjectKind,
-    TaggedObjectConstraint, TaggedOpbjectRelation, TargetabilityConstraint,
+    AlternativeCastKind, Comparison, CounterConstraint, ExcludedNameSurface, ObjectCharacteristic,
+    ObjectCharacteristicRelation, ObjectCharacteristicRelationKind, ObjectFilter,
+    ObjectFilterUnionConnective, ObjectFilterUnionSurface, ObjectRef, ParityRequirement,
+    PlayerFilter, PowerToughnessRelation, PtReference, SameNameAntecedentSurface,
+    SourcePowerRelation, StackObjectKind, TaggedObjectConstraint, TaggedOpbjectRelation,
+    TargetabilityConstraint,
 };
 
 mod descriptions;
@@ -33,6 +35,66 @@ use descriptions::*;
 
 #[cfg(test)]
 mod tests;
+
+fn ensure_filter_indefinite_article(text: String) -> String {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return "a permanent".to_string();
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    if lower.starts_with("a ")
+        || lower.starts_with("an ")
+        || lower.starts_with("the ")
+        || lower.starts_with("another ")
+        || lower.starts_with("each ")
+        || lower.starts_with("all ")
+        || lower.starts_with("this ")
+        || lower.starts_with("that ")
+        || lower.starts_with("those ")
+        || lower.starts_with("target ")
+        || lower.starts_with("any ")
+        || lower.starts_with("up to ")
+        || lower.starts_with("at least ")
+        || lower.chars().next().is_some_and(|ch| ch.is_ascii_digit())
+    {
+        return trimmed.to_string();
+    }
+    let first = trimmed.chars().next().unwrap_or('a').to_ascii_lowercase();
+    let article = if matches!(first, 'a' | 'e' | 'i' | 'o' | 'u') {
+        "an"
+    } else {
+        "a"
+    };
+    format!("{article} {trimmed}")
+}
+
+fn correct_filter_leading_indefinite_article(text: String) -> String {
+    let Some(rest) = text.strip_prefix("a ") else {
+        return text;
+    };
+    if rest
+        .chars()
+        .next()
+        .is_some_and(|first| matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
+    {
+        format!("an {rest}")
+    } else {
+        text
+    }
+}
+
+fn describe_conjunctive_filter_members(mut parts: Vec<String>) -> String {
+    match parts.as_slice() {
+        [] => return String::new(),
+        [single] => return single.clone(),
+        [first, second] => return format!("{first} and {second}"),
+        _ => {}
+    }
+    let last = parts
+        .pop()
+        .expect("conjunctive filter has at least three members");
+    format!("{}, and {last}", parts.join(", "))
+}
 
 fn normalize_name_for_match(name: &str) -> String {
     name.chars()
@@ -55,7 +117,7 @@ fn object_mana_value_for_filter(object: &Object) -> i32 {
     })
 }
 
-fn snapshot_mana_value_for_filter(snapshot: &ObjectSnapshot) -> i32 {
+pub(crate) fn snapshot_mana_value_for_filter(snapshot: &ObjectSnapshot) -> i32 {
     snapshot.mana_cost.as_ref().map_or(0, |mana_cost| {
         if snapshot.zone == Zone::Stack {
             mana_cost.mana_value_with_x(snapshot.x_value.unwrap_or(0)) as i32
@@ -79,6 +141,30 @@ fn object_is_enlist_eligible(game: &GameState, id: ObjectId) -> bool {
     !game.is_summoning_sick(id) || game.current_has_static_ability_id(id, StaticAbilityId::Haste)
 }
 
+fn stack_spell_cast_origin_zone(
+    object: &Object,
+    entry: &crate::game_state::StackEntry,
+) -> Option<Zone> {
+    if entry.is_ability || object.kind == ObjectKind::SpellCopy {
+        return None;
+    }
+    Some(match &entry.casting_method {
+        crate::alternative_cast::CastingMethod::Normal
+        | crate::alternative_cast::CastingMethod::FaceDown
+        | crate::alternative_cast::CastingMethod::SplitOtherHalf
+        | crate::alternative_cast::CastingMethod::Fuse => Zone::Hand,
+        crate::alternative_cast::CastingMethod::Alternative(index) => object
+            .alternative_casts
+            .get(*index)
+            .map(|method| method.cast_from_zone())
+            .unwrap_or(Zone::Hand),
+        crate::alternative_cast::CastingMethod::GrantedEscape { .. }
+        | crate::alternative_cast::CastingMethod::GrantedFlashback => Zone::Graveyard,
+        crate::alternative_cast::CastingMethod::PlayFrom { zone, .. }
+        | crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom { zone, .. } => *zone,
+    })
+}
+
 fn first_matching_spell_cast_each_turn_matches(
     filter: &ObjectFilter,
     object_id: ObjectId,
@@ -89,12 +175,35 @@ fn first_matching_spell_cast_each_turn_matches(
     let mut matching_filter = filter.clone();
     matching_filter.first_spell_cast_each_turn = false;
 
-    let mut history_ctx = ctx.clone();
-    history_ctx.caster = None;
+    let cast_origin_zone = matching_filter.zone.filter(|zone| *zone != Zone::Stack);
+    let excluded_cast_origin_zone = matching_filter.excluded_cast_origin_zone.take();
+    if cast_origin_zone.is_some() {
+        // Historical cast snapshots describe the spell on the stack. The
+        // authored origin is carried by SpellCastEvent::from_zone, so match it
+        // there and use Stack only for the remaining structural constraints.
+        matching_filter.zone = Some(Zone::Stack);
+    }
 
-    for snapshot in game.turn_store.turn_history.spell_cast_snapshot_history() {
-        if matching_filter.matches_snapshot(&snapshot, &history_ctx, game) {
-            return snapshot.object_id == object_id;
+    for record in game.turn_store.turn_history.projected_records() {
+        let Some(event) = record
+            .event
+            .downcast::<crate::events::spells::SpellCastEvent>()
+        else {
+            continue;
+        };
+        if cast_origin_zone.is_some_and(|zone| event.from_zone != zone) {
+            continue;
+        }
+        if excluded_cast_origin_zone.is_some_and(|zone| event.from_zone == zone) {
+            continue;
+        }
+        let Some(snapshot) = record.object_snapshot.as_ref() else {
+            continue;
+        };
+        let mut history_ctx = ctx.clone();
+        history_ctx.caster = Some(event.caster);
+        if matching_filter.matches_snapshot(snapshot, &history_ctx, game) {
+            return event.spell == object_id;
         }
     }
 
@@ -616,6 +725,108 @@ fn subject_shares_creature_type_with_filter(
     false
 }
 
+fn subject_subtypes_in_family(
+    subject: &impl TaggedConstraintSubject,
+    family: SubtypeFamily,
+) -> Vec<Subtype> {
+    subject
+        .subject_subtypes()
+        .iter()
+        .copied()
+        .filter(|subtype| family.all_subtypes().contains(subtype))
+        .collect()
+}
+
+fn object_subtypes_in_family(
+    object: &Object,
+    family: SubtypeFamily,
+    game: &GameState,
+) -> Vec<Subtype> {
+    game.current_subtypes(object.id)
+        .unwrap_or_else(|| object.subtypes.to_vec())
+        .into_iter()
+        .filter(|subtype| family.all_subtypes().contains(subtype))
+        .collect()
+}
+
+fn object_current_mana_value_for_relation(object: &Object, game: &GameState) -> i32 {
+    let mana_cost = game
+        .current_characteristics(object.id)
+        .and_then(|characteristics| characteristics.mana_cost.clone())
+        .or_else(|| object.mana_cost.as_deref().cloned());
+    mana_cost.map_or(0, |mana_cost| {
+        if object.zone == Zone::Stack {
+            mana_cost.mana_value_with_x(object.x_value.unwrap_or(0)) as i32
+        } else {
+            mana_cost.mana_value() as i32
+        }
+    })
+}
+
+fn subject_shares_characteristic_with_object(
+    subject: &impl TaggedConstraintSubject,
+    object: &Object,
+    characteristic: ObjectCharacteristic,
+    game: &GameState,
+) -> bool {
+    match characteristic {
+        ObjectCharacteristic::CardType | ObjectCharacteristic::PermanentType => {
+            let object_types = game
+                .current_card_types(object.id)
+                .unwrap_or_else(|| object.card_types.to_vec());
+            subject
+                .subject_card_types()
+                .iter()
+                .any(|card_type| object_types.contains(card_type))
+        }
+        ObjectCharacteristic::Subtype(family) => {
+            let subject_subtypes = subject_subtypes_in_family(subject, family);
+            let object_subtypes = object_subtypes_in_family(object, family, game);
+            subject_subtypes
+                .iter()
+                .any(|subtype| object_subtypes.contains(subtype))
+        }
+        ObjectCharacteristic::Color => {
+            let object_colors = game
+                .current_colors(object.id)
+                .unwrap_or_else(|| object.colors());
+            !subject
+                .subject_colors()
+                .intersection(object_colors)
+                .is_empty()
+        }
+        ObjectCharacteristic::ManaValue => {
+            subject.subject_mana_value() == object_current_mana_value_for_relation(object, game)
+        }
+    }
+}
+
+fn characteristic_relation_matches_subject(
+    subject: &impl TaggedConstraintSubject,
+    relation: &ObjectCharacteristicRelation,
+    ctx: &FilterContext,
+    game: &GameState,
+) -> bool {
+    let shares = game
+        .objects_in_deterministic_order()
+        .into_iter()
+        .any(|object| {
+            relation.comparison.matches(object, ctx, game)
+                && relation.characteristics.iter().any(|characteristic| {
+                    subject_shares_characteristic_with_object(
+                        subject,
+                        object,
+                        *characteristic,
+                        game,
+                    )
+                })
+        });
+    match relation.kind {
+        ObjectCharacteristicRelationKind::SharesAny => shares,
+        ObjectCharacteristicRelationKind::SharesNone => !shares,
+    }
+}
+
 fn subject_shares_creature_type_with_source(
     subject: &impl TaggedConstraintSubject,
     ctx: &FilterContext,
@@ -735,6 +946,9 @@ fn tagged_constraint_matches_subject(
         TaggedOpbjectRelation::AttachedToTaggedObject => tagged_snapshots
             .iter()
             .any(|snapshot| subject.subject_attached_to() == Some(snapshot.object_id)),
+        TaggedOpbjectRelation::WasAttachedToTaggedObject => tagged_snapshots
+            .iter()
+            .any(|snapshot| snapshot.attachments.contains(&subject.subject_object_id())),
         TaggedOpbjectRelation::SoulbondPartnerOfTagged => tagged_snapshots.iter().any(|snapshot| {
             game.soulbond_partner(snapshot.object_id) == Some(subject.subject_object_id())
         }),
@@ -1195,6 +1409,15 @@ fn resolve_filter_comparison_rhs_value(
         ctx: &FilterContext,
         greatest: bool,
     ) -> Option<i32> {
+        if filter.cast_this_turn && filter.zone == Some(Zone::Stack) {
+            let snapshots = game.turn_store.turn_history.spell_cast_snapshot_history();
+            let values = snapshots
+                .iter()
+                .filter(|snapshot| filter.matches_snapshot(snapshot, ctx, game))
+                .map(snapshot_mana_value_for_filter);
+            return if greatest { values.max() } else { values.min() };
+        }
+
         if let Some(snapshots) = aggregate_tagged_snapshots(filter, ctx) {
             let values = snapshots
                 .into_iter()
@@ -1516,6 +1739,38 @@ fn creature_was_blocked_by_ref(
         .any(|blocker| game.creature_was_blocked_by_this_turn(attacker, *blocker))
 }
 
+fn creature_blocked_or_was_blocked_by_matching_this_turn(
+    game: &GameState,
+    ctx: &FilterContext,
+    creature: ObjectId,
+    partner_filter: &ObjectFilter,
+) -> bool {
+    game.turn_store
+        .turn_history
+        .projected_records()
+        .filter_map(|record| {
+            record
+                .event
+                .downcast::<crate::events::combat::CreatureBlockedEvent>()
+        })
+        .any(|event| {
+            let (partner_id, partner_snapshot) = if event.blocker == creature {
+                (event.attacker, event.attacker_snapshot.as_ref())
+            } else if event.attacker == creature {
+                (event.blocker, event.blocker_snapshot.as_ref())
+            } else {
+                return false;
+            };
+
+            partner_snapshot
+                .is_some_and(|snapshot| partner_filter.matches_snapshot(snapshot, ctx, game))
+                || (partner_snapshot.is_none()
+                    && game
+                        .object(partner_id)
+                        .is_some_and(|partner| partner_filter.matches(partner, ctx, game)))
+        })
+}
+
 fn effects_for_stack_entry(
     game: &crate::game_state::GameState,
     entry: &crate::game_state::StackEntry,
@@ -1611,6 +1866,10 @@ impl PlayerFilterExt for PlayerFilter {
 
             PlayerFilter::Teammate => ctx.teammates.contains(&player),
 
+            // Seat-relative filters require the game's stable physical seat
+            // order and are handled by `player_filter_matches_game`.
+            PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => false,
+
             PlayerFilter::Active => ctx.active_player.is_some_and(|ap| player == ap),
 
             PlayerFilter::Defending => {
@@ -1701,6 +1960,12 @@ pub(crate) fn player_filter_matches_game(
     ctx: &FilterContext,
 ) -> bool {
     match filter {
+        PlayerFilter::PlayerToYourLeft => ctx.you.is_some_and(|you| {
+            game.closest_in_game_player_to_left_matching(you, |_| true) == Some(player)
+        }),
+        PlayerFilter::PlayerToYourRight => ctx.you.is_some_and(|you| {
+            game.closest_in_game_player_to_right_matching(you, |_| true) == Some(player)
+        }),
         PlayerFilter::CardsInHandAtLeastMoreThanYou { base, count } => {
             if !player_filter_matches_game(base, player, game, ctx) {
                 return false;
@@ -1990,6 +2255,22 @@ impl ObjectFilterExt for ObjectFilter {
                         .unwrap_or(0)
                         > 0
                 }
+                CounterConstraint::AtLeast {
+                    counter_type,
+                    count,
+                } => {
+                    let actual = counter_type.map_or_else(
+                        || subject.tail_counters().values().copied().sum(),
+                        |counter_type| {
+                            subject
+                                .tail_counters()
+                                .get(&counter_type)
+                                .copied()
+                                .unwrap_or(0)
+                        },
+                    );
+                    actual >= count
+                }
             };
             if !has_counter {
                 return false;
@@ -2005,6 +2286,22 @@ impl ObjectFilterExt for ObjectFilter {
                         .copied()
                         .unwrap_or(0)
                         > 0
+                }
+                CounterConstraint::AtLeast {
+                    counter_type,
+                    count,
+                } => {
+                    let actual = counter_type.map_or_else(
+                        || subject.tail_counters().values().copied().sum(),
+                        |counter_type| {
+                            subject
+                                .tail_counters()
+                                .get(&counter_type)
+                                .copied()
+                                .unwrap_or(0)
+                        },
+                    );
+                    actual >= count
                 }
             };
             if has_excluded_counter {
@@ -2058,6 +2355,13 @@ impl ObjectFilterExt for ObjectFilter {
             .any(|comparison_filter| {
                 subject_shares_creature_type_with_filter(subject, comparison_filter, ctx, game)
             })
+        {
+            return false;
+        }
+        if self
+            .characteristic_relations
+            .iter()
+            .any(|relation| !characteristic_relation_matches_subject(subject, relation, ctx, game))
         {
             return false;
         }
@@ -2148,6 +2452,16 @@ impl ObjectFilterExt for ObjectFilter {
         }
 
         let object_id = subject.tail_object_id();
+        if let Some(partner_filter) = &self.blocked_or_was_blocked_by_this_turn
+            && !creature_blocked_or_was_blocked_by_matching_this_turn(
+                game,
+                ctx,
+                object_id,
+                partner_filter,
+            )
+        {
+            return false;
+        }
 
         // Targeting checks (spell/ability targets on the stack)
         if self.targets_player.is_some() || self.targets_object.is_some() {
@@ -2318,6 +2632,16 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.didnt_enter_battlefield_this_turn
+            && game
+                .turn_store
+                .turn_history
+                .object_entered_battlefield_controller_this_turn(object.stable_id)
+                .is_some()
+        {
+            return false;
+        }
+
         if self.entered_battlefield_this_turn || self.entered_battlefield_controller.is_some() {
             if object.zone != Zone::Battlefield {
                 return false;
@@ -2442,6 +2766,7 @@ impl ObjectFilterExt for ObjectFilter {
         // Zone check (with special handling for stack entries)
         let wants_stack = self.zone == Some(Zone::Stack)
             || self.stack_kind.is_some()
+            || self.excluded_cast_origin_zone.is_some()
             || self.target_count.is_some()
             || self.targets_only_player.is_some()
             || self.targets_only_object.is_some()
@@ -2485,27 +2810,25 @@ impl ObjectFilterExt for ObjectFilter {
                 let Some(entry) = stack_entry else {
                     return false;
                 };
-                let cast_from_zone = match &entry.casting_method {
-                    crate::alternative_cast::CastingMethod::Normal => Zone::Hand,
-                    crate::alternative_cast::CastingMethod::FaceDown => Zone::Hand,
-                    crate::alternative_cast::CastingMethod::SplitOtherHalf
-                    | crate::alternative_cast::CastingMethod::Fuse => Zone::Hand,
-                    crate::alternative_cast::CastingMethod::Alternative(index) => object
-                        .alternative_casts
-                        .get(*index)
-                        .map(|method| method.cast_from_zone())
-                        .unwrap_or(Zone::Hand),
-                    crate::alternative_cast::CastingMethod::GrantedEscape { .. }
-                    | crate::alternative_cast::CastingMethod::GrantedFlashback => Zone::Graveyard,
-                    crate::alternative_cast::CastingMethod::PlayFrom { zone, .. } => *zone,
-                    crate::alternative_cast::CastingMethod::SplitOtherHalfPlayFrom {
-                        zone, ..
-                    } => *zone,
+                let Some(cast_from_zone) = stack_spell_cast_origin_zone(object, entry) else {
+                    return false;
                 };
                 if cast_from_zone != *zone {
                     return false;
                 }
             } else if object.zone != *zone {
+                return false;
+            }
+        }
+
+        if let Some(excluded_zone) = self.excluded_cast_origin_zone {
+            if object.zone != Zone::Stack {
+                return false;
+            }
+            if stack_entry
+                .and_then(|entry| stack_spell_cast_origin_zone(object, entry))
+                == Some(excluded_zone)
+            {
                 return false;
             }
         }
@@ -2602,6 +2925,10 @@ impl ObjectFilterExt for ObjectFilter {
             if !(has_counters || has_equipment || has_controlled_aura) {
                 return false;
             }
+        }
+
+        if self.suspected && (object.zone != Zone::Battlefield || !game.is_suspected(object.id)) {
+            return false;
         }
 
         // Controller check
@@ -2713,6 +3040,16 @@ impl ObjectFilterExt for ObjectFilter {
                 .subtypes
                 .iter()
                 .any(|t| filter_subject_matches_subtype(object, layered_subject, *t, game))
+        {
+            return false;
+        }
+        // Compound subtype phrases such as "Eldrazi Spawn" require every
+        // authored subtype, unlike the inclusive-any `subtypes` collection.
+        if !self.all_subtypes.is_empty()
+            && !self
+                .all_subtypes
+                .iter()
+                .all(|t| filter_subject_matches_subtype(object, layered_subject, *t, game))
         {
             return false;
         }
@@ -2891,6 +3228,9 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(require_face_down) = self.face_down
             && game.is_face_down(object.id) != require_face_down
         {
+            return false;
+        }
+        if self.foretold && !game.is_foretold(object.id) {
             return false;
         }
 
@@ -3344,12 +3684,43 @@ impl ObjectFilterExt for ObjectFilter {
         if self.entered_since_your_last_turn_ended && !game.is_summoning_sick(snapshot.object_id) {
             return false;
         }
+        if self.didnt_enter_battlefield_this_turn
+            && game
+                .turn_store
+                .turn_history
+                .object_entered_battlefield_controller_this_turn(snapshot.stable_id)
+                .is_some()
+        {
+            return false;
+        }
 
         // Zone check
         if let Some(zone) = &self.zone
             && snapshot.zone != *zone
         {
             return false;
+        }
+        if let Some(excluded_zone) = self.excluded_cast_origin_zone {
+            if snapshot.zone != Zone::Stack {
+                return false;
+            }
+            let cast_origin = if snapshot.kind == ObjectKind::SpellCopy {
+                None
+            } else {
+                game.cast_origin_snapshot(snapshot.object_id)
+                    .map(|origin| origin.zone)
+                    .or_else(|| {
+                        let object = game.object(snapshot.object_id)?;
+                        let entry = game
+                            .stack
+                            .iter()
+                            .find(|entry| entry.object_id == snapshot.object_id)?;
+                        stack_spell_cast_origin_zone(object, entry)
+                    })
+            };
+            if cast_origin == Some(excluded_zone) {
+                return false;
+            }
         }
 
         // Controller check
@@ -3441,6 +3812,14 @@ impl ObjectFilterExt for ObjectFilter {
                 .subtypes
                 .iter()
                 .any(|t| snapshot_matches_subtype(snapshot, *t, game))
+        {
+            return false;
+        }
+        if !self.all_subtypes.is_empty()
+            && !self
+                .all_subtypes
+                .iter()
+                .all(|t| snapshot_matches_subtype(snapshot, *t, game))
         {
             return false;
         }
@@ -3626,6 +4005,9 @@ impl ObjectFilterExt for ObjectFilter {
         {
             return false;
         }
+        if self.foretold && !game.is_foretold(snapshot.object_id) {
+            return false;
+        }
 
         // "Other" check (not the source)
         if self.other
@@ -3645,6 +4027,12 @@ impl ObjectFilterExt for ObjectFilter {
             && ctx.target_objects.iter().any(|target| {
                 target.object_id == snapshot.object_id || target.stable_id == snapshot.stable_id
             })
+        {
+            return false;
+        }
+
+        if self.suspected
+            && (snapshot.zone != Zone::Battlefield || !game.is_suspected(snapshot.object_id))
         {
             return false;
         }
@@ -3903,9 +4291,36 @@ impl ObjectFilterExt for ObjectFilter {
     fn description(&self) -> String {
         let any_of_keyword_clause =
             describe_simple_any_of_keyword_clause(&self.any_of, self.union_connective());
+        let owner_or_controller_clause =
+            describe_you_own_or_control_union(&self.any_of, self.union_connective());
+        if let Some(description) =
+            ironsmith_core::filter_model::describe_relative_characteristic_list_filter(self)
+        {
+            return description;
+        }
+        if let Some(description) =
+            ironsmith_core::filter_model::describe_branch_scoped_card_type_union(self)
+        {
+            return description;
+        }
+        if let Some(description) =
+            ironsmith_core::filter_model::describe_controlled_battlefield_and_owned_nonbattlefield_card_union(
+                self,
+            )
+        {
+            return description;
+        }
+        if let Some(description) =
+            ironsmith_core::filter_model::describe_owned_nonbattlefield_card_union(self)
+        {
+            return description;
+        }
         if let Some(description) =
             ironsmith_core::filter_model::describe_owner_scoped_zone_union(self)
         {
+            return description;
+        }
+        if let Some(description) = owner_or_controller_clause {
             return description;
         }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
@@ -3970,6 +4385,9 @@ impl ObjectFilterExt for ObjectFilter {
         if self.modified {
             parts.push("modified".to_string());
         }
+        if self.suspected {
+            parts.push("suspected".to_string());
+        }
 
         let has_leading_determiner = self.other || has_target_tag || has_chosen_tag || self.source;
 
@@ -4033,6 +4451,9 @@ impl ObjectFilterExt for ObjectFilter {
                     controller_suffix = Some("that player controls".to_string());
                 }
                 PlayerFilter::Teammate => parts.push("a teammate's".to_string()),
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                    parts.push(describe_possessive_player_filter(ctrl));
+                }
                 PlayerFilter::Defending => {
                     if !has_leading_determiner {
                         parts.insert(0, "a".to_string());
@@ -4058,6 +4479,12 @@ impl ObjectFilterExt for ObjectFilter {
                     }
                     controller_suffix =
                         Some("that player or that object's controller controls".to_string())
+                }
+                PlayerFilter::Excluding { .. } if ctrl.is_your_team() => {
+                    if !has_leading_determiner {
+                        parts.insert(0, "a".to_string());
+                    }
+                    controller_suffix = Some("your team controls".to_string());
                 }
                 PlayerFilter::Excluding { .. } => {
                     parts.push(describe_possessive_player_filter(ctrl));
@@ -4091,13 +4518,27 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(cast_by) = &self.cast_by {
             post_noun_qualifiers.push(format!("cast by {}", describe_player_filter(cast_by)));
         }
+        if let Some(zone) = self.excluded_cast_origin_zone {
+            let origin = match zone {
+                Zone::Hand => "its owner's hand".to_string(),
+                Zone::Graveyard => "a graveyard".to_string(),
+                Zone::Library => "a library".to_string(),
+                Zone::Exile => "exile".to_string(),
+                Zone::Command => "the command zone".to_string(),
+                Zone::Battlefield => "the battlefield".to_string(),
+                Zone::Stack => "the stack".to_string(),
+                Zone::Ante => "ante".to_string(),
+                Zone::OutsideGame => "outside the game".to_string(),
+            };
+            post_noun_qualifiers.push(format!("that wasn't cast from {origin}"));
+        }
 
         // Handle owner on object-level filters (battlefield/stack/any-zone object references).
         // Zone-restricted card references (e.g. "in your graveyard") already encode ownership.
         let owner_conveyed_by_zone = matches!(
             self.zone,
             Some(Zone::Graveyard | Zone::Hand | Zone::Library | Zone::Exile | Zone::Command)
-        );
+        ) && !self.foretold;
         if !owner_conveyed_by_zone && let Some(ref owner) = self.owner {
             owner_suffix = Some(match owner {
                 PlayerFilter::You => "you own".to_string(),
@@ -4135,6 +4576,9 @@ impl ObjectFilterExt for ObjectFilter {
                 PlayerFilter::ChosenPlayer => "the chosen player owns".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player owns".to_string(),
                 PlayerFilter::Teammate => "a teammate owns".to_string(),
+                PlayerFilter::PlayerToYourLeft | PlayerFilter::PlayerToYourRight => {
+                    format!("{} owns", describe_player_filter(owner))
+                }
                 PlayerFilter::Defending => "the defending player owns".to_string(),
                 PlayerFilter::Attacking => "an attacking player owns".to_string(),
                 PlayerFilter::DamagedPlayer => "that player owns".to_string(),
@@ -4167,6 +4611,9 @@ impl ObjectFilterExt for ObjectFilter {
             } else {
                 "face-up".to_string()
             });
+        }
+        if self.foretold {
+            parts.push("foretold".to_string());
         }
         if let Some(colors) = self.required_colors {
             let mut color_words = Vec::new();
@@ -4225,10 +4672,9 @@ impl ObjectFilterExt for ObjectFilter {
         // oracle order ("creatures you control of the chosen type") — but
         // only when there IS one; zone qualifiers ("cards of that type from
         // their graveyard") keep the chosen phrase next to the noun.
-        let defer_chosen_qualifiers =
-            controller_suffix.is_some() || owner_suffix.is_some();
+        let defer_chosen_qualifiers = controller_suffix.is_some() || owner_suffix.is_some();
         let mut chosen_trailing_qualifiers: Vec<String> = Vec::new();
-        let mut push_chosen_qualifier =
+        let push_chosen_qualifier =
             |text: &str,
              post_noun_qualifiers: &mut Vec<String>,
              chosen_trailing_qualifiers: &mut Vec<String>| {
@@ -4287,6 +4733,22 @@ impl ObjectFilterExt for ObjectFilter {
                 .join(" or ");
             post_noun_qualifiers.push(format!(
                 "that doesn't share a creature type with {comparison}"
+            ));
+        }
+        for relation in &self.characteristic_relations {
+            let characteristics = relation
+                .characteristics
+                .iter()
+                .map(|characteristic| characteristic.sharing_phrase())
+                .collect::<Vec<_>>()
+                .join(" or ");
+            let verb = match relation.kind {
+                ObjectCharacteristicRelationKind::SharesAny => "shares",
+                ObjectCharacteristicRelationKind::SharesNone => "doesn't share",
+            };
+            post_noun_qualifiers.push(format!(
+                "that {verb} {characteristics} with {}",
+                relation.comparison_description()
             ));
         }
         if self.shares_creature_type_with_source {
@@ -4397,6 +4859,9 @@ impl ObjectFilterExt for ObjectFilter {
                 TaggedOpbjectRelation::AttachedToTaggedObject => {
                     post_noun_qualifiers.push("attached to it".to_string());
                 }
+                TaggedOpbjectRelation::WasAttachedToTaggedObject => {
+                    post_noun_qualifiers.push("that was attached to it".to_string());
+                }
                 TaggedOpbjectRelation::SoulbondPartnerOfTagged => {
                     post_noun_qualifiers.push("paired with it".to_string());
                 }
@@ -4495,6 +4960,7 @@ impl ObjectFilterExt for ObjectFilter {
             && !(self.card_types.is_empty()
                 && self.all_card_types.is_empty()
                 && self.subtypes.is_empty()
+                && self.all_subtypes.is_empty()
                 && !self.token)
         {
             // With no type noun, "commander" IS the noun ("Commanders you
@@ -4526,6 +4992,12 @@ impl ObjectFilterExt for ObjectFilter {
         if self.blocked_by_source {
             post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
+        if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
+            post_noun_qualifiers.push(format!(
+                "that blocked or was blocked by {} this turn",
+                ensure_filter_indefinite_article(combat_partner.description())
+            ));
+        }
         if self.tapped && self.untapped {
             parts.push("tapped/untapped".to_string());
         } else if self.tapped {
@@ -4536,7 +5008,11 @@ impl ObjectFilterExt for ObjectFilter {
         if self.attacking && self.blocking {
             parts.push("attacking/blocking".to_string());
         } else {
-            if self.attacking {
+            if self.attacking
+                && self
+                    .attacking_player_or_planeswalker_controlled_by
+                    .is_none()
+            {
                 parts.push("attacking".to_string());
             }
             if self.blocking {
@@ -4547,7 +5023,12 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push("that attacked this turn".to_string());
         }
         if self.didnt_attack_this_turn {
-            post_noun_qualifiers.push("that didn't attack this turn".to_string());
+            let clause = if self.didnt_enter_battlefield_this_turn {
+                "that didn't attack or enter this turn"
+            } else {
+                "that didn't attack this turn"
+            };
+            post_noun_qualifiers.push(clause.to_string());
         }
         if let Some(with_attached) = &self.with_attached_object {
             let inner = with_attached.description();
@@ -4564,12 +5045,30 @@ impl ObjectFilterExt for ObjectFilter {
             }
         }
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
-            let player_text = player_filter.description();
-            if self.attacking_player_only {
-                post_noun_qualifiers.push(format!("attacking {player_text}"));
+            let player_text = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
+                "the last chosen player".to_string()
+            } else if self.attacking_player_only
+                && matches!(player_filter, PlayerFilter::Defending)
+            {
+                "that player".to_string()
             } else {
+                player_filter.description()
+            };
+            if self.attacking_player_only {
+                let relation = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
+                    format!("attacking {player_text}")
+                } else {
+                    format!("that's attacking {player_text}")
+                };
+                post_noun_qualifiers.push(relation);
+            } else {
+                let controller_pronoun = if matches!(player_filter, PlayerFilter::You) {
+                    "you"
+                } else {
+                    "they"
+                };
                 post_noun_qualifiers.push(format!(
-                    "attacking {player_text} or a planeswalker controlled by {player_text}"
+                    "that's attacking {player_text} or a planeswalker {controller_pronoun} control"
                 ));
             }
         }
@@ -4592,11 +5091,14 @@ impl ObjectFilterExt for ObjectFilter {
         if self.entered_since_your_last_turn_ended {
             post_noun_qualifiers.push("that entered since your last turn ended".to_string());
         }
+        if self.didnt_enter_battlefield_this_turn && !self.didnt_attack_this_turn {
+            post_noun_qualifiers.push("that didn't enter this turn".to_string());
+        }
         if self.no_abilities {
             post_noun_qualifiers.push("with no abilities".to_string());
         }
 
-        let subtype_implies_type = !self.subtypes.is_empty()
+        let subtype_implies_type = (!self.subtypes.is_empty() || !self.all_subtypes.is_empty())
             && matches!(self.zone, None | Some(Zone::Battlefield))
             && self.all_card_types.is_empty()
             && self.card_types.is_empty();
@@ -4611,6 +5113,22 @@ impl ObjectFilterExt for ObjectFilter {
                 CardType::Battle,
             ];
             self.card_types.len() == required.len()
+                && required
+                    .iter()
+                    .all(|card_type| self.card_types.contains(card_type))
+        };
+
+        let has_all_permanent_spell_types = {
+            let required = [
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ];
+            matches!(self.zone, Some(Zone::Stack))
+                && matches!(self.stack_kind, Some(StackObjectKind::Spell))
+                && self.card_types.len() == required.len()
                 && required
                     .iter()
                     .all(|card_type| self.card_types.contains(card_type))
@@ -4643,12 +5161,22 @@ impl ObjectFilterExt for ObjectFilter {
                     describe_card_type_source_phrase(&self.card_types, self.union_connective())
                 ));
                 Some((false, describe_stack_object_kind(kind).to_string()))
-            } else if has_all_permanent_types {
+            } else if has_all_permanent_types || has_all_permanent_spell_types {
                 Some((true, "permanent".to_string()))
             } else {
+                let card_type_phrase = if self.has_conjunctive_set_surface() {
+                    describe_conjunctive_filter_members(
+                        self.card_types
+                            .iter()
+                            .map(|card_type| card_type.name().to_string())
+                            .collect(),
+                    )
+                } else {
+                    describe_card_type_list(&self.card_types, self.union_connective())
+                };
                 Some((
                     true,
-                    describe_card_type_list(&self.card_types, self.union_connective()),
+                    card_type_phrase,
                 ))
             }
         } else if !self.token && !subtype_implies_type {
@@ -4692,8 +5220,18 @@ impl ObjectFilterExt for ObjectFilter {
             None
         };
 
-        let subtype_phrase = if !self.subtypes.is_empty() {
-            let mut parts = Vec::new();
+        let subtype_parts = if !self.subtypes.is_empty() || !self.all_subtypes.is_empty() {
+            let mut parts = if self.all_subtypes.is_empty() {
+                Vec::new()
+            } else {
+                vec![
+                    self.all_subtypes
+                        .iter()
+                        .map(std::string::ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" "),
+                ]
+            };
             let mut remaining = self.subtypes.clone();
             let outlaw_pack = [
                 Subtype::Assassin,
@@ -4710,14 +5248,22 @@ impl ObjectFilterExt for ObjectFilter {
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
             parts.extend(remaining.iter().map(std::string::ToString::to_string));
-            Some(describe_filter_union_list(
-                parts,
-                self.union_connective(),
-                false,
-            ))
+            parts
         } else {
-            None
+            Vec::new()
         };
+        let subtype_phrase = (!subtype_parts.is_empty()).then(|| {
+            let description = describe_filter_union_list(
+                subtype_parts.clone(),
+                self.union_connective(),
+                self.has_serial_or_list_surface(),
+            );
+            if self.has_shared_indefinite_article_surface() {
+                ensure_filter_indefinite_article(description)
+            } else {
+                description
+            }
+        });
 
         if let Some((type_is_card_type, phrase)) = type_phrase.as_mut()
             && *type_is_card_type
@@ -4746,12 +5292,43 @@ impl ObjectFilterExt for ObjectFilter {
             && !matches!(self.zone, Some(Zone::Stack));
         if self.type_or_subtype_union {
             match (type_phrase, subtype_phrase) {
-                (Some((_, type_phrase)), Some(subtype_phrase)) => {
-                    parts.push(describe_filter_union_list(
-                        vec![type_phrase, subtype_phrase],
+                (Some((_, mut type_phrase)), Some(subtype_phrase)) => {
+                    let terminal_noun = self
+                        .has_terminal_noun_after_type_subtype_union_surface()
+                        .then(|| {
+                            [" card", " spell"].into_iter().find_map(|suffix| {
+                                type_phrase
+                                    .strip_suffix(suffix)
+                                    .map(|head| (head.to_string(), suffix.trim().to_string()))
+                            })
+                        })
+                        .flatten();
+                    if let Some((head, _)) = &terminal_noun {
+                        type_phrase = head.clone();
+                    }
+
+                    let subtype_first = self.has_subtype_before_card_type_union_surface();
+                    let preserve_individual_arms = subtype_first || terminal_noun.is_some();
+                    let mut union_parts = if preserve_individual_arms {
+                        subtype_parts
+                    } else {
+                        vec![subtype_phrase]
+                    };
+                    if subtype_first {
+                        union_parts.push(type_phrase);
+                    } else {
+                        union_parts.insert(0, type_phrase);
+                    }
+                    let mut description = describe_filter_union_list(
+                        union_parts,
                         self.union_connective(),
-                        false,
-                    ));
+                        preserve_individual_arms,
+                    );
+                    if let Some((_, terminal_noun)) = terminal_noun {
+                        description.push(' ');
+                        description.push_str(&terminal_noun);
+                    }
+                    parts.push(description);
                 }
                 (Some((_, type_phrase)), None) => parts.push(type_phrase),
                 (None, Some(subtype_phrase)) => parts.push(subtype_phrase),
@@ -4797,6 +5374,37 @@ impl ObjectFilterExt for ObjectFilter {
         if append_token_after_type {
             parts.push("token".to_string());
         }
+
+        // Oracle places controller and owner scope immediately after the noun,
+        // before restrictive qualifiers: "a creature you control with
+        // deathtouch", not "a creature with deathtouch you control". Keep the
+        // scope attached to the noun here so every later AST-derived
+        // qualifier (power, mana value, abilities, counters, zones, and
+        // tagged relationships) follows it consistently.
+        match (controller_suffix.take(), owner_suffix.take()) {
+            (Some(controller), Some(owner))
+                if controller == "you control" && owner == "you own" =>
+            {
+                parts.push("you both own and control".to_string());
+            }
+            (Some(controller), Some(owner))
+                if controller == "you control" && owner == "you don't own" =>
+            {
+                parts.push("you control but don't own".to_string());
+            }
+            (Some(controller), Some(owner))
+                if controller == "that player controls" && owner == "that player owns" =>
+            {
+                parts.push("that player both owns and controls".to_string());
+            }
+            (Some(controller), Some(owner)) => {
+                parts.push(format!("{owner} but {controller}"));
+            }
+            (Some(controller), None) => parts.push(controller),
+            (None, Some(owner)) => parts.push(owner),
+            (None, None) => {}
+        }
+
         if !post_noun_qualifiers.is_empty() {
             parts.extend(post_noun_qualifiers);
         }
@@ -4808,6 +5416,9 @@ impl ObjectFilterExt for ObjectFilter {
         }
         if self.distinct_powers {
             parts.push("with different powers".to_string());
+        }
+        if self.one_per_card_type {
+            parts.push("with at most one card of each card type".to_string());
         }
 
         // Handle name
@@ -4832,11 +5443,24 @@ impl ObjectFilterExt for ObjectFilter {
             if name == "{chosen name}" {
                 // The name is a runtime back-reference to a previously chosen
                 // card name, not a literal card name.
-                return format!("a {} with that name", parts.join(" "));
+                let subject = parts.join(" ");
+                let article = if subject.starts_with("a ") || subject.starts_with("an ") {
+                    ""
+                } else {
+                    "a "
+                };
+                return format!("{article}{subject} with that name");
             }
-            return format!("a {} named {}", parts.join(" "), name);
+            let subject = parts.join(" ");
+            let article = if subject.starts_with("a ") || subject.starts_with("an ") {
+                ""
+            } else {
+                "a "
+            };
+            return format!("{article}{subject} named {name}");
         }
         if let Some(ref name) = self.excluded_name {
+            let name = self.excluded_name_surface().unwrap_or(name);
             return format!("{} not named {}", parts.join(" "), name);
         }
 
@@ -5007,7 +5631,9 @@ impl ObjectFilterExt for ObjectFilter {
                 // Keep wording compact: "card exiled with this permanent" is
                 // clearer than appending an extra "in exile" qualifier.
             } else if let Some(zone_name) = zone_name {
-                if let Some(owner) = &self.owner {
+                if self.foretold && zone == Zone::Exile {
+                    parts.push("in exile".to_string());
+                } else if let Some(owner) = &self.owner {
                     parts.push(format!(
                         "in {} {}",
                         describe_possessive_player_filter(owner),
@@ -5104,29 +5730,6 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push("drawn this turn".to_string());
         }
 
-        match (controller_suffix, owner_suffix) {
-            (Some(controller), Some(owner))
-                if controller == "you control" && owner == "you own" =>
-            {
-                parts.push("you both own and control".to_string());
-            }
-            (Some(controller), Some(owner))
-                if controller == "you control" && owner == "you don't own" =>
-            {
-                parts.push("you control but don't own".to_string());
-            }
-            (Some(controller), Some(owner))
-                if controller == "that player controls" && owner == "that player owns" =>
-            {
-                parts.push("that player both owns and controls".to_string());
-            }
-            (Some(controller), Some(owner)) => {
-                parts.push(format!("{owner} but {controller}"));
-            }
-            (Some(controller), None) => parts.push(controller),
-            (None, Some(owner)) => parts.push(owner),
-            (None, None) => {}
-        }
         parts.extend(chosen_trailing_qualifiers);
 
         let ensure_indefinite_article = |text: String| -> String {
@@ -5271,6 +5874,29 @@ impl ObjectFilterExt for ObjectFilter {
             parts.push(format!("{stack_text} could target"));
         }
 
-        parts.join(" ")
+        correct_filter_leading_indefinite_article(parts.join(" "))
+    }
+}
+
+#[cfg(test)]
+mod permanent_spell_description_tests {
+    use super::*;
+
+    #[test]
+    fn complete_permanent_spell_type_set_compacts_to_permanent_spell() {
+        let filter = ObjectFilter {
+            zone: Some(Zone::Stack),
+            stack_kind: Some(StackObjectKind::Spell),
+            card_types: vec![
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Planeswalker,
+                CardType::Battle,
+            ],
+            ..ObjectFilter::default()
+        };
+
+        assert_eq!(filter.description(), "permanent spell");
     }
 }

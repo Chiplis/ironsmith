@@ -49,8 +49,13 @@ pub(crate) enum TaggedPermissionReference {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TaggedPermissionTargetSurface {
-    SingleTaggedObject,
-    PluralTaggedCards,
+    It,
+    ThatCard,
+    ThatSpell,
+    ThoseCards,
+    SpellsFromAmongThoseCards,
+    SpellsFromAmongThoseExiledCards,
+    SpellFromAmongSourceExiledCards,
     Other,
 }
 
@@ -60,6 +65,15 @@ pub(crate) struct TaggedPermissionTargetFact<'a> {
     pub(crate) as_copy: bool,
     pub(crate) surface: TaggedPermissionTargetSurface,
     pub(crate) rest_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct UntilSourceExilesAnotherPermissionFact<'a> {
+    pub(crate) actor: PermissionActor,
+    pub(crate) verb: PermissionVerb,
+    pub(crate) reference: TaggedPermissionReference,
+    pub(crate) target_surface: TaggedPermissionTargetSurface,
+    pub(crate) source_reference_tokens: &'a [OwnedLexToken],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,6 +204,17 @@ pub(crate) fn parse_tagged_permission_target_surface_tokens(
         "tagged-permission-target-surface",
     )
     .unwrap_or(TaggedPermissionTargetSurface::Other)
+}
+
+pub(crate) fn parse_until_source_exiles_another_permission_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<UntilSourceExilesAnotherPermissionFact<'_>> {
+    primitives::parse_all(
+        tokens,
+        parse_until_source_exiles_another_permission_lexed,
+        "until-source-exiles-another-permission",
+    )
+    .ok()
 }
 
 pub(crate) fn parse_permission_lifetime_prefix_tokens(
@@ -386,19 +411,37 @@ fn parse_tagged_permission_target_lexed<'a>(
 )> {
     alt((
         alt((
-            primitives::any_phrase(&[&["it"], &["that", "card"], &["that", "spell"]]).value((
+            primitives::kw("it").value((
                 TaggedPermissionReference::LastTagged,
                 false,
-                TaggedPermissionTargetSurface::SingleTaggedObject,
+                TaggedPermissionTargetSurface::It,
+            )),
+            primitives::phrase(&["that", "card"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::ThatCard,
+            )),
+            primitives::phrase(&["that", "spell"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::ThatSpell,
             )),
             primitives::phrase(&["those", "cards"]).value((
                 TaggedPermissionReference::LastTagged,
                 false,
-                TaggedPermissionTargetSurface::PluralTaggedCards,
+                TaggedPermissionTargetSurface::ThoseCards,
+            )),
+            primitives::phrase(&["spells", "from", "among", "those", "exiled", "cards"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards,
+            )),
+            primitives::phrase(&["spells", "from", "among", "those", "cards"]).value((
+                TaggedPermissionReference::LastTagged,
+                false,
+                TaggedPermissionTargetSurface::SpellsFromAmongThoseCards,
             )),
             primitives::any_phrase(&[
-                &["spells", "from", "among", "those", "cards"],
-                &["spells", "from", "among", "those", "exiled", "cards"],
                 &["spells", "from", "among", "them"],
                 &["one", "of", "those", "cards"],
                 &["one", "of", "those", "card"],
@@ -443,16 +486,32 @@ fn parse_tagged_permission_target_surface_lexed<'a>(
     input: &mut LexStream<'a>,
 ) -> WResult<TaggedPermissionTargetSurface> {
     alt((
+        (primitives::kw("it"), primitives::sentence_end()).value(TaggedPermissionTargetSurface::It),
         (
-            primitives::any_phrase(&[&["it"], &["that", "card"], &["that", "spell"]]),
+            primitives::phrase(&["that", "card"]),
             primitives::sentence_end(),
         )
-            .value(TaggedPermissionTargetSurface::SingleTaggedObject),
+            .value(TaggedPermissionTargetSurface::ThatCard),
+        (
+            primitives::phrase(&["that", "spell"]),
+            primitives::sentence_end(),
+        )
+            .value(TaggedPermissionTargetSurface::ThatSpell),
         (
             primitives::phrase(&["those", "cards"]),
             primitives::sentence_end(),
         )
-            .value(TaggedPermissionTargetSurface::PluralTaggedCards),
+            .value(TaggedPermissionTargetSurface::ThoseCards),
+        (
+            primitives::phrase(&["spells", "from", "among", "those", "exiled", "cards"]),
+            primitives::sentence_end(),
+        )
+            .value(TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards),
+        (
+            primitives::phrase(&["spells", "from", "among", "those", "cards"]),
+            primitives::sentence_end(),
+        )
+            .value(TaggedPermissionTargetSurface::SpellsFromAmongThoseCards),
         (
             repeat_till::<_, _, (), _, _, _, _>(
                 0..,
@@ -465,9 +524,33 @@ fn parse_tagged_permission_target_surface_lexed<'a>(
             repeat_till::<_, _, (), _, _, _, _>(1.., any.void(), peek(primitives::sentence_end())),
             primitives::sentence_end(),
         )
-            .value(TaggedPermissionTargetSurface::PluralTaggedCards),
+            .value(TaggedPermissionTargetSurface::SpellFromAmongSourceExiledCards),
     ))
     .parse_next(input)
+}
+
+fn parse_until_source_exiles_another_permission_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<UntilSourceExilesAnotherPermissionFact<'a>> {
+    let (actor, verb) = parse_permission_lead_lexed.parse_next(input)?;
+    let (reference, as_copy, target_surface) =
+        parse_tagged_permission_target_lexed.parse_next(input)?;
+    if as_copy {
+        return Err(primitives::backtrack_err(
+            "until-source-exiles-another permission",
+            "a tagged card rather than a copy",
+        ));
+    }
+    primitives::phrase(&["until", "you", "exile", "another", "card", "with"]).parse_next(input)?;
+    let source_reference_tokens = sentence_body_tokens(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(UntilSourceExilesAnotherPermissionFact {
+        actor,
+        verb,
+        reference,
+        target_surface,
+        source_reference_tokens,
+    })
 }
 
 fn parse_permission_lifetime_lexed<'a>(
@@ -786,14 +869,39 @@ mod tests {
 
         let target = parse_tagged_permission_target_tokens(lead.rest_tokens).unwrap();
         assert_eq!(target.reference, TaggedPermissionReference::LastTagged);
-        assert_eq!(
-            target.surface,
-            TaggedPermissionTargetSurface::SingleTaggedObject
-        );
+        assert_eq!(target.surface, TaggedPermissionTargetSurface::ThatSpell);
         assert_eq!(
             TokenWordView::new(target.rest_tokens).word_refs(),
             ["this", "turn"]
         );
+    }
+
+    #[test]
+    fn source_exile_bounded_permission_keeps_target_and_source_surfaces() {
+        let cases = [
+            (
+                "You may play that card until you exile another card with this enchantment",
+                TaggedPermissionTargetSurface::ThatCard,
+                "this enchantment",
+            ),
+            (
+                "You may play it until you exile another card with this artifact",
+                TaggedPermissionTargetSurface::It,
+                "this artifact",
+            ),
+        ];
+        for (text, target_surface, source_surface) in cases {
+            let tokens = lex(text);
+            let parsed = parse_until_source_exiles_another_permission_tokens(&tokens).unwrap();
+            assert_eq!(parsed.actor, PermissionActor::You);
+            assert_eq!(parsed.verb, PermissionVerb::Play);
+            assert_eq!(parsed.reference, TaggedPermissionReference::LastTagged);
+            assert_eq!(parsed.target_surface, target_surface);
+            assert_eq!(
+                TokenWordView::new(parsed.source_reference_tokens).word_refs(),
+                source_surface.split(' ').collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]
@@ -816,6 +924,7 @@ mod tests {
             any_type.mana_spend_mode,
             ironsmith_core::value_model::ManaSpendMode::AnyType
         );
+        assert_eq!(any_type.reference, ManaSpendCastReference::It);
 
         let any_color =
             lex("this turn, and you may spend mana as though it were mana of any color to cast it");
@@ -823,6 +932,39 @@ mod tests {
         assert_eq!(
             any_color.mana_spend_mode,
             ironsmith_core::value_model::ManaSpendMode::AnyColor
+        );
+        assert_eq!(any_color.reference, ManaSpendCastReference::It);
+    }
+
+    #[test]
+    fn temporary_permission_references_preserve_distinct_collection_surfaces() {
+        let cases = [
+            ("those cards", TaggedPermissionTargetSurface::ThoseCards),
+            (
+                "spells from among those cards",
+                TaggedPermissionTargetSurface::SpellsFromAmongThoseCards,
+            ),
+            (
+                "spells from among those exiled cards",
+                TaggedPermissionTargetSurface::SpellsFromAmongThoseExiledCards,
+            ),
+            (
+                "spells from among them",
+                TaggedPermissionTargetSurface::Other,
+            ),
+        ];
+        for (text, expected) in cases {
+            let tokens = lex(text);
+            let parsed = parse_tagged_permission_target_tokens(&tokens).unwrap();
+            assert_eq!(parsed.surface, expected, "{text}");
+        }
+
+        let suffix = lex("and mana of any type can be spent to cast those spells");
+        assert_eq!(
+            parse_allow_any_color_for_cast_suffix_tokens(&suffix)
+                .unwrap()
+                .reference,
+            ManaSpendCastReference::ThoseSpells
         );
     }
 

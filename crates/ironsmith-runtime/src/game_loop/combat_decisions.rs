@@ -192,6 +192,20 @@ pub(super) fn generic_attack_tax_per_attacker_against_player(
         }
     }
 
+    for restriction in &game.effect_store.restriction_effects {
+        if restriction.controller != defending_player
+            || !restriction.is_active(game, game.turn.turn_number)
+        {
+            continue;
+        }
+        if let crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
+            per_attacker_tax,
+        ) = &restriction.restriction
+        {
+            tax = tax.saturating_add(*per_attacker_tax);
+        }
+    }
+
     tax
 }
 
@@ -1929,6 +1943,7 @@ mod declaration_batch_tests {
     use crate::cards::CardDefinitionBuilder;
     use crate::continuous::{ContinuousEffect, EffectTarget, Modification};
     use crate::decisions::context::DecisionContext;
+    use crate::effect::Until;
     use crate::filter::ObjectFilterExt as _;
     use crate::ids::CardId;
     use crate::static_abilities::{
@@ -2444,6 +2459,40 @@ mod declaration_batch_tests {
                 .total(),
             1,
             "declining to attack must not spend the available mana"
+        );
+    }
+
+    #[test]
+    fn resolved_attack_tax_survives_its_source_until_the_controllers_next_turn() {
+        use crate::effects::{EffectExecutor as _, ExecutionContext};
+
+        let mut game = setup_game();
+        let bob = PlayerId::from_index(1);
+        let source_card = CardBuilder::new(CardId::new(), "Temporary Attack Tax")
+            .card_types(vec![CardType::Creature])
+            .build();
+        let source = game.create_object_from_card(&source_card, bob, Zone::Battlefield);
+        let tax = crate::effects::CantEffect::new(
+            crate::effect::Restriction::attack_you_unless_controller_pays_per_attacker(2),
+            Until::YourNextTurn,
+        );
+        tax.execute(&mut game, &mut ExecutionContext::new_default(source, bob))
+            .expect("the temporary attack tax resolves");
+
+        game.move_object_by_effect(source, Zone::Graveyard)
+            .expect("the source can leave after its trigger resolves");
+        assert_eq!(
+            generic_attack_tax_per_attacker_against_player(&game, bob, &[]),
+            2,
+            "the resolving restriction is independent of its source remaining on the battlefield"
+        );
+
+        game.turn.turn_number = game.turn.turn_number.saturating_add(1);
+        game.turn.active_player = bob;
+        assert_eq!(
+            generic_attack_tax_per_attacker_against_player(&game, bob, &[]),
+            0,
+            "the tax expires as the protected player's next turn begins"
         );
     }
 

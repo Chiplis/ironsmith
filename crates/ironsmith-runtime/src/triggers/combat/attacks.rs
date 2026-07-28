@@ -161,7 +161,7 @@ impl AttacksTrigger {
         (count > 0).then_some(count as i32)
     }
 
-    fn matches_attacker_info(
+    pub(crate) fn matches_attacker_info(
         &self,
         info: &crate::combat_state::AttackerInfo,
         ctx: &TriggerContext,
@@ -251,8 +251,15 @@ impl TriggerMatcher for AttacksTrigger {
         if e.total_attackers < self.min_total_attackers {
             return false;
         }
+        let matching_attackers = self
+            .matching_attacker_count_this_combat(ctx)
+            .map(|count| count.max(0) as usize)
+            .unwrap_or(e.total_attackers);
+        if matching_attackers < self.min_total_attackers {
+            return false;
+        }
         if let Some(max_total_attackers) = self.max_total_attackers
-            && e.total_attackers > max_total_attackers
+            && matching_attackers > max_total_attackers
         {
             return false;
         }
@@ -300,18 +307,38 @@ impl TriggerMatcher for AttacksTrigger {
         } else {
             subject
         };
+        let subject = if self.one_or_more {
+            subject.replace(" an opponent controls", " your opponents control")
+        } else {
+            subject
+        };
         let target_tail = match (attacked_player.as_ref(), attacked_target_must_be_player) {
-            (Some(PlayerFilter::Opponent), true) => " an opponent",
-            (Some(PlayerFilter::Any), true) => " a player",
+            (Some(PlayerFilter::Opponent), true) => " an opponent".to_string(),
+            (Some(PlayerFilter::Any), true) => " a player".to_string(),
             (Some(PlayerFilter::Opponent), false) => {
-                " an opponent or a planeswalker controlled by an opponent"
+                if self.one_or_more {
+                    " one of your opponents or a planeswalker they control".to_string()
+                } else {
+                    " one of your opponents or a planeswalker an opponent controls".to_string()
+                }
             }
-            (Some(PlayerFilter::Any), false) => " a player or planeswalker",
-            (Some(PlayerFilter::You), true) => " you",
+            (Some(PlayerFilter::Any), false) => " a player or planeswalker".to_string(),
+            (Some(PlayerFilter::You), true) => " you".to_string(),
             (Some(PlayerFilter::TaggedPlayer(tag)), true) if tag.as_str() == "enchanted" => {
-                " enchanted player"
+                " enchanted player".to_string()
             }
-            _ => "",
+            (Some(PlayerFilter::TaggedPlayer(tag)), true)
+                if tag.as_str() == crate::tag::INITIATIVE_HOLDER_TAG =>
+            {
+                " the player who has the initiative".to_string()
+            }
+            (Some(PlayerFilter::TaggedPlayer(tag)), false) if tag.as_str() == "enchanted" => {
+                " enchanted player or a planeswalker they control".to_string()
+            }
+            (Some(PlayerFilter::HasMoreLifeThanYou { base }), true) => {
+                format!(" {} who has more life than you", base.description())
+            }
+            _ => String::new(),
         };
 
         if self.one_or_more {
@@ -328,10 +355,14 @@ impl TriggerMatcher for AttacksTrigger {
                         "Whenever this creature and exactly {other_text} other creatures attack{target_tail}"
                     );
                 }
-                if let Some(controlled_subject) = subject.strip_suffix(" you control") {
+                if target_tail.is_empty()
+                    && explicit_attack_with_group
+                    && subject.contains(" you control")
+                {
+                    let controlled_subject = subject.replacen(" you control", "", 1);
                     return format!(
                         "Whenever you attack with exactly {exact_total_text} {}",
-                        pluralize_attack_subject(controlled_subject)
+                        pluralize_attack_subject(&controlled_subject)
                     );
                 }
                 return format!(
@@ -349,10 +380,14 @@ impl TriggerMatcher for AttacksTrigger {
                 }
                 let min_total = ironsmith_core::cardinal_word(self.min_total_attackers as u32)
                     .unwrap_or_else(|| self.min_total_attackers.to_string());
-                if let Some(controlled_subject) = subject.strip_suffix(" you control") {
+                if target_tail.is_empty()
+                    && explicit_attack_with_group
+                    && subject.contains(" you control")
+                {
+                    let controlled_subject = subject.replacen(" you control", "", 1);
                     return format!(
                         "Whenever you attack with {min_total} or more {}",
-                        pluralize_attack_subject(controlled_subject)
+                        pluralize_attack_subject(&controlled_subject)
                     );
                 }
                 return format!("Whenever {min_total} or more {subject} attack{target_tail}");
@@ -364,7 +399,7 @@ impl TriggerMatcher for AttacksTrigger {
                     pluralize_attack_subject(&controlled_subject)
                 );
             }
-            if subject == "creature you control" && target_tail.is_empty() {
+            if base_subject == "creature you control" && target_tail.is_empty() {
                 return "Whenever you attack".to_string();
             }
             if base_subject == "creature you control"
@@ -372,6 +407,24 @@ impl TriggerMatcher for AttacksTrigger {
                 && attacked_target_must_be_player
             {
                 return "Whenever you attack a player".to_string();
+            }
+            if base_subject == "creature you control"
+                && matches!(
+                    attacked_player.as_ref(),
+                    Some(PlayerFilter::TaggedPlayer(tag))
+                        if matches!(
+                            tag.as_str(),
+                            "enchanted" | crate::tag::INITIATIVE_HOLDER_TAG
+                        )
+                )
+            {
+                return format!("Whenever you attack{target_tail}");
+            }
+            if base_subject == "creature"
+                && matches!(attacked_player.as_ref(), Some(PlayerFilter::You))
+                && attacked_target_must_be_player
+            {
+                return "Whenever a player attacks you".to_string();
             }
             if base_subject == "creature an opponent controls"
                 && matches!(attacked_player.as_ref(), Some(PlayerFilter::Opponent))
@@ -388,7 +441,12 @@ impl TriggerMatcher for AttacksTrigger {
             );
         }
         if display_filter.source {
-            return format!("Whenever this creature attacks{target_tail}");
+            let source_subject = display_filter
+                .source_surface
+                .as_ref()
+                .map(crate::target::SourceReferenceSurface::display_text)
+                .unwrap_or_else(|| "this creature".to_string());
+            return format!("Whenever {source_subject} attacks{target_tail}");
         }
         let subject = if articleless_attachment_subject {
             subject
@@ -458,6 +516,18 @@ fn defending_player_for_attack_target(
 }
 
 fn pluralize_one_or_more_attack_subject(subject: &str) -> String {
+    if subject == "creature" {
+        return "creatures".to_string();
+    }
+    if let Some(rest) = subject.strip_prefix("creature ") {
+        return format!("creatures {rest}");
+    }
+    if subject == "permanent" {
+        return "permanents".to_string();
+    }
+    if let Some(rest) = subject.strip_prefix("permanent ") {
+        return format!("permanents {rest}");
+    }
     // Bare subtype subjects ("Dragon you control") pluralize the subtype.
     if !subject.contains(" creature")
         && let Some((head, tail)) = subject.split_once(' ')
@@ -558,6 +628,36 @@ mod tests {
         assert!(trigger.display().contains("attacks"));
     }
 
+    fn sea_creature_subtype_filter() -> ObjectFilter {
+        ObjectFilter::default()
+            .in_zone(Zone::Battlefield)
+            .with_subtype(Subtype::Kraken)
+            .with_subtype(Subtype::Leviathan)
+            .with_subtype(Subtype::Merfolk)
+            .with_subtype(Subtype::Octopus)
+            .with_subtype(Subtype::Serpent)
+    }
+
+    #[test]
+    fn serial_subtype_attack_subject_keeps_one_shared_article() {
+        let mut filter = sea_creature_subtype_filter();
+        filter.set_serial_or_list_surface(true);
+        filter.set_shared_indefinite_article_surface(true);
+
+        assert_eq!(
+            AttacksTrigger::new(filter).display(),
+            "Whenever a Kraken, Leviathan, Merfolk, Octopus, or Serpent attacks"
+        );
+    }
+
+    #[test]
+    fn repeated_or_attack_subject_does_not_infer_serial_surface_or_article() {
+        assert_eq!(
+            AttacksTrigger::new(sea_creature_subtype_filter()).display(),
+            "Whenever Kraken or Leviathan or Merfolk or Octopus or Serpent attacks"
+        );
+    }
+
     #[test]
     fn one_or_more_you_control_attack_player_displays_you_attack_player() {
         let mut filter = ObjectFilter::creature().you_control();
@@ -569,6 +669,147 @@ mod tests {
     }
 
     #[test]
+    fn one_or_more_you_control_attack_enchanted_player_keeps_player_attack_surface() {
+        let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(enchanted.clone());
+        filter.targets_only_player = Some(enchanted);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(trigger.display(), "Whenever you attack enchanted player");
+    }
+
+    #[test]
+    fn one_or_more_you_control_attack_enchanted_players_planeswalker_keeps_target_surface() {
+        let enchanted = PlayerFilter::TaggedPlayer(crate::tag::TagKey::from("enchanted"));
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(enchanted);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack enchanted player or a planeswalker they control"
+        );
+    }
+
+    #[test]
+    fn initiative_holder_attack_target_tracks_current_designation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = ObjectId::from_raw(100);
+        let attacker = create_creature(&mut game, "Initiative Seeker", alice);
+        let initiative =
+            PlayerFilter::TaggedPlayer(crate::tag::TagKey::from(crate::tag::INITIATIVE_HOLDER_TAG));
+        let mut filter = ObjectFilter::creature().you_control();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(initiative.clone());
+        filter.targets_only_player = Some(initiative);
+        let trigger = AttacksTrigger::one_or_more(filter);
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(attacker, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        game.set_initiative(Some(bob));
+        assert!(trigger.matches(&event, &TriggerContext::for_source(source, alice, &game)));
+        game.set_initiative(Some(alice));
+        assert!(!trigger.matches(&event, &TriggerContext::for_source(source, alice, &game)));
+        assert_eq!(
+            trigger.display(),
+            "Whenever you attack the player who has the initiative"
+        );
+    }
+
+    #[test]
+    fn one_or_more_unfiltered_creatures_attack_you_keeps_player_subject_surface() {
+        let mut filter = ObjectFilter::creature();
+        filter.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::You);
+        filter.targets_only_player = Some(PlayerFilter::You);
+        let trigger = AttacksTrigger::one_or_more(filter);
+
+        assert_eq!(trigger.display(), "Whenever a player attacks you");
+    }
+
+    #[test]
+    fn unqualified_you_attack_surface_stays_distinct_from_filtered_attack_groups() {
+        assert_eq!(
+            AttacksTrigger::one_or_more(ObjectFilter::creature().you_control()).display(),
+            "Whenever you attack"
+        );
+        assert_eq!(
+            AttacksTrigger::one_or_more(
+                ObjectFilter::creature()
+                    .you_control()
+                    .with_subtype(Subtype::Warrior)
+            )
+            .display(),
+            "Whenever one or more Warriors you control attack"
+        );
+    }
+
+    #[test]
+    fn named_source_attack_matches_only_a_player_with_more_life_than_controller() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source = create_creature(&mut game, "Namor", alice);
+        let other = create_creature(&mut game, "Other Attacker", alice);
+        game.player_mut(alice).expect("Alice exists").life = 20;
+        game.player_mut(bob).expect("Bob exists").life = 21;
+
+        let relative_life = PlayerFilter::HasMoreLifeThanYou {
+            base: Box::new(PlayerFilter::Any),
+        };
+        let mut filter = ObjectFilter::source_with_surface(
+            crate::target::SourceReferenceSurface::FullName("Namor".to_string()),
+        );
+        filter.attacking_player_or_planeswalker_controlled_by = Some(relative_life.clone());
+        filter.targets_only_player = Some(relative_life);
+        let trigger = AttacksTrigger::new(filter);
+        assert_eq!(
+            trigger.display(),
+            "Whenever Namor attacks a player who has more life than you"
+        );
+
+        let player_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(source, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let other_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(other, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+        {
+            let ctx = TriggerContext::for_source(source, alice, &game);
+            assert!(trigger.matches(&player_event, &ctx));
+            assert!(!trigger.matches(&other_event, &ctx));
+        }
+
+        let walker_card = CardBuilder::new(CardId::from_raw(991), "Walker")
+            .card_types(vec![CardType::Planeswalker])
+            .build();
+        let walker = game.create_object_from_card(&walker_card, bob, Zone::Battlefield);
+        let walker_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(source, AttackEventTarget::Planeswalker(walker)),
+            crate::provenance::ProvNodeId::default(),
+        );
+        {
+            let ctx = TriggerContext::for_source(source, alice, &game);
+            assert!(
+                !trigger.matches(&walker_event, &ctx),
+                "the relative-life player surface must not match an attack on their planeswalker"
+            );
+        }
+
+        game.player_mut(bob).expect("Bob exists").life = 20;
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        assert!(
+            !trigger.matches(&player_event, &ctx),
+            "equal life is not strictly more life"
+        );
+    }
+
+    #[test]
     fn explicit_attack_with_group_preserves_count_antecedent_surface() {
         let mut filter = ObjectFilter::creature().you_control();
         filter.set_union_one_or_more(true);
@@ -577,6 +818,36 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever you attack with one or more creatures"
+        );
+    }
+
+    #[test]
+    fn suspected_attack_filter_matches_and_displays_the_designation() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(100);
+        let suspected = create_creature(&mut game, "Suspected", alice);
+        let ordinary = create_creature(&mut game, "Ordinary", alice);
+        game.set_suspected(suspected);
+
+        let trigger =
+            AttacksTrigger::one_or_more(ObjectFilter::creature().you_control().suspected());
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let suspected_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(suspected, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ordinary_event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::new(ordinary, AttackEventTarget::Player(bob)),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&suspected_event, &ctx));
+        assert!(!trigger.matches(&ordinary_event, &ctx));
+        assert_eq!(
+            trigger.display(),
+            "Whenever one or more suspected creatures you control attack"
         );
     }
 
@@ -909,6 +1180,78 @@ mod tests {
     }
 
     #[test]
+    fn minimum_attack_groups_render_filtered_cardinality_without_collapsing() {
+        let opponent_creatures = ObjectFilter::creature().controlled_by(PlayerFilter::Opponent);
+        assert_eq!(
+            AttacksTrigger::one_or_more_with_min_total_attackers(opponent_creatures, 2).display(),
+            "Whenever two or more creatures your opponents control attack"
+        );
+
+        let flying_you_control = ObjectFilter::creature()
+            .you_control()
+            .with_static_ability(crate::static_abilities::StaticAbilityId::Flying);
+        assert_eq!(
+            AttacksTrigger::one_or_more_with_min_total_attackers(flying_you_control.clone(), 3)
+                .display(),
+            "Whenever three or more creatures you control with flying attack"
+        );
+
+        let mut explicit_attack_with_flying = flying_you_control;
+        explicit_attack_with_flying.set_union_one_or_more(true);
+        assert_eq!(
+            AttacksTrigger::one_or_more_with_min_total_attackers(explicit_attack_with_flying, 2)
+                .display(),
+            "Whenever you attack with two or more creatures with flying"
+        );
+
+        let mut attacking_a_player = ObjectFilter::creature().you_control();
+        attacking_a_player.attacking_player_or_planeswalker_controlled_by = Some(PlayerFilter::Any);
+        attacking_a_player.targets_only_player = Some(PlayerFilter::Any);
+        assert_eq!(
+            AttacksTrigger::one_or_more_with_min_total_attackers(attacking_a_player, 2).display(),
+            "Whenever two or more creatures you control attack a player"
+        );
+    }
+
+    #[test]
+    fn minimum_attack_group_counts_only_creatures_matching_the_trigger_filter() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(100);
+        let matching_one = create_creature(&mut game, "A", alice);
+        let matching_two = create_creature(&mut game, "B", alice);
+        let nonmatching = create_creature(&mut game, "C", bob);
+
+        let mut combat = CombatState::default();
+        for creature in [matching_one, matching_two, nonmatching] {
+            combat.attackers.push(AttackerInfo {
+                creature,
+                target: AttackTarget::Player(bob),
+            });
+        }
+        game.combat = Some(combat);
+
+        let trigger = AttacksTrigger::one_or_more_with_min_total_attackers(
+            ObjectFilter::creature().you_control(),
+            3,
+        );
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(
+                matching_one,
+                AttackEventTarget::Player(bob),
+                3,
+            ),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        assert!(
+            !trigger.matches(&event, &ctx),
+            "an unrelated third attacker must not satisfy a three-creature filtered group"
+        );
+    }
+
+    #[test]
     fn test_one_or_more_with_exact_total_attackers_requires_exact_count() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -925,10 +1268,6 @@ mod tests {
         });
         combat.attackers.push(AttackerInfo {
             creature: attacker_two,
-            target: AttackTarget::Player(bob),
-        });
-        combat.attackers.push(AttackerInfo {
-            creature: attacker_three,
             target: AttackTarget::Player(bob),
         });
         game.combat = Some(combat);
@@ -967,6 +1306,16 @@ mod tests {
         );
         assert!(!trigger.matches(&exact_second, &ctx));
 
+        drop(ctx);
+        game.combat
+            .as_mut()
+            .expect("combat should exist")
+            .attackers
+            .push(AttackerInfo {
+                creature: attacker_three,
+                target: AttackTarget::Player(bob),
+            });
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
         let above_exact = TriggerEvent::new_with_provenance(
             CreatureAttackedEvent::with_total_attackers(
                 attacker_one,

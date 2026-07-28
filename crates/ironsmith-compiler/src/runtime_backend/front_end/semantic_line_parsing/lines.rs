@@ -65,6 +65,128 @@ fn full_parse_tokens_have_triggered_intervening_if_clause(tokens: &[OwnedLexToke
         .is_some()
 }
 
+fn tokens_after_using_mana_produced_by(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    const QUALIFIER: [&str; 4] = ["using", "mana", "produced", "by"];
+    let start = tokens.windows(QUALIFIER.len()).position(|window| {
+        window
+            .iter()
+            .zip(QUALIFIER)
+            .all(|(token, word)| token.is_word(word))
+    })?;
+    let tail = &tokens[start + QUALIFIER.len()..];
+    let end = tail
+        .iter()
+        .position(|token| token.kind == TokenKind::Comma)
+        .unwrap_or(tail.len());
+    let source = trim_lexed_commas(&tail[..end]);
+    (!source.is_empty()).then_some(source)
+}
+
+fn spell_cast_mana_source_filter(
+    trigger_parse_tokens: &[OwnedLexToken],
+    source_tokens: &[OwnedLexToken],
+) -> Result<Option<ObjectFilter>, CardTextError> {
+    if !trigger_parse_tokens
+        .iter()
+        .any(|token| token.is_word("cast"))
+    {
+        return Ok(None);
+    }
+    let Some(normalized_source_tokens) = tokens_after_using_mana_produced_by(trigger_parse_tokens)
+    else {
+        return Ok(None);
+    };
+
+    let normalized_source_words = token_word_refs(normalized_source_tokens);
+    let mut source_filter = if let Some(surface) =
+        super::super::util::this_source_surface_for_words(&normalized_source_words)
+    {
+        ObjectFilter::source_with_surface(surface)
+    } else {
+        super::super::object_filters::parse_object_filter_lexed(normalized_source_tokens, false)?
+    };
+
+    // Named source references are normalized to "this <type>" so the typed
+    // filter can bind object identity. Restore the authored name only as
+    // presentation metadata; runtime matching remains source-relative.
+    if source_filter.source
+        && let Some(authored_source_tokens) = tokens_after_using_mana_produced_by(source_tokens)
+    {
+        let authored_source_words = token_word_refs(authored_source_tokens);
+        source_filter.source_surface = super::super::util::this_source_surface_for_words(
+            &authored_source_words,
+        )
+        .or_else(|| {
+            let surface = render_token_slice(authored_source_tokens)
+                .trim()
+                .to_string();
+            (!surface.is_empty())
+                .then_some(crate::target::SourceReferenceSurface::ShortName(surface))
+        });
+    }
+
+    Ok(Some(source_filter))
+}
+
+fn set_spell_cast_mana_source_filter(
+    trigger: &mut TriggerSpec,
+    source_filter: &ObjectFilter,
+) -> bool {
+    match trigger {
+        TriggerSpec::SpellCast {
+            mana_source_filter, ..
+        } => {
+            *mana_source_filter = Some(source_filter.clone());
+            true
+        }
+        TriggerSpec::WithIntro { trigger, .. } => {
+            set_spell_cast_mana_source_filter(trigger, source_filter)
+        }
+        TriggerSpec::Either(left, right) => {
+            let left_set = set_spell_cast_mana_source_filter(left, source_filter);
+            let right_set = set_spell_cast_mana_source_filter(right, source_filter);
+            left_set || right_set
+        }
+        TriggerSpec::AnyOf(branches) => {
+            let mut set = false;
+            for branch in branches {
+                set |= set_spell_cast_mana_source_filter(branch, source_filter);
+            }
+            set
+        }
+        _ => false,
+    }
+}
+
+fn apply_spell_cast_mana_source_filter(chunk: &mut LineAst, source_filter: &ObjectFilter) {
+    match chunk {
+        LineAst::Multiple(chunks) => {
+            for chunk in chunks {
+                apply_spell_cast_mana_source_filter(chunk, source_filter);
+            }
+        }
+        LineAst::Triggered { trigger, .. } => {
+            set_spell_cast_mana_source_filter(trigger, source_filter);
+        }
+        LineAst::Ability(parsed) => {
+            let updated_trigger_spec = {
+                let Some(trigger_spec) = parsed.trigger_spec.as_mut() else {
+                    return;
+                };
+                if !set_spell_cast_mana_source_filter(trigger_spec, source_filter) {
+                    return;
+                }
+                trigger_spec.clone()
+            };
+            if let AbilityKind::Triggered(triggered) = parsed.kind_mut() {
+                triggered.trigger =
+                    super::super::compile_support::compile_trigger_spec(updated_trigger_spec);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn triggered_line_source_text(line: &RewriteTriggeredLine) -> String {
     let raw = line.info.raw_line.trim();
     let full = line.full_text.trim();
@@ -478,9 +600,25 @@ fn sentences_have_token_creation_followup_after_first<S: AsRef<[OwnedLexToken]>>
     sentences_have_token_copy_followup_after_first(sentences)
         || sentences_have_token_granted_ability_followup_after_first(sentences)
         || sentences.iter().skip(1).any(|sentence| {
-            semantic_grammar::parse_token_characteristic_followup_tokens(sentence.as_ref())
-                .is_some()
+            let sentence = sentence.as_ref();
+            semantic_grammar::parse_token_characteristic_followup_tokens(sentence).is_some()
+                || effect_grammar::parse_create_head_tokens(strip_leading_if_you_do_lexed(sentence))
+                    .is_some()
         })
+}
+
+fn sentence_has_typed_become_copy_exception(tokens: &[OwnedLexToken]) -> bool {
+    let Some(become_idx) = tokens
+        .iter()
+        .position(|token| token.is_word("become") || token.is_word("becomes"))
+    else {
+        return false;
+    };
+    let shape = effect_grammar::become_shapes::parse_become_rest_shape(&tokens[become_idx..]);
+    shape.copy_exception.is_some()
+        && token_word_refs(&shape.body_tokens)
+            .windows(2)
+            .any(|window| window == ["copy", "of"])
 }
 
 fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]>>(
@@ -488,10 +626,13 @@ fn sentences_have_temporary_static_followup_after_first<S: AsRef<[OwnedLexToken]
 ) -> bool {
     sentences.iter().skip(1).any(|sentence| {
         let sentence = sentence.as_ref();
-        semantic_grammar::parse_temporary_static_followup_tokens(sentence).is_some_and(|facts| {
-            matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
-                || facts.has_negation
-        })
+        sentence_has_typed_become_copy_exception(sentence)
+            || semantic_grammar::parse_temporary_static_followup_tokens(sentence).is_some_and(
+                |facts| {
+                    matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_)))
+                        || facts.has_negation
+                },
+            )
     })
 }
 
@@ -684,6 +825,13 @@ fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bo
     if linked_statement_should_stay_grouped(tokens) {
         return true;
     }
+    if crate::runtime_backend::front_end::grammar::effects::parse_persistent_no_maximum_hand_size_player_lexed(
+        tokens,
+    )
+    .is_some()
+    {
+        return true;
+    }
     if matches!(
         classify_statement_line_family_lexed(tokens),
         Some(StatementLineFamily::Vote)
@@ -733,6 +881,7 @@ fn spell_cast_trigger_filter(trigger: &TriggerSpec) -> Option<(ObjectFilter, Pla
         TriggerSpec::WithIntro { trigger, .. } => spell_cast_trigger_filter(trigger),
         TriggerSpec::SpellCast {
             filter: Some(filter),
+            mana_source_filter: None,
             caster,
             timing: None,
             during_turn: None,
@@ -869,13 +1018,18 @@ fn parse_triggered_line_impl(
     };
 
     let delayed_schedule = parse_delayed_schedule_sentence_shape(full_parse_tokens);
-    let parsed = parse_triggered_ability_line_impl(
+    let mut parsed = parse_triggered_ability_line_impl(
         line,
         full_parse_tokens,
         trigger_parse_tokens,
         effect_parse_tokens,
     )?;
-    let parsed = preserve_triggered_effect_surfaces(parsed, effect_parse_tokens);
+    if let Some(source_filter) =
+        spell_cast_mana_source_filter(trigger_parse_tokens, line.info.source_tokens.as_slice())?
+    {
+        apply_spell_cast_mana_source_filter(&mut parsed, &source_filter);
+    }
+    let parsed = preserve_triggered_effect_surfaces(parsed, effect_parse_tokens, full_parse_tokens);
     let Some(schedule) = delayed_schedule else {
         return Ok(parsed);
     };
@@ -900,6 +1054,10 @@ fn parse_triggered_line_impl(
     };
 
     let delayed = match schedule.step {
+        DelayedScheduleStep::UntapStep => EffectAst::DelayedUntilNextUntapStep {
+            player: schedule.player,
+            effects,
+        },
         DelayedScheduleStep::Upkeep => EffectAst::DelayedUntilNextUpkeep {
             player: schedule.player,
             effects,
@@ -943,16 +1101,39 @@ fn parse_triggered_line_impl(
 fn preserve_triggered_effect_surfaces(
     mut parsed: LineAst,
     effect_parse_tokens: &[OwnedLexToken],
+    full_parse_tokens: &[OwnedLexToken],
 ) -> LineAst {
-    let Ok(surfaced) = parse_effect_sentences_preserving_source_boundaries(effect_parse_tokens)
+    let Ok(mut surfaced) = parse_effect_sentences_preserving_source_boundaries(effect_parse_tokens)
     else {
         return parsed;
     };
+    let full_words = crate::runtime_backend::token_word_refs(full_parse_tokens);
+    let explicit_participant_order = full_words.windows(5).any(|window| {
+        window[0].eq_ignore_ascii_case("starting")
+            && window[1].eq_ignore_ascii_case("with")
+            && window[2].eq_ignore_ascii_case("you")
+            && window[3].eq_ignore_ascii_case("each")
+            && window[4].eq_ignore_ascii_case("player")
+    });
+    if explicit_participant_order
+        && let Some(EffectAst::SourceSentence {
+            starting_with_controller,
+            ..
+        }) = surfaced.first_mut()
+    {
+        *starting_with_controller = true;
+    } else if explicit_participant_order {
+        surfaced = vec![EffectAst::SourceSentence {
+            effects: surfaced,
+            leading_then: false,
+            starting_with_controller: true,
+        }];
+    }
     fn without_source_sentence_markers(effects: &[EffectAst]) -> Vec<EffectAst> {
         let mut flattened = Vec::new();
         for effect in effects {
             match effect {
-                EffectAst::SourceSentence { effects } => {
+                EffectAst::SourceSentence { effects, .. } => {
                     flattened.extend(without_source_sentence_markers(effects));
                 }
                 effect => flattened.push(effect.clone()),
@@ -964,10 +1145,28 @@ fn preserve_triggered_effect_surfaces(
         let mut flattened = Vec::new();
         for effect in effects {
             match effect {
-                EffectAst::SourceSentence { effects } | EffectAst::Coordinated { effects, .. } => {
+                EffectAst::SourceSentence { effects, .. }
+                | EffectAst::CommaThen { effects }
+                | EffectAst::Coordinated { effects, .. } => {
                     flattened.extend(without_surface_markers(effects));
                 }
-                effect => flattened.push(effect.clone()),
+                effect => {
+                    let mut effect = effect.clone();
+                    // Surface provenance can sit inside semantic owners such
+                    // as `May`, `IfResult`, or a conditional branch. Compare
+                    // those owners after recursively erasing only the nested
+                    // presentation wrappers; a shallow comparison otherwise
+                    // rejects a valid resurfacing merely because the authored
+                    // `, then` was inside an optional program.
+                    crate::runtime_backend::model::effect_ast_traversal::for_each_nested_effect_vec_mut(
+                        &mut effect,
+                        true,
+                        |nested| {
+                            *nested = without_surface_markers(nested);
+                        },
+                    );
+                    flattened.push(effect);
+                }
             }
         }
         flattened
@@ -978,6 +1177,16 @@ fn preserve_triggered_effect_surfaces(
         return parsed;
     }
 
+    fn matches_surfaced_effects(
+        effects: &[EffectAst],
+        sentence_flattened: &[EffectAst],
+        flattened: &[EffectAst],
+    ) -> bool {
+        effects == sentence_flattened
+            || effects == flattened
+            || without_surface_markers(effects) == flattened
+    }
+
     fn replace_matching_effects(
         parsed: &mut LineAst,
         sentence_flattened: &[EffectAst],
@@ -986,14 +1195,15 @@ fn preserve_triggered_effect_surfaces(
     ) -> bool {
         match parsed {
             LineAst::Triggered { effects, .. }
-                if effects.as_slice() == sentence_flattened || effects.as_slice() == flattened =>
+                if matches_surfaced_effects(effects, sentence_flattened, flattened) =>
             {
                 *effects = surfaced.to_vec();
                 true
             }
             LineAst::Ability(parsed)
-                if parsed.effects_ast.as_deref() == Some(sentence_flattened)
-                    || parsed.effects_ast.as_deref() == Some(flattened) =>
+                if parsed.effects_ast.as_deref().is_some_and(|effects| {
+                    matches_surfaced_effects(effects, sentence_flattened, flattened)
+                }) =>
             {
                 parsed.effects_ast = Some(surfaced.to_vec());
                 true
@@ -1005,7 +1215,7 @@ fn preserve_triggered_effect_surfaces(
         }
     }
 
-    replace_matching_effects(&mut parsed, &sentence_flattened, &flattened, &surfaced);
+    let _ = replace_matching_effects(&mut parsed, &sentence_flattened, &flattened, &surfaced);
     parsed
 }
 
@@ -1377,6 +1587,86 @@ fn parse_triggered_ability_line_impl(
     )
 }
 
+#[cfg(test)]
+fn parse_triggered_text_for_test(
+    full_text: &str,
+    trigger_text: &str,
+    effect_text: &str,
+) -> Result<LineAst, CardTextError> {
+    let full_tokens = lex_line(full_text, 0).expect("full triggered line should lex");
+    let trigger_tokens = lex_line(trigger_text, 0).expect("trigger clause should lex");
+    let effect_tokens = lex_line(effect_text, 0).expect("trigger effects should lex");
+    parse_triggered_line(
+        LineInfo {
+            line_index: 0,
+            display_line_index: 0,
+            raw_line: full_text.to_string(),
+            source_tokens: full_tokens.clone(),
+            normalized: NormalizedLine {
+                original: full_text.to_string(),
+                normalized: full_text.to_string(),
+                char_map: Vec::new(),
+            },
+            semantic_facts: Default::default(),
+        },
+        full_text,
+        &full_tokens,
+        &trigger_tokens,
+        &effect_tokens,
+        None,
+        None,
+        None,
+        None,
+    )
+}
+
+#[test]
+fn triggered_semantic_split_keeps_effect_backed_static_surfaces_in_resolution()
+-> Result<(), CardTextError> {
+    let conditional_create = parse_triggered_text_for_test(
+        "Whenever you cast an artifact spell, you may pay {2}. If you do, create a 0/0 colorless Construct artifact creature token with \"This token gets +1/+1 for each artifact you control.\"",
+        "you cast an artifact spell",
+        "you may pay {2}. If you do, create a 0/0 colorless Construct artifact creature token with \"This token gets +1/+1 for each artifact you control.\"",
+    )?;
+    let conditional_create_debug = format!("{conditional_create:#?}");
+    assert!(
+        conditional_create_debug.contains("IfResult")
+            && conditional_create_debug.contains("CreateToken"),
+        "{conditional_create_debug}"
+    );
+    assert!(
+        !conditional_create_debug.contains("StaticAbilities"),
+        "the token's quoted rule must not become a source static tail: \
+         {conditional_create_debug}"
+    );
+
+    for (full_text, trigger_text, effect_text) in [
+        (
+            "At the beginning of each combat, you may reveal the top card of your library. If you reveal a creature card this way, this creature becomes a copy of that card until end of turn, except it has flying.",
+            "at the beginning of each combat",
+            "you may reveal the top card of your library. If you reveal a creature card this way, this creature becomes a copy of that card until end of turn, except it has flying.",
+        ),
+        (
+            "Whenever one or more creatures you control are put into exile, you may choose a creature card from among them. Until end of turn, target token you control becomes a copy of it, except it has flying.",
+            "one or more creatures you control are put into exile",
+            "you may choose a creature card from among them. Until end of turn, target token you control becomes a copy of it, except it has flying.",
+        ),
+    ] {
+        let copy = parse_triggered_text_for_test(full_text, trigger_text, effect_text)?;
+        let copy_debug = format!("{copy:#?}");
+        assert!(
+            copy_debug.contains("BecomeCopy") && copy_debug.contains("Flying"),
+            "{copy_debug}"
+        );
+        assert!(
+            !copy_debug.contains("StaticAbilities"),
+            "the copy exception must not become a source static tail: {copy_debug}"
+        );
+    }
+
+    Ok(())
+}
+
 #[test]
 fn source_sentence_boundaries_preserve_jointly_parsed_reference_flow() {
     let independent = lex_line(
@@ -1392,6 +1682,137 @@ fn source_sentence_boundaries_preserve_jointly_parsed_reference_flow() {
             .iter()
             .all(|effect| matches!(effect, EffectAst::SourceSentence { .. })),
         "independent direct sentences should retain their authored boundary: {independent:#?}"
+    );
+    assert!(
+        independent.iter().all(|effect| matches!(
+            effect,
+            EffectAst::SourceSentence {
+                leading_then: false,
+                ..
+            }
+        )),
+        "ordinary sentence boundaries must not acquire ordering provenance: {independent:#?}"
+    );
+
+    let explicit_then = lex_line(
+        "Draw two cards. Then discard a card unless you attacked this turn.",
+        0,
+    )
+    .expect("explicit-then effects should lex");
+    let explicit_then = parse_effect_sentences_preserving_source_boundaries(&explicit_then)
+        .expect("explicit-then effects should parse");
+    let [
+        EffectAst::SourceSentence {
+            leading_then: false,
+            ..
+        },
+        EffectAst::SourceSentence {
+            leading_then: true, ..
+        },
+    ] = explicit_then.as_slice()
+    else {
+        panic!("leading Then should be preserved on only the second sentence: {explicit_then:#?}");
+    };
+
+    let ordered = lex_line(
+        "Starting with you, each player chooses up to five permanents they control. All permanents other than this creature that weren't chosen this way phase out.",
+        0,
+    )
+    .expect("Disciple-style ordered choices should lex");
+    let ordered = parse_effect_sentences_preserving_source_boundaries(&ordered)
+        .expect("Disciple-style ordered choices should parse");
+    let [
+        EffectAst::SourceSentence {
+            starting_with_controller: true,
+            ..
+        },
+        EffectAst::SourceSentence {
+            starting_with_controller: false,
+            ..
+        },
+    ] = ordered.as_slice()
+    else {
+        panic!("the explicit participant ordering must remain on the first sentence: {ordered:#?}");
+    };
+    let ordered_single = lex_line(
+        "Starting with you, each player chooses up to five permanents they control.",
+        0,
+    )
+    .expect("single-sentence ordered choices should lex");
+    let ordered_single = parse_effect_sentences_preserving_source_boundaries(&ordered_single)
+        .expect("single-sentence ordered choices should parse");
+    assert!(matches!(
+        ordered_single.as_slice(),
+        [EffectAst::SourceSentence {
+            starting_with_controller: true,
+            ..
+        }]
+    ));
+    let unordered_single = lex_line("Each player chooses up to five permanents they control.", 0)
+        .expect("unordered participant choice should lex");
+    let unordered_single = parse_effect_sentences_preserving_source_boundaries(&unordered_single)
+        .expect("unordered participant choice should parse");
+    assert!(
+        !unordered_single.iter().any(|effect| matches!(
+            effect,
+            EffectAst::SourceSentence {
+                starting_with_controller: true,
+                ..
+            }
+        )),
+        "an ordinary player loop must not acquire explicit participant ordering: \
+         {unordered_single:#?}"
+    );
+
+    let full_trigger = lex_line(
+        "When this creature enters, starting with you, each player chooses up to five permanents they control. All permanents other than this creature that weren't chosen this way phase out.",
+        0,
+    )
+    .expect("Disciple-style trigger should lex");
+    let trigger_effects = lex_line(
+        "Each player chooses up to five permanents they control. All permanents other than this creature that weren't chosen this way phase out.",
+        0,
+    )
+    .expect("Disciple-style trigger effects should lex");
+    let trigger_clause = lex_line("This creature enters, starting with you", 0)
+        .expect("Disciple-style trigger clause should lex");
+    let surfaced_trigger = parse_triggered_line(
+        test_line_info(
+            "When this creature enters, starting with you, each player chooses up to five permanents they control. All permanents other than this creature that weren't chosen this way phase out.",
+        ),
+        "when this creature enters, starting with you, each player chooses up to five permanents they control. all permanents other than this creature that weren't chosen this way phase out.",
+        &full_trigger,
+        &trigger_clause,
+        &trigger_effects,
+        None,
+        None,
+        None,
+        None,
+    )
+    .expect("Disciple-style trigger should parse through the semantic line path");
+    let surfaced_effects = match &surfaced_trigger {
+        LineAst::Triggered { effects, .. } => effects.as_slice(),
+        LineAst::Ability(parsed) => parsed
+            .effects_ast
+            .as_deref()
+            .expect("the parsed trigger must retain its semantic effects"),
+        _ => panic!("Disciple-style line must remain a trigger: {surfaced_trigger:#?}"),
+    };
+    assert!(
+        matches!(
+            surfaced_effects,
+            [
+                EffectAst::SourceSentence {
+                    starting_with_controller: true,
+                    ..
+                },
+                EffectAst::SourceSentence {
+                    starting_with_controller: false,
+                    ..
+                }
+            ]
+        ),
+        "the trigger split must not swallow participant ordering: {surfaced_effects:#?}"
     );
 
     let linked = "Reveal the top card of your library and put that card into your hand. You lose life equal to its mana value.";
@@ -1431,6 +1852,7 @@ fn lower_spell_or_activated_ability_x_cost_trigger(
         trigger: TriggerSpec::Either(
             Box::new(TriggerSpec::SpellCast {
                 filter: Some(spell_filter),
+                mana_source_filter: None,
                 caster: PlayerFilter::You,
                 timing: None,
                 during_turn: None,
@@ -1636,7 +2058,9 @@ fn lower_special_rewrite_triggered_divvy(
         Some(semantic_grammar::SpecialTriggeredProgram::DifferentNamesLibraryDivvy)
     ) {
         let trigger = if trigger_parse_tokens.is_empty() {
-            TriggerSpec::ThisEntersBattlefield { origin_condition: None }
+            TriggerSpec::ThisEntersBattlefield {
+                origin_condition: None,
+            }
         } else {
             parse_trigger_clause_lexed(trigger_parse_tokens)?
         };
@@ -1916,6 +2340,7 @@ fn lower_special_rewrite_triggered_tail(
                     player: PlayerAst::You,
                     tag: discarded_tag.clone(),
                     filter: creature_card_filter,
+                    mode: ironsmith_core::TaggedObjectMatchMode::CurrentOrLastKnown,
                 },
                 if_true: vec![EffectAst::UnlessPays {
                     effects: vec![EffectAst::subject_verb_return_to_battlefield(
@@ -2195,6 +2620,17 @@ fn parse_static_line_impl(
             LineAst::StaticAbility(ability.into()),
             chosen_option,
         );
+    }
+    // A quoted cost modifier is the ability granted by the subject before
+    // the quote, not a cost modifier whose spell filter includes that outer
+    // subject. The static AST router binds the quoted ability to its grant
+    // before the broad cost parser scans the whole line for "spells ... cost".
+    // Keep that same precedence at the CST-to-semantic boundary: this is the
+    // document path used by ordinary card compilation.
+    if lexed.iter().any(|token| token.kind == TokenKind::Quote)
+        && let Some(abilities) = parse_static_ability_ast_line_lexed(&lexed)?
+    {
+        return wrap_chosen_option_static_chunk(LineAst::StaticAbilities(abilities), chosen_option);
     }
     if let Some(abilities) = parse_spell_and_player_activated_ability_cost_modifier_line(&lexed)? {
         return wrap_chosen_option_static_chunk(
@@ -2625,6 +3061,8 @@ fn fixed_standard_gift_creature_definition(
             power_toughness,
             legendary: false,
             colors,
+            use_source_chosen_color: false,
+            use_source_chosen_creature_type: false,
             keywords: Vec::new(),
             rules: Default::default(),
         },
@@ -2742,7 +3180,9 @@ fn hideaway_line_ast(count: i32) -> LineAst {
     choose_filter.zone = Some(Zone::Library);
 
     LineAst::Triggered {
-        trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
+        trigger: TriggerSpec::ThisEntersBattlefield {
+            origin_condition: None,
+        },
         effects: vec![
             EffectAst::subject_verb_look_at_top_cards(
                 PlayerAst::You,
@@ -2801,7 +3241,9 @@ fn try_lower_partner_with_tokens(
     Ok(Some(LineAst::Multiple(vec![
         LineAst::StaticAbility(StaticAbility::partner_with(partner_name.clone()).into()),
         LineAst::Triggered {
-            trigger: TriggerSpec::ThisEntersBattlefield { origin_condition: None },
+            trigger: TriggerSpec::ThisEntersBattlefield {
+                origin_condition: None,
+            },
             effects: vec![EffectAst::MayByPlayer {
                 player: PlayerAst::Target,
                 effects: vec![EffectAst::subject_verb_search_library(

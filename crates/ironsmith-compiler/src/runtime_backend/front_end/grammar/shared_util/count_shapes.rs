@@ -25,25 +25,75 @@ fn parse_for_each_object_filter_words(
     words: &[&str],
     leading_other: bool,
 ) -> Option<crate::target::ObjectFilter> {
-    if !leading_other {
-        return parse_object_filter_words(words, false).ok();
-    }
-
-    // `parse_for_each_head` consumes the leading "other" so specialized
-    // count shapes do not have to account for it. Restore that authored token
-    // for object-filter parsing instead of passing `other = true` globally:
+    // Route all count filters through the lexed grammar entrypoint so
+    // independently scoped repeated-`each` domains become typed union arms
+    // before the permissive legacy word parser can collapse them. If the
+    // count head consumed a leading `other`, restore it as an authored token:
     // in "other Assassins you control and Assassin cards in your graveyard"
-    // the qualifier belongs only to the first independently scoped arm.
-    let mut restored = Vec::with_capacity(words.len() + 1);
-    restored.push("other");
+    // that qualifier belongs only to the first arm.
+    let mut restored = Vec::with_capacity(words.len() + usize::from(leading_other));
+    if leading_other {
+        restored.push("other");
+    }
     restored.extend_from_slice(words);
     let tokens = synthetic_word_tokens(&restored);
-    crate::runtime_backend::object_filters::parse_object_filter(&tokens, false).ok()
+    crate::runtime_backend::object_filters::parse_object_filter_lexed(&tokens, false).ok()
+}
+
+pub(crate) fn mana_from_source_spent_to_cast_value(source_words: &[&str]) -> Option<Value> {
+    let (source_words, include_source_noun) = match source_words {
+        [source @ .., "source"] if !source.is_empty() => (source, true),
+        source if !source.is_empty() => (source, false),
+        _ => return None,
+    };
+    let source_filter = parse_object_filter_words(source_words, false).ok()?;
+    Some(Value::ManaFromSourceSpentToCastThisSpell {
+        source_filter,
+        include_source_noun,
+    })
+}
+
+fn parse_mana_from_source_spent_count(words: &[&str], item_start: usize) -> Option<(Value, usize)> {
+    if words.get(item_start..item_start + 2) != Some(&["mana", "from"][..]) {
+        return None;
+    }
+
+    for spent_idx in item_start + 3..words.len() {
+        if words[spent_idx] != "spent" {
+            continue;
+        }
+        let consumed = if words
+            .get(spent_idx..spent_idx + 5)
+            .is_some_and(|tail| tail == ["spent", "to", "cast", "this", "spell"])
+        {
+            spent_idx + 5
+        } else if words
+            .get(spent_idx..spent_idx + 4)
+            .is_some_and(|tail| matches!(tail, ["spent", "to", "cast", "it" | "them"]))
+        {
+            spent_idx + 4
+        } else {
+            continue;
+        };
+
+        let mut source_end = spent_idx;
+        if words.get(source_end.saturating_sub(2)..source_end) == Some(&["that", "was"][..]) {
+            source_end -= 2;
+        }
+        let source_words = words.get(item_start + 2..source_end)?;
+        let value = mana_from_source_spent_to_cast_value(source_words)?;
+        return Some((value, consumed));
+    }
+    None
 }
 
 pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value, usize)> {
     let head = parse_for_each_head(words)?;
     let idx = head.item_start;
+
+    if let Some(value) = parse_mana_from_source_spent_count(words, idx) {
+        return Some(value);
+    }
 
     if words
         .get(idx..idx + 4)
@@ -59,6 +109,39 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
             )
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
             idx + 4,
+        ));
+    }
+    let mut removed_counter_descriptor_start = idx;
+    if words
+        .get(removed_counter_descriptor_start)
+        .is_some_and(|word| is_article(word))
+        || permission_shapes::starts_at_words(words, removed_counter_descriptor_start, &["one"])
+    {
+        removed_counter_descriptor_start += 1;
+    }
+    if let Some(counter_idx) = first_counter_word(&words[removed_counter_descriptor_start..])
+        .map(|relative_idx| removed_counter_descriptor_start + relative_idx)
+        .filter(|counter_idx| counter_idx.saturating_sub(removed_counter_descriptor_start) <= 2)
+        && words
+            .get(counter_idx + 1..counter_idx + 4)
+            .is_some_and(|tail| tail == ["removed", "this", "way"])
+    {
+        let counter_type = (counter_idx > removed_counter_descriptor_start)
+            .then(|| {
+                parse_counter_type_words(&words[removed_counter_descriptor_start..=counter_idx])
+            })
+            .flatten();
+        return Some((
+            Value::PendingPriorEffectMetric(
+                ironsmith_core::PriorEffectMetricQuery::new(
+                    ironsmith_core::EffectMetricSource::Outcome,
+                    ironsmith_core::EffectMetric::Count,
+                )
+                .with_action(ironsmith_core::PriorEffectAction::Removed)
+                .with_counter_type(counter_type),
+            )
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CountersRemovedThisWay),
+            counter_idx + 4,
         ));
     }
 
@@ -162,13 +245,28 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
     {
         let this_way_start = idx + relative_this_way;
         let this_way_subject = &words[idx..this_way_start];
-        if matches!(this_way_subject, ["card", "drawn"] | ["cards", "drawn"]) {
+        let died_filter_words =
+            [&["that", "died"][..], &["died"][..]]
+                .into_iter()
+                .find_map(|suffix| {
+                    permission_shapes::suffix_words(this_way_subject, suffix).then(|| {
+                        &this_way_subject[..this_way_subject.len().saturating_sub(suffix.len())]
+                    })
+                });
+        if let Some(died_filter_words) = died_filter_words
+            && !died_filter_words.is_empty()
+            && let Some(filter) = parse_for_each_object_filter_words(died_filter_words, head.other)
+        {
             return Some((
-                Value::PendingEffectMetric {
-                    source: ironsmith_core::EffectMetricSource::Outcome,
-                    metric: ironsmith_core::EffectMetric::Count,
-                }
-                .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDrawnThisWay),
+                Value::PendingPriorEffectMetric(
+                    ironsmith_core::PriorEffectMetricQuery::new(
+                        ironsmith_core::EffectMetricSource::AffectedObjects,
+                        ironsmith_core::EffectMetric::Count,
+                    )
+                    .with_filter(filter)
+                    .with_action(ironsmith_core::PriorEffectAction::Destroyed),
+                )
+                .with_surface_hint(ironsmith_core::ValueSurfaceHint::DiedThisWay),
                 filter_end,
             ));
         }
@@ -224,6 +322,22 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                 && let Some(mut filter) =
                     parse_for_each_object_filter_words(filter_words, head.other)
             {
+                let action_words = &this_way_subject[action_start..];
+                if action == ironsmith_core::PriorEffectAction::Returned
+                    && permission_shapes::suffix_words(
+                        action_words,
+                        &["returned", "to", "your", "hand"],
+                    )
+                {
+                    filter.owner = Some(PlayerFilter::You);
+                } else if action == ironsmith_core::PriorEffectAction::Returned
+                    && permission_shapes::suffix_words(
+                        action_words,
+                        &["returned", "to", "their", "hand"],
+                    )
+                {
+                    filter.owner = Some(PlayerFilter::IteratedPlayer);
+                }
                 if filter_words
                     .iter()
                     .any(|word| matches!(*word, "card" | "cards"))
@@ -240,12 +354,15 @@ pub(crate) fn parse_for_each_count_value_words(words: &[&str]) -> Option<(Value,
                     query = query.with_player(player);
                 }
                 let value = Value::PendingPriorEffectMetric(query);
-                let value = if action == ironsmith_core::PriorEffectAction::Discarded {
-                    value.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay)
-                } else if action == ironsmith_core::PriorEffectAction::Revealed {
-                    value.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsRevealedThisWay)
-                } else {
-                    value
+                let value = match action {
+                    ironsmith_core::PriorEffectAction::Discarded => value
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay),
+                    ironsmith_core::PriorEffectAction::Drawn => {
+                        value.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDrawnThisWay)
+                    }
+                    ironsmith_core::PriorEffectAction::Revealed => value
+                        .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsRevealedThisWay),
+                    _ => value,
                 };
                 return Some((value, filter_end));
             }
@@ -460,22 +577,6 @@ fn parse_exact_dynamic_count_basis(words: &[&str], consumed: usize) -> Option<(V
     ) {
         Value::EventValue(ironsmith_core::EventValueSpec::Amount)
             .with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsLookedAtWhileScryingThisWay)
-    } else if exact_one_of(
-        words,
-        &[
-            &[
-                "mana", "from", "a", "treasure", "that", "was", "spent", "to", "cast", "this",
-                "spell",
-            ],
-            &[
-                "mana", "from", "a", "treasure", "spent", "to", "cast", "this", "spell",
-            ],
-        ],
-    ) {
-        Value::ManaFromSourceSpentToCastThisSpell {
-            source_filter: parse_object_filter_words(&["treasure"], false).ok()?,
-            include_source_noun: false,
-        }
     } else {
         return None;
     };
@@ -618,13 +719,70 @@ mod tests {
                 .expect("drawn-this-way count");
         assert_eq!(used, 6);
         assert!(drawn_this_way.has_surface_hint(ValueSurfaceHint::CardsDrawnThisWay));
-        assert!(matches!(
-            drawn_this_way.unhinted(),
-            Value::PendingEffectMetric {
-                source: ironsmith_core::EffectMetricSource::Outcome,
-                metric: ironsmith_core::EffectMetric::Count,
-            }
-        ));
+        let Value::PendingPriorEffectMetric(query) = drawn_this_way.unhinted() else {
+            panic!("expected an exact drawn-card action count, got {drawn_this_way:#?}");
+        };
+        assert_eq!(query.action, Some(ironsmith_core::PriorEffectAction::Drawn));
+        assert_eq!(
+            query.source,
+            ironsmith_core::EffectMetricSource::AffectedObjects
+        );
+        assert_eq!(query.metric, ironsmith_core::EffectMetric::Count);
+    }
+
+    #[test]
+    fn typed_counter_removed_count_uses_action_count_and_preserves_counter_kind() {
+        let words = ["for", "each", "lore", "counter", "removed", "this", "way"];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("typed removed-counter count");
+        assert_eq!(used, words.len());
+        assert!(value.has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay));
+        let Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+            panic!("expected an exact prior-action count, got {value:#?}");
+        };
+        assert_eq!(query.source, ironsmith_core::EffectMetricSource::Outcome);
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Removed)
+        );
+        assert_eq!(query.counter_type, Some(crate::object::CounterType::Lore));
+        assert!(query.filter.is_none());
+    }
+
+    #[test]
+    fn parses_generic_mana_source_spent_to_cast_counts() {
+        let cave_words = [
+            "for", "each", "mana", "from", "a", "cave", "spent", "to", "cast", "it",
+        ];
+        let (cave_value, used) =
+            parse_for_each_count_value_words(&cave_words).expect("Cave-spent count should parse");
+        assert_eq!(used, cave_words.len());
+        let Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+        } = cave_value
+        else {
+            panic!("expected a typed mana-source count");
+        };
+        assert!(!include_source_noun);
+        assert_eq!(source_filter.subtypes, [crate::types::Subtype::Cave]);
+
+        let artifact_words = [
+            "for", "each", "mana", "from", "an", "artifact", "source", "that", "was", "spent",
+            "to", "cast", "this", "spell",
+        ];
+        let (artifact_value, used) = parse_for_each_count_value_words(&artifact_words)
+            .expect("artifact-source-spent count should parse");
+        assert_eq!(used, artifact_words.len());
+        let Value::ManaFromSourceSpentToCastThisSpell {
+            source_filter,
+            include_source_noun,
+        } = artifact_value
+        else {
+            panic!("expected a typed mana-source count");
+        };
+        assert!(include_source_noun);
+        assert_eq!(source_filter.card_types, [crate::types::CardType::Artifact]);
     }
 
     #[test]
@@ -661,6 +819,57 @@ mod tests {
         assert_eq!(filter.any_of.len(), 2);
         assert!(filter.any_of[0].other);
         assert!(!filter.any_of[1].other);
+    }
+
+    #[test]
+    fn repeated_each_keeps_suspended_cards_and_permanents_as_distinct_count_arms() {
+        let words = [
+            "for",
+            "each",
+            "suspended",
+            "card",
+            "you",
+            "own",
+            "and",
+            "each",
+            "other",
+            "permanent",
+            "you",
+            "control",
+            "with",
+            "a",
+            "time",
+            "counter",
+            "on",
+            "it",
+        ];
+        let (value, used) = parse_for_each_count_value_words(&words)
+            .expect("compound suspended count should parse");
+        assert_eq!(used, words.len());
+        let Value::Count(filter) = value else {
+            panic!("expected a typed object count, got {value:#?}");
+        };
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(
+            filter.any_of.iter().any(|arm| {
+                arm.zone == Some(crate::zone::Zone::Exile)
+                    && arm.owner == Some(PlayerFilter::You)
+                    && arm.alternative_cast == Some(crate::filter::AlternativeCastKind::Suspend)
+            }),
+            "{filter:#?}"
+        );
+        assert!(
+            filter.any_of.iter().any(|arm| {
+                arm.zone == Some(crate::zone::Zone::Battlefield)
+                    && arm.controller == Some(PlayerFilter::You)
+                    && arm.other
+                    && arm.with_counter
+                        == Some(crate::filter::CounterConstraint::Typed(
+                            crate::object::CounterType::Time,
+                        ))
+            }),
+            "{filter:#?}"
+        );
     }
 
     #[test]
@@ -731,6 +940,30 @@ mod tests {
                 .filter
                 .as_ref()
                 .is_some_and(ObjectFilter::has_explicit_card_noun)
+        );
+    }
+
+    #[test]
+    fn returned_to_your_hand_count_filters_the_exact_result_by_owner() {
+        let words = [
+            "for", "each", "card", "returned", "to", "your", "hand", "this", "way",
+        ];
+        let (value, used) =
+            parse_for_each_count_value_words(&words).expect("returned-to-your-hand count");
+        assert_eq!(used, words.len());
+        let Value::PendingPriorEffectMetric(query) = value.unhinted() else {
+            panic!("expected a filtered prior-effect metric, got {value:?}");
+        };
+        assert_eq!(
+            query.action,
+            Some(ironsmith_core::PriorEffectAction::Returned)
+        );
+        assert_eq!(
+            query
+                .filter
+                .as_ref()
+                .and_then(|filter| filter.owner.clone()),
+            Some(PlayerFilter::You)
         );
     }
 

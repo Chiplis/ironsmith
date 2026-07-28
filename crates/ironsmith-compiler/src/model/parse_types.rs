@@ -22,6 +22,8 @@ pub enum PlayerAst {
     Target,
     TargetOpponent,
     Opponent,
+    PlayerToYourLeft,
+    PlayerToYourRight,
     /// The player enchanted by this Aura or Curse.
     Enchanted,
     NotYou,

@@ -1,6 +1,51 @@
 use super::*;
 
 impl GameState {
+    /// Whether `player` has taken the special action that lets them ignore the
+    /// attached-object rule restrictions from `source` this turn.
+    pub fn player_ignores_attached_static_restrictions_this_turn(
+        &self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        self.turn_store
+            .turn_history
+            .players_ignoring_attached_static_restrictions_this_turn
+            .contains(&(source, player))
+    }
+
+    /// Whether the current controller of the source's attached object has paid
+    /// to ignore the source's rule restrictions this turn.
+    pub fn attached_static_restrictions_are_ignored_this_turn(&self, source: ObjectId) -> bool {
+        let Some(crate::object::AttachmentTarget::Object(attached_id)) =
+            self.object(source).and_then(|object| object.attached_to)
+        else {
+            return false;
+        };
+        self.controller_of_id(attached_id).is_some_and(|player| {
+            self.player_ignores_attached_static_restrictions_this_turn(source, player)
+        })
+    }
+
+    /// Suppress the source's rule-restriction abilities through the current
+    /// turn boundary without disabling unrelated abilities of that source.
+    pub(crate) fn player_ignores_attached_static_restrictions_until_end_of_turn(
+        &mut self,
+        source: ObjectId,
+        player: PlayerId,
+    ) -> bool {
+        let inserted = self
+            .turn_store
+            .turn_history
+            .players_ignoring_attached_static_restrictions_this_turn
+            .insert((source, player));
+        if inserted {
+            self.mark_continuous_state_dirty();
+            self.bump_mutation_revision();
+        }
+        inserted
+    }
+
     /// Add one step directly before the next occurrence of `before` this turn.
     pub fn add_step_before(&mut self, step: Step, before: Step) {
         self.add_step_at(step, AddedStepPlacement::BeforeStep(before));
@@ -2227,6 +2272,12 @@ impl GameState {
 
         let mut tagged_objects = std::collections::HashMap::new();
         let mut tagged_players = std::collections::HashMap::new();
+        if let Some(initiative_holder) = self.initiative {
+            tagged_players.insert(
+                crate::tag::TagKey::from(crate::tag::INITIATIVE_HOLDER_TAG),
+                vec![initiative_holder],
+            );
+        }
         if let Some(source_id) = source
             && let Some(source_obj) = self.object(source_id)
         {
@@ -2558,6 +2609,10 @@ impl GameState {
                 .no_shared_creature_types_with
                 .iter()
                 .any(Self::filter_reads_tapped_state)
+            || filter
+                .characteristic_relations
+                .iter()
+                .any(|relation| Self::filter_reads_tapped_state(&relation.comparison))
             || filter.any_of.iter().any(Self::filter_reads_tapped_state)
     }
 
@@ -2671,6 +2726,10 @@ impl GameState {
                 .no_shared_creature_types_with
                 .iter()
                 .any(Self::filter_reads_face_down_state)
+            || filter
+                .characteristic_relations
+                .iter()
+                .any(|relation| Self::filter_reads_face_down_state(&relation.comparison))
             || filter.any_of.iter().any(Self::filter_reads_face_down_state)
     }
 
@@ -2786,6 +2845,10 @@ impl GameState {
                 .no_shared_creature_types_with
                 .iter()
                 .any(Self::filter_reads_summoning_sickness_state)
+            || filter
+                .characteristic_relations
+                .iter()
+                .any(|relation| Self::filter_reads_summoning_sickness_state(&relation.comparison))
             || filter
                 .any_of
                 .iter()

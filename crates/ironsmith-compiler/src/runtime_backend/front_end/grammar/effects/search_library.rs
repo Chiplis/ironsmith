@@ -1822,4 +1822,21 @@ mod tests {
         );
         assert_eq!(routing.search_player_target, None);
     }
+
+    #[test]
+    fn search_filter_keeps_shared_characteristic_relation() {
+        let tokens = lex_line(
+            "a card that shares a color with a legendary creature you control",
+            0,
+        )
+        .expect("search selector should lex");
+        let filter = parse_search_library_object_filter_lexed(&tokens, "relation probe")
+            .expect("search selector should parse");
+
+        assert_eq!(filter.characteristic_relations.len(), 1);
+        assert_eq!(
+            filter.description(),
+            "card that shares a color with a legendary creature you control"
+        );
+    }
 }

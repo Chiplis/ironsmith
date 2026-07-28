@@ -1329,6 +1329,7 @@ pub(crate) fn parse_top_cards_put_match_into_hand_rest_graveyard(
                 tag: looked_tag.clone(),
                 keep_tagged: chosen_tag,
                 zone: Zone::Graveyard,
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
             },
         ));
         return Ok(Some(effects));
@@ -1626,6 +1627,7 @@ pub(crate) fn parse_reveal_top_one_hand_gain_mana_value_rest_graveyard(
                 tag: revealed_tag,
                 keep_tagged: chosen_tag,
                 zone: Zone::Graveyard,
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
             },
         ),
     ]))
@@ -1864,6 +1866,7 @@ pub(crate) fn parse_top_cards_one_hand_then_matching_to_zone_rest_graveyard(
                 tag: looked_tag,
                 keep_tagged: kept_tag,
                 zone: Zone::Graveyard,
+                surface: ironsmith_core::LibraryRemainderSurface::Rest,
             },
         ),
     ]);
@@ -2314,13 +2317,13 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     sentence_idx: usize,
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     let first_tokens = trim_commas(sentences[sentence_idx].lowered());
-    let (view_tokens, gate_on_previous_result) = if let Some(followup) =
-        sentence_markers::parse_conditional_followup_tokens(&first_tokens)
-    {
-        (trim_commas(followup.tail_tokens), true)
-    } else {
-        (first_tokens, false)
-    };
+    let first_tokens = strip_leading_token_words_any(&first_tokens, &["then"]);
+    let (view_tokens, gate_on_previous_result) =
+        if let Some(followup) = sentence_markers::parse_conditional_followup_tokens(first_tokens) {
+            (trim_commas(followup.tail_tokens), true)
+        } else {
+            (first_tokens.to_vec(), false)
+        };
     let Some((player, count, reveal_top)) = parse_top_cards_view_sentence(&view_tokens) else {
         return Ok(None);
     };
@@ -2358,10 +2361,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
     }
 
     let remainder_tokens = sentences[sentence_idx + 2].lowered();
-    let explicit_revealed_battlefield_complement =
-        triple_grammar::is_explicit_revealed_cards_not_put_onto_battlefield_complement(
-            remainder_tokens,
-        );
+    let remainder_surface = triple_grammar::looked_remainder_surface(remainder_tokens);
     let Some(remainder) = triple_grammar::parse_looked_remainder_shape(remainder_tokens) else {
         return Ok(None);
     };
@@ -2443,18 +2443,13 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
         effects: chosen_effects,
     });
     if let Some(order) = order {
-        let surface = if explicit_revealed_battlefield_complement {
-            ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield
-        } else {
-            ironsmith_core::LibraryRemainderSurface::Rest
-        };
         effects.push(
             EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
                 looked_tag,
                 Some(chosen_tag),
                 order,
                 remainder_player,
-                surface,
+                remainder_surface,
             ),
         );
     } else {
@@ -2465,6 +2460,7 @@ pub(crate) fn parse_top_cards_put_any_matching_to_zone_rest_bottom(
                 tag: looked_tag,
                 keep_tagged: chosen_tag,
                 zone: Zone::Graveyard,
+                surface: remainder_surface,
             },
         ));
     }
@@ -2634,15 +2630,17 @@ pub(crate) fn parse_look_at_top_exile_match_and_rest_bottom_then_cast_exiled(
                     allow_land,
                     without_paying_mana_cost,
                     allow_any_color_for_cast,
+                    surface,
                     ..
                 },
             ..
-        }) => EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
+        }) => EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
             exiled_tag.clone(),
             permission_player,
             allow_land,
             without_paying_mana_cost,
             allow_any_color_for_cast,
+            surface,
         ),
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -3174,6 +3172,7 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
                 allow_land,
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
+                surface,
                 ..
             },
         ..
@@ -3248,13 +3247,16 @@ pub(crate) fn parse_look_at_top_split_hand_bottom_exile_then_play_exiled(
         TargetAst::Tagged(exiled_tag.clone(), None),
         false,
     ));
-    effects.push(EffectAst::subject_verb_grant_play_tagged_until_end_of_turn(
-        exiled_tag,
-        permission_player,
-        allow_land,
-        without_paying_mana_cost,
-        allow_any_color_for_cast,
-    ));
+    effects.push(
+        EffectAst::subject_verb_grant_play_tagged_until_end_of_turn_with_optional_surface(
+            exiled_tag,
+            permission_player,
+            allow_land,
+            without_paying_mana_cost,
+            allow_any_color_for_cast,
+            surface,
+        ),
+    );
 
     Ok(Some(effects))
 }

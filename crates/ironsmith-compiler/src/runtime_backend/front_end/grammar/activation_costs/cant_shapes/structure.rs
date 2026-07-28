@@ -211,8 +211,9 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
     // such clauses whole for the subject-filter parse.
     for segment in &segments[..negated_anchor] {
         let trimmed = trim_lexed_commas(segment);
-        let pure_type_nouns = !trimmed.is_empty() && trimmed.iter().all(|token| {
-            token.kind == crate::runtime_backend::front_end::lexer::TokenKind::Comma
+        let pure_type_nouns = !trimmed.is_empty()
+            && trimmed.iter().all(|token| {
+                token.kind == crate::runtime_backend::front_end::lexer::TokenKind::Comma
                 || token.as_word().is_some_and(|word| {
                     let singular = word.strip_suffix('s').unwrap_or(word);
                     crate::runtime_backend::front_end::shared::util::parse_card_type(word).is_some()
@@ -225,7 +226,7 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
                         )
                         .is_some()
                 })
-        });
+            });
         if pure_type_nouns {
             return None;
         }
@@ -280,9 +281,20 @@ pub(crate) fn parse_cant_conjunction_expansion_tokens(
                 expanded = shared_subject.to_vec();
                 expanded.extend(segment.iter().cloned());
             }
-            Some(_) if index > 0 && !shared_subject.is_empty() => {
-                if primitives::parse_prefix(segment, parse_possessive_activated_subject_lexed)
-                    .is_some()
+            Some(span) if index > 0 && !shared_subject.is_empty() => {
+                let inherited_subject = trim_lexed_commas(&segment[..span.first]);
+                let inherited_pronoun = matches!(
+                    inherited_subject,
+                    [token] if token.is_word("it") || token.is_word("they")
+                );
+                if inherited_pronoun {
+                    expanded = shared_subject.to_vec();
+                    expanded.extend(segment[span.first..].iter().cloned());
+                } else if primitives::parse_prefix(
+                    segment,
+                    parse_possessive_activated_subject_lexed,
+                )
+                .is_some()
                 {
                     expanded = shared_subject.to_vec();
                     expanded.extend(segment.iter().skip(1).cloned());
@@ -762,6 +774,31 @@ mod tests {
         let tokens = lex("Players can't gain life and draw cards.");
         let expanded = parse_cant_conjunction_expansion_tokens(&tokens).unwrap();
         assert_eq!(expanded.segments.len(), 1);
+
+        let inherited_subject_cases: &[(&str, &[&str])] = &[
+            (
+                "Creatures your opponents control can't block, and they can't attack you.",
+                &["creatures", "your", "opponents", "control"],
+            ),
+            (
+                "This creature can't block, and it can't attack.",
+                &["this", "creature"],
+            ),
+        ];
+        for (text, expected_subject) in inherited_subject_cases {
+            let expanded = parse_cant_conjunction_expansion_tokens(&lex(text)).unwrap();
+            assert_eq!(expanded.segments.len(), 2, "{text}");
+            let second = parser_token_word_refs(&expanded.segments[1]);
+            let expected = expected_subject
+                .iter()
+                .copied()
+                .chain(["cant", "attack"])
+                .collect::<Vec<_>>();
+            assert!(
+                second.starts_with(&expected),
+                "inherited subject was not expanded for {text}: {second:?}"
+            );
+        }
     }
 
     #[test]

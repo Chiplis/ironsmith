@@ -7,7 +7,8 @@ use crate::runtime_backend::front_end::grammar::effects::chain_splitting;
 use crate::runtime_backend::front_end::grammar::primitives;
 use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken};
 use crate::runtime_backend::front_end::shared::util::{
-    parse_greater_than_or_equal_quantity_prefix, trim_edge_punctuation_tokens,
+    parse_greater_than_or_equal_quantity_prefix, parse_quantity_comparison_prefix,
+    trim_edge_punctuation_tokens,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +35,9 @@ pub(crate) struct ForEachParticipantClauseShape<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RelativeControlClauseShape<'a> {
     pub(crate) controls_most: bool,
+    pub(crate) count_comparison: Option<crate::effect::Comparison>,
+    pub(crate) fewer_than_most_filter_tokens: Option<&'a [OwnedLexToken]>,
+    pub(crate) fewer_than_you: bool,
     pub(crate) filter_tokens: &'a [OwnedLexToken],
     pub(crate) effect_tokens: &'a [OwnedLexToken],
 }
@@ -240,6 +244,21 @@ fn effect_start(tokens: &[OwnedLexToken]) -> Option<usize> {
     let mut index = 0usize;
     while index < tokens.len() {
         if tokens[index].is_word("may")
+            // Search and choice programs are parsed by dedicated sentence
+            // grammars, so they are intentionally absent from the generic
+            // chain-verb registry. They are still valid action boundaries
+            // after a participant-relative predicate:
+            //
+            //   each player who controls ... chooses ...
+            //   each player who controls ... searches ...
+            //
+            // Missing either boundary makes the object-filter parser absorb
+            // the action and resume at a later generic verb such as
+            // `sacrifices` or `puts`.
+            || tokens[index].is_word("choose")
+            || tokens[index].is_word("chooses")
+            || tokens[index].is_word("search")
+            || tokens[index].is_word("searches")
             || chain_splitting::find_chain_verb_tokens(&tokens[index..])
                 .is_some_and(|found| found.word_index == 0)
         {
@@ -261,6 +280,80 @@ pub(crate) fn parse_relative_control_clause_shape(
         )
             .void(),
     )?;
+
+    // "who controls fewer lands than the player who controls the most
+    // lands ..." compares the current participant's count with a global
+    // per-controller maximum. Split after the nested relative clause before
+    // looking for the action verb; otherwise the inner "controls" is easily
+    // mistaken for the outer action boundary.
+    if let Some((_, after_fewer)) = primitives::parse_prefix(tail, primitives::kw("fewer").void())
+        && let Some((than_index, _, after_most)) = primitives::find_prefix(after_fewer, || {
+            primitives::phrase(&["than", "the", "player", "who", "controls", "the", "most"]).void()
+        })
+    {
+        let filter_tokens = trim(after_fewer.get(..than_index)?);
+        let split = effect_start(after_most)?;
+        let most_filter_tokens = trim(after_most.get(..split)?);
+        let effect_tokens = trim(after_most.get(split..)?);
+        if !filter_tokens.is_empty() && !most_filter_tokens.is_empty() && !effect_tokens.is_empty()
+        {
+            return Some(RelativeControlClauseShape {
+                controls_most: false,
+                count_comparison: None,
+                fewer_than_most_filter_tokens: Some(most_filter_tokens),
+                fewer_than_you: false,
+                filter_tokens,
+                effect_tokens,
+            });
+        }
+    }
+
+    // The participant is compared against the ability controller using the
+    // same counted object set:
+    //
+    //   each opponent who controls fewer creatures than you draws a card
+    if let Some((_, after_fewer)) = primitives::parse_prefix(tail, primitives::kw("fewer").void())
+        && let Some((than_index, _, after_you)) =
+            primitives::find_prefix(after_fewer, || primitives::phrase(&["than", "you"]).void())
+    {
+        let filter_tokens = trim(after_fewer.get(..than_index)?);
+        let split = effect_start(after_you)?;
+        let effect_tokens = trim(after_you.get(split..)?);
+        if !filter_tokens.is_empty() && !effect_tokens.is_empty() {
+            return Some(RelativeControlClauseShape {
+                controls_most: false,
+                count_comparison: None,
+                fewer_than_most_filter_tokens: None,
+                fewer_than_you: true,
+                filter_tokens,
+                effect_tokens,
+            });
+        }
+    }
+
+    // Preserve authored numeric thresholds ("six or more lands", "four or
+    // fewer lands") as an actual count comparison rather than allowing the
+    // object-filter parser to discard the quantity.
+    if let Ok((comparison, used)) =
+        parse_quantity_comparison_prefix(tail, false, false, "for-each relative control predicate")
+        && !matches!(comparison, crate::effect::Comparison::Equal(_))
+    {
+        let after_count = tail.get(used..)?;
+        let split = effect_start(after_count)?;
+        let filter_tokens = trim(after_count.get(..split)?);
+        let effect_tokens = trim(after_count.get(split..)?);
+        if !filter_tokens.is_empty() && !effect_tokens.is_empty() {
+            return Some(RelativeControlClauseShape {
+                controls_most: false,
+                count_comparison: Some(comparison),
+                fewer_than_most_filter_tokens: None,
+                fewer_than_you: false,
+                filter_tokens,
+                effect_tokens,
+            });
+        }
+    }
+
     let split = effect_start(tail)?;
     let mut filter_tokens = trim(tail.get(..split)?);
     let effect_tokens = trim(tail.get(split..)?);
@@ -278,6 +371,9 @@ pub(crate) fn parse_relative_control_clause_shape(
     }
     (!filter_tokens.is_empty() && !effect_tokens.is_empty()).then_some(RelativeControlClauseShape {
         controls_most,
+        count_comparison: None,
+        fewer_than_most_filter_tokens: None,
+        fewer_than_you: false,
         filter_tokens,
         effect_tokens,
     })
@@ -555,6 +651,82 @@ mod tests {
         let control = lex_line("who controls the most creatures draws a card", 0).unwrap();
         let shape = parse_relative_control_clause_shape(&control).unwrap();
         assert!(shape.controls_most);
+
+        let threshold = lex_line(
+            "who controls four or fewer lands may search their library",
+            0,
+        )
+        .unwrap();
+        let shape = parse_relative_control_clause_shape(&threshold).unwrap();
+        assert_eq!(
+            shape.count_comparison,
+            Some(crate::effect::Comparison::LessThanOrEqual(4))
+        );
+        assert_eq!(
+            TokenWordView::new(shape.filter_tokens).to_word_refs(),
+            vec!["lands"]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.effect_tokens).to_word_refs(),
+            vec!["may", "search", "their", "library"]
+        );
+
+        let counted_choice = lex_line(
+            "who controls six or more lands chooses five lands they control and sacrifices the rest",
+            0,
+        )
+        .unwrap();
+        let shape = parse_relative_control_clause_shape(&counted_choice).unwrap();
+        assert_eq!(
+            TokenWordView::new(shape.filter_tokens).to_word_refs(),
+            vec!["lands"]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.effect_tokens).to_word_refs(),
+            vec![
+                "chooses",
+                "five",
+                "lands",
+                "they",
+                "control",
+                "and",
+                "sacrifices",
+                "the",
+                "rest"
+            ]
+        );
+
+        let fewer_than_most = lex_line(
+            "who controls fewer lands than the player who controls the most lands searches their library",
+            0,
+        )
+        .unwrap();
+        let shape = parse_relative_control_clause_shape(&fewer_than_most).unwrap();
+        assert_eq!(
+            TokenWordView::new(shape.filter_tokens).to_word_refs(),
+            vec!["lands"]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.fewer_than_most_filter_tokens.unwrap()).to_word_refs(),
+            vec!["lands"]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.effect_tokens).to_word_refs(),
+            vec!["searches", "their", "library"]
+        );
+
+        let fewer_than_you =
+            lex_line("who controls fewer creatures than you draws a card", 0).unwrap();
+        let shape = parse_relative_control_clause_shape(&fewer_than_you).unwrap();
+        assert!(shape.fewer_than_you);
+        assert_eq!(
+            TokenWordView::new(shape.filter_tokens).to_word_refs(),
+            vec!["creatures"]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.effect_tokens).to_word_refs(),
+            vec!["draws", "a", "card"]
+        );
 
         let poison = lex_line("who has three or more poison counters loses the game", 0).unwrap();
         assert!(matches!(

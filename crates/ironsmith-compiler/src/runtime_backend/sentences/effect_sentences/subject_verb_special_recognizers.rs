@@ -212,7 +212,7 @@ pub(super) const SUBJECT_VERB_PRE_DIAGNOSTIC_RULES_LEXED: [LexRuleDef<Vec<Effect
     LexRuleDef {
         id: "scale-target-power",
         priority: 120,
-        heads: &["double", "triple"],
+        heads: &["double", "triple", "until"],
         shape_mask: 0,
         run: parse_scaled_target_power_sentence_rule_lexed,
     },

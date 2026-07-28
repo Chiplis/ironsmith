@@ -306,6 +306,10 @@ pub(crate) fn parse_pump_subject_shape(tokens: &[OwnedLexToken]) -> Option<PumpS
         alt((primitives::kw("that"), primitives::kw("those"))),
     )
     .is_some()
+        || crate::runtime_backend::front_end::grammar::targets::parse_chosen_object_target(
+            normalized,
+        )
+        .is_some()
     {
         return Some(PumpSubjectShape {
             subject_tokens,

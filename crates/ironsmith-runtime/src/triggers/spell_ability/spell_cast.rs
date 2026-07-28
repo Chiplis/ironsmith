@@ -15,6 +15,10 @@ use crate::zone::Zone;
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpellCastTrigger {
     pub filter: Option<ObjectFilter>,
+    /// Mana-producing objects whose mana must have been spent to cast the
+    /// triggering spell. This is matched when the cast event occurs rather
+    /// than re-checked as an intervening-if condition during resolution.
+    pub mana_source_filter: Option<ObjectFilter>,
     pub caster: PlayerFilter,
     pub timing: Option<ironsmith_core::TriggerTimingRestriction>,
     pub during_turn: Option<PlayerFilter>,
@@ -28,6 +32,7 @@ impl SpellCastTrigger {
     pub fn new(filter: Option<ObjectFilter>, caster: PlayerFilter) -> Self {
         Self {
             filter,
+            mana_source_filter: None,
             caster,
             timing: None,
             during_turn: None,
@@ -49,6 +54,7 @@ impl SpellCastTrigger {
     ) -> Self {
         Self {
             filter,
+            mana_source_filter: None,
             caster,
             timing,
             during_turn,
@@ -61,6 +67,11 @@ impl SpellCastTrigger {
 
     pub fn with_first_spell_of_game(mut self, first_spell_of_game: bool) -> Self {
         self.first_spell_of_game = first_spell_of_game;
+        self
+    }
+
+    pub fn with_mana_source_filter(mut self, mana_source_filter: Option<ObjectFilter>) -> Self {
+        self.mana_source_filter = mana_source_filter;
         self
     }
 
@@ -129,6 +140,21 @@ impl TriggerMatcher for SpellCastTrigger {
         }
         if self.from_not_hand && e.from_zone == Zone::Hand {
             return false;
+        }
+        if let Some(source_filter) = &self.mana_source_filter {
+            let tag = crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+            let matches_mana_source = ctx
+                .game
+                .object(e.spell)
+                .and_then(|spell| spell.cast_tagged_objects.get(&tag))
+                .is_some_and(|snapshots| {
+                    snapshots.iter().any(|snapshot| {
+                        source_filter.matches_snapshot(snapshot, &ctx.filter_ctx, ctx.game)
+                    })
+                });
+            if !matches_mana_source {
+                return false;
+            }
         }
 
         // Check spell filter if present
@@ -252,6 +278,34 @@ impl TriggerMatcher for SpellCastTrigger {
             .as_ref()
             .map(describe_spell_filter)
             .unwrap_or_else(|| "a spell".to_string());
+        if let Some(filter) = self
+            .filter
+            .as_ref()
+            .filter(|filter| filter.zone == Some(Zone::Hand))
+        {
+            let mut spell_filter = filter.clone();
+            spell_filter.zone = Some(Zone::Stack);
+            spell_filter.owner = None;
+            let hand = match filter.owner.as_ref() {
+                Some(PlayerFilter::You) => "your hand",
+                Some(PlayerFilter::Opponent) => "an opponent's hand",
+                Some(PlayerFilter::ChosenPlayer) => "the chosen player's hand",
+                Some(PlayerFilter::Specific(_)) | Some(PlayerFilter::TaggedPlayer(_)) => {
+                    "that player's hand"
+                }
+                _ => match self.caster {
+                    PlayerFilter::You => "your hand",
+                    PlayerFilter::ChosenPlayer
+                    | PlayerFilter::Specific(_)
+                    | PlayerFilter::TaggedPlayer(_)
+                    | PlayerFilter::Any
+                    | PlayerFilter::Active
+                    | PlayerFilter::Opponent => "their hand",
+                    _ => "a hand",
+                },
+            };
+            spell_text = format!("{} from {hand}", describe_spell_filter(&spell_filter));
+        }
         let mut suffix = String::new();
         let mut suppress_turn_suffix = false;
         if self.first_spell_of_game && (spell_text == "a spell" || spell_text == "spell") {
@@ -377,7 +431,15 @@ impl TriggerMatcher for SpellCastTrigger {
         if self.from_not_hand {
             suffix.push_str(" from anywhere other than your hand");
         }
-        format!("Whenever {} {}{}", caster_text, spell_text, suffix)
+        let mana_source = self
+            .mana_source_filter
+            .as_ref()
+            .map(|filter| format!(" using mana produced by {}", filter.description()))
+            .unwrap_or_default();
+        format!(
+            "Whenever {} {}{}{}",
+            caster_text, spell_text, mana_source, suffix
+        )
     }
 }
 
@@ -526,6 +588,8 @@ fn describe_spell_filter(filter: &ObjectFilter) -> String {
                 PlayerFilter::ChosenPlayer => "the chosen player".to_string(),
                 PlayerFilter::TaggedPlayer(_) => "that player".to_string(),
                 PlayerFilter::Teammate => "a teammate".to_string(),
+                PlayerFilter::PlayerToYourLeft => "the player to your left".to_string(),
+                PlayerFilter::PlayerToYourRight => "the player to your right".to_string(),
                 PlayerFilter::Active => "the active player".to_string(),
                 PlayerFilter::Defending => "the defending player".to_string(),
                 PlayerFilter::Attacking => "an attacking player".to_string(),
@@ -813,6 +877,57 @@ mod tests {
     }
 
     #[test]
+    fn mana_source_provenance_matches_at_cast_event_time() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let source = CardBuilder::new(CardId::new(), "Barracks of the Thousand")
+            .card_types(vec![CardType::Land])
+            .build();
+        let source_id = game.create_object_from_card(&source, alice, Zone::Battlefield);
+        let other_source = CardBuilder::new(CardId::new(), "Other Land")
+            .card_types(vec![CardType::Land])
+            .build();
+        let other_source_id = game.create_object_from_card(&other_source, alice, Zone::Battlefield);
+        let spell = CardBuilder::new(CardId::new(), "Artifact Spell")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let spell_id = game.create_object_from_card(&spell, alice, Zone::Stack);
+        let source_snapshot =
+            crate::snapshot::ObjectSnapshot::from_object(game.object(source_id).unwrap(), &game);
+        let other_source_snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(other_source_id).unwrap(),
+            &game,
+        );
+        let mana_sources_tag =
+            crate::tag::TagKey::from(ironsmith_core::MANA_SOURCES_SPENT_TO_CAST_TAG);
+        game.object_mut(spell_id)
+            .unwrap()
+            .cast_tagged_objects
+            .insert(mana_sources_tag.clone(), vec![source_snapshot]);
+
+        let trigger = SpellCastTrigger::new(None, PlayerFilter::You).with_mana_source_filter(Some(
+            ObjectFilter::source_with_surface(crate::target::SourceReferenceSurface::ShortName(
+                "Barracks of the Thousand".to_string(),
+            )),
+        ));
+        let event = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(spell_id, alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert_eq!(
+            trigger.display(),
+            "Whenever you cast a spell using mana produced by Barracks of the Thousand"
+        );
+        assert!(trigger.matches(&event, &TriggerContext::for_source(source_id, alice, &game),));
+
+        game.object_mut(spell_id)
+            .unwrap()
+            .cast_tagged_objects
+            .insert(mana_sources_tag, vec![other_source_snapshot]);
+        assert!(!trigger.matches(&event, &TriggerContext::for_source(source_id, alice, &game),));
+    }
+
+    #[test]
     fn hand_origin_spell_filter_keeps_characteristics_before_spell_noun() {
         let mut filter = ObjectFilter::spell()
             .in_zone(Zone::Hand)
@@ -823,6 +938,20 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever you cast a legendary spell from your hand"
+        );
+    }
+
+    #[test]
+    fn hand_origin_uses_the_casting_players_possessive() {
+        let filter = ObjectFilter::spell().in_zone(Zone::Hand);
+
+        assert_eq!(
+            SpellCastTrigger::new(Some(filter.clone()), PlayerFilter::Opponent).display(),
+            "Whenever an opponent casts a spell from their hand"
+        );
+        assert_eq!(
+            SpellCastTrigger::new(Some(filter), PlayerFilter::Any).display(),
+            "Whenever a player casts a spell from their hand"
         );
     }
 

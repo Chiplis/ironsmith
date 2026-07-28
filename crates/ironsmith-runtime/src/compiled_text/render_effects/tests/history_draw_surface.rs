@@ -17,7 +17,7 @@ fn outside_hand_spell_history() -> Value {
 fn typed_death_history_for_each_draw_uses_singular_event_surface() {
     let mut zubera = ObjectFilter::default();
     zubera.subtypes.push(Subtype::Zubera);
-    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::Died(zubera))
+    let count = Value::TurnHistoryCount(ironsmith_core::TurnHistoryCount::died(zubera))
         .with_surface_hint(ValueSurfaceHint::ForEach);
     let draw = Effect::new(crate::effects::DrawCardsEffect::you(count));
 

@@ -7,7 +7,7 @@ use crate::effects::{ExecutionContext, ExecutionError};
 use crate::filter::ObjectFilterExt as _;
 use crate::game_state::GameState;
 use crate::grant::Grantable;
-use crate::grant_registry::GrantSource;
+use crate::grant_registry::{GrantSource, PlayFromConstraints};
 use crate::tag::TagKey;
 use crate::target::{ObjectFilter, PlayerFilter};
 pub use ironsmith_core::GrantPlayTaggedDuration;
@@ -18,6 +18,9 @@ pub struct GrantPlayTaggedEffect {
     pub tag: TagKey,
     pub player: PlayerFilter,
     pub duration: GrantPlayTaggedDuration,
+    /// Authored duration placement and tagged-card reference wording.
+    /// Gameplay semantics remain in the ordinary typed grant fields.
+    pub surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     pub allow_land: bool,
     pub mana_spend_mode: ironsmith_core::value_model::ManaSpendMode,
     /// Compatibility predicate for older compiled-text pattern matchers.
@@ -28,6 +31,12 @@ pub struct GrantPlayTaggedEffect {
     /// When present, the persistent grant is active only on turns in which
     /// this counter type was put on the resolving ability's source.
     pub during_turns_counter_put_on_source: Option<crate::object::CounterType>,
+    /// Additional mana cost imposed on nonland cards cast through this exact
+    /// tagged play permission.
+    pub spell_cost_increase: Option<crate::mana::ManaCost>,
+    /// Whether a land played through this exact tagged permission enters
+    /// tapped.
+    pub lands_enter_tapped: bool,
     /// True when the granted pool holds more than one card, selecting plural
     /// "cast spells from among those exiled cards" wording over the singular
     /// "cast that card this turn". Purely cosmetic; resolution is unaffected.
@@ -47,18 +56,26 @@ impl GrantPlayTaggedEffect {
             tag: tag.into(),
             player,
             duration,
+            surface: None,
             allow_land,
             mana_spend_mode,
             allow_any_color_for_cast: mana_spend_mode.allows_any_color(),
             while_on_top_of_library: false,
             filter: None,
             during_turns_counter_put_on_source: None,
+            spell_cost_increase: None,
+            lands_enter_tapped: false,
             cast_pool_is_plural: false,
         }
     }
 
     pub fn cast_pool_is_plural(mut self, plural: bool) -> Self {
         self.cast_pool_is_plural = plural;
+        self
+    }
+
+    pub fn with_surface(mut self, surface: ironsmith_core::GrantPlayTaggedSurface) -> Self {
+        self.surface = Some(surface);
         self
     }
 
@@ -107,6 +124,16 @@ impl GrantPlayTaggedEffect {
         self
     }
 
+    pub fn with_spell_cost_increase(mut self, cost: crate::mana::ManaCost) -> Self {
+        self.spell_cost_increase = Some(cost);
+        self
+    }
+
+    pub fn with_lands_enter_tapped(mut self, enabled: bool) -> Self {
+        self.lands_enter_tapped = enabled;
+        self
+    }
+
     pub fn until_your_next_turn(tag: impl Into<TagKey>, player: PlayerFilter) -> Self {
         Self::new(
             tag,
@@ -140,6 +167,7 @@ impl GrantPlayTaggedEffect {
                 // until the next end-step window is crossed.
                 game.turn.turn_number.saturating_add(1)
             }
+            GrantPlayTaggedDuration::UntilSourceExilesAnother => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsExiled => u32::MAX,
             GrantPlayTaggedDuration::ForAsLongAsYouControlSource => u32::MAX,
         }
@@ -152,7 +180,17 @@ impl EffectExecutor for GrantPlayTaggedEffect {
         game: &mut GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<EffectOutcome, ExecutionError> {
-        let player_id = resolve_player_filter(game, &self.player, ctx)?;
+        let player_is_each_tagged_owner = matches!(
+            &self.player,
+            PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag))
+                | PlayerFilter::AliasedOwnerOf(crate::target::ObjectRef::Tagged(tag))
+                if tag == &self.tag
+        );
+        let fixed_player_id = if player_is_each_tagged_owner {
+            None
+        } else {
+            Some(resolve_player_filter(game, &self.player, ctx)?)
+        };
         let snapshots = ctx.get_tagged_all(self.tag.as_str()).cloned().or_else(|| {
             (self.tag.as_str() == "__source_exiled__").then(|| {
                 ctx.tagged_objects
@@ -166,10 +204,10 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             return Ok(EffectOutcome::count(0));
         };
 
-        let expires_end_of_turn = self.expires_end_of_turn(game, player_id);
         let mut granted = 0usize;
         let mut seen = std::collections::HashSet::new();
-        let mut mana_permission_stable_ids = Vec::new();
+        let mut mana_permission_stable_ids =
+            std::collections::HashMap::<crate::ids::PlayerId, Vec<crate::ids::StableId>>::new();
         for snapshot in snapshots {
             let mut object_id = snapshot.object_id;
             if game.object(object_id).is_none() {
@@ -191,12 +229,21 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             {
                 continue;
             }
-            if (!self.allow_land && object.is_land()) || !seen.insert(object_id) {
+            let object_is_land = object.is_land();
+            if (!self.allow_land && object_is_land) || !seen.insert(object_id) {
                 continue;
             }
+            let object_stable_id = object.stable_id;
+            let object_zone = object.zone;
+            let object_owner = object.owner;
+            let player_id = fixed_player_id.unwrap_or(object_owner);
+            let expires_end_of_turn = self.expires_end_of_turn(game, player_id);
 
-            if self.mana_spend_mode.allows_any_color() && !object.is_land() {
-                mana_permission_stable_ids.push(object.stable_id);
+            if self.mana_spend_mode.allows_any_color() && !object_is_land {
+                mana_permission_stable_ids
+                    .entry(player_id)
+                    .or_default()
+                    .push(object_stable_id);
             }
 
             let source = if let Some(counter_type) = self.during_turns_counter_put_on_source {
@@ -208,15 +255,20 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 GrantSource::EffectWhileStableCardOnTopOfLibrary {
                     source_id: ctx.source,
                     expires_end_of_turn,
-                    stable_id: object.stable_id,
-                    player: object.owner,
-                    library_top_revision: game.library_top_revision(object.owner),
+                    stable_id: object_stable_id,
+                    player: object_owner,
+                    library_top_revision: game.library_top_revision(object_owner),
                 }
             } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsYouControlSource {
                 GrantSource::EffectWhileControlled {
                     source_id: ctx.source,
                     controller: player_id,
                 }
+            } else if self.duration == GrantPlayTaggedDuration::UntilSourceExilesAnother {
+                GrantSource::until_source_exiles_another(
+                    ctx.source,
+                    game.exiled_with_source_revision(ctx.source),
+                )
             } else if self.duration == GrantPlayTaggedDuration::UntilYourNextTurnEnd {
                 GrantSource::until_player_next_turn_end(ctx.source, player_id, expires_end_of_turn)
             } else {
@@ -225,21 +277,54 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     expires_end_of_turn,
                 }
             };
-            if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled
-                || self.during_turns_counter_put_on_source.is_some()
-            {
-                game.effect_store.grant_registry.grant_to_stable_card(
+            let constraints = PlayFromConstraints {
+                spell_cost_increase: self.spell_cost_increase.clone(),
+                lands_enter_tapped: self.lands_enter_tapped,
+            };
+            if constraints != PlayFromConstraints::default() {
+                if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+                    game.effect_store
+                        .grant_registry
+                        .grant_play_from_to_card(
+                            object_id,
+                            object_zone,
+                            player_id,
+                            constraints,
+                            source,
+                        );
+                } else {
+                    game.effect_store
+                        .grant_registry
+                        .grant_play_from_to_stable_card(
+                            object_id,
+                            object_stable_id,
+                            object_zone,
+                            player_id,
+                            constraints,
+                            source,
+                        );
+                }
+            } else if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
+                game.effect_store.grant_registry.grant_to_card(
                     object_id,
-                    object.stable_id,
-                    object.zone,
+                    object_zone,
                     player_id,
                     Grantable::PlayFrom,
                     source,
                 );
+            } else if self.during_turns_counter_put_on_source.is_some() {
+                game.effect_store.grant_registry.grant_to_stable_card(
+                        object_id,
+                        object_stable_id,
+                        object_zone,
+                        player_id,
+                        Grantable::PlayFrom,
+                        source,
+                    );
             } else {
                 game.effect_store.grant_registry.grant_to_card(
                     object_id,
-                    object.zone,
+                    object_zone,
                     player_id,
                     Grantable::PlayFrom,
                     source,
@@ -248,7 +333,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             granted += 1;
         }
 
-        if self.mana_spend_mode.allows_any_color() && !mana_permission_stable_ids.is_empty() {
+        for (player_id, mana_permission_stable_ids) in mana_permission_stable_ids {
             let permission = match self.mana_spend_mode {
                 ironsmith_core::value_model::ManaSpendMode::Normal => {
                     unreachable!("normal mana spending does not collect permission stable ids")
@@ -272,7 +357,7 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                     controller: player_id,
                     source: crate::game_state::ManaSpendPermissionSource::Effect {
                         source_id: ctx.source,
-                        expires_end_of_turn,
+                        expires_end_of_turn: self.expires_end_of_turn(game, player_id),
                     },
                 },
             );
@@ -513,6 +598,162 @@ mod tests {
         assert!(
             !game.can_spend_mana_as_any_color(alice, Some(graveyard_id)),
             "any-mana permission for spells cast this way should not apply after the card leaves exile"
+        );
+        let reexiled_id = game
+            .move_object(
+                graveyard_id,
+                Zone::Exile,
+                crate::events::cause::EventCause::effect(),
+            )
+            .expect("test card should return to exile as a new object");
+        assert!(
+            !game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                reexiled_id,
+                Zone::Exile,
+                alice,
+            ),
+            "a later exile must not reactivate an old for-as-long-as-exiled permission"
+        );
+    }
+
+    #[test]
+    fn tagged_owner_permission_is_correlated_per_card_and_keeps_linked_constraints() {
+        let mut game = GameState::new(
+            vec!["Alice".to_string(), "Bob".to_string(), "Cara".to_string()],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let cara = PlayerId::from_index(2);
+
+        let bob_card = CardBuilder::new(CardId::from_raw(30), "Bob's Exiled Spell")
+            .card_types(vec![crate::types::CardType::Instant])
+            .build();
+        let cara_card = CardBuilder::new(CardId::from_raw(31), "Cara's Exiled Spell")
+            .card_types(vec![crate::types::CardType::Instant])
+            .build();
+        let bob_exiled = game.create_object_from_card(&bob_card, bob, Zone::Exile);
+        let cara_exiled = game.create_object_from_card(&cara_card, cara, Zone::Exile);
+        let snapshots = vec![
+            ObjectSnapshot::from_object(
+                game.object(bob_exiled).expect("Bob's exiled card"),
+                &game,
+            ),
+            ObjectSnapshot::from_object(
+                game.object(cara_exiled).expect("Cara's exiled card"),
+                &game,
+            ),
+        ];
+
+        let tag = TagKey::from("each_player_exiled");
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(tag.clone(), snapshots);
+        let source = ObjectId::from_raw(103);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source, alice, &mut dm).with_tagged_objects(tags);
+        let tax = crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::Generic(1)]);
+        GrantPlayTaggedEffect::new(
+            tag.clone(),
+            PlayerFilter::OwnerOf(crate::target::ObjectRef::Tagged(tag)),
+            GrantPlayTaggedDuration::ForAsLongAsExiled,
+            true,
+            false,
+        )
+        .with_spell_cost_increase(tax.clone())
+        .with_lands_enter_tapped(true)
+        .execute(&mut game, &mut ctx)
+        .expect("correlated play permissions should resolve");
+
+        let can_play = |card, player| {
+            game.effect_store
+                .grant_registry
+                .card_can_play_from_zone(&game, card, Zone::Exile, player)
+        };
+        assert!(can_play(bob_exiled, bob));
+        assert!(can_play(cara_exiled, cara));
+        assert!(!can_play(bob_exiled, cara));
+        assert!(!can_play(cara_exiled, bob));
+
+        for (card, owner) in [(bob_exiled, bob), (cara_exiled, cara)] {
+            let constraints = game
+                .effect_store
+                .grant_registry
+                .play_from_constraints_for_card(&game, card, Zone::Exile, owner, source);
+            assert_eq!(constraints.spell_cost_increase, Some(tax.clone()));
+            assert!(constraints.lands_enter_tapped);
+            assert!(
+                game.effect_store
+                    .grant_registry
+                    .land_play_from_permissions_enters_tapped(
+                        &game,
+                        card,
+                        Zone::Exile,
+                        owner,
+                    )
+            );
+        }
+    }
+
+    #[test]
+    fn grant_play_tagged_expires_on_sources_next_exile_event() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+
+        let source_card = CardBuilder::new(CardId::from_raw(20), "Permission Source").build();
+        let source_id = game.create_object_from_card(&source_card, alice, Zone::Battlefield);
+        let other_source_card = CardBuilder::new(CardId::from_raw(21), "Other Source").build();
+        let other_source_id =
+            game.create_object_from_card(&other_source_card, alice, Zone::Battlefield);
+
+        let card = CardBuilder::new(CardId::from_raw(22), "Initially Exiled Card").build();
+        let exiled_id = game.create_object_from_card(&card, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source_id, exiled_id);
+        let snapshot =
+            ObjectSnapshot::from_object(game.object(exiled_id).expect("exiled card"), &game);
+
+        let mut tags = std::collections::HashMap::new();
+        tags.insert(TagKey::from("it"), vec![snapshot]);
+        let mut dm = SelectFirstDecisionMaker;
+        let mut ctx = ExecutionContext::new(source_id, alice, &mut dm).with_tagged_objects(tags);
+        GrantPlayTaggedEffect::new(
+            "it",
+            PlayerFilter::You,
+            GrantPlayTaggedDuration::UntilSourceExilesAnother,
+            true,
+            false,
+        )
+        .execute(&mut game, &mut ctx)
+        .expect("grant should resolve");
+
+        let can_play = |game: &GameState| {
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                game,
+                exiled_id,
+                Zone::Exile,
+                alice,
+            )
+        };
+        assert!(can_play(&game));
+
+        // Re-recording the same link is not a new exile event.
+        game.add_exiled_with_source_link(source_id, exiled_id);
+        assert!(can_play(&game));
+
+        let unrelated = CardBuilder::new(CardId::from_raw(23), "Unrelated Exiled Card").build();
+        let unrelated_id = game.create_object_from_card(&unrelated, alice, Zone::Exile);
+        game.add_exiled_with_source_link(other_source_id, unrelated_id);
+        assert!(
+            can_play(&game),
+            "another source must not end the permission"
+        );
+
+        let next = CardBuilder::new(CardId::from_raw(24), "Next Exiled Card").build();
+        let next_id = game.create_object_from_card(&next, alice, Zone::Exile);
+        game.add_exiled_with_source_link(source_id, next_id);
+        assert!(
+            !can_play(&game),
+            "the same source's next successful exile must end the permission"
         );
     }
 

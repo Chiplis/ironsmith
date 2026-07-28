@@ -76,9 +76,21 @@ fn captures_match_count_equal_to_objects_sacrificed_this_way() {
         "Sacrifice X Goblins, then reveal cards from the top of your library until you reveal a number of Goblin creature cards equal to the number of Goblins sacrificed this way",
     ))
     .unwrap();
+    let LibraryConsultStopRuleAst::MatchCount(count) = parsed.stop.stop_rule else {
+        panic!("expected counted consult stop");
+    };
+    let Value::PendingPriorEffectMetric(query) = count else {
+        panic!("expected typed sacrificed-object metric, got {count:?}");
+    };
     assert_eq!(
-        parsed.stop.stop_rule,
-        LibraryConsultStopRuleAst::MatchCount(Value::EventValue(EventValueSpec::Amount))
+        query.action,
+        Some(ironsmith_core::PriorEffectAction::Sacrificed)
+    );
+    assert!(
+        query.filter.as_ref().is_some_and(|filter| {
+            filter.subtypes.contains(&crate::types::Subtype::Goblin)
+        }),
+        "{query:#?}"
     );
     assert!(permission_shapes::exact_tokens(
         &parsed.stop.filter,

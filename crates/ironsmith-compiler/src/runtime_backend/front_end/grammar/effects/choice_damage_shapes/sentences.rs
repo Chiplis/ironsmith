@@ -30,6 +30,12 @@ pub(crate) struct DamageUnlessShape<'a> {
 }
 
 #[derive(Clone, Copy, Debug)]
+pub(crate) struct RelativeOpponentDamageDifferenceShape<'a> {
+    pub(crate) source_tokens: &'a [OwnedLexToken],
+    pub(crate) filter_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct UnlessSentenceShape<'a> {
     pub(crate) unless_token: usize,
     pub(crate) action_tokens: &'a [OwnedLexToken],
@@ -152,6 +158,34 @@ pub(crate) fn parse_damage_unless_shape(tokens: &[OwnedLexToken]) -> Option<Dama
     })
 }
 
+pub(crate) fn parse_relative_opponent_damage_difference_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<RelativeOpponentDamageDifferenceShape<'_>> {
+    let (damage_offset, _, after_damage) = primitives::find_prefix(tokens, || {
+        primitives::phrase(&[
+            "deals", "damage", "to", "each", "opponent", "who", "controls", "more",
+        ])
+        .void()
+    })?;
+    let source_tokens = trim_lexed_commas(tokens.get(..damage_offset)?);
+    if source_tokens.is_empty() {
+        return None;
+    }
+
+    let (suffix_offset, _, after_suffix) = primitives::find_prefix(after_damage, || {
+        primitives::phrase(&["than", "you", "equal", "to", "the", "difference"]).void()
+    })?;
+    let filter_tokens = trim_lexed_commas(after_damage.get(..suffix_offset)?);
+    if filter_tokens.is_empty() || TokenWordView::new(after_suffix).len() != 0 {
+        return None;
+    }
+
+    Some(RelativeOpponentDamageDifferenceShape {
+        source_tokens,
+        filter_tokens,
+    })
+}
+
 pub(crate) fn parse_enchanted_attacked_damage_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<DamageUnlessShape<'_>> {
@@ -249,5 +283,18 @@ mod tests {
 
         let unless = lex("Destroy target creature unless its controller pays {2}.");
         assert!(parse_unless_sentence_shape(&unless).is_some());
+
+        let relative = lex(
+            "This spell deals damage to each opponent who controls more lands than you equal to the difference.",
+        );
+        let shape = parse_relative_opponent_damage_difference_shape(&relative).unwrap();
+        assert_eq!(
+            TokenWordView::new(shape.source_tokens).to_word_refs(),
+            ["this", "spell"]
+        );
+        assert_eq!(
+            TokenWordView::new(shape.filter_tokens).to_word_refs(),
+            ["lands"]
+        );
     }
 }

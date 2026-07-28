@@ -2569,6 +2569,7 @@ pub(super) fn mana_optional_cost_target_hypothesis_exposes_legal_cast() {
                 crate::effect::Condition::ThisSpellWasKicked,
                 vec![Effect::deal_damage(1, ChooseSpec::target_player())],
             )],
+            starts_new_source_line: false,
         }]);
     let mut definition = CardDefinitionBuilder::new(CardId::new(), "Kicked Target Probe")
         .mana_cost(ManaCost::new())
@@ -2665,6 +2666,7 @@ pub(super) fn joint_optional_cost_hypothesis_exposes_targetable_cast() {
                 both_costs_paid,
                 vec![Effect::deal_damage(1, ChooseSpec::target_player())],
             )],
+            starts_new_source_line: false,
         }]);
     let mut definition = CardDefinitionBuilder::new(CardId::new(), "Joint Proposal Probe")
         .mana_cost(ManaCost::new())

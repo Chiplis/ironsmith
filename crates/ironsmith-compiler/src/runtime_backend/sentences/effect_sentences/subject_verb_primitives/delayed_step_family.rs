@@ -62,8 +62,43 @@ pub(super) fn wrap_delayed_next_step_unless_pays(
             player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
             effects,
         },
+        DelayedNextStepKind::CleanupStep => EffectAst::DelayedUntilNextCleanupStep {
+            player: delayed_end_step_player_filter(player).unwrap_or(PlayerFilter::Any),
+            effects,
+        },
         DelayedNextStepKind::EndOfCombat => EffectAst::DelayedUntilEndOfCombat { effects },
     }
+}
+
+/// Wrap an effect that a verb handler has already parsed when its remaining
+/// clause is a delayed-step timing marker followed by an unless payment. This
+/// is the local counterpart of the whole-sentence parser below: it keeps
+/// subject-aware verb handlers from rejecting the timing tail after they have
+/// consumed the resource amount and noun.
+pub(crate) fn wrap_parsed_effect_in_delayed_next_step_unless_pays(
+    trailing: &[OwnedLexToken],
+    effect: EffectAst,
+) -> Result<Option<EffectAst>, CardTextError> {
+    let timing_clause = SubjectVerbPrimitiveClause::new(trailing).trimmed();
+    let Some((timing_start_word, _timing_end_word, step, player)) =
+        delayed_next_step_marker(timing_clause)
+    else {
+        return Ok(None);
+    };
+    if timing_start_word != 0 {
+        return Ok(None);
+    }
+    let Some(unless_idx) = timing_clause.find_token_word("unless") else {
+        return Ok(None);
+    };
+    let Some(unless_effect) = try_build_unless(vec![effect], timing_clause, unless_idx)? else {
+        return Ok(None);
+    };
+    Ok(Some(wrap_delayed_next_step_unless_pays(
+        step,
+        player,
+        vec![unless_effect],
+    )))
 }
 
 fn delayed_end_step_player_filter(player: PlayerAst) -> Option<PlayerFilter> {
@@ -92,6 +127,12 @@ fn wrap_delayed_timing_effects(
             player: marker.player,
             effects,
         },
+        delayed_grammar::DelayedTimingStepShape::CleanupStep => {
+            EffectAst::DelayedUntilNextCleanupStep {
+                player: delayed_end_step_player_filter(marker.player)?,
+                effects,
+            }
+        }
         delayed_grammar::DelayedTimingStepShape::EndOfCombat => {
             EffectAst::DelayedUntilEndOfCombat { effects }
         }
@@ -345,6 +386,26 @@ fn rewrite_cost_source_values_to_it_tag(cost: &mut crate::cost::TotalCost) {
                     crate::costs::Cost::Energy(value)
                     | crate::costs::Cost::Mill(value)
                     | crate::costs::Cost::Life(value) => rewrite_value_source_to_it_tag(value),
+                    crate::costs::Cost::SacrificeSelf => {
+                        *component = crate::costs::Cost::sacrifice(
+                            crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG)),
+                        );
+                    }
+                    crate::costs::Cost::Sacrifice(filter) if filter.source => {
+                        *filter = crate::target::ObjectFilter::tagged(TagKey::from(IT_TAG));
+                    }
+                    crate::costs::Cost::Effect(effect) => {
+                        if let Some(sacrifice) =
+                            effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()
+                            && matches!(sacrifice.target.base(), crate::target::ChooseSpec::Source)
+                        {
+                            *effect = crate::effect::Effect::new(
+                                crate::effects::SacrificeTargetEffect::new(
+                                    crate::target::ChooseSpec::Tagged(TagKey::from(IT_TAG)),
+                                ),
+                            );
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -554,9 +615,19 @@ fn parse_unless_payment_clause_as_cost(
     let Some(payment_tokens) = normalize_unless_payment_clause_tokens(clause) else {
         return Ok(None);
     };
-    crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
-        payment_tokens.tokens(),
-    )
+    let referential_sacrifice =
+        delayed_grammar::delayed_referential_sacrifice_shape(payment_tokens.tokens());
+    let Some(mut cost) =
+        crate::runtime_backend::families::activation_and_restrictions::parse_payment_clause_as_total_cost(
+            payment_tokens.tokens(),
+        )?
+    else {
+        return Ok(None);
+    };
+    if referential_sacrifice {
+        rewrite_cost_source_values_to_it_tag(&mut cost);
+    }
+    Ok(Some(cost))
 }
 
 fn parse_unless_sacrifice_clause_as_cost(
@@ -825,6 +896,78 @@ mod tests {
     use crate::runtime_backend::lexer::lex_line;
 
     #[test]
+    fn effect_sentence_routes_action_first_draw_step_unless_before_broad_verb_parsing() {
+        let tokens = lex_line(
+            "That player loses 1 life at the beginning of their next draw step unless they pay {1} before that draw step.",
+            0,
+        )
+        .expect("delayed draw-step life loss should lex");
+        let effects =
+            crate::runtime_backend::effect_sentences::parse_effect_sentence_lexed(&tokens)
+                .expect("complete delayed sentence should parse");
+
+        assert!(matches!(
+            effects.as_slice(),
+            [EffectAst::DelayedUntilNextDrawStep {
+                player: PlayerAst::That,
+                effects,
+            }] if matches!(
+                effects.as_slice(),
+                [EffectAst::UnlessPays {
+                    player: PlayerAst::That,
+                    effects,
+                    ..
+                }] if matches!(
+                    effects.as_slice(),
+                    [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::LoseLife {
+                            amount: Value::Fixed(1),
+                        },
+                        ..
+                    })]
+                )
+            )
+        ));
+    }
+
+    #[test]
+    fn referential_unless_sacrifice_cost_keeps_the_it_antecedent() {
+        let tokens = lex_line("sacrifices it.", 0).expect("sacrifice cost should lex");
+        let cost = parse_unless_payment_clause_as_cost(SubjectVerbPrimitiveClause::new(&tokens))
+            .expect("sacrifice cost should parse")
+            .expect("sacrifice should be a total cost");
+        let [component] = cost.costs() else {
+            panic!("expected one sacrifice component: {cost:#?}");
+        };
+        match component {
+            crate::costs::Cost::Sacrifice(filter) => {
+                assert!(
+                    !filter.source
+                        && filter.tagged_constraints.iter().any(|constraint| {
+                            constraint.relation
+                                == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                && constraint.tag.as_str() == IT_TAG
+                        }),
+                    "the pronoun must survive until lowering can bind it: {filter:#?}"
+                );
+            }
+            crate::costs::Cost::Effect(effect) => {
+                let sacrifice = effect
+                    .downcast_ref::<crate::effects::SacrificeTargetEffect>()
+                    .expect("effect-backed cost should be a target sacrifice");
+                assert!(
+                    matches!(
+                        sacrifice.target.base(),
+                        crate::target::ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                    ),
+                    "the pronoun must survive until lowering can bind it: {sacrifice:#?}"
+                );
+            }
+            other => panic!("expected a referential sacrifice cost: {other:#?}"),
+        }
+    }
+
+    #[test]
     fn end_of_combat_suffix_wraps_generic_actions_in_delayed_effects() {
         for text in [
             "Remove a +1/+1 counter from it at end of combat.",
@@ -846,6 +989,29 @@ mod tests {
                 "expected one delayed payload for {text}: {delayed:#?}"
             );
         }
+    }
+
+    #[test]
+    fn cleanup_step_suffix_wraps_sacrifice_in_delayed_effect() {
+        let tokens = lex_line(
+            "Sacrifice this Aura at the beginning of the next cleanup step.",
+            0,
+        )
+        .expect("cleanup-step action should lex");
+        let effects =
+            parse_sentence_delayed_timing_suffix(SubjectVerbPrimitiveClause::new(&tokens))
+                .expect("cleanup-step action should parse")
+                .expect("cleanup-step suffix should match");
+        let [
+            EffectAst::DelayedUntilNextCleanupStep {
+                player: PlayerFilter::Any,
+                effects: delayed,
+            },
+        ] = effects.as_slice()
+        else {
+            panic!("expected one delayed cleanup-step action: {effects:#?}");
+        };
+        assert_eq!(delayed.len(), 1);
     }
 
     #[test]
@@ -1151,22 +1317,25 @@ pub(crate) fn parse_sentence_implicit_become_clause(
             if saw_subtype && !iter_contains(card_types.iter(), &CardType::Creature) {
                 card_types.insert(0, CardType::Creature);
             }
-            return Ok(Some(vec![EffectAst::subject_verb_become_base_pt_creature(
-                power,
-                toughness,
-                target,
-                card_types,
-                subtypes,
-                Vec::new(),
-                None,
-                Vec::new(),
-                Vec::new(),
-                false,
-                None,
-                Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
-                None,
-                duration,
-            )]));
+            return Ok(Some(vec![
+                EffectAst::subject_verb_become_base_pt_creature(
+                    power,
+                    toughness,
+                    target,
+                    card_types,
+                    subtypes,
+                    Vec::new(),
+                    None,
+                    Vec::new(),
+                    Vec::new(),
+                    false,
+                    None,
+                    Some(ironsmith_core::AnimationPtSurface::LeadingPowerToughness),
+                    None,
+                    duration,
+                )
+                .with_set_quantifier_surface(subject_shape.set_quantifier_surface),
+            ]));
         }
     }
 

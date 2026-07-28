@@ -41,6 +41,7 @@ pub(crate) struct ChooseCardNameShape<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum PowerDamageTargetShape<'a> {
     EachPlayer,
+    EachOtherPlayer,
     EachOpponent,
     Source,
     Tokens(&'a [OwnedLexToken]),
@@ -278,10 +279,12 @@ fn target_shape(tokens: &[OwnedLexToken], allow_self: bool) -> PowerDamageTarget
     let tokens = trim_shape_edges(tokens);
     if exact_phrase(tokens, &["each", "player"]) || exact_phrase(tokens, &["each", "players"]) {
         PowerDamageTargetShape::EachPlayer
+    } else if exact_phrase(tokens, &["each", "other", "player"])
+        || exact_phrase(tokens, &["each", "other", "players"])
+    {
+        PowerDamageTargetShape::EachOtherPlayer
     } else if exact_phrase(tokens, &["each", "opponent"])
         || exact_phrase(tokens, &["each", "opponents"])
-        || exact_phrase(tokens, &["each", "other", "player"])
-        || exact_phrase(tokens, &["each", "other", "players"])
     {
         PowerDamageTargetShape::EachOpponent
     } else if allow_self && (exact_phrase(tokens, &["itself"]) || exact_phrase(tokens, &["it"])) {

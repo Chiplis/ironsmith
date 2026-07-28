@@ -7,6 +7,20 @@ use crate::runtime_backend::front_end::lexer::{LexStream, OwnedLexToken, TokenWo
 
 use super::{ConsultTraversalStopKind, ConsultTraversalStopShape, trim_commas};
 
+fn prior_action_count_value(words: &[&str]) -> Option<Value> {
+    let basis = words
+        .strip_prefix(&["the", "number", "of"])
+        .or_else(|| words.strip_prefix(&["number", "of"]))
+        .unwrap_or(words);
+    let mut for_each_words = Vec::with_capacity(basis.len() + 2);
+    for_each_words.extend(["for", "each"]);
+    for_each_words.extend_from_slice(basis);
+    let (value, used) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::
+            parse_for_each_count_value_words(&for_each_words)?;
+    (used == for_each_words.len()).then_some(value)
+}
+
 pub(super) fn parse_equal_to_counted_active_stop(
     tokens: &[OwnedLexToken],
 ) -> Option<ConsultTraversalStopShape> {
@@ -27,7 +41,7 @@ pub(super) fn parse_equal_to_counted_active_stop(
 
     let count_words = TokenWordView::new(count_tokens).word_refs();
     let count = if permission_shapes::suffix_words(&count_words, &["sacrificed", "this", "way"]) {
-        Value::EventValue(EventValueSpec::Amount)
+        prior_action_count_value(&count_words).unwrap_or(Value::EventValue(EventValueSpec::Amount))
     } else {
         let (value, used) = values::parse_value_prefix_lexed(count_tokens)?;
         (used == count_tokens.len()).then_some(value)?

@@ -7,7 +7,7 @@ use crate::model::RedirectNextTimeDamageDestinationAst;
 use crate::object::{AuraAttachmentFilter, CounterType};
 use crate::static_abilities::StaticAbility;
 use crate::tag::TagKey;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
+use crate::target::{ChooseSpec, ObjectFilter, ObjectRef, PlayerFilter, SourceReferenceSurface};
 use crate::types::{CardType, Subtype, SubtypeFamily, Supertype};
 use crate::zone::Zone;
 
@@ -173,14 +173,28 @@ pub(crate) enum TriggerSpec {
     AttacksYouOrPlaneswalkerYouControl(ObjectFilter),
     AttacksYouOrPlaneswalkerYouControlOneOrMore(ObjectFilter),
     ThisBlocks,
-    ThisBlocksObject(ObjectFilter),
+    ThisBlocksObject {
+        filter: ObjectFilter,
+        /// `None` is a per-object trigger; `Some(N)` is one aggregated
+        /// declaration containing at least N matching blocked objects.
+        min_blocked_objects: Option<u32>,
+    },
     Blocks(ObjectFilter),
     BlocksOneOrMore(ObjectFilter),
+    BlocksObjectWithLesserPower {
+        blocker: ObjectFilter,
+        blocked: ObjectFilter,
+    },
     ThisBecomesBlocked,
     BecomesBlocked(ObjectFilter),
     ThisBecomesBlockedByObject(ObjectFilter),
+    BecomesBlockedByObjectWithLesserPower {
+        blocked: ObjectFilter,
+        blocker: ObjectFilter,
+    },
     ThisDies,
     ThisDiesOrIsExiled,
+    ThisDiesOrIsExiledWithSurface(crate::target::SourceReferenceSurface),
     ThisExiledFromBattlefieldDuringCostOfAbilityWithMarker {
         marker: String,
     },
@@ -287,6 +301,7 @@ pub(crate) enum TriggerSpec {
     IsDealtDamage(ObjectFilter),
     IsDealtCombatDamage(ObjectFilter),
     YouGainLife,
+    YouGainLifeCausedBy(ObjectFilter),
     YouGainLifeDuringTurn(PlayerFilter),
     PlayerLosesLife(PlayerFilter),
     PlayersLoseLifeOneOrMore(PlayerFilter),
@@ -386,6 +401,7 @@ pub(crate) enum TriggerSpec {
     },
     SpellCast {
         filter: Option<ObjectFilter>,
+        mana_source_filter: Option<ObjectFilter>,
         caster: PlayerFilter,
         timing: Option<ironsmith_core::TriggerTimingRestriction>,
         during_turn: Option<PlayerFilter>,
@@ -486,6 +502,7 @@ pub(crate) enum TriggerSpec {
     },
     WinsClash {
         player: PlayerFilter,
+        surface: ironsmith_core::ClashWinTriggerSurface,
     },
     Expend {
         player: PlayerFilter,
@@ -520,6 +537,7 @@ pub(crate) enum PredicateAst {
         player: PlayerAst,
         tag: TagKey,
         filter: ObjectFilter,
+        mode: ironsmith_core::TaggedObjectMatchMode,
     },
     PlayerTaggedObjectEnteredBattlefieldThisTurn {
         player: PlayerAst,
@@ -749,7 +767,9 @@ pub(crate) enum PredicateAst {
     PermanentLeftBattlefieldThisTurn,
     NonlandPermanentLeftBattlefieldThisTurn,
     SpellWasWarpedThisTurn,
-    PermanentLeftBattlefieldUnderYourControlThisTurn,
+    PermanentLeftBattlefieldUnderYourControlThisTurn {
+        surface: crate::PermanentLeftBattlefieldControlSurface,
+    },
     ObjectEnteredBattlefieldThisTurn(ObjectFilter),
     ObjectEnteredBattlefieldLastTurn(ObjectFilter),
     ObjectPutIntoGraveyardFromBattlefieldThisTurn(ObjectFilter),
@@ -826,6 +846,15 @@ pub(crate) enum TurnHistoryPredicateAst {
         player: PlayerAst,
         zone: Zone,
     },
+    PlayerCastSpellFromZoneThisTurn {
+        player: PlayerAst,
+        zone: Zone,
+    },
+    PlayerActivatedAbilityOfCardInZoneThisTurn {
+        player: PlayerAst,
+        zone: Zone,
+    },
+    PlayerVisitedAttractionThisTurn(PlayerAst),
     TriggeringPlayerAttackedControllerLastTurn,
     PlayerLostLifeLastTurn(PlayerAst),
     TriggeringPlayersTurn {
@@ -1066,7 +1095,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     ShuffleHandAndGraveyardIntoLibrary,
     ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary,
-    ShuffleGraveyardIntoLibrary,
+    ShuffleGraveyardIntoLibrary {
+        explicit_all_cards_from: bool,
+    },
     ReorderGraveyard,
     ChooseColor,
     ChooseCardType {
@@ -1124,6 +1155,9 @@ pub(crate) enum SubjectVerbActionAst {
         mana_type_source: crate::effects::ManaTypeSource,
     },
     AddManaColorsAmong {
+        filter: ObjectFilter,
+    },
+    AddOneManaAnyColorAmong {
         filter: ObjectFilter,
     },
     AddManaCommanderIdentity {
@@ -1223,11 +1257,18 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         duration: Until,
         condition: Option<ConditionExpr>,
+        /// Explicit object whose controller performs the control change.
+        ///
+        /// This preserves authored relational subjects such as "that
+        /// source's controller" without resolving them through the generic
+        /// last-object antecedent.
+        controller_reference: Option<ObjectRef>,
         source_reference_surface: Option<SourceReferenceSurface>,
     },
     RevealTop,
     ExileTopOfLibrary {
         count: Value,
+        surface: Option<ironsmith_core::ExileTopLibrarySurface>,
         tags: Vec<TagKey>,
         accumulated_tags: Vec<TagKey>,
         face_down: bool,
@@ -1282,6 +1323,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         all: bool,
         owner_library_destination: bool,
+        possessive_owner_subject: bool,
     },
     GrantProtectionChoice {
         target: TargetAst,
@@ -1355,6 +1397,15 @@ pub(crate) enum SubjectVerbActionAst {
     },
     CopySpell {
         target: TargetAst,
+        /// Authored kind of a stack-object back-reference. Tagged targets
+        /// retain identity but not whether the source text named a spell,
+        /// ability, or their union.
+        target_reference_kind: Option<crate::filter::StackObjectKind>,
+        /// The authored target back-reference was the pronoun `it`.
+        ///
+        /// This survives reference resolution independently of the semantic
+        /// target tag so compiled text can reproduce the original pronoun.
+        target_reference_pronoun: bool,
         /// Copy every matching stack object instead of choosing one match.
         ///
         /// This is intentionally part of the typed action rather than inferred
@@ -1367,6 +1418,9 @@ pub(crate) enum SubjectVerbActionAst {
         may_choose_new_targets: bool,
         choose_new_target_singular: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
+        /// Card types added by an explicit copy exception, such as
+        /// "except the copy is an artifact in addition to its other types."
+        added_card_types: Vec<CardType>,
     },
     CopySpellForEachTarget {
         target: TargetAst,
@@ -1397,6 +1451,7 @@ pub(crate) enum SubjectVerbActionAst {
         tag: TagKey,
         keep_tagged: TagKey,
         zone: Zone,
+        surface: ironsmith_core::LibraryRemainderSurface,
     },
     CastTagged {
         tag: TagKey,
@@ -1413,6 +1468,10 @@ pub(crate) enum SubjectVerbActionAst {
         without_paying_mana_cost: bool,
         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
         while_on_top_of_library: bool,
+        free_cast_from_current_zone: bool,
+        /// Use the source-exile event boundary instead of end of turn.
+        until_source_exiles_another: bool,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     },
     GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
         tag: TagKey,
@@ -1435,6 +1494,11 @@ pub(crate) enum SubjectVerbActionAst {
         /// Restrict the persistent permission to turns in which this counter
         /// type was put on the ability source.
         during_turns_counter_put_on_source: Option<crate::object::CounterType>,
+        /// Additional mana cost for nonland cards cast through this exact
+        /// permission.
+        spell_cost_increase: Option<ManaCost>,
+        /// Whether lands played through this exact permission enter tapped.
+        lands_enter_tapped: bool,
     },
     GrantPlayTaggedForAsLongAsYouControlSource {
         tag: TagKey,
@@ -1461,6 +1525,9 @@ pub(crate) enum SubjectVerbActionAst {
     },
     ExileUntilSourceLeaves {
         target: TargetAst,
+        /// A separately declared permanent whose departure ends the exile
+        /// duration. `None` means the ability source is the watcher.
+        leave_watcher: Option<TargetAst>,
         face_down: bool,
         all: bool,
         explicit_return_surface: bool,
@@ -1530,6 +1597,7 @@ pub(crate) enum SubjectVerbActionAst {
         type_retention_surface: Option<ironsmith_core::TypeRetentionSurface>,
         animation_pt_surface: Option<ironsmith_core::AnimationPtSurface>,
         animation_duration_surface: Option<ironsmith_core::AnimationDurationSurface>,
+        set_quantifier_surface: Option<ironsmith_core::SetQuantifierSurface>,
         duration: Until,
     },
     SetBasePower {
@@ -1556,6 +1624,7 @@ pub(crate) enum SubjectVerbActionAst {
         toughness: i32,
         target: TargetAst,
         duration: Until,
+        includes_this_way: bool,
     },
     AddCardTypes {
         target: TargetAst,
@@ -1634,6 +1703,7 @@ pub(crate) enum SubjectVerbActionAst {
     BecomeColorChoice {
         target: TargetAst,
         duration: Until,
+        allow_multiple: bool,
     },
     BecomeCopy {
         target: TargetAst,
@@ -1729,6 +1799,7 @@ pub(crate) enum SubjectVerbActionAst {
         restriction: crate::effect::Restriction,
         duration: crate::effect::Until,
         start: crate::effect::RestrictionStart,
+        duration_surface: crate::effect::RestrictionDurationSurface,
         condition: Option<crate::ConditionExpr>,
     },
     CreateTokenCopy {
@@ -1738,13 +1809,19 @@ pub(crate) enum SubjectVerbActionAst {
         enters_tapped: bool,
         enters_attacking: bool,
         attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
+        attack_target_player_only: bool,
         half_power_toughness_round_up: bool,
         has_haste: bool,
+        haste_followup_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         exile_at_end_of_combat: bool,
+        exile_at_end_of_combat_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         loses_soulbond: bool,
         sacrifice_at_next_end_step: bool,
+        sacrifice_at_next_end_step_reference_surface:
+            Option<crate::effect::TokenCopyReferenceSurface>,
         sacrifice_at_next_end_step_ability_text: Option<String>,
         exile_at_next_end_step: bool,
+        exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         next_end_step_player: PlayerFilter,
         set_colors: Option<ColorSet>,
         set_card_types: Option<Vec<CardType>>,
@@ -1762,13 +1839,19 @@ pub(crate) enum SubjectVerbActionAst {
         enters_tapped: bool,
         enters_attacking: bool,
         attack_target_player_or_planeswalker_controlled_by: Option<PlayerAst>,
+        attack_target_player_only: bool,
         half_power_toughness_round_up: bool,
         has_haste: bool,
+        haste_followup_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         exile_at_end_of_combat: bool,
+        exile_at_end_of_combat_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         loses_soulbond: bool,
         sacrifice_at_next_end_step: bool,
+        sacrifice_at_next_end_step_reference_surface:
+            Option<crate::effect::TokenCopyReferenceSurface>,
         sacrifice_at_next_end_step_ability_text: Option<String>,
         exile_at_next_end_step: bool,
+        exile_at_next_end_step_reference_surface: Option<crate::effect::TokenCopyReferenceSurface>,
         next_end_step_player: PlayerFilter,
         set_colors: Option<ColorSet>,
         set_card_types: Option<Vec<CardType>>,
@@ -1980,6 +2063,7 @@ pub(crate) enum SubjectVerbActionAst {
         target: TargetAst,
         counter_type: Option<CounterType>,
         up_to: bool,
+        distributed_across_all: bool,
         all_of_them: bool,
     },
     MoveAllCounters {
@@ -2082,6 +2166,9 @@ pub(crate) enum SubjectVerbActionAst {
         /// Typed value for a printed `{X}` payment whose X is defined by the
         /// surrounding Oracle sentence rather than chosen by the player.
         x_value: Option<Value>,
+        /// Inclusive typed maximum for a printed `{X}` payment whose X is
+        /// chosen by the paying player.
+        x_maximum: Option<Value>,
     },
     DoubleManaPool,
     EmptyManaPool,
@@ -2302,7 +2389,12 @@ impl std::fmt::Debug for SubjectVerbActionAst {
             Self::ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary => {
                 f.write_str("ShuffleHandGraveyardAndOwnedPermanentsIntoLibrary")
             }
-            Self::ShuffleGraveyardIntoLibrary => f.write_str("ShuffleGraveyardIntoLibrary"),
+            Self::ShuffleGraveyardIntoLibrary {
+                explicit_all_cards_from,
+            } => f
+                .debug_struct("ShuffleGraveyardIntoLibrary")
+                .field("explicit_all_cards_from", explicit_all_cards_from)
+                .finish(),
             Self::ReorderGraveyard => f.write_str("ReorderGraveyard"),
             Self::ChooseColor => f.write_str("ChooseColor"),
             Self::ChooseCardType { options } => {
@@ -2390,6 +2482,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::AddManaColorsAmong { filter } => f
                 .debug_struct("AddManaColorsAmong")
+                .field("filter", filter)
+                .finish(),
+            Self::AddOneManaAnyColorAmong { filter } => f
+                .debug_struct("AddOneManaAnyColorAmong")
                 .field("filter", filter)
                 .finish(),
             Self::AddManaCommanderIdentity { amount } => f
@@ -2552,23 +2648,27 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 duration,
                 condition,
+                controller_reference,
                 source_reference_surface,
             } => f
                 .debug_struct("GainControl")
                 .field("target", target)
                 .field("duration", duration)
                 .field("condition", condition)
+                .field("controller_reference", controller_reference)
                 .field("source_reference_surface", source_reference_surface)
                 .finish(),
             Self::RevealTop => f.write_str("RevealTop"),
             Self::ExileTopOfLibrary {
                 count,
+                surface,
                 tags,
                 accumulated_tags,
                 face_down,
             } => f
                 .debug_struct("ExileTopOfLibrary")
                 .field("count", count)
+                .field("surface", surface)
                 .field("tags", tags)
                 .field("accumulated_tags", accumulated_tags)
                 .field("face_down", face_down)
@@ -2631,11 +2731,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 all,
                 owner_library_destination,
+                possessive_owner_subject,
             } => f
                 .debug_struct("ShuffleObjectsIntoLibrary")
                 .field("target", target)
                 .field("all", all)
                 .field("owner_library_destination", owner_library_destination)
+                .field("possessive_owner_subject", possessive_owner_subject)
                 .finish(),
             Self::GrantProtectionChoice {
                 target,
@@ -2773,21 +2875,27 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::CopySpell {
                 target,
+                target_reference_kind,
+                target_reference_pronoun,
                 all_matches,
                 count,
                 player,
                 may_choose_new_targets,
                 choose_new_target_singular,
                 removed_supertypes,
+                added_card_types,
             } => f
                 .debug_struct("CopySpell")
                 .field("target", target)
+                .field("target_reference_kind", target_reference_kind)
+                .field("target_reference_pronoun", target_reference_pronoun)
                 .field("all_matches", all_matches)
                 .field("count", count)
                 .field("player", player)
                 .field("may_choose_new_targets", may_choose_new_targets)
                 .field("choose_new_target_singular", choose_new_target_singular)
                 .field("removed_supertypes", removed_supertypes)
+                .field("added_card_types", added_card_types)
                 .finish(),
             Self::CopySpellForEachTarget {
                 target,
@@ -2828,11 +2936,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 tag,
                 keep_tagged,
                 zone,
+                surface,
             } => f
                 .debug_struct("PutTaggedRemainderInZone")
                 .field("tag", tag)
                 .field("keep_tagged", keep_tagged)
                 .field("zone", zone)
+                .field("surface", surface)
                 .finish(),
             Self::CastTagged {
                 tag,
@@ -2857,6 +2967,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 without_paying_mana_cost,
                 allow_any_color_for_cast,
                 while_on_top_of_library,
+                free_cast_from_current_zone,
+                until_source_exiles_another,
+                surface,
             } => f
                 .debug_struct("GrantPlayTaggedUntilEndOfTurn")
                 .field("tag", tag)
@@ -2865,6 +2978,9 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("without_paying_mana_cost", without_paying_mana_cost)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
                 .field("while_on_top_of_library", while_on_top_of_library)
+                .field("free_cast_from_current_zone", free_cast_from_current_zone)
+                .field("until_source_exiles_another", until_source_exiles_another)
+                .field("surface", surface)
                 .finish(),
             Self::GrantTaggedSpellAlternativeCostPayLifeByManaValueUntilEndOfTurn {
                 tag,
@@ -2896,6 +3012,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 allow_any_color_for_cast,
                 filter,
                 during_turns_counter_put_on_source,
+                spell_cost_increase,
+                lands_enter_tapped,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsExiled")
                 .field("tag", tag)
@@ -2908,6 +3026,8 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                     "during_turns_counter_put_on_source",
                     during_turns_counter_put_on_source,
                 )
+                .field("spell_cost_increase", spell_cost_increase)
+                .field("lands_enter_tapped", lands_enter_tapped)
                 .finish(),
             Self::GrantPlayTaggedForAsLongAsYouControlSource {
                 tag,
@@ -2957,12 +3077,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .finish(),
             Self::ExileUntilSourceLeaves {
                 target,
+                leave_watcher,
                 face_down,
                 all,
                 explicit_return_surface,
             } => f
                 .debug_struct("ExileUntilSourceLeaves")
                 .field("target", target)
+                .field("leave_watcher", leave_watcher)
                 .field("face_down", face_down)
                 .field("all", all)
                 .field("explicit_return_surface", explicit_return_surface)
@@ -3087,6 +3209,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 type_retention_surface,
                 animation_pt_surface,
                 animation_duration_surface,
+                set_quantifier_surface,
                 duration,
             } => f
                 .debug_struct("BecomeBasePtCreature")
@@ -3103,6 +3226,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("type_retention_surface", type_retention_surface)
                 .field("animation_pt_surface", animation_pt_surface)
                 .field("animation_duration_surface", animation_duration_surface)
+                .field("set_quantifier_surface", set_quantifier_surface)
                 .field("duration", duration)
                 .finish(),
             Self::SetBasePower {
@@ -3148,12 +3272,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 toughness,
                 target,
                 duration,
+                includes_this_way,
             } => f
                 .debug_struct("PumpByLastEffect")
                 .field("power", power)
                 .field("toughness", toughness)
                 .field("target", target)
                 .field("duration", duration)
+                .field("includes_this_way", includes_this_way)
                 .finish(),
             Self::AddCardTypes {
                 target,
@@ -3291,10 +3417,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("duration", duration)
                 .field("excluded_subtypes", excluded_subtypes)
                 .finish(),
-            Self::BecomeColorChoice { target, duration } => f
+            Self::BecomeColorChoice {
+                target,
+                duration,
+                allow_multiple,
+            } => f
                 .debug_struct("BecomeColorChoice")
                 .field("target", target)
                 .field("duration", duration)
+                .field("allow_multiple", allow_multiple)
                 .finish(),
             Self::BecomeCopy {
                 target,
@@ -3474,12 +3605,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 restriction,
                 duration,
                 start,
+                duration_surface,
                 condition,
             } => f
                 .debug_struct("Cant")
                 .field("restriction", restriction)
                 .field("duration", duration)
                 .field("start", start)
+                .field("duration_surface", duration_surface)
                 .field("condition", condition)
                 .finish(),
             Self::CreateTokenCopy { .. } => f.write_str("CreateTokenCopy"),
@@ -3771,6 +3904,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 counter_type,
                 up_to,
+                distributed_across_all,
                 all_of_them,
             } => f
                 .debug_struct("RemoveUpToAnyCounters")
@@ -3778,6 +3912,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("target", target)
                 .field("counter_type", counter_type)
                 .field("up_to", up_to)
+                .field("distributed_across_all", distributed_across_all)
                 .field("all_of_them", all_of_them)
                 .finish(),
             Self::MoveAllCounters { from, to } => f
@@ -3923,10 +4058,15 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .debug_struct("PayAnyLife")
                 .field("min_amount", min_amount)
                 .finish(),
-            Self::PayMana { cost, x_value } => f
+            Self::PayMana {
+                cost,
+                x_value,
+                x_maximum,
+            } => f
                 .debug_struct("PayMana")
                 .field("cost", cost)
                 .field("x_value", x_value)
+                .field("x_maximum", x_maximum)
                 .finish(),
             Self::DoubleManaPool => f.write_str("DoubleManaPool"),
             Self::EmptyManaPool => f.write_str("EmptyManaPool"),

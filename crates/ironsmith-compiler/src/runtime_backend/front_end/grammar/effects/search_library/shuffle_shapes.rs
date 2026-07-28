@@ -27,10 +27,11 @@ pub(crate) enum SearchShuffleObjectReference {
     PluralTaggedReference,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct SearchShuffleObjectShape<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
-    pub(crate) owner_subject_target_tokens: Option<&'a [OwnedLexToken]>,
+    pub(crate) owner_subject_target_tokens: Option<Vec<OwnedLexToken>>,
+    pub(crate) possessive_owner_subject: bool,
     pub(crate) target_tokens: &'a [OwnedLexToken],
     pub(crate) trailing_tokens: &'a [OwnedLexToken],
     pub(crate) reference: SearchShuffleObjectReference,
@@ -115,6 +116,17 @@ fn owner_of_prefix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     primitives::phrase(&["the", "owner", "of"])
         .void()
         .parse_next(input)
+}
+
+fn possessive_owner_target_tokens(tokens: &[OwnedLexToken]) -> Option<Vec<OwnedLexToken>> {
+    let (owner, target_tokens) = tokens.split_last()?;
+    if owner.parser_text() != "owner" || target_tokens.is_empty() {
+        return None;
+    }
+    let normalized =
+        crate::runtime_backend::grammar::activation_restrictions::
+            parse_activation_possessive_owner_tokens(target_tokens);
+    (normalized != target_tokens).then_some(normalized)
 }
 
 fn singular_back_reference<'a>(input: &mut LexStream<'a>) -> WResult<()> {
@@ -232,8 +244,11 @@ pub(crate) fn parse_shuffle_object_shape_lexed(
     }
     let (shuffle_idx, (), after_shuffle) = primitives::find_prefix(clause, || shuffle_marker)?;
     let subject_tokens = trim_lexed_commas(&clause[..shuffle_idx]);
-    let owner_subject_target_tokens = primitives::parse_prefix(subject_tokens, owner_of_prefix)
-        .map(|(_, rest)| trim_lexed_commas(rest));
+    let owner_of_subject_target = primitives::parse_prefix(subject_tokens, owner_of_prefix)
+        .map(|(_, rest)| trim_lexed_commas(rest).to_vec());
+    let possessive_owner_subject = owner_of_subject_target.is_none();
+    let owner_subject_target_tokens =
+        owner_of_subject_target.or_else(|| possessive_owner_target_tokens(subject_tokens));
     if shuffle_idx > 3 && owner_subject_target_tokens.is_none() {
         return None;
     }
@@ -263,6 +278,7 @@ pub(crate) fn parse_shuffle_object_shape_lexed(
     Some(SearchShuffleObjectShape {
         subject_tokens,
         owner_subject_target_tokens,
+        possessive_owner_subject,
         target_tokens,
         trailing_tokens: trim_lexed_commas(after_library),
         reference,

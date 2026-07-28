@@ -462,31 +462,18 @@ pub(crate) fn lower_activation_cost_cst(
                 counter_type,
                 count,
                 filter,
-                source_equivalent,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
-                if *source_equivalent {
-                    costs.push(Cost::add_counters(*counter_type, *count));
-                    continue;
-                }
                 let mut filter = filter.clone();
                 apply_activation_cost_default_battlefield_scope(&mut filter);
                 if filter.source {
                     costs.push(Cost::add_counters(*counter_type, *count));
                     continue;
                 }
-                let tag = format!("put_counter_cost_{tap_tag_id}");
-                tap_tag_id += 1;
-                costs.push(Cost::validated_effect(Effect::choose_objects(
-                    filter,
-                    ChoiceCount::exactly(1),
-                    PlayerFilter::You,
-                    tag.clone(),
-                )));
                 costs.push(Cost::validated_effect(Effect::put_counters(
                     *counter_type,
                     *count as i32,
-                    crate::target::ChooseSpec::tagged(tag),
+                    crate::target::ChooseSpec::Object(filter),
                 )));
             }
             ActivationCostSegmentCst::RemoveCounters {
@@ -502,22 +489,26 @@ pub(crate) fn lower_activation_cost_cst(
                 filter,
                 display_x,
                 dynamic,
+                single_object,
             } => {
                 flush_pending_mana(&mut costs, &mut pending_mana_pips);
                 let mut filter = filter.clone();
                 apply_activation_cost_default_battlefield_scope(&mut filter);
-                let effect = if *dynamic {
-                    Effect::remove_dynamic_counters_among(
+                let mut remove = if *dynamic {
+                    crate::effects::RemoveAnyCountersAmongEffect::dynamic(
                         *count,
                         u32::MAX / 4,
                         filter,
-                        *counter_type,
                         *display_x,
                     )
                 } else {
-                    Effect::remove_any_counters_among(*count, filter, *counter_type)
-                };
-                costs.push(Cost::validated_effect(effect));
+                    crate::effects::RemoveAnyCountersAmongEffect::new(*count, filter)
+                }
+                .with_counter_type(*counter_type);
+                if *single_object {
+                    remove = remove.from_single_object();
+                }
+                costs.push(Cost::validated_effect(Effect::new(remove)));
             }
             ActivationCostSegmentCst::RemoveCountersDynamic {
                 counter_type,

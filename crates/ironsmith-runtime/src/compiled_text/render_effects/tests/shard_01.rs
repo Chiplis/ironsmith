@@ -266,6 +266,21 @@ pub(super) fn describe_effect_list_compacts_remove_counter_then_no_counters_tran
 }
 
 #[test]
+pub(super) fn mandatory_any_counter_removal_does_not_render_as_up_to() {
+    let effect = Effect::remove_any_counters(
+        1,
+        ChooseSpec::Target(Box::new(ChooseSpec::Object(
+            ObjectFilter::permanent().in_zone(Zone::Battlefield),
+        ))),
+    );
+
+    assert_eq!(
+        describe_effect(&effect),
+        "Remove a counter from target permanent"
+    );
+}
+
+#[test]
 pub(super) fn your_turn_followup_uses_an_independent_if_sentence() {
     let effects = vec![
         Effect::draw(7),
@@ -307,6 +322,139 @@ pub(super) fn describe_for_each_counter_then_untap_accepts_tagged_current_object
     assert_eq!(
         describe_put_counters_then_untap_them(&counters, &untap),
         Some("Put a +1/+1 counter on each creature you control. Untap those creatures".to_string())
+    );
+}
+
+#[test]
+pub(super) fn counter_then_untap_preserves_bare_plural_pronoun_surface() {
+    let tag = TagKey::from("counters_0");
+    let counters = Effect::new(crate::effects::ForEachObject::new(
+        ObjectFilter::creature(),
+        vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ChooseSpec::Iterated,
+        ))],
+    ))
+    .tag(tag.clone());
+    let mut untap_filter = ObjectFilter::default();
+    untap_filter.set_plural_pronoun_reference_surface(true);
+    untap_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let untap = Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::All(
+        untap_filter,
+    )));
+
+    assert_eq!(
+        describe_put_counters_then_untap_them(&counters, &untap),
+        Some("Put a +1/+1 counter on each creature. Untap them".to_string())
+    );
+}
+
+#[test]
+pub(super) fn targeted_counter_set_then_tag_matching_untap_uses_plural_pronoun() {
+    let countered_tag = TagKey::from("counters_0");
+    let matched_tag = TagKey::from("untapped_1");
+    let count = ChoiceCount::up_to(3);
+    let target = ChooseSpec::target(ChooseSpec::Object(
+        ObjectFilter::creature().in_zone(Zone::Battlefield),
+    ))
+    .with_count(count);
+    let counters = Effect::new(
+        crate::effects::PutCountersEffect::plus_one_counters(1, target).with_target_count(count),
+    )
+    .tag(countered_tag.clone());
+
+    let mut matching_filter = ObjectFilter::default();
+    matching_filter.set_plural_pronoun_reference_surface(true);
+    matching_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: countered_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let tag_matching = Effect::new(crate::effects::TagMatchingObjectsEffect::new(
+        matching_filter,
+        matched_tag.clone(),
+    ));
+    let mut untap_filter = ObjectFilter::default();
+    untap_filter.set_plural_pronoun_reference_surface(true);
+    untap_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: matched_tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let untap = Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::All(
+        untap_filter,
+    )));
+
+    assert_eq!(
+        describe_put_counters_then_tag_matching_untap_them(&counters, &tag_matching, &untap,),
+        Some("Put a +1/+1 counter on each of up to three target creatures. Untap them".to_string())
+    );
+}
+
+#[test]
+pub(super) fn describe_tapped_creature_counter_then_untap_keeps_clause_surface() {
+    let tag = TagKey::from("counters_0");
+    let counters = Effect::new(crate::effects::ForEachObject::new(
+        ObjectFilter::creature()
+            .controlled_by(PlayerFilter::You)
+            .tapped(),
+        vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ChooseSpec::Iterated,
+        ))],
+    ))
+    .tag(tag.clone());
+    let mut untap_filter = ObjectFilter::creature().in_zone(Zone::Battlefield);
+    untap_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag,
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        });
+    let untap = Effect::new(crate::effects::UntapEffect::with_spec(ChooseSpec::Object(
+        untap_filter,
+    )));
+
+    assert_eq!(
+        describe_put_counters_then_untap_them(&counters, &untap),
+        Some(
+            "Put a +1/+1 counter on each tapped creature you control, then untap them".to_string()
+        )
+    );
+}
+
+#[test]
+pub(super) fn describe_countered_creature_count_uses_exact_set_back_reference() {
+    let tag = TagKey::from("counters_0");
+    let counters = Effect::new(crate::effects::ForEachObject::new(
+        ObjectFilter::creature().controlled_by(PlayerFilter::You),
+        vec![Effect::new(crate::effects::PutCountersEffect::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ChooseSpec::Iterated,
+        ))],
+    ))
+    .tag(tag.clone());
+    let counted = ObjectFilter::creature().match_tagged(tag, TaggedOpbjectRelation::IsTaggedObject);
+    let gain = Effect::new(crate::effects::GainLifeEffect::you(
+        Value::Count(counted).with_surface_hint(ValueSurfaceHint::ForEach),
+    ));
+
+    assert_eq!(
+        describe_put_counters_then_gain_life_for_each_of_them(&counters, &gain),
+        Some(
+            "Put a +1/+1 counter on each creature you control. You gain 1 life for each of those creatures"
+                .to_string()
+        )
     );
 }
 
@@ -455,6 +603,64 @@ pub(super) fn adjacent_counter_then_keyword_for_exact_affected_tag_stays_sequent
 }
 
 #[test]
+pub(super) fn distributed_counter_result_uses_authored_plural_followup_subject() {
+    let affected = TagKey::from("counters_0");
+    let count = ChoiceCount::up_to(3);
+    let put = crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        Value::Fixed(3).with_surface_hint(ValueSurfaceHint::CounterGrantSeparateSentence),
+        ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().other())).with_count(count),
+    )
+    .with_target_count(count)
+    .with_distributed(true);
+    let put = Effect::new(put).tag(affected.clone());
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::trample(),
+        ),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(affected));
+    grant.set_quantifier_surface = Some(ironsmith_core::SetQuantifierSurface::They);
+
+    assert_eq!(
+        describe_put_counters_then_grant_same_filter(&[put, Effect::new(grant)]),
+        Some(
+            "Distribute three +1/+1 counters among up to three other target creatures. They gain trample until end of turn"
+                .to_string()
+        )
+    );
+}
+
+#[test]
+pub(super) fn distributed_counter_result_does_not_invent_plural_followup_subject() {
+    let affected = TagKey::from("counters_0");
+    let count = ChoiceCount::up_to(3);
+    let put = crate::effects::PutCountersEffect::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        Value::Fixed(3).with_surface_hint(ValueSurfaceHint::CounterGrantSeparateSentence),
+        ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature().other())).with_count(count),
+    )
+    .with_target_count(count)
+    .with_distributed(true);
+    let put = Effect::new(put).tag(affected.clone());
+    let mut grant = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::trample(),
+        ),
+        Until::EndOfTurn,
+    );
+    grant.target_spec = Some(ChooseSpec::Tagged(affected));
+
+    assert_eq!(
+        describe_put_counters_then_grant_same_filter(&[put, Effect::new(grant)]),
+        None
+    );
+}
+
+#[test]
 pub(super) fn coordinated_direct_counter_then_keyword_uses_the_authored_conjunction() {
     let triggering = TagKey::from("triggering");
     let put = Effect::new(crate::effects::PutCountersEffect::new(
@@ -586,6 +792,69 @@ pub(super) fn describe_effect_list_compacts_return_with_counter_and_static_follo
 }
 
 #[test]
+pub(super) fn describe_effect_list_compacts_inline_entry_counter_and_static_followups() {
+    let triggering = TagKey::from("triggering");
+    let returned = TagKey::from("returned_0");
+    let mut return_to_battlefield = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(triggering.clone()),
+        Zone::Battlefield,
+        false,
+    );
+    return_to_battlefield.battlefield_controller = crate::effects::BattlefieldController::Owner;
+    return_to_battlefield.enters_with_counters.push(
+        ironsmith_core::BattlefieldEntryCounterSpec::new(
+            crate::object::CounterType::PlusOnePlusOne,
+            1,
+            ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+        ),
+    );
+    let return_effect = Effect::new(return_to_battlefield).tag(returned.clone());
+
+    let mut grant_flying = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::flying(),
+        ),
+        Until::Forever,
+    );
+    grant_flying.target_spec = Some(ChooseSpec::Tagged(returned.clone()));
+
+    let mut add_angel = crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Source,
+        crate::continuous::Modification::AddSubtypes(vec![crate::types::Subtype::Angel]),
+        Until::Forever,
+    );
+    add_angel.target_spec = Some(ChooseSpec::Tagged(returned));
+
+    assert_eq!(
+        describe_effect_list(&[
+            Effect::tag_triggering_object(triggering),
+            return_effect,
+            Effect::new(grant_flying).tag(TagKey::from("granted_1")),
+            Effect::new(add_angel),
+        ]),
+        "Return that card to the battlefield under its owner's control with a +1/+1 counter on it. It has flying and is an Angel in addition to its other types"
+    );
+}
+
+#[test]
+fn inline_battlefield_entry_counter_surface_advances_past_the_counter() {
+    let counters = [ironsmith_core::BattlefieldEntryCounterSpec::new(
+        crate::object::CounterType::PlusOnePlusOne,
+        1,
+        ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+    )];
+
+    assert_eq!(
+        append_battlefield_entry_counter_surface(
+            "Return that card to the battlefield".to_string(),
+            &counters,
+        ),
+        "Return that card to the battlefield with a +1/+1 counter on it"
+    );
+}
+
+#[test]
 pub(super) fn describe_return_followups_track_the_returned_object_result_tag() {
     let triggering = TagKey::from("triggering");
     let returned = TagKey::from("returned_0");
@@ -681,7 +950,11 @@ pub(super) fn describe_effect_list_compacts_energy_pay_any_destroy_threshold() {
         CardType::Enchantment,
     ];
     destroy_filter.mana_value = Some(crate::filter::Comparison::LessThanOrEqualExpr(Box::new(
-        Value::EffectValue(crate::effect::EffectId(0)),
+        Value::EffectMetric {
+            effect_id: crate::effect::EffectId(0),
+            source: crate::effect::EffectMetricSource::Outcome,
+            metric: crate::effect::EffectMetric::Count,
+        },
     )));
 
     let effects = vec![
@@ -824,6 +1097,33 @@ pub(super) fn describe_effect_list_compacts_linked_same_source_damage() {
     );
 }
 
+#[test]
+pub(super) fn each_object_power_damage_renderer_uses_each_iterand_as_the_source() {
+    let source_filter = ObjectFilter::creature()
+        .controlled_by(PlayerFilter::You)
+        .with_power(crate::filter::Comparison::GreaterThanOrEqual(4));
+    let target_filter = ObjectFilter::permanent().match_tagged(
+        TagKey::from("targeted_0"),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
+    let damage = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        ChooseSpec::Iterated,
+        Effect::deal_damage(
+            Value::PowerOf(Box::new(ChooseSpec::Iterated)),
+            ChooseSpec::Object(target_filter),
+        ),
+    ));
+    let effect = Effect::new(crate::effects::ForEachObject::new(
+        source_filter,
+        vec![damage],
+    ));
+
+    assert_eq!(
+        describe_effect(&effect),
+        "Each creature with power 4 or greater you control deals damage equal to its power to that permanent"
+    );
+}
+
 pub(super) fn keyword_and_unblockable_effects(
     target_filter: ObjectFilter,
     ability: crate::static_abilities::StaticAbility,
@@ -874,7 +1174,7 @@ pub(super) fn describe_effect_list_compacts_lifelink_then_unblockable_power_limi
 
     assert_eq!(
         describe_effect_list(&effects),
-        "Target creature with power 2 or less you control gains lifelink until end of turn and can't be blocked this turn"
+        "Target creature you control with power 2 or less gains lifelink until end of turn and can't be blocked this turn"
     );
 }
 
@@ -904,6 +1204,7 @@ pub(super) fn describe_effect_list_compacts_targeted_haste_then_role_attachment(
             dynamic_x: false,
             up_to_x: false,
             random: false,
+            explicit_exactly: false,
         });
     let haste =
         Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
@@ -971,6 +1272,26 @@ pub(super) fn describe_effect_list_compacts_tagged_token_copy_then_sacrifice() {
             sacrifice
         ]),
         "Create a token that's a copy of it. Sacrifice that token"
+    );
+}
+
+#[test]
+pub(super) fn delayed_tagged_sacrifice_places_next_end_step_timing_last() {
+    let created = TagKey::from("created_0");
+    let sacrifice = Effect::new(crate::effects::SacrificeTargetEffect::new(
+        ChooseSpec::Tagged(created),
+    ));
+    let schedule = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+        crate::triggers::Trigger::beginning_of_end_step(PlayerFilter::Any),
+        vec![sacrifice],
+        true,
+        Vec::new(),
+        PlayerFilter::You,
+    ));
+
+    assert_eq!(
+        describe_effect(&schedule),
+        "Sacrifice it at the beginning of the next end step"
     );
 }
 
@@ -1911,6 +2232,88 @@ pub(super) fn describe_effect_list_compacts_multi_zone_aura_search_attach_condit
         Some(expected)
     );
     assert_eq!(describe_effect_list(&effects), expected);
+}
+
+#[test]
+pub(super) fn describe_effect_list_compacts_different_name_search_attachment_reference() {
+    let reference_tag = TagKey::from("same_name_reference");
+    let searched_tag = TagKey::from("searched_multi_zone");
+    let enchanted_player = PlayerFilter::TaggedPlayer(TagKey::from("enchanted"));
+
+    let mut reference_filter = ObjectFilter::default()
+        .with_subtype(Subtype::Curse)
+        .in_zone(Zone::Battlefield);
+    reference_filter.attached_to_player = Some(enchanted_player.clone());
+    let reference =
+        crate::effects::TagMatchingObjectsEffect::new(reference_filter, reference_tag.clone())
+            .in_zone(Zone::Battlefield);
+
+    let mut search_filter = ObjectFilter::default()
+        .with_subtype(Subtype::Curse)
+        .in_zone(Zone::Library);
+    search_filter.set_explicit_card_noun(true);
+    search_filter
+        .tagged_constraints
+        .push(TaggedObjectConstraint {
+            tag: reference_tag,
+            relation: TaggedOpbjectRelation::DifferentNameFromTagged,
+        });
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        search_filter,
+        ChoiceCount::exactly(1),
+        PlayerFilter::You,
+        searched_tag.clone(),
+    )
+    .in_zone(Zone::Library)
+    .as_search();
+    let move_and_attach = crate::effects::ForEachTaggedEffect::new(
+        searched_tag.clone(),
+        vec![
+            Effect::new(crate::effects::MoveToZoneEffect::new(
+                ChooseSpec::Tagged(searched_tag.clone()),
+                Zone::Battlefield,
+                false,
+            )),
+            Effect::new(crate::effects::AttachObjectsEffect::new(
+                ChooseSpec::All(ObjectFilter::tagged(searched_tag)),
+                ChooseSpec::Player(enchanted_player),
+            )),
+        ],
+    );
+    let move_with_id = Effect::with_id(0, Effect::new(move_and_attach));
+    let shuffle = Effect::if_then(
+        crate::effect::EffectId(0),
+        EffectPredicate::SearchedLibrary,
+        vec![Effect::new(crate::effects::ShuffleLibraryEffect::new(
+            PlayerFilter::You,
+        ))],
+    );
+
+    assert_eq!(
+        describe_effect_list(&[
+            Effect::new(reference),
+            Effect::new(choose),
+            move_with_id,
+            shuffle,
+        ]),
+        "Search your library for a Curse card that doesn't have the same name as a Curse attached to enchanted player, put it onto the battlefield attached to enchanted player, then shuffle"
+    );
+}
+
+#[test]
+pub(super) fn plural_token_gain_sentence_keeps_its_number_and_verb() {
+    let pluralized = pluralize_token_phrase("1/1 red Elemental creature token. It gains haste");
+    assert_eq!(
+        pluralized,
+        "1/1 red Elemental creature tokens. They gain haste"
+    );
+    assert_eq!(
+        split_token_ability_sentence(&pluralized),
+        (
+            "1/1 red Elemental creature tokens",
+            Some(". They gain haste".to_string())
+        )
+    );
 }
 
 #[test]
@@ -3294,6 +3697,27 @@ pub(super) fn draw_then_additional_draw_keeps_temporal_sequence_punctuation() {
 }
 
 #[test]
+pub(super) fn seat_relative_gain_control_renderer_preserves_the_explicit_player() {
+    let mut control = crate::effects::ApplyContinuousEffect::new_runtime(
+        crate::continuous::EffectTarget::Source,
+        crate::effects::continuous::RuntimeModification::ChangeControllerToPlayer(
+            PlayerFilter::PlayerToYourRight,
+        ),
+        Until::Forever,
+    );
+    control.target_spec = Some(ChooseSpec::Source.with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("this artifact".to_string()),
+        ),
+    ));
+
+    assert_eq!(
+        describe_effect(&Effect::new(control)),
+        "The player to your right gains control of this artifact"
+    );
+}
+
+#[test]
 pub(super) fn describe_effect_list_compacts_gain_control_then_untap_before_other_effects() {
     let controlled = TagKey::from("controlled");
     let mut control = crate::effects::ApplyContinuousEffect::new_runtime(
@@ -3609,6 +4033,74 @@ pub(super) fn describe_effect_list_keeps_target_modifications_and_exile_permissi
 }
 
 #[test]
+pub(super) fn coordinated_draw_pump_grant_requires_one_value_and_exact_affected_set() {
+    let chosen = ObjectFilter::creature()
+        .match_tagged("__chosen_objects__", TaggedOpbjectRelation::IsTaggedObject);
+    let difference = Value::absolute_difference(
+        Value::GreatestPower(chosen.clone()),
+        Value::LeastPower(chosen.clone()),
+    )
+    .with_surface_hint(ValueSurfaceHint::Difference)
+    .with_surface_hint(ValueSurfaceHint::WhereXIs);
+    let draw = Effect::new(crate::effects::DrawCardsEffect::new(
+        difference.clone(),
+        PlayerFilter::You,
+    ));
+    let pumped = TagKey::from("pumped_0");
+    let pump = Effect::new(crate::effects::ApplyContinuousEffect::new_runtime(
+        crate::continuous::EffectTarget::Filter(chosen),
+        crate::effects::continuous::RuntimeModification::ModifyPowerToughness {
+            power: difference.clone(),
+            toughness: difference.clone(),
+        },
+        Until::EndOfTurn,
+    ))
+    .tag(pumped.clone());
+    let grant = Effect::new(crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Filter(ObjectFilter::tagged(pumped)),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::trample(),
+        ),
+        Until::EndOfTurn,
+    ));
+    let effects = vec![draw.clone(), pump.clone(), grant];
+
+    assert_eq!(
+        describe_coordinated_draw_then_pump_and_grant_same_filter(&effects).as_deref(),
+        Some(
+            "You draw X cards and the chosen creatures get +X/+X and gain trample until end of turn, where X is the difference between the chosen creatures' powers"
+        )
+    );
+
+    let wrong_draw = Effect::new(crate::effects::DrawCardsEffect::new(
+        Value::Fixed(1),
+        PlayerFilter::You,
+    ));
+    assert!(
+        describe_coordinated_draw_then_pump_and_grant_same_filter(&[
+            wrong_draw,
+            pump.clone(),
+            effects[2].clone(),
+        ])
+        .is_none(),
+        "a separately valued draw must not be folded into the pump's X"
+    );
+
+    let wrong_grant = Effect::new(crate::effects::ApplyContinuousEffect::new(
+        crate::continuous::EffectTarget::Filter(ObjectFilter::tagged("different_set")),
+        crate::continuous::Modification::AddAbility(
+            crate::static_abilities::StaticAbility::trample(),
+        ),
+        Until::EndOfTurn,
+    ));
+    assert!(
+        describe_coordinated_draw_then_pump_and_grant_same_filter(&[draw, pump, wrong_grant,])
+            .is_none(),
+        "a grant for a different affected set must not inherit the pump subject"
+    );
+}
+
+#[test]
 pub(super) fn implicit_target_opponent_is_consumed_by_exile_top_action() {
     let target = Effect::new(crate::effects::TargetOnlyEffect::new(
         ChooseSpec::target_opponent(),
@@ -3664,6 +4156,20 @@ pub(super) fn describe_effect_list_compacts_exile_top_choose_one_then_play_chose
         Some(
             "Exile the top two cards of your library. Choose one of them. Until end of turn, you may play that card"
         )
+    );
+
+    let mut trailing_duration_effects = effects.clone();
+    let trailing_grant = trailing_duration_effects[2]
+        .downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        .expect("third effect should grant the chosen-card permission")
+        .clone()
+        .with_surface(
+            ironsmith_core::GrantPlayTaggedSurface::default().with_leading_duration(false),
+        );
+    trailing_duration_effects[2] = Effect::new(trailing_grant);
+    assert_eq!(
+        describe_effect_list(&trailing_duration_effects),
+        "Exile the top two cards of your library. Choose one of them. You may play that card this turn"
     );
 }
 
@@ -3844,6 +4350,18 @@ pub(super) fn describe_shuffle_objects_into_library_uses_owner_and_graveyard_wor
     assert_eq!(
         describe_effect(&owner_shuffle),
         "The owner of target artifact an opponent controls shuffles it into their library"
+    );
+
+    let possessive_owner_shuffle = Effect::new(
+        crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+            ChooseSpec::target(ChooseSpec::creature()),
+            PlayerFilter::OwnerOf(crate::filter::ObjectRef::Target),
+        )
+        .with_possessive_owner_subject(),
+    );
+    assert_eq!(
+        describe_effect(&possessive_owner_shuffle),
+        "Target creature's owner shuffles it into their library"
     );
 
     let graveyard_target = ChooseSpec::target(ChooseSpec::Object(

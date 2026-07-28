@@ -11,6 +11,7 @@ enum ExileOwnerSurface {
     You,
     Their,
     ThatPlayer,
+    DefendingPlayer,
     TargetPlayer,
     TargetOpponent,
     ItsController,
@@ -24,17 +25,30 @@ pub(crate) struct ParsedExileOwnerPrefix {
     pub(crate) consumed_words: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ExileOnePerCardTypeFromGraveyardShape {
+    pub(crate) owner: PlayerAst,
+}
+
 fn player_owner_surface(input: &mut LexStream<'_>) -> WResult<ExileOwnerSurface> {
     alt((
-        primitives::phrase(&["target", "opponent's"]).value(ExileOwnerSurface::TargetOpponent),
-        primitives::phrase(&["target", "opponents"]).value(ExileOwnerSurface::TargetOpponent),
-        primitives::phrase(&["target", "opponent"]).value(ExileOwnerSurface::TargetOpponent),
-        primitives::phrase(&["target", "player's"]).value(ExileOwnerSurface::TargetPlayer),
-        primitives::phrase(&["target", "players"]).value(ExileOwnerSurface::TargetPlayer),
-        primitives::phrase(&["target", "player"]).value(ExileOwnerSurface::TargetPlayer),
-        primitives::phrase(&["that", "player's"]).value(ExileOwnerSurface::ThatPlayer),
-        primitives::phrase(&["that", "players"]).value(ExileOwnerSurface::ThatPlayer),
-        primitives::phrase(&["that", "player"]).value(ExileOwnerSurface::ThatPlayer),
+        alt((
+            primitives::phrase(&["defending", "player's"])
+                .value(ExileOwnerSurface::DefendingPlayer),
+            primitives::phrase(&["defending", "players"]).value(ExileOwnerSurface::DefendingPlayer),
+            primitives::phrase(&["defending", "player"]).value(ExileOwnerSurface::DefendingPlayer),
+            primitives::phrase(&["target", "opponent's"]).value(ExileOwnerSurface::TargetOpponent),
+            primitives::phrase(&["target", "opponents"]).value(ExileOwnerSurface::TargetOpponent),
+            primitives::phrase(&["target", "opponent"]).value(ExileOwnerSurface::TargetOpponent),
+            primitives::phrase(&["target", "player's"]).value(ExileOwnerSurface::TargetPlayer),
+            primitives::phrase(&["target", "players"]).value(ExileOwnerSurface::TargetPlayer),
+            primitives::phrase(&["target", "player"]).value(ExileOwnerSurface::TargetPlayer),
+        )),
+        alt((
+            primitives::phrase(&["that", "player's"]).value(ExileOwnerSurface::ThatPlayer),
+            primitives::phrase(&["that", "players"]).value(ExileOwnerSurface::ThatPlayer),
+            primitives::phrase(&["that", "player"]).value(ExileOwnerSurface::ThatPlayer),
+        )),
     ))
     .parse_next(input)
 }
@@ -78,12 +92,32 @@ fn direct_owner(surface: ExileOwnerSurface) -> Option<PlayerAst> {
     match surface {
         ExileOwnerSurface::You => Some(PlayerAst::You),
         ExileOwnerSurface::ThatPlayer => Some(PlayerAst::That),
+        ExileOwnerSurface::DefendingPlayer => Some(PlayerAst::Defending),
         ExileOwnerSurface::TargetPlayer => Some(PlayerAst::Target),
         ExileOwnerSurface::TargetOpponent => Some(PlayerAst::TargetOpponent),
         ExileOwnerSurface::ItsController => Some(PlayerAst::ItsController),
         ExileOwnerSurface::ItsOwner => Some(PlayerAst::ItsOwner),
         ExileOwnerSurface::Their | ExileOwnerSurface::HisOrHer => None,
     }
+}
+
+pub(crate) fn parse_exile_one_per_card_type_from_graveyard_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<ExileOnePerCardTypeFromGraveyardShape> {
+    let ((), rest) = primitives::parse_prefix(
+        tokens,
+        primitives::phrase(&[
+            "up", "to", "one", "card", "of", "each", "card", "type", "from",
+        ]),
+    )?;
+    let ((owner, ()), rest) =
+        primitives::parse_prefix(rest, (exile_owner_surface, graveyard_word))?;
+    if TokenWordView::new(rest).len() != 0 {
+        return None;
+    }
+    Some(ExileOnePerCardTypeFromGraveyardShape {
+        owner: direct_owner(owner)?,
+    })
 }
 
 pub(crate) fn parse_exile_graveyard_owner_shape(
@@ -161,5 +195,11 @@ mod tests {
         assert!(is_each_opponent_library_shape(&lex(
             "each opponent's library"
         )));
+
+        let each_type = parse_exile_one_per_card_type_from_graveyard_shape(&lex(
+            "up to one card of each card type from defending player's graveyard",
+        ))
+        .unwrap();
+        assert_eq!(each_type.owner, PlayerAst::Defending);
     }
 }

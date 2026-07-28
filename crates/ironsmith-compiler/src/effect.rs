@@ -2,11 +2,13 @@ use crate::effects::{
     ChooseModeEffect, ConditionalEffect, DealDamageEffect, HauntExileEffect, IfEffect,
     PutCountersEffect, SearchLibrarySlotsEffect, VillainousChoiceEffect, WithIdEffect,
 };
+pub use ironsmith_core::effect::RestrictionDurationSurface;
 pub use ironsmith_core::{
     ChoiceAggregateConstraint, ChoiceAggregateMetric, ChoiceCount, Comparison, Condition,
     ConditionalModeRange, DelayedTriggerSpec, EffectId, EffectMode as CoreEffectMode,
     EffectPredicate, EventValueSpec, ManaSpendPermission, Restriction, RestrictionStart,
-    SearchResultReferenceSurface, SearchSelectionMode, Until, Value, ValueComparisonOperator,
+    SearchResultReferenceSurface, SearchSelectionMode, TokenCopyReferenceSurface, Until, Value,
+    ValueComparisonOperator,
 };
 use std::any::Any;
 use std::fmt::Debug;
@@ -336,6 +338,17 @@ impl Effect {
             }
             return;
         }
+        if let Some(correlated) =
+            self.downcast_ref::<crate::effects::ForEachObjectCorrelatedResultEffect>()
+        {
+            for effect in &correlated.producer_effects {
+                visitor(effect);
+            }
+            for effect in &correlated.consumer_effects {
+                visitor(effect);
+            }
+            return;
+        }
         if let Some(for_each_tagged) =
             self.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>()
         {
@@ -504,6 +517,9 @@ impl Effect {
                 .is_some()
             || self
                 .downcast_ref::<crate::effects::mana::AddManaOfImprintedColorsEffect>()
+                .is_some()
+            || self
+                .downcast_ref::<crate::effects::mana::AddOneManaOfAnyColorAmongEffect>()
                 .is_some()
             || self
                 .downcast_ref::<crate::effects::DoubleManaPoolEffect>()
@@ -770,6 +786,15 @@ impl Effect {
         ))
     }
 
+    pub fn remove_any_counters(
+        amount: impl Into<Value>,
+        target: crate::target::ChooseSpec,
+    ) -> Self {
+        Self::new(crate::effects::RemoveUpToAnyCountersEffect::exact(
+            amount, target,
+        ))
+    }
+
     pub fn search_library_to_hand(filter: crate::target::ObjectFilter, optional: bool) -> Self {
         let mut effect = crate::effects::SearchLibraryEffect::to_hand(
             filter,
@@ -1026,6 +1051,7 @@ impl Effect {
             player,
             effects,
             cost: crate::cost::TotalCost::mana(crate::mana::ManaCost::from_symbols(mana)),
+            leading_surface: false,
         })
     }
 
@@ -1038,6 +1064,7 @@ impl Effect {
             player,
             effects,
             cost,
+            leading_surface: false,
         })
     }
 
@@ -1414,6 +1441,7 @@ impl Effect {
             player,
             effects: vec![Self::counter(target)],
             cost,
+            leading_surface: false,
         })
     }
 
@@ -2256,6 +2284,18 @@ impl Effect {
         ))
     }
 
+    pub fn shuffle_graveyard_into_library_player_with_surface(
+        player: crate::target::PlayerFilter,
+        explicit_all_cards_from: bool,
+    ) -> Self {
+        let effect = if explicit_all_cards_from {
+            crate::effects::ShuffleGraveyardIntoLibraryEffect::with_all_cards_from_surface(player)
+        } else {
+            crate::effects::ShuffleGraveyardIntoLibraryEffect::new(player)
+        };
+        Self::new(effect)
+    }
+
     pub fn reorder_graveyard_player(player: crate::target::PlayerFilter) -> Self {
         Self::new(crate::effects::ReorderGraveyardEffect::new(player))
     }
@@ -2372,6 +2412,7 @@ impl Effect {
             player,
             effects,
             cost,
+            leading_surface: false,
         })
     }
 

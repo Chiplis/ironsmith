@@ -26,6 +26,22 @@ pub(crate) struct PreparedEtbEntry {
     pub(crate) choices: PreparedEtbChoices,
 }
 
+fn named_color_creature_type_option(
+    option: &str,
+) -> Option<(crate::color::Color, crate::types::Subtype)> {
+    let mut words = option.split_whitespace();
+    let color = crate::color::Color::from_name(&words.next()?.to_ascii_lowercase())?;
+    let subtype_name = words.collect::<Vec<_>>().join(" ");
+    if subtype_name.is_empty() {
+        return None;
+    }
+    let subtype = crate::types::Subtype::all_creature_types()
+        .iter()
+        .copied()
+        .find(|subtype| subtype.to_string().eq_ignore_ascii_case(&subtype_name))?;
+    Some((color, subtype))
+}
+
 fn as_enters_effect_program_from_ability(
     ability: &crate::ability::Ability,
 ) -> Option<(crate::resolution::ResolutionProgram, bool)> {
@@ -35,12 +51,33 @@ fn as_enters_effect_program_from_ability(
     let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
         program,
         also_turns_face_up,
+        transforms_into,
         ..
     } = &static_ability.compiled_model()?.payload
     else {
         return None;
     };
+    if transforms_into.is_some() {
+        return None;
+    }
     Some((program.clone(), *also_turns_face_up))
+}
+
+fn as_transforms_effect_program_from_ability(
+    ability: &crate::ability::Ability,
+) -> Option<crate::resolution::ResolutionProgram> {
+    let crate::ability::AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let ironsmith_core::StaticAbilityPayload::AsEntersEffectProgram {
+        program,
+        transforms_into: Some(_),
+        ..
+    } = &static_ability.compiled_model()?.payload
+    else {
+        return None;
+    };
+    Some(program.clone())
 }
 
 #[derive(Debug, Clone, Default)]
@@ -85,21 +122,13 @@ impl GameState {
         })
     }
 
-    fn execute_as_enters_effect_programs_from_abilities(
+    fn execute_immediate_effect_programs(
         &mut self,
         source: ObjectId,
         controller: PlayerId,
-        abilities: &[crate::ability::Ability],
-        turns_face_up_only: bool,
+        programs: Vec<crate::resolution::ResolutionProgram>,
         decision_maker: &mut dyn crate::decision::DecisionMaker,
     ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
-        let programs = abilities
-            .iter()
-            .filter_map(as_enters_effect_program_from_ability)
-            .filter_map(|(program, also_turns_face_up)| {
-                (!turns_face_up_only || also_turns_face_up).then_some(program)
-            })
-            .collect::<Vec<_>>();
         if programs.is_empty() {
             return Ok(AsEntersProgramExecution::default());
         }
@@ -139,6 +168,49 @@ impl GameState {
             }
         }
         Ok(execution)
+    }
+
+    fn execute_as_enters_effect_programs_from_abilities(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        abilities: &[crate::ability::Ability],
+        turns_face_up_only: bool,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<AsEntersProgramExecution, crate::game_loop::GameLoopError> {
+        let programs = abilities
+            .iter()
+            .filter_map(as_enters_effect_program_from_ability)
+            .filter_map(|(program, also_turns_face_up)| {
+                (!turns_face_up_only || also_turns_face_up).then_some(program)
+            })
+            .collect::<Vec<_>>();
+        self.execute_immediate_effect_programs(source, controller, programs, decision_maker)
+    }
+
+    pub(crate) fn execute_as_transforms_effect_programs(
+        &mut self,
+        source: ObjectId,
+        controller: PlayerId,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Result<(), crate::game_loop::GameLoopError> {
+        let abilities = self
+            .object(source)
+            .map(|object| object.abilities_vec())
+            .unwrap_or_default();
+        let programs = abilities
+            .iter()
+            .filter_map(as_transforms_effect_program_from_ability)
+            .collect::<Vec<_>>();
+        let execution =
+            self.execute_immediate_effect_programs(source, controller, programs, decision_maker)?;
+        if let Some(object) = self.object_mut(source) {
+            merge_retained_tagged_objects(
+                &mut object.cast_tagged_objects,
+                &execution.tagged_objects,
+            );
+        }
+        Ok(())
     }
 
     pub(crate) fn execute_as_enters_effect_programs_for_turn_face_up(
@@ -811,6 +883,28 @@ impl GameState {
         )
     }
 
+    /// Move an object with ordinary ETB replacement processing while also
+    /// applying a linked play-permission rule that makes this particular
+    /// battlefield entry tapped.
+    pub(crate) fn move_object_with_etb_processing_with_dm_and_forced_tapped(
+        &mut self,
+        old_id: ObjectId,
+        new_zone: Zone,
+        decision_maker: &mut dyn crate::decision::DecisionMaker,
+    ) -> Option<EntersResult> {
+        self.move_object_with_etb_processing_with_dm_and_cause_internal(
+            old_id,
+            new_zone,
+            crate::events::cause::EventCause::effect(),
+            decision_maker,
+            true,
+            Vec::new(),
+            None,
+            true,
+            None,
+        )
+    }
+
     /// Move an object to the battlefield with ETB replacement processing and an explicit cause.
     pub fn move_object_with_etb_processing_with_dm_and_cause(
         &mut self,
@@ -827,6 +921,7 @@ impl GameState {
             true,
             Vec::new(),
             None,
+            false,
             None,
         )
     }
@@ -846,6 +941,7 @@ impl GameState {
             true,
             initial_enters_with_counters,
             None,
+            false,
             None,
         )
     }
@@ -866,6 +962,7 @@ impl GameState {
             true,
             initial_enters_with_counters,
             entering_controller,
+            false,
             None,
         )
     }
@@ -884,6 +981,7 @@ impl GameState {
             false,
             Vec::new(),
             None,
+            false,
             None,
         )
     }
@@ -1356,6 +1454,10 @@ impl GameState {
                         "land" => Some(crate::types::CardType::Land),
                         _ => None,
                     };
+                    if let Some((color, subtype)) = named_color_creature_type_option(&option) {
+                        choices.chosen_color = Some(color);
+                        choices.chosen_creature_type = Some(subtype);
+                    }
                     choices.chosen_named_option = Some(option);
                 }
             }
@@ -1432,6 +1534,7 @@ impl GameState {
             true,
             Vec::new(),
             entering_controller,
+            false,
             Some(prepared_entry),
         )
     }
@@ -1445,6 +1548,7 @@ impl GameState {
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
         entering_controller: Option<PlayerId>,
+        force_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
     ) -> Option<EntersResult> {
         if new_zone == Zone::Battlefield && self.card_cannot_enter_battlefield(old_id) {
@@ -1460,6 +1564,7 @@ impl GameState {
                 choose_aura_attachment,
                 initial_enters_with_counters,
                 entering_controller,
+                force_enters_tapped,
                 prepared_entry,
             );
             if decision_maker.awaiting_choice() {
@@ -1477,6 +1582,7 @@ impl GameState {
             choose_aura_attachment,
             initial_enters_with_counters,
             entering_controller,
+            force_enters_tapped,
             prepared_entry,
         )
     }
@@ -1490,6 +1596,7 @@ impl GameState {
         choose_aura_attachment: bool,
         initial_enters_with_counters: Vec<(crate::object::CounterType, u32)>,
         entering_controller: Option<PlayerId>,
+        force_enters_tapped: bool,
         prepared_entry: Option<PreparedEtbEntry>,
     ) -> Option<EntersResult> {
         let old_zone = self.object(old_id)?.zone;
@@ -1504,7 +1611,7 @@ impl GameState {
         }
 
         // Process through ETB replacement effects
-        let prepared_entry = if let Some(prepared_entry) = prepared_entry {
+        let mut prepared_entry = if let Some(prepared_entry) = prepared_entry {
             prepared_entry
         } else {
             let result = crate::events::processing::process_etb_with_event_and_dm_with_initial_counters_and_controller(
@@ -1522,6 +1629,9 @@ impl GameState {
                 decision_maker,
             )?
         };
+        if force_enters_tapped {
+            prepared_entry.result.enters_tapped = true;
+        }
         let PreparedEtbEntry { result, choices } = prepared_entry;
 
         // If ETB was prevented or redirected to a different zone
@@ -3895,5 +4005,41 @@ impl GameState {
 
     pub fn damage_persists_on(&self, object: ObjectId) -> bool {
         self.battlefield_flags.damage_persists.contains(&object)
+    }
+}
+
+#[cfg(test)]
+mod chosen_option_tests {
+    use super::*;
+
+    #[test]
+    fn named_color_creature_type_option_preserves_the_pair() {
+        assert_eq!(
+            named_color_creature_type_option("blue Camarid"),
+            Some((crate::color::Color::Blue, crate::types::Subtype::Camarid))
+        );
+        assert_eq!(named_color_creature_type_option("blue artifact"), None);
+    }
+
+    #[test]
+    fn linked_play_permission_can_force_one_land_entry_tapped() {
+        let mut game = GameState::new(vec!["Alice".to_string()], 20);
+        let alice = crate::ids::PlayerId::from_index(0);
+        let land = crate::card::CardBuilder::new(crate::ids::CardId::new(), "Exiled Land")
+            .card_types(vec![crate::types::CardType::Land])
+            .build();
+        let exiled_id = game.create_object_from_card(&land, alice, Zone::Exile);
+        let mut decisions = crate::decision::SelectFirstDecisionMaker;
+
+        let result = game
+            .move_object_with_etb_processing_with_dm_and_forced_tapped(
+                exiled_id,
+                Zone::Battlefield,
+                &mut decisions,
+            )
+            .expect("land should enter the battlefield");
+
+        assert!(result.enters_tapped);
+        assert!(game.is_tapped(result.new_id));
     }
 }

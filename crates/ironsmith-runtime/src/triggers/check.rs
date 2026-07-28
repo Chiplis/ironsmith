@@ -402,6 +402,8 @@ pub struct DelayedTrigger {
     pub expires_before_controller_turn_after: Option<u32>,
     /// Whether this delayed trigger expires as the current combat ends.
     pub expires_at_end_of_combat: bool,
+    /// Collection-scoped lifetime captured when the trigger was registered.
+    pub while_any_tagged_object_in_zone: Option<(crate::tag::TagKey, crate::zone::Zone)>,
     /// Specific objects this trigger targets.
     pub target_objects: Vec<ObjectId>,
     /// Optional source object to use for the triggered ability when it fires.
@@ -1287,6 +1289,7 @@ pub(crate) fn check_triggers_batch(
                     | EventKind::BeginningOfCombat
                     | EventKind::BeginningOfPostcombatMainPhase
                     | EventKind::BeginningOfEndStep
+                    | EventKind::BeginningOfCleanupStep
             )
         })
     {
@@ -1349,6 +1352,7 @@ fn trigger_event_can_have_synthetic_triggers(trigger_event: &TriggerEvent) -> bo
             | crate::events::traits::EventKind::LifeLoss
             | crate::events::traits::EventKind::Damage
             | crate::events::traits::EventKind::BeginningOfEndStep
+            | crate::events::traits::EventKind::BeginningOfCleanupStep
             | crate::events::traits::EventKind::BeginningOfUpkeep
             | crate::events::traits::EventKind::CreatureAttacked
             | crate::events::traits::EventKind::CreatureBlocked
@@ -1617,15 +1621,15 @@ fn tagged_objects_for_matched_trigger(
     game: &GameState,
     trigger_event: &TriggerEvent,
     trigger: &Trigger,
+    ctx: &TriggerContext<'_>,
 ) -> HashMap<crate::tag::TagKey, Vec<ObjectSnapshot>> {
     let mut tagged = tagged_objects_for_trigger_event_impl(
         game,
         trigger_event,
         trigger_requires_other_attacker_tag(trigger),
     );
-    if trigger
-        .downcast_ref::<crate::triggers::AttacksTrigger>()
-        .is_some_and(|attacks| attacks.one_or_more && attacks.max_total_attackers.is_some())
+    if let Some(attacks) = trigger.downcast_ref::<crate::triggers::AttacksTrigger>()
+        && attacks.one_or_more
         && trigger_event
             .downcast::<crate::events::combat::CreatureAttackedEvent>()
             .is_some()
@@ -1635,9 +1639,11 @@ fn tagged_objects_for_matched_trigger(
             .as_ref()
             .into_iter()
             .flat_map(|combat| combat.attackers.iter())
+            .filter(|attacker| attacks.matches_attacker_info(attacker, ctx))
             .filter_map(|attacker| {
-                game.object(attacker.creature)
-                    .map(|object| ObjectSnapshot::from_object(object, game))
+                game.object(attacker.creature).map(|object| {
+                    ObjectSnapshot::from_object_with_calculated_characteristics(object, game)
+                })
             })
             .collect::<Vec<_>>();
         if !attackers.is_empty() {
@@ -1916,6 +1922,7 @@ fn check_battlefield_trigger_subscriber(
             game,
             trigger_event,
             &trigger_ability.trigger,
+            &ctx,
         ),
         source_kind: TriggeredAbilitySourceKind::Object,
         trigger_identity,
@@ -2325,6 +2332,7 @@ fn check_triggers_with_view_and_registry(
                         game,
                         trigger_event,
                         &trigger_ability.trigger,
+                        &ctx,
                     ),
                     source_kind: TriggeredAbilitySourceKind::Object,
                     trigger_identity,
@@ -2403,6 +2411,7 @@ fn check_triggers_with_view_and_registry(
                         game,
                         trigger_event,
                         &trigger_ability.trigger,
+                        &ctx,
                     ),
                     source_kind: TriggeredAbilitySourceKind::Object,
                     trigger_identity,
@@ -2829,11 +2838,115 @@ pub fn check_state_triggers(
     (triggered, active)
 }
 
+/// Consume delayed instructions timed to the turn-based permanent-untap
+/// action. Unlike triggered abilities, these are returned to the turn runner
+/// for immediate execution without using the stack.
+pub(crate) fn take_delayed_untap_step_actions(
+    game: &mut GameState,
+    trigger_event: &TriggerEvent,
+) -> Vec<DelayedTrigger> {
+    if trigger_event.kind() != crate::events::EventKind::PermanentsUntapStep
+        || game.effect_store.delayed_triggers.is_empty()
+    {
+        return Vec::new();
+    }
+
+    let delayed_snapshot = game.effect_store.delayed_triggers.clone();
+    let mut actions = Vec::new();
+    let mut to_remove = Vec::new();
+
+    for (idx, delayed) in delayed_snapshot.iter().enumerate() {
+        let Some(untap) = delayed
+            .trigger
+            .downcast_ref::<crate::triggers::AsPermanentsUntapTrigger>()
+        else {
+            continue;
+        };
+        if delayed
+            .expires_at_turn
+            .is_some_and(|max_turn| game.turn.turn_number > max_turn)
+            || delayed
+                .expires_before_controller_turn_after
+                .is_some_and(|anchor| {
+                    game.turn.turn_number > anchor && game.is_active_player(delayed.controller)
+                })
+        {
+            to_remove.push(idx);
+            continue;
+        }
+        if let Some((tag, zone)) = &delayed.while_any_tagged_object_in_zone
+            && !crate::effects::delayed::trigger_queue::tagged_collection_has_object_in_zone(
+                game,
+                &delayed.tagged_objects,
+                tag,
+                *zone,
+            )
+        {
+            to_remove.push(idx);
+            continue;
+        }
+        if delayed
+            .not_before_turn
+            .is_some_and(|min_turn| game.turn.turn_number < min_turn)
+        {
+            continue;
+        }
+
+        let source = delayed
+            .ability_source_stable_id
+            .and_then(|stable_id| game.find_object_by_stable_id(stable_id))
+            .or(delayed.ability_source)
+            .or_else(|| delayed.target_objects.first().copied())
+            .unwrap_or_else(|| ObjectId::from_raw(0));
+        let ctx = TriggerContext::for_delayed_source(
+            source,
+            delayed.controller,
+            game,
+            &delayed.tagged_objects,
+        );
+        if !untap.timing_matches(trigger_event, &ctx) {
+            continue;
+        }
+
+        // "Next untap step" has now occurred even if the source is no longer
+        // one of that player's permanents. Consume the registration either
+        // way, but execute only when the complete matcher still applies.
+        if delayed.one_shot {
+            to_remove.push(idx);
+        }
+        if delayed.trigger.matches(trigger_event, &ctx) {
+            actions.push(delayed.clone());
+        }
+    }
+
+    if !to_remove.is_empty() {
+        to_remove.sort_unstable();
+        to_remove.dedup();
+        let mut remove_iter = to_remove.into_iter().peekable();
+        let mut idx = 0usize;
+        game.effect_store.delayed_triggers.retain(|_| {
+            let remove = remove_iter.peek().is_some_and(|next| *next == idx);
+            if remove {
+                remove_iter.next();
+            }
+            idx += 1;
+            !remove
+        });
+    }
+
+    actions
+}
+
 /// Check delayed triggers against an event and return triggered entries.
 pub fn check_delayed_triggers(
     game: &mut GameState,
     trigger_event: &TriggerEvent,
 ) -> Vec<TriggeredAbilityEntry> {
+    // The turn runner consumes these instructions directly before untapping.
+    // They are not triggered abilities and must never be queued on the stack.
+    if trigger_event.kind() == crate::events::EventKind::PermanentsUntapStep {
+        return Vec::new();
+    }
     if game.effect_store.delayed_triggers.is_empty() {
         return Vec::new();
     }
@@ -2864,6 +2977,17 @@ pub fn check_delayed_triggers(
         }
         if delayed.expires_at_end_of_combat
             && trigger_event.kind() == crate::events::EventKind::EndOfCombat
+        {
+            to_remove.push(idx);
+            continue;
+        }
+        if let Some((tag, zone)) = &delayed.while_any_tagged_object_in_zone
+            && !crate::effects::delayed::trigger_queue::tagged_collection_has_object_in_zone(
+                game,
+                &delayed.tagged_objects,
+                tag,
+                *zone,
+            )
         {
             to_remove.push(idx);
             continue;
@@ -3083,6 +3207,7 @@ fn check_triggers_in_zone(
                     game,
                     trigger_event,
                     &trigger_ability.trigger,
+                    &ctx,
                 ),
                 source_kind: TriggeredAbilitySourceKind::Object,
                 trigger_identity,
@@ -3107,6 +3232,12 @@ pub fn player_filter_matches_with_context(
         PlayerFilter::You => player == controller,
         PlayerFilter::NotYou => player != controller,
         PlayerFilter::Opponent => game.are_opponents(controller, player),
+        PlayerFilter::PlayerToYourLeft => {
+            game.closest_in_game_player_to_left_matching(controller, |_| true) == Some(player)
+        }
+        PlayerFilter::PlayerToYourRight => {
+            game.closest_in_game_player_to_right_matching(controller, |_| true) == Some(player)
+        }
         PlayerFilter::Target(_) | PlayerFilter::AliasedTarget(_) => true,
         PlayerFilter::Specific(id) => player == *id,
         PlayerFilter::MostLifeTied => game
@@ -3240,9 +3371,9 @@ pub fn generate_step_trigger_events(game: &GameState) -> Option<TriggerEvent> {
 /// without an active-player parameter (currently end of combat) remain single.
 pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<TriggerEvent> {
     use crate::events::phase::{
-        BeginningOfCombatEvent, BeginningOfDrawStepEvent, BeginningOfEndStepEvent,
-        BeginningOfPostcombatMainPhaseEvent, BeginningOfPrecombatMainPhaseEvent,
-        BeginningOfUpkeepEvent, EndOfCombatEvent,
+        BeginningOfCleanupStepEvent, BeginningOfCombatEvent, BeginningOfDrawStepEvent,
+        BeginningOfEndStepEvent, BeginningOfPostcombatMainPhaseEvent,
+        BeginningOfPrecombatMainPhaseEvent, BeginningOfUpkeepEvent, EndOfCombatEvent,
     };
 
     let events = |make: fn(PlayerId) -> TriggerEvent| {
@@ -3292,6 +3423,12 @@ pub fn generate_step_trigger_events_for_active_players(game: &GameState) -> Vec<
         (Phase::Ending, Some(Step::End)) => events(|active| {
             TriggerEvent::new_with_provenance(
                 BeginningOfEndStepEvent::new(active),
+                crate::provenance::ProvNodeId::default(),
+            )
+        }),
+        (Phase::Ending, Some(Step::Cleanup)) => events(|active| {
+            TriggerEvent::new_with_provenance(
+                BeginningOfCleanupStepEvent::new(active),
                 crate::provenance::ProvNodeId::default(),
             )
         }),
@@ -4854,10 +4991,12 @@ mod tests {
             CreatureAttackedEvent::with_total_attackers(source, AttackEventTarget::Player(bob), 2),
             crate::provenance::ProvNodeId::default(),
         );
+        let ctx = TriggerContext::for_source(source, alice, &game);
         let tagged = tagged_objects_for_matched_trigger(
             &game,
             &trigger_event,
             &Trigger::this_attacks_with_exact_n_others(1),
+            &ctx,
         );
         let other_attackers = tagged
             .get(&crate::tag::TagKey::from("other_attacker"))
@@ -4865,6 +5004,51 @@ mod tests {
 
         assert_eq!(other_attackers.len(), 1);
         assert_eq!(other_attackers[0].object_id, partner);
+    }
+
+    #[test]
+    fn one_or_more_attack_trigger_captures_the_complete_matching_group() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let first = make_battlefield_creature(&mut game, alice, "First Attacker");
+        let second = make_battlefield_creature(&mut game, alice, "Second Attacker");
+        let opponent = make_battlefield_creature(&mut game, bob, "Opponent Creature");
+        game.combat = Some(crate::combat_state::CombatState {
+            attackers: vec![
+                crate::combat_state::AttackerInfo {
+                    creature: first,
+                    target: AttackTarget::Player(bob),
+                },
+                crate::combat_state::AttackerInfo {
+                    creature: second,
+                    target: AttackTarget::Player(bob),
+                },
+            ],
+            ..Default::default()
+        });
+        let event = TriggerEvent::new_with_provenance(
+            CreatureAttackedEvent::with_total_attackers(first, AttackEventTarget::Player(bob), 2),
+            crate::provenance::ProvNodeId::default(),
+        );
+        let ctx = TriggerContext::for_source(first, alice, &game);
+        let tagged = tagged_objects_for_matched_trigger(
+            &game,
+            &event,
+            &Trigger::attacks_one_or_more(ObjectFilter::creature().you_control()),
+            &ctx,
+        );
+        let group = tagged
+            .get(&crate::tag::TagKey::from(
+                ironsmith_core::ATTACKING_GROUP_TAG,
+            ))
+            .expect("one-or-more attack trigger should snapshot its matching group");
+        let ids = group
+            .iter()
+            .map(|snapshot| snapshot.object_id)
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(ids, std::collections::HashSet::from([first, second]));
+        assert!(!ids.contains(&opponent));
     }
 
     #[test]
@@ -4892,7 +5076,9 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
 
-        let tagged = tagged_objects_for_matched_trigger(&game, &event, &Trigger::this_attacks());
+        let ctx = TriggerContext::for_source(source, alice, &game);
+        let tagged =
+            tagged_objects_for_matched_trigger(&game, &event, &Trigger::this_attacks(), &ctx);
 
         assert!(!tagged.contains_key(&crate::tag::TagKey::from("other_attacker")));
     }

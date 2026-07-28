@@ -68,6 +68,28 @@ pub(super) use structural_bundles::*;
 
 pub use sequences_and_votes::compile_effect_list;
 
+fn describe_counted_consult_stop(count: &Value, selection: &str) -> String {
+    let plural_selection = pluralize_noun_phrase(strip_leading_article(selection));
+    let is_prior_object_count = matches!(
+        count.unhinted(),
+        Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query)
+            if matches!(
+                query.metric,
+                crate::effect::EffectMetric::Count
+                    | crate::effect::EffectMetric::ChosenCount
+                    | crate::effect::EffectMetric::AffectedCount
+            )
+    );
+    if is_prior_object_count {
+        format!(
+            "a number of {plural_selection} equal to {}",
+            describe_value(count)
+        )
+    } else {
+        format!("{} {plural_selection}", describe_value(count))
+    }
+}
+
 #[cfg(test)]
 #[path = "render_effects/tests/mod.rs"]
 mod tests;

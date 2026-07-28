@@ -25,6 +25,20 @@ impl SequenceEffect {
         }
     }
 
+    pub fn sentence_leading_then(effects: Vec<Effect>) -> Self {
+        Self {
+            effects,
+            surface: ironsmith_core::SequenceSurface::SentenceLeadingThen,
+        }
+    }
+
+    pub fn comma_then(effects: Vec<Effect>) -> Self {
+        Self {
+            effects,
+            surface: ironsmith_core::SequenceSurface::CommaThen,
+        }
+    }
+
     pub fn coordinated(effects: Vec<Effect>) -> Self {
         Self {
             effects,
@@ -77,7 +91,12 @@ impl EffectExecutor for SequenceEffect {
         let mut outcomes = Vec::with_capacity(self.effects.len());
         let mut events = Vec::new();
         let mut execution_facts = Vec::new();
-        let coordinated_assignments = (self.surface != ironsmith_core::SequenceSurface::Sequential
+        // A one-child coordinated wrapper is presentation provenance left
+        // after normalization removes a sibling marker (such as "repeat this
+        // process"). It is semantically transparent and must not restart the
+        // target-assignment cursor at zero around its only child.
+        let coordinated_assignments = (self.surface.is_coordinated()
+            && self.effects.len() > 1
             && !ctx.target_assignments.is_empty())
         .then(|| ctx.target_assignments.clone());
         let chosen_modes = ctx.chosen_modes.clone();
@@ -245,6 +264,28 @@ mod tests {
 
         assert!(effect.get_target_spec().is_some());
         assert_eq!(effect.target_description(), "spell to counter");
+    }
+
+    #[test]
+    fn sentence_leading_then_preserves_each_sequential_target_slot() {
+        let effect = Effect::new(SequenceEffect::sentence_leading_then(vec![
+            Effect::new(crate::effects::TargetOnlyEffect::explicit(
+                ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::creature())),
+            )),
+            Effect::new(crate::effects::TargetOnlyEffect::explicit(
+                ChooseSpec::target(ChooseSpec::Object(crate::filter::ObjectFilter::artifact())),
+            )),
+        ]));
+        let mut consumed_modal_selection = false;
+
+        assert_eq!(
+            crate::game_loop::count_target_selection_slots_for_isolated_effect(
+                &effect,
+                None,
+                &mut consumed_modal_selection,
+            ),
+            2
+        );
     }
 
     #[test]

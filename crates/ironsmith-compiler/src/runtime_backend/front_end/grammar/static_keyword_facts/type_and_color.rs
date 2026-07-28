@@ -1,4 +1,4 @@
-use winnow::combinator::{alt, eof, peek, repeat, repeat_till};
+use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till};
 use winnow::error::{ContextError, ErrMode, ModalResult as WResult};
 use winnow::prelude::*;
 use winnow::token::any;
@@ -490,6 +490,10 @@ fn other_type_addition_tail<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     semantic_phrase(&["in", "addition", "to"]).parse_next(input)?;
     alt((semantic_kw("its"), semantic_kw("their"))).parse_next(input)?;
     semantic_kw("other").parse_next(input)?;
+    // Oracle sometimes names the subtype family explicitly ("their other
+    // creature types"). The qualifier changes only the authored surface, not
+    // the additive type-layer semantics captured by this fact.
+    opt(semantic_kw("creature")).parse_next(input)?;
     alt((semantic_kw("type"), semantic_kw("types")))
         .void()
         .parse_next(input)
@@ -639,6 +643,19 @@ mod tests {
         assert_eq!(
             render_token_slice(addition.subject_tokens),
             "Lands you control"
+        );
+
+        let creature_type_addition_tokens =
+            lex("Creatures you control are Slivers in addition to their other creature types.");
+        let creature_type_addition =
+            parse_subject_type_addition_tokens(&creature_type_addition_tokens).unwrap();
+        assert_eq!(
+            render_token_slice(creature_type_addition.subject_tokens),
+            "Creatures you control"
+        );
+        assert_eq!(
+            render_token_slice(creature_type_addition.descriptor_tokens),
+            "Slivers"
         );
 
         let identity_tokens = lex("This Vehicle is an artifact creature.");

@@ -183,6 +183,10 @@ fn object_restriction_envelopes_preserve_typed_boundaries() {
         Some(SimpleObjectRestrictionKind::AttackOrBlock)
     );
     assert_eq!(
+        parse_simple_object_restriction_words(&["phase", "in"]),
+        Some(SimpleObjectRestrictionKind::PhaseIn)
+    );
+    assert_eq!(
         parse_negated_object_tail_words(&["be", "blocked", "except", "by", "Walls"]),
         Some(NegatedObjectTailShape::BeBlockedExceptBy { payload_words: 4 })
     );
@@ -248,6 +252,10 @@ fn mana_retention_and_subject_markers_are_typed() {
     assert_eq!(
         parse_restriction_subject_surface_words(&["that", "damage"]),
         Some(RestrictionSubjectSurface::Damage)
+    );
+    assert_eq!(
+        parse_restriction_subject_surface_words(&["this"]),
+        Some(RestrictionSubjectSurface::Source)
     );
     assert!(
         parse_dealt_damage_this_way_words(&["creatures", "dealt", "damage", "this", "way",])

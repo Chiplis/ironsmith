@@ -2,6 +2,7 @@ use super::*;
 
 use crate::object::CounterType;
 use crate::runtime_backend::front_end::grammar::{filters, leaf};
+use crate::types::CardType;
 use winnow::combinator::{alt, eof, opt, peek, repeat, repeat_till, separated};
 use winnow::error::ModalResult as WResult;
 use winnow::token::any;
@@ -63,6 +64,17 @@ pub(crate) struct DrawThenConniveShape<'a> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AdditionalCounterShape {
     pub(crate) descriptor: CounterDescriptorShape,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ConditionalEntryCounterArmShape {
+    pub(crate) descriptor: CounterDescriptorShape,
+    pub(crate) object_type: CardType,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TaggedConditionalEntryCountersShape {
+    pub(crate) arms: Vec<ConditionalEntryCounterArmShape>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -631,6 +643,69 @@ pub(crate) fn parse_tagged_enters_additional_tokens(
     .ok()
 }
 
+fn conditional_entry_object_type<'a>(input: &mut LexStream<'a>) -> WResult<CardType> {
+    alt((
+        primitives::kw("artifact").value(CardType::Artifact),
+        primitives::kw("battle").value(CardType::Battle),
+        primitives::kw("creature").value(CardType::Creature),
+        primitives::kw("enchantment").value(CardType::Enchantment),
+        primitives::kw("instant").value(CardType::Instant),
+        primitives::kw("land").value(CardType::Land),
+        primitives::kw("planeswalker").value(CardType::Planeswalker),
+        primitives::kw("sorcery").value(CardType::Sorcery),
+    ))
+    .parse_next(input)
+}
+
+fn conditional_entry_counter_arm<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<ConditionalEntryCounterArmShape> {
+    let descriptor = additional_descriptor_on_tagged.parse_next(input)?;
+    primitives::kw("if").parse_next(input)?;
+    alt((
+        primitives::kw("it's").void(),
+        primitives::kw("it’s").void(),
+        primitives::phrase(&["it", "is"]).void(),
+    ))
+    .parse_next(input)?;
+    opt(alt((primitives::kw("a"), primitives::kw("an")))).parse_next(input)?;
+    let object_type = conditional_entry_object_type.parse_next(input)?;
+    Ok(ConditionalEntryCounterArmShape {
+        descriptor,
+        object_type,
+    })
+}
+
+fn parse_tagged_conditional_entry_counters_lexed<'a>(
+    input: &mut LexStream<'a>,
+) -> WResult<TaggedConditionalEntryCountersShape> {
+    primitives::phrase(&["each", "of", "them", "enters", "with"]).parse_next(input)?;
+    let first = conditional_entry_counter_arm.parse_next(input)?;
+    primitives::kw("and").parse_next(input)?;
+    let second = conditional_entry_counter_arm.parse_next(input)?;
+    let remaining: Vec<ConditionalEntryCounterArmShape> = repeat(
+        0..,
+        (primitives::kw("and"), conditional_entry_counter_arm).map(|(_, arm)| arm),
+    )
+    .parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+
+    let mut arms = vec![first, second];
+    arms.extend(remaining);
+    Ok(TaggedConditionalEntryCountersShape { arms })
+}
+
+pub(crate) fn parse_tagged_conditional_entry_counters_tokens(
+    tokens: &[OwnedLexToken],
+) -> Option<TaggedConditionalEntryCountersShape> {
+    primitives::parse_all(
+        tokens,
+        parse_tagged_conditional_entry_counters_lexed,
+        "tagged conditional entry counters",
+    )
+    .ok()
+}
+
 fn move_onto_battlefield<'a>(input: &mut LexStream<'a>) -> WResult<()> {
     repeat_till::<_, _, (), _, _, _, _>(
         0..,
@@ -1127,6 +1202,21 @@ mod tests {
         .unwrap();
         let shape = parse_tagged_enters_additional_tokens(&tagged).unwrap();
         assert_eq!(shape.descriptor.count, 1);
+
+        let conditional = lex_line(
+            "Each of them enters with an additional +1/+1 counter on it if it's a creature and an additional loyalty counter on it if it's a planeswalker.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_tagged_conditional_entry_counters_tokens(&conditional).unwrap();
+        assert_eq!(shape.arms.len(), 2);
+        assert_eq!(shape.arms[0].object_type, CardType::Creature);
+        assert_eq!(
+            shape.arms[0].descriptor.counter_type,
+            CounterType::PlusOnePlusOne
+        );
+        assert_eq!(shape.arms[1].object_type, CardType::Planeswalker);
+        assert_eq!(shape.arms[1].descriptor.counter_type, CounterType::Loyalty);
     }
 
     #[test]

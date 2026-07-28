@@ -43,7 +43,61 @@ fn trim_damage_part_tokens(mut tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
     tokens
 }
 
+fn parse_postpositive_rounded_half_damage_head(
+    tokens: &[OwnedLexToken],
+) -> Option<(Value, &[OwnedLexToken])> {
+    if !tokens.first().is_some_and(|token| token.is_word("half")) {
+        return None;
+    }
+    let damage_idx = tokens
+        .iter()
+        .position(|token| token.is_word("damage"))
+        .filter(|idx| *idx > 1)?;
+    let base_tokens = &tokens[1..damage_idx];
+    let (base, used) =
+        super::super::shared_util::value_semantics::parse_value_prefix_lexed(base_tokens)?;
+    if used != base_tokens.len() {
+        return None;
+    }
+
+    let mut idx = damage_idx + 1;
+    if tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
+        idx += 1;
+    }
+    if !tokens
+        .get(idx)
+        .is_some_and(|token| token.is_word("rounded"))
+    {
+        return None;
+    }
+    let rounded_up = match tokens.get(idx + 1).and_then(OwnedLexToken::as_word) {
+        Some("up") => true,
+        Some("down") => false,
+        _ => return None,
+    };
+    idx += 2;
+    if tokens.get(idx).is_some_and(OwnedLexToken::is_comma) {
+        idx += 1;
+    }
+    if tokens.get(idx).is_some_and(|token| token.is_word("to")) {
+        idx += 1;
+    }
+
+    let amount = if rounded_up {
+        Value::HalfRoundedDown(Box::new(Value::Add(
+            Box::new(base),
+            Box::new(Value::Fixed(1)),
+        )))
+    } else {
+        Value::HalfRoundedDown(Box::new(base))
+    };
+    Some((amount, &tokens[idx..]))
+}
+
 fn parse_damage_amount_head(tokens: &[OwnedLexToken]) -> Option<(Value, &[OwnedLexToken])> {
+    if let Some(parsed) = parse_postpositive_rounded_half_damage_head(tokens) {
+        return Some(parsed);
+    }
     let (amount, used) =
         super::super::shared_util::value_semantics::parse_value_prefix_lexed(tokens)?;
     let (_, rest) = primitives::parse_prefix(
@@ -76,6 +130,12 @@ fn parse_paired_damage_fanout_tokens(tokens: &[OwnedLexToken]) -> Option<SerialD
             continue;
         };
         let second_target = trim_damage_part_tokens(second_target);
+        let second_target = second_target
+            .iter()
+            .position(|token| token.is_word("where"))
+            .map_or(second_target, |where_idx| {
+                trim_damage_part_tokens(&second_target[..where_idx])
+            });
         if first_target.is_empty() || second_target.is_empty() {
             continue;
         }
@@ -173,6 +233,33 @@ mod tests {
                 "controller",
                 "controls"
             ]
+        );
+    }
+
+    #[test]
+    fn paired_damage_accepts_postpositive_rounded_half_amount() {
+        let tokens = lex_line(
+            "Eternal Flame deals X damage to target opponent or planeswalker and half X damage, \
+             rounded up, to you, where X is the number of Mountains you control.",
+            0,
+        )
+        .unwrap();
+        let shape = parse_serial_damage_fanout_tokens(&tokens)
+            .unwrap()
+            .expect("paired damage shape");
+
+        assert_eq!(shape.parts.len(), 2);
+        assert_eq!(shape.parts[0].amount, Value::X);
+        assert!(matches!(
+            &shape.parts[1].amount,
+            Value::HalfRoundedDown(inner)
+                if matches!(inner.as_ref(), Value::Add(left, right)
+                    if matches!(left.as_ref(), Value::X)
+                        && matches!(right.as_ref(), Value::Fixed(1)))
+        ));
+        assert_eq!(
+            TokenWordView::new(&shape.parts[1].target_tokens).to_word_refs(),
+            ["you"]
         );
     }
 }

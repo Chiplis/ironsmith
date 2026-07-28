@@ -76,7 +76,7 @@ pub(super) fn describe_zone_change_triggering_card_to_your_library(
     ))
 }
 
-pub(super) fn describe_annihilator_keyword(
+pub(in crate::compiled_text) fn describe_annihilator_keyword(
     triggered: &crate::ability::TriggeredAbility,
 ) -> Option<String> {
     if triggered.intervening_if.is_some() || !triggered.choices.is_empty() {
@@ -253,6 +253,7 @@ pub(super) fn describe_champion_keyword(
     };
     let exile_until = alternative_effect.downcast_ref::<crate::effects::ExileUntilEffect>()?;
     if exile_until.duration != crate::effects::ExileUntilDuration::SourceLeavesBattlefield
+        || exile_until.leave_watcher.is_some()
         || exile_until.return_zone != Zone::Battlefield
         || exile_until.face_down
     {
@@ -503,6 +504,11 @@ pub(crate) fn describe_ability(
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_tap_for_mana_additional_mana_trigger(triggered) {
+                return vec![format!("Triggered ability {index}: {rendered}")];
+            }
+            if let Some(rendered) =
+                describe_active_player_postcombat_opponents_lost_life_mana_trigger(triggered)
+            {
                 return vec![format!("Triggered ability {index}: {rendered}")];
             }
             if let Some(rendered) = describe_zone_change_triggering_card_to_your_library(triggered)
@@ -939,6 +945,7 @@ pub(crate) fn describe_ability(
             let restriction_clauses = collect_activation_restriction_clauses(
                 &activated.timing,
                 &activated.additional_restrictions,
+                &activated.activation_restrictions,
             );
             if !restriction_clauses.is_empty() {
                 append_activation_clause(
@@ -1179,6 +1186,7 @@ pub(crate) fn rewrite_damage_phrases_for_permanent_abilities(
     out = out.replace("you may Deal ", &format!("you may have {subject} deal "));
     out = out.replace("You may deal ", &format!("You may have {subject} deal "));
     out = out.replace("you may deal ", &format!("you may have {subject} deal "));
+    out = out.replace(" has this source deal ", &format!(" has {subject} deal "));
     out = out.replace(CONDITIONAL_DEAL_MARKER, "deal ");
     out
 }
@@ -1308,7 +1316,7 @@ pub(crate) fn describe_mana_activation_condition(condition: &crate::ConditionExp
                     let mut line = first;
                     for clause in iter {
                         if let Some(rest) = clause.strip_prefix("Activate only ") {
-                            line.push_str(" and ");
+                            line.push_str(" and only ");
                             line.push_str(rest);
                         } else {
                             line.push_str(" and ");
@@ -1871,4 +1879,26 @@ pub(super) fn repeatable_optional_cost_action(action: &str) -> String {
         return format!("sacrifice one or more {}", pluralize_noun_phrase(rest));
     }
     action.to_string()
+}
+
+#[cfg(test)]
+mod activation_condition_surface_tests {
+    use super::*;
+
+    #[test]
+    fn conjunctive_activation_timings_preserve_each_only_qualifier() {
+        let condition = crate::ConditionExpr::And(
+            Box::new(crate::ConditionExpr::ActivationTiming(
+                ActivationTiming::DuringYourTurn,
+            )),
+            Box::new(crate::ConditionExpr::ActivationTiming(
+                ActivationTiming::OncePerTurn,
+            )),
+        );
+
+        assert_eq!(
+            describe_mana_activation_condition(&condition),
+            "Activate only during your turn and only once each turn"
+        );
+    }
 }

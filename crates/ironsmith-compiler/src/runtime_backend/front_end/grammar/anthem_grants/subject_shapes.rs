@@ -3,7 +3,10 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::{any, rest};
 
-use crate::{ObjectFilter, PlayerFilter, TagKey, TaggedObjectConstraint, TaggedOpbjectRelation};
+use crate::{
+    CardType, ObjectFilter, PlayerFilter, TagKey, TaggedObjectConstraint, TaggedOpbjectRelation,
+    Zone,
+};
 
 use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas};
 use super::super::{filters, leaf, primitives};
@@ -17,6 +20,9 @@ pub(crate) enum AnthemSubjectGrammarMatch {
 pub(crate) fn parse_exact_anthem_subject_grammar(
     tokens: &[OwnedLexToken],
 ) -> Option<AnthemSubjectGrammarMatch> {
+    if let Some(filter) = parse_instant_and_sorcery_spells(tokens) {
+        return Some(AnthemSubjectGrammarMatch::Filter(filter));
+    }
     if let Some(filter) = parse_attachment_state_qualified_subject(trim_lexed_commas(tokens)) {
         return Some(AnthemSubjectGrammarMatch::Filter(filter));
     }
@@ -36,9 +42,78 @@ pub(crate) fn parse_exact_anthem_subject_grammar(
     .ok()
 }
 
+fn parse_instant_and_sorcery_spells(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
+    let view = TokenWordView::new(trim_lexed_commas(tokens));
+    let words = view.word_refs();
+    let (type_words, color) = match words.split_first() {
+        Some((color_word, rest))
+            if leaf::parse_leaf_color_complete(color_word).is_ok()
+                && matches!(
+                    rest.get(..4),
+                    Some(["instant", "and", "sorcery", "spells"])
+                        | Some(["sorcery", "and", "instant", "spells"])
+                ) =>
+        {
+            (
+                rest,
+                Some(leaf::parse_leaf_color_complete(color_word).ok()?),
+            )
+        }
+        _ => (words.as_slice(), None),
+    };
+    let [first_type, "and", second_type, "spells", suffix @ ..] = type_words else {
+        return None;
+    };
+    let (first_type, second_type) = match (*first_type, *second_type) {
+        ("instant", "sorcery") => (CardType::Instant, CardType::Sorcery),
+        ("sorcery", "instant") => (CardType::Sorcery, CardType::Instant),
+        _ => return None,
+    };
+
+    let mut filter = match suffix {
+        ["you", "control"] => ObjectFilter::spell().controlled_by(PlayerFilter::You),
+        ["you", "cast"] => ObjectFilter::spell().cast_by(PlayerFilter::You),
+        ["you", "cast", "from", "your", "hand"] => {
+            let mut filter = ObjectFilter::spell().cast_by(PlayerFilter::You);
+            filter.zone = Some(Zone::Hand);
+            filter
+        }
+        _ => return None,
+    };
+    filter.has_mana_cost = true;
+    filter.colors = color;
+    filter.any_of = vec![
+        ObjectFilter::default().with_type(first_type),
+        ObjectFilter::default().with_type(second_type),
+    ];
+    filter.set_conjunctive_set_surface(true);
+    Some(filter)
+}
+
 fn parse_attachment_state_qualified_subject(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> {
     let view = TokenWordView::new(tokens);
     let words = view.word_refs();
+    if let Some(relative_start) = words
+        .windows(4)
+        .rposition(|window| matches!(window, ["that", "is" | "are", "enchanted", "by"]))
+    {
+        let base_token_end = view.token_index_after_words(relative_start)?;
+        let attachment_token_start = view.token_index_after_words(relative_start + 4)?;
+        let base_tokens = trim_lexed_commas(tokens.get(..base_token_end)?);
+        let attachment_tokens = trim_lexed_commas(tokens.get(attachment_token_start..)?);
+        if base_tokens.is_empty() || attachment_tokens.is_empty() {
+            return None;
+        }
+        let mut filter =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(base_tokens, false).ok()?;
+        let attachment =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(attachment_tokens, false)
+                .ok()?;
+        filter.with_attached_object = Some(Box::new(attachment));
+        filter.set_relative_attachment_state_surface(true);
+        return Some(filter);
+    }
+
     let attachment_tags: &[&str] =
         if words.ends_with(&["that", "is", "enchanted", "or", "equipped"])
             || words.ends_with(&["that", "are", "enchanted", "or", "equipped"])
@@ -124,9 +199,18 @@ fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
             continue;
         }
 
-        let Ok(left_branch_filter) =
-            filters::parse_object_filter_with_grammar_entrypoint_lexed(left_branch, false)
-        else {
+        let leading_other = left_branch
+            .first()
+            .is_some_and(|token| token.is_word("other") || token.is_word("another"));
+        let left_branch_body = if leading_other {
+            trim_lexed_commas(&left_branch[1..])
+        } else {
+            left_branch
+        };
+        let Ok(left_branch_filter) = filters::parse_object_filter_with_grammar_entrypoint_lexed(
+            left_branch_body,
+            leading_other,
+        ) else {
             continue;
         };
         let Ok(right_branch_filter) =
@@ -140,17 +224,17 @@ fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
             continue;
         }
 
-        let mut left_full = left_branch.to_vec();
+        let mut left_full = left_branch_body.to_vec();
         left_full.extend_from_slice(shared_suffix);
         let mut right_full = right_branch.to_vec();
         right_full.extend_from_slice(shared_suffix);
 
-        let Ok(left_filter) =
-            filters::parse_object_filter_with_grammar_entrypoint_lexed(&left_full, false)
+        let Ok(mut left_filter) =
+            filters::parse_object_filter_with_grammar_entrypoint_lexed(&left_full, leading_other)
         else {
             continue;
         };
-        let Ok(right_filter) =
+        let Ok(mut right_filter) =
             filters::parse_object_filter_with_grammar_entrypoint_lexed(&right_full, false)
         else {
             continue;
@@ -167,7 +251,40 @@ fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
             .is_none_or(|(best_score, _)| score > *best_score)
         {
             let mut disjunction = ObjectFilter::default();
+            if !left_filter.card_types.is_empty()
+                && left_filter.card_types == right_filter.card_types
+            {
+                disjunction.card_types = std::mem::take(&mut left_filter.card_types);
+                right_filter.card_types.clear();
+            }
+            if !left_filter.all_card_types.is_empty()
+                && left_filter.all_card_types == right_filter.all_card_types
+            {
+                disjunction.all_card_types = std::mem::take(&mut left_filter.all_card_types);
+                right_filter.all_card_types.clear();
+            }
+            if left_filter.zone == right_filter.zone {
+                disjunction.zone = left_filter.zone;
+                left_filter.zone = None;
+                right_filter.zone = None;
+            }
+            if left_filter.controller == right_filter.controller {
+                disjunction.controller = left_filter.controller.clone();
+                left_filter.controller = None;
+                right_filter.controller = None;
+            }
+            if left_filter.owner == right_filter.owner {
+                disjunction.owner = left_filter.owner.clone();
+                left_filter.owner = None;
+                right_filter.owner = None;
+            }
+            if left_filter.other == right_filter.other || leading_other {
+                disjunction.other = left_filter.other || right_filter.other;
+                left_filter.other = false;
+                right_filter.other = false;
+            }
             disjunction.any_of = vec![left_filter, right_filter];
+            disjunction.set_conjunctive_set_surface(true);
             best = Some((score, disjunction));
         }
     }
@@ -177,9 +294,12 @@ fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
 
 fn subject_branch_looks_type_like(filter: &ObjectFilter) -> bool {
     !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
         || !filter.subtypes.is_empty()
+        || !filter.supertypes.is_empty()
         || !filter.excluded_card_types.is_empty()
         || !filter.excluded_subtypes.is_empty()
+        || !filter.excluded_supertypes.is_empty()
 }
 
 pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
@@ -197,11 +317,13 @@ pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += filter.all_card_types.len() * 10;
     score += filter.subtypes.len() * 8;
     score += filter.excluded_subtypes.len() * 8;
+    score += filter.supertypes.len() * 8;
+    score += filter.excluded_supertypes.len() * 8;
     score += usize::from(filter.controller.is_some()) * 6;
     score += usize::from(filter.owner.is_some()) * 6;
     score += usize::from(filter.zone.is_some()) * 4;
     score += usize::from(filter.other) * 3;
-    score += usize::from(filter.token || filter.nontoken) * 3;
+    score += usize::from(filter.token || filter.nontoken || filter.foretold) * 3;
     score += usize::from(filter.tapped || filter.untapped) * 2;
     score += usize::from(
         filter.attacking
@@ -219,7 +341,6 @@ pub(crate) fn object_filter_specificity_score(filter: &ObjectFilter) -> usize {
     score += usize::from(filter.was_dealt_damage_this_turn) * 2;
     score += usize::from(filter.dealt_damage_to_player_this_turn.is_some()) * 2;
     score += usize::from(!filter.excluded_card_types.is_empty()) * 2;
-    score += usize::from(!filter.excluded_supertypes.is_empty()) * 2;
     score += usize::from(!filter.excluded_colors.is_empty()) * 2;
     score += usize::from(!filter.excluded_static_abilities.is_empty()) * 2;
     score += usize::from(!filter.excluded_ability_markers.is_empty()) * 2;

@@ -47,6 +47,15 @@ fn combat_player_damage_target_effect(
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         },
+        combat_grammar::CombatPlayerDamageTargetShape::EachOtherPlayer => {
+            EffectAst::ForEachPlayersFiltered {
+                filter: PlayerFilter::NotYou,
+                effects: vec![EffectAst::subject_verb_damage(
+                    amount,
+                    TargetAst::Player(PlayerFilter::IteratedPlayer, None),
+                )],
+            }
+        }
         combat_grammar::CombatPlayerDamageTargetShape::EachOpponent => EffectAst::ForEachOpponent {
             effects: vec![EffectAst::subject_verb_damage(
                 amount,
@@ -85,6 +94,29 @@ fn damage_each_other_opponent(amount: Value) -> EffectAst {
             TargetAst::Player(PlayerFilter::IteratedPlayer, None),
         )],
     }
+}
+
+fn damage_to_embedded_target_controller(
+    amount: Value,
+    target_tokens: &[OwnedLexToken],
+) -> Option<EffectAst> {
+    let anchor = match combat_grammar::parse_combat_embedded_target_controller_shape_lexed(
+        target_tokens,
+    )? {
+        combat_grammar::CombatEmbeddedTargetControllerShape::Spell => {
+            TargetAst::Spell(span_from_tokens(target_tokens))
+        }
+    };
+    let recipient = TargetAst::Player(
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::tagged(IT_TAG)),
+        None,
+    );
+    Some(EffectAst::Sequence {
+        effects: vec![
+            EffectAst::subject_verb_target_only(anchor),
+            EffectAst::subject_verb_damage(amount, recipient),
+        ],
+    })
 }
 
 pub(crate) fn parse_attach_object_phrase(
@@ -214,11 +246,21 @@ pub(crate) fn parse_attach(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 }
             }
             let object = parse_attach_object_phrase(object_tokens)?;
-            let target = if target_is_tagged {
+            let mut target = if target_is_tagged {
                 TargetAst::Tagged(TagKey::from(IT_TAG), span_from_tokens(target_tokens))
             } else {
                 parse_target_phrase(target_tokens)?
             };
+            if crate::runtime_backend::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
+                target_tokens,
+            )
+                && let Some(filter) =
+                crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(
+                    &mut target,
+                )
+            {
+                filter.set_plural_object_noun_surface(true);
+            }
             Ok(EffectAst::subject_verb_attach(object, target))
         }
     }
@@ -430,6 +472,11 @@ pub(crate) fn parse_deal_damage_to_target_equal_to_clause(
             ))
         })?;
     let amount = preserve_equal_to_surface(amount);
+    if let Some(effect) =
+        damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
+    {
+        return Ok(Some(effect));
+    }
     if let Some(target) = parse_combat_player_damage_target(shape.target_tokens, false) {
         return Ok(Some(combat_player_damage_target_effect(
             amount.clone(),
@@ -487,6 +534,11 @@ pub(crate) fn parse_deal_damage_equal_to_clause(
             ))
         })?;
     let amount = preserve_equal_to_surface(amount);
+    if let Some(effect) =
+        damage_to_embedded_target_controller(amount.clone(), shape.target_tokens)
+    {
+        return Ok(Some(effect));
+    }
     if let Some(target) = parse_combat_player_damage_target(shape.target_tokens, true) {
         return Ok(Some(combat_player_damage_target_effect(
             amount.clone(),
@@ -835,5 +887,65 @@ mod equal_to_damage_surface_tests {
 
         assert!(amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo));
         assert!(matches!(amount.unhinted(), Value::Add(_, _)));
+    }
+
+    #[test]
+    fn target_spell_controller_damage_materializes_the_spell_target_first() {
+        for text in [
+            "damage to target spell's controller equal to that spell's mana value",
+            "damage equal to that spell's mana value to target spell's controller",
+        ] {
+            let tokens = lex_line(text, 0).expect("stack-target damage should lex");
+            let effect = if text.starts_with("damage to") {
+                parse_deal_damage_to_target_equal_to_clause(&tokens)
+            } else {
+                parse_deal_damage_equal_to_clause(&tokens)
+            }
+            .expect("stack-target damage should parse")
+            .expect("stack-target damage should match");
+            let EffectAst::Sequence { effects } = effect else {
+                panic!("expected target prelude plus damage for {text}: {effect:#?}");
+            };
+            let [target, damage] = effects.as_slice() else {
+                panic!("expected exactly two typed effects for {text}: {effects:#?}");
+            };
+            assert!(matches!(
+                target,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::TargetOnly {
+                            target: TargetAst::Spell(Some(_)),
+                            explicit_declaration: false,
+                        },
+                    ..
+                })
+            ));
+            assert!(matches!(
+                damage,
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action:
+                        SubjectVerbActionAst::DealDamage {
+                            amount,
+                            target:
+                                TargetAst::Player(
+                                    PlayerFilter::ControllerOf(
+                                        crate::target::ObjectRef::Tagged(tag)
+                                    ),
+                                    None
+                                ),
+                            ..
+                        },
+                    ..
+                }) if tag.as_str() == IT_TAG
+                    && matches!(
+                        amount.unhinted(),
+                        Value::ManaValueOf(spec)
+                            if matches!(
+                                spec.unhinted(),
+                                ChooseSpec::Tagged(value_tag) if value_tag.as_str() == IT_TAG
+                            )
+                    )
+            ));
+        }
     }
 }

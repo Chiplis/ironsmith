@@ -39,8 +39,9 @@ mod subject_shapes;
 mod tail_static_shapes;
 
 pub(crate) use clause_shapes::{
-    AnthemPrefixConditionKind, AnthemTailShape, parse_modifier_shape, parse_prefix_condition_shape,
-    parse_tail_shape, parse_word_token_candidates,
+    AnthemPrefixConditionKind, AnthemTailShape, parse_fixed_prefix_condition_shape,
+    parse_modifier_shape, parse_prefix_condition_shape, parse_tail_shape,
+    parse_word_token_candidates, split_trailing_modifier_maximum,
 };
 pub(crate) use compound_shapes::{
     parse_carried_conditional_anthem_grant, parse_carried_subject_type_addition,
@@ -131,6 +132,19 @@ pub(crate) struct CantBeBlockedClause<'a> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct KeywordsAndCantBeBlockedClause<'a> {
+    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct KeywordsAndCantBeBlockedByMoreThanClause<'a> {
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
+    pub(crate) keyword_tokens: &'a [OwnedLexToken],
+    pub(crate) blocker_threshold_tokens: &'a [OwnedLexToken],
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct CantBeBlockedAndHasKeywordsClause<'a> {
+    pub(crate) subject_tokens: &'a [OwnedLexToken],
     pub(crate) keyword_tokens: &'a [OwnedLexToken],
 }
 
@@ -411,6 +425,28 @@ pub(crate) fn parse_cant_be_blocked_as_long_as_clause(
     .ok()
 }
 
+pub(crate) fn parse_defending_player_controls_most_creatures_or_tied_condition(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    token_phrase_complete(
+        tokens,
+        &[
+            "defending",
+            "player",
+            "controls",
+            "the",
+            "most",
+            "creatures",
+            "or",
+            "is",
+            "tied",
+            "for",
+            "the",
+            "most",
+        ],
+    )
+}
+
 pub(crate) fn parse_cant_be_blocked_clause(
     tokens: &[OwnedLexToken],
 ) -> Option<CantBeBlockedClause<'_>> {
@@ -431,6 +467,85 @@ pub(crate) fn parse_keywords_and_cant_be_blocked_clause(
     })?;
     let keyword_tokens = trim_lexed_commas(keyword_tokens);
     (!keyword_tokens.is_empty()).then_some(KeywordsAndCantBeBlockedClause { keyword_tokens })
+}
+
+pub(crate) fn parse_keywords_and_cant_be_blocked_by_more_than_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<KeywordsAndCantBeBlockedByMoreThanClause<'_>> {
+    let tokens = trim_anthem_clause_tokens(tokens);
+    let has_token = tokens
+        .iter()
+        .position(|token| token.is_any_word(&["has", "have"]))?;
+    if has_token == 0 {
+        return None;
+    }
+    for and_token in has_token + 2..tokens.len() {
+        if !tokens[and_token].is_word("and") {
+            continue;
+        }
+        let tail = tokens.get(and_token + 1..)?;
+        let starts_with_words = |words: &[&str]| {
+            tail.get(..words.len()).is_some_and(|prefix| {
+                prefix
+                    .iter()
+                    .zip(words)
+                    .all(|(token, word)| token.is_word(word))
+            })
+        };
+        let blocked_prefix = if starts_with_words(&["can't", "be", "blocked", "by"])
+            || starts_with_words(&["cant", "be", "blocked", "by"])
+            || starts_with_words(&["cannot", "be", "blocked", "by"])
+        {
+            4
+        } else if starts_with_words(&["can", "t", "be", "blocked", "by"]) {
+            5
+        } else {
+            continue;
+        };
+        let blocker_noun = tail.len().checked_sub(1)?;
+        if !tail[blocker_noun].is_any_word(&["creature", "creatures"])
+            || blocker_noun <= blocked_prefix
+        {
+            continue;
+        }
+        let subject_tokens = trim_lexed_commas(&tokens[..has_token]);
+        let keyword_tokens = trim_lexed_commas(&tokens[has_token + 1..and_token]);
+        let blocker_threshold_tokens = trim_lexed_commas(&tail[blocked_prefix..blocker_noun]);
+        if subject_tokens.is_empty()
+            || keyword_tokens.is_empty()
+            || blocker_threshold_tokens.is_empty()
+        {
+            return None;
+        }
+        return Some(KeywordsAndCantBeBlockedByMoreThanClause {
+            subject_tokens,
+            keyword_tokens,
+            blocker_threshold_tokens,
+        });
+    }
+    None
+}
+
+pub(crate) fn parse_cant_be_blocked_and_has_keywords_clause(
+    tokens: &[OwnedLexToken],
+) -> Option<CantBeBlockedAndHasKeywordsClause<'_>> {
+    let tokens = trim_anthem_clause_tokens(tokens);
+    for and_token in 1..tokens.len().saturating_sub(2) {
+        if !tokens[and_token].is_word("and") || !tokens[and_token + 1].is_any_word(&["has", "have"])
+        {
+            continue;
+        }
+        let blocked = parse_cant_be_blocked_clause(&tokens[..and_token])?;
+        let keyword_tokens = trim_lexed_commas(&tokens[and_token + 2..]);
+        if keyword_tokens.is_empty() {
+            return None;
+        }
+        return Some(CantBeBlockedAndHasKeywordsClause {
+            subject_tokens: blocked.subject_tokens,
+            keyword_tokens,
+        });
+    }
+    None
 }
 
 pub(crate) fn parse_landwalk_block_override_clause(
@@ -1012,12 +1127,22 @@ fn parse_shared_suffix_head(input: &mut LexStream<'_>) -> WResult<()> {
             primitives::kw("under").void(),
         )),
         primitives::kw("during").void(),
+        alt((
+            primitives::kw("creature").void(),
+            primitives::kw("creatures").void(),
+            primitives::kw("permanent").void(),
+            primitives::kw("permanents").void(),
+            primitives::kw("spell").void(),
+            primitives::kw("spells").void(),
+            primitives::kw("card").void(),
+            primitives::kw("cards").void(),
+        )),
     ))
     .parse_next(input)
 }
 
 pub(crate) fn is_source_it_subject(tokens: &[OwnedLexToken]) -> bool {
-    token_phrase_complete(tokens, &["it"])
+    token_phrase_complete(tokens, &["it"]) || token_phrase_complete(tokens, &["this", "token"])
 }
 
 pub(crate) fn parse_enchanted_player_controls_prefix(
@@ -1477,11 +1602,19 @@ fn parse_first_spell_each_turn_clause_lexed<'a>(
 ) -> WResult<FirstSpellEachTurnClause<'a>> {
     opt(primitives::kw("the")).parse_next(input)?;
     primitives::kw("first").parse_next(input)?;
-    let filter_tokens = take_until_phrase(input, &[&["you", "cast", "each", "turn"]])?;
-    primitives::phrase(&["you", "cast", "each", "turn"]).parse_next(input)?;
-    Ok(FirstSpellEachTurnClause {
-        filter_tokens: trim_lexed_commas(filter_tokens),
-    })
+    let filter_tokens = take_until_phrase(input, &[&["each", "turn"]])?;
+    primitives::phrase(&["each", "turn"]).parse_next(input)?;
+    let filter_tokens = trim_lexed_commas(filter_tokens);
+    if !filter_tokens
+        .windows(2)
+        .any(|pair| pair[0].is_word("you") && pair[1].is_word("cast"))
+    {
+        return Err(primitives::backtrack_err(
+            "first-spell-each-turn subject",
+            "a spell subject followed by 'you cast'",
+        ));
+    }
+    Ok(FirstSpellEachTurnClause { filter_tokens })
 }
 
 fn parse_cant_be_blocked_as_long_as_clause_lexed<'a>(
@@ -1842,6 +1975,23 @@ mod tests {
     use super::*;
 
     #[test]
+    fn recognizes_only_the_complete_defending_player_most_creatures_condition() {
+        let exact = lex_line(
+            "defending player controls the most creatures or is tied for the most.",
+            0,
+        )
+        .expect("lex exact condition");
+        assert!(parse_defending_player_controls_most_creatures_or_tied_condition(&exact));
+
+        let truncated = lex_line("defending player controls the most creatures.", 0)
+            .expect("lex truncated condition");
+        let ordinary =
+            lex_line("defending player controls a creature.", 0).expect("lex ordinary condition");
+        assert!(!parse_defending_player_controls_most_creatures_or_tied_condition(&truncated));
+        assert!(!parse_defending_player_controls_most_creatures_or_tied_condition(&ordinary));
+    }
+
+    #[test]
     fn parses_cards_drawn_thresholds() {
         let tokens = lex_line("You've drawn three or more cards this turn", 0).unwrap();
         assert_eq!(
@@ -1911,6 +2061,32 @@ mod tests {
     }
 
     #[test]
+    fn first_spell_each_turn_clause_retains_cast_origin_words() {
+        for (text, expected) in [
+            (
+                "The first spell you cast each turn",
+                vec!["spell", "you", "cast"],
+            ),
+            (
+                "The first noncreature spell you cast from exile each turn",
+                vec!["noncreature", "spell", "you", "cast", "from", "exile"],
+            ),
+        ] {
+            let tokens = lex_line(text, 0).expect("first-spell fixture should lex");
+            let parsed = parse_first_spell_each_turn_clause(&tokens)
+                .unwrap_or_else(|| panic!("first-spell clause should parse: {text}"));
+            assert_eq!(
+                TokenWordView::new(parsed.filter_tokens).word_refs(),
+                expected,
+                "{text}"
+            );
+        }
+
+        let noncast = lex_line("The first spell revealed each turn", 0).unwrap();
+        assert!(parse_first_spell_each_turn_clause(&noncast).is_none());
+    }
+
+    #[test]
     fn lose_all_abilities_shape_does_not_steal_preceding_anthem() {
         let direct = lex_line("Enchanted creature loses all abilities.", 0).unwrap();
         assert!(parse_lose_all_abilities_shape(&direct).is_some());
@@ -1918,6 +2094,30 @@ mod tests {
         let compound =
             lex_line("Enchanted creature gets -5/-0 and loses all abilities.", 0).unwrap();
         assert!(parse_lose_all_abilities_shape(&compound).is_none());
+    }
+
+    #[test]
+    fn captures_keyword_and_maximum_blocker_clause_without_flattening_subject() {
+        let tokens = lex_line(
+            "Enchanted creature has hexproof and can't be blocked by more than one creature.",
+            0,
+        )
+        .unwrap();
+        let parsed = parse_keywords_and_cant_be_blocked_by_more_than_clause(&tokens)
+            .expect("compound attached grant should parse");
+
+        assert_eq!(
+            TokenWordView::new(parsed.subject_tokens).word_refs(),
+            ["enchanted", "creature"]
+        );
+        assert_eq!(
+            TokenWordView::new(parsed.keyword_tokens).word_refs(),
+            ["hexproof"]
+        );
+        assert_eq!(
+            TokenWordView::new(parsed.blocker_threshold_tokens).word_refs(),
+            ["more", "than", "one"]
+        );
     }
 
     #[test]

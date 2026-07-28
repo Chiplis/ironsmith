@@ -147,7 +147,9 @@ fn reconcile_may_decider_scoped_search_effect(
                 )
             })
             .collect();
-        return Effect::new(crate::effects::SequenceEffect::new(effects));
+        let mut reconciled = sequence.clone();
+        reconciled.effects = effects;
+        return Effect::new(reconciled);
     }
 
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
@@ -190,7 +192,10 @@ fn reconcile_may_decider_scoped_search_effect(
             effect.downcast_ref::<crate::effects::ShuffleGraveyardIntoLibraryEffect>()
         && shuffle.player == PlayerFilter::You
     {
-        return Effect::shuffle_graveyard_into_library_player(decider.clone());
+        return Effect::shuffle_graveyard_into_library_player_with_surface(
+            decider.clone(),
+            shuffle.explicit_all_cards_from,
+        );
     }
 
     if !matches!(decider, PlayerFilter::You)
@@ -310,6 +315,98 @@ fn try_compile_for_each_object_become_copy_of_prior_choice(
     Ok(Some(compile_effect(&rewritten, ctx)?))
 }
 
+fn choose_spec_is_single_damage_recipient(spec: &ChooseSpec) -> bool {
+    if spec.is_target() {
+        return true;
+    }
+    match spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
+            .tagged_constraints
+            .iter()
+            .any(|constraint| constraint.relation == TaggedOpbjectRelation::IsTaggedObject),
+        _ => true,
+    }
+}
+
+/// Lower an authored "`Each <object> deals ... equal to its ...`" source set
+/// as the damage-source loop. The target is resolved before entering that loop
+/// so a demonstrative such as "that permanent" keeps referring to the prior
+/// choice instead of being rebound to the current source object.
+fn try_compile_for_each_object_as_damage_source(
+    filter: &ObjectFilter,
+    effects: &[EffectAst],
+    ctx: &mut EffectLoweringContext,
+) -> Result<Option<(Vec<Effect>, Vec<ChooseSpec>)>, CardTextError> {
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::DealDamageEqualToPower {
+                    source,
+                    amount,
+                    target,
+                    unpreventable,
+                },
+            ..
+        }),
+    ] = effects
+    else {
+        return Ok(None);
+    };
+
+    let source_is_iterand = matches!(
+        source,
+        TargetAst::Object(source_filter, _, _) if source_filter == filter
+    ) || matches!(
+        source,
+        TargetAst::Tagged(tag, _) if tag.as_str() == IT_TAG
+    );
+    if !source_is_iterand {
+        return Ok(None);
+    }
+
+    let refs = current_reference_env(ctx);
+    let resolved_filter = resolve_it_tag(filter, &refs)?;
+    let (target_spec, choices) = if source == target {
+        (ChooseSpec::Iterated, Vec::new())
+    } else {
+        resolve_target_spec_with_choices(target, &refs)?
+    };
+    if !choose_spec_is_single_damage_recipient(&target_spec) {
+        return Ok(None);
+    }
+
+    let resolved_amount = resolve_value_it_tag(amount, &refs)?;
+    let damage_amount = super::effect_dispatch::bind_source_value_to_damage_source(
+        &resolved_amount,
+        &ChooseSpec::Iterated,
+    );
+    let damage = if *unpreventable {
+        Effect::deal_unpreventable_damage(damage_amount, target_spec.clone())
+    } else {
+        Effect::deal_damage(damage_amount, target_spec.clone())
+    };
+    let per_source_damage = Effect::new(crate::effects::ExecuteWithSourceEffect::new(
+        ChooseSpec::Iterated,
+        damage,
+    ));
+    let per_source_damage =
+        tag_object_target_effect(per_source_damage, &target_spec, ctx, "damaged");
+
+    if let TargetAst::Player(filter, _) | TargetAst::PlayerOrPlaneswalker(filter, _) = target {
+        ctx.last_player_filter = Some(PlayerFilter::Target(Box::new(filter.clone())));
+    } else if matches!(
+        target,
+        TargetAst::AnyTarget(_) | TargetAst::AnyOtherTarget(_)
+    ) {
+        ctx.last_player_filter = Some(PlayerFilter::DamagedPlayer);
+    }
+
+    Ok(Some((
+        vec![Effect::for_each(resolved_filter, vec![per_source_damage])],
+        choices,
+    )))
+}
+
 pub(super) fn try_compile_flow_and_iteration_effect(
     effect: &EffectAst,
     ctx: &mut EffectLoweringContext,
@@ -427,6 +524,50 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             player,
             cost,
         } => {
+            // A trailing "unless they pay" attached to an each-player
+            // instruction is evaluated separately for every iterated player.
+            // Keep the payment inside the loop so `they` resolves against the
+            // loop binding rather than an outer (often "you") antecedent.
+            if matches!(player, PlayerAst::That)
+                && let [per_player] = effects.as_slice()
+            {
+                let rewritten = match per_player {
+                    EffectAst::ForEachPlayer {
+                        effects: per_player_effects,
+                    } => Some(EffectAst::ForEachPlayer {
+                        effects: vec![EffectAst::UnlessPays {
+                            effects: per_player_effects.clone(),
+                            player: *player,
+                            cost: cost.clone(),
+                        }],
+                    }),
+                    EffectAst::ForEachOpponent {
+                        effects: per_player_effects,
+                    } => Some(EffectAst::ForEachOpponent {
+                        effects: vec![EffectAst::UnlessPays {
+                            effects: per_player_effects.clone(),
+                            player: *player,
+                            cost: cost.clone(),
+                        }],
+                    }),
+                    EffectAst::ForEachPlayersFiltered {
+                        filter,
+                        effects: per_player_effects,
+                    } => Some(EffectAst::ForEachPlayersFiltered {
+                        filter: filter.clone(),
+                        effects: vec![EffectAst::UnlessPays {
+                            effects: per_player_effects.clone(),
+                            player: *player,
+                            cost: cost.clone(),
+                        }],
+                    }),
+                    _ => None,
+                };
+                if let Some(rewritten) = rewritten {
+                    return Ok(Some(compile_effect(&rewritten, ctx)?));
+                }
+            }
+
             if effects.len() == 1
                 && let EffectAst::ForEachObject {
                     filter,
@@ -471,7 +612,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             }
             let mut choices = inner_choices;
             choices.append(&mut player_choices);
-            let effect = Effect::unless_pays_total_cost(inner_effects, player_filter, cost.clone());
+            let resolved_cost = resolve_total_cost_it_tags(cost, &current_reference_env(ctx))?;
+            let effect =
+                Effect::unless_pays_total_cost(inner_effects, player_filter, resolved_cost);
             (vec![effect], choices)
         }
         EffectAst::UnlessAction {
@@ -499,11 +642,22 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             let previous_last_player_filter = ctx.last_player_filter.clone();
             let (inner_effects, inner_choices) = compile_effects(effects, ctx)?;
             let (alt_effects, alt_choices) = compile_effects(alternative, ctx)?;
-            let player_filter = resolve_unless_player_filter(
-                *player,
-                &current_reference_env(ctx),
-                previous_last_player_filter,
-            )?;
+            // In `destroy/counter target ... unless its controller ...`, the
+            // possessive refers to the target declared by this same primary
+            // action. A trigger setup tag may still be the ambient
+            // `last_object_tag`; do not let that unrelated antecedent steal
+            // the decision from the actual target's controller.
+            let player_filter = if matches!(player, PlayerAst::ItsController)
+                && inner_choices.iter().any(ChooseSpec::is_target)
+            {
+                PlayerFilter::ControllerOf(crate::target::ObjectRef::Target)
+            } else {
+                resolve_unless_player_filter(
+                    *player,
+                    &current_reference_env(ctx),
+                    previous_last_player_filter,
+                )?
+            };
             if !matches!(*player, PlayerAst::Implicit) {
                 ctx.last_player_filter = Some(player_filter.clone());
             }
@@ -683,6 +837,11 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             {
                 return Ok(Some(compiled));
             }
+            if let Some(compiled) =
+                try_compile_for_each_object_as_damage_source(filter, effects, ctx)?
+            {
+                return Ok(Some(compiled));
+            }
             let resolved_filter = resolve_it_tag(filter, &current_reference_env(ctx))?;
             let (inner_effects, inner_choices) =
                 compile_effects_in_iterated_object_context(effects, ctx)?;
@@ -750,17 +909,34 @@ pub(super) fn try_compile_flow_and_iteration_effect(
             continue_effect_index,
             continue_predicate,
         } => {
-            let (body_effects, choices, condition) = with_preserved_lowering_context(
+            let (mut body_effects, choices, condition) = with_preserved_lowering_context(
                 ctx,
                 |_| {},
                 |ctx| compile_repeat_process_body(effects, *continue_effect_index, ctx),
             )?;
+            // Targets for a repeated process are declared once when the
+            // ability is put on the stack. Synthetic TargetOnly declarations
+            // inserted while compiling the body must therefore stay outside
+            // the loop; otherwise a target changed by the first iteration is
+            // revalidated before the second iteration can begin.
+            let target_prelude_count = body_effects
+                .iter()
+                .take_while(|effect| {
+                    effect
+                        .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                        .is_some()
+                })
+                .count();
+            let mut compiled = body_effects
+                .drain(..target_prelude_count)
+                .collect::<Vec<_>>();
             let effect = Effect::repeat_process(
                 body_effects,
                 condition,
                 effect_predicate_from_if_result(continue_predicate.clone()),
             );
-            (vec![effect], choices)
+            compiled.push(effect);
+            (compiled, choices)
         }
         EffectAst::ForEachOpponentDoesNot { .. } => {
             return Err(CardTextError::ParseError(

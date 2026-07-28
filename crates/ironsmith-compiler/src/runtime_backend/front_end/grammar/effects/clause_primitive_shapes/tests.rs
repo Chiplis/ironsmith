@@ -8,6 +8,13 @@ fn parses_power_damage_and_fight_shapes() {
     assert!(shape.source_is_tagged);
     assert!(matches!(shape.target, PowerDamageTargetShape::EachOpponent));
 
+    let each_other = lex_line("This spell deals 2 damage to each other player.", 0).unwrap();
+    let shape = parse_power_damage_shape(&each_other).unwrap().unwrap();
+    assert!(matches!(
+        shape.target,
+        PowerDamageTargetShape::EachOtherPlayer
+    ));
+
     let fight = lex_line("Target creature fights one another.", 0).unwrap();
     assert!(parse_fight_shape(&fight).unwrap().right_is_tagged_other);
 

@@ -18,6 +18,71 @@ fn as_enters_program_count(definition: &CardDefinition) -> usize {
 }
 
 #[test]
+pub(super) fn cleave_card_surface_restores_brackets_from_typed_alternative_program() {
+    let definition = parse_oracle_card_definition("Alchemist's Retrieval");
+    assert_eq!(
+        unprocessed_compiled_lines(&definition),
+        vec![
+            "Cleave {1}{U}".to_string(),
+            "Return target nonland permanent [you control] to its owner's hand.".to_string(),
+        ]
+    );
+}
+
+#[test]
+pub(super) fn heart_of_bogardan_keeps_unpaid_upkeep_trigger_and_arithmetic_damage_binding() {
+    let definition = parse_oracle_card_definition("Heart of Bogardan");
+    let unpaid_trigger = definition
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Triggered(triggered) = &ability.kind else {
+                return None;
+            };
+            triggered
+                .trigger
+                .downcast_ref::<crate::triggers::KeywordActionTrigger>()
+                .filter(|trigger| {
+                    trigger.action == crate::events::KeywordActionKind::CumulativeUpkeepNotPaid
+                })
+                .map(|trigger| (triggered, trigger))
+        })
+        .expect("Heart of Bogardan should retain a typed unpaid-cumulative-upkeep trigger");
+    assert_eq!(unpaid_trigger.1.player, PlayerFilter::Any);
+    assert!(unpaid_trigger.1.source_must_match);
+
+    let debug = format!("{:#?}", unpaid_trigger.0.effects);
+    assert!(
+        debug.contains("TargetPlayerOrControllerOfTarget"),
+        "Heart's creature fanout must stay bound to the damaged player or planeswalker's controller: {debug}"
+    );
+
+    let rendered = unprocessed_compiled_lines(&definition).join("\n");
+    assert_eq!(
+        rendered,
+        "Cumulative upkeep {2}.\nWhen a player doesn't pay this enchantment's cumulative upkeep, this enchantment deals X damage to target player or planeswalker and each creature that player or that planeswalker's controller controls, where X is twice the number of age counters on this enchantment minus 2."
+    );
+
+    assert!(
+        debug.contains("Add(")
+            && debug.contains("Scaled(")
+            && debug.contains("Age")
+            && debug.contains("Fixed(")
+            && debug.contains("-2"),
+        "Heart's damage amount must retain the complete `twice ... minus 2` expression: {debug}"
+    );
+}
+
+#[test]
+pub(super) fn fugitive_of_the_judoon_keeps_both_exiles_in_the_optional_instruction() {
+    let definition = parse_oracle_card_definition("Fugitive of the Judoon");
+    assert_eq!(
+        unprocessed_compiled_lines(&definition).join("\n"),
+        "I — Create a 1/1 white Human creature token with ward {2} and a 4/4 white Alien Rhino creature token.\nII — Investigate.\nIII — You may exile a Human you control and an artifact you control. If you do, search your library for a Doctor card, put it onto the battlefield, then shuffle."
+    );
+}
+
+#[test]
 pub(super) fn named_generic_as_enters_setup_cards_keep_typed_timing_and_line_position() {
     let cases = [
         (

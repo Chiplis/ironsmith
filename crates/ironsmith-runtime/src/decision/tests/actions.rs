@@ -3040,6 +3040,7 @@ fn optional_cost_can_make_cast_time_targets_legal() {
                 Condition::ThisSpellPaidLabel("Gift".into()),
                 vec![Effect::counter(ChooseSpec::target_spell())],
             )],
+            starts_new_source_line: false,
         }]);
     if let Some(spell) = game.object_mut(spell_id) {
         spell.optional_costs = vec![crate::cost::OptionalCost::custom(

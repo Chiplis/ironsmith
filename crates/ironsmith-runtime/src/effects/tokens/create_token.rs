@@ -7,7 +7,7 @@ use crate::effects::helpers::resolve_value;
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::ids::ObjectId;
-use crate::target::ChooseSpec;
+use crate::target::{ChooseSpec, SourceReferenceSurface};
 use crate::zone::Zone;
 
 use super::lifecycle::{
@@ -61,6 +61,72 @@ use super::lifecycle::{
 /// ```
 pub type CreateTokenEffect = ironsmith_core::CreateTokenEffect<CardDefinition>;
 
+/// Bind a proper-name reference in a token's quoted CDA to the object whose
+/// effect created that token. Ordinary unmarked `Source` values remain local
+/// to the token itself.
+fn materialize_named_creator_source_spec(spec: &mut Box<ChooseSpec>, source: ObjectId) -> bool {
+    if !matches!(spec.base(), ChooseSpec::Source)
+        || !matches!(
+            spec.source_reference_surface(),
+            Some(SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_))
+        )
+    {
+        return false;
+    }
+
+    let hints = spec.surface_hints().to_vec();
+    **spec = ChooseSpec::SpecificObject(source).with_surface_hints(hints);
+    true
+}
+
+fn materialize_named_creator_source_in_value(
+    value: &mut crate::effect::Value,
+    source: ObjectId,
+) -> bool {
+    use crate::effect::Value;
+
+    match value {
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => materialize_named_creator_source_in_value(value, source),
+        Value::Add(left, right) | Value::Min(left, right) => {
+            let left_changed = materialize_named_creator_source_in_value(left, source);
+            let right_changed = materialize_named_creator_source_in_value(right, source);
+            left_changed || right_changed
+        }
+        Value::PowerOf(spec)
+        | Value::ToughnessOf(spec)
+        | Value::ManaValueOf(spec)
+        | Value::CountersOn(spec, _) => materialize_named_creator_source_spec(spec, source),
+        Value::ManaSymbolsInManaCostOf { spec, .. } => {
+            materialize_named_creator_source_spec(spec, source)
+        }
+        _ => false,
+    }
+}
+
+fn materialize_named_creator_source_in_token(token: &mut CardDefinition, source: ObjectId) {
+    for ability in &mut token.abilities {
+        let crate::ability::AbilityKind::Static(static_ability) = &mut ability.kind else {
+            continue;
+        };
+        let Some(mut model) = static_ability.compiled_model().cloned() else {
+            continue;
+        };
+        let ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt { power, toughness } =
+            &mut model.payload
+        else {
+            continue;
+        };
+        let power_changed = materialize_named_creator_source_in_value(power, source);
+        let toughness_changed = materialize_named_creator_source_in_value(toughness, source);
+        if power_changed || toughness_changed {
+            *static_ability = crate::static_abilities::StaticAbility::from_model(model);
+        }
+    }
+}
+
 impl EffectExecutor for CreateTokenEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -95,8 +161,24 @@ impl EffectExecutor for CreateTokenEffect {
             return Ok(EffectOutcome::with_objects(Vec::new()));
         }
         let base_count = resolve_value(game, &self.count, ctx)?.max(0) as u32;
-        let token_preview =
-            game.object_from_token_definition(ObjectId::from_raw(0), &self.token, controller_id);
+        let mut resolved_token = self.token.clone();
+        if self.use_source_chosen_color
+            && let Some(color) = game.chosen_color(ctx.source)
+        {
+            resolved_token.card.color_indicator = Some(crate::color::ColorSet::from(color));
+        }
+        if self.use_source_chosen_creature_type
+            && let Some(subtype) = game.chosen_creature_type(ctx.source)
+            && !resolved_token.card.subtypes.contains(&subtype)
+        {
+            resolved_token.card.subtypes.push(subtype);
+        }
+        materialize_named_creator_source_in_token(&mut resolved_token, ctx.source);
+        let token_preview = game.object_from_token_definition(
+            ObjectId::from_raw(0),
+            &resolved_token,
+            controller_id,
+        );
         let replacement = crate::events::processing::process_token_creation_for_token_with_event(
             game,
             controller_id,
@@ -121,7 +203,8 @@ impl EffectExecutor for CreateTokenEffect {
 
         for _ in 0..count {
             let id = game.new_object_id();
-            let mut token_obj = game.object_from_token_definition(id, &self.token, controller_id);
+            let mut token_obj =
+                game.object_from_token_definition(id, &resolved_token, controller_id);
             token_obj.zone = Zone::Command;
             let token_is_creature = token_obj.is_creature();
 
@@ -413,6 +496,180 @@ mod tests {
         } else {
             panic!("Expected Objects result");
         }
+    }
+
+    #[test]
+    fn create_token_applies_source_chosen_color_and_creature_type() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        game.set_chosen_color(source, Color::Blue);
+        game.set_chosen_creature_type(source, Subtype::Goblin);
+
+        let blueprint = CardDefinitionBuilder::new(CardId::new(), "Creature")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let result = CreateTokenEffect::one(blueprint)
+            .with_source_chosen_color()
+            .with_source_chosen_creature_type()
+            .execute(&mut game, &mut ctx)
+            .expect("chosen-characteristic token should be created");
+
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected created token ids");
+        };
+        let token = game.object(ids[0]).expect("created token");
+        assert_eq!(token.colors(), ColorSet::BLUE);
+        assert!(token.subtypes.contains(&Subtype::Goblin), "{token:#?}");
+    }
+
+    #[test]
+    fn named_source_token_cda_tracks_the_creating_permanent() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let slime = CounterType::Named("slime");
+        let creator_definition = CardDefinitionBuilder::new(CardId::new(), "Slime Foundry")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let creator =
+            game.create_object_from_definition(&creator_definition, alice, Zone::Battlefield);
+        let other_creator =
+            game.create_object_from_definition(&creator_definition, alice, Zone::Battlefield);
+        game.add_counters(creator, slime, 2)
+            .expect("creator should receive slime counters");
+
+        let named_source = ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                SourceReferenceSurface::FullName("Slime Foundry".to_string()),
+            ),
+        );
+        let count = crate::effect::Value::CountersOn(Box::new(named_source), Some(slime));
+        let token = CardDefinitionBuilder::new(CardId::new(), "Ooze")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Ooze])
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .with_ability(Ability::static_ability(StaticAbility::from_model(
+                crate::static_abilities::CompiledStaticAbility::characteristic_defining_pt(
+                    count.clone(),
+                    count,
+                ),
+            )))
+            .build();
+        let mut ctx = ExecutionContext::new_default(creator, alice);
+        let result = CreateTokenEffect::one(token)
+            .execute(&mut game, &mut ctx)
+            .expect("creator-bound Ooze should be created");
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected a created token");
+        };
+        let [token_id] = ids.as_slice() else {
+            panic!("expected exactly one created token: {ids:#?}");
+        };
+
+        game.refresh_continuous_state();
+        assert_eq!(game.current_power(*token_id), Some(2));
+        assert_eq!(game.current_toughness(*token_id), Some(2));
+
+        game.add_counters(other_creator, slime, 4)
+            .expect("unrelated permanent should receive slime counters");
+        game.refresh_continuous_state();
+        assert_eq!(
+            game.current_power(*token_id),
+            Some(2),
+            "a similarly named permanent must not replace the creating object"
+        );
+
+        game.add_counters(creator, slime, 1)
+            .expect("creator should receive another slime counter");
+        game.refresh_continuous_state();
+        assert_eq!(game.current_power(*token_id), Some(3));
+        assert_eq!(game.current_toughness(*token_id), Some(3));
+
+        let token_object = game.object(*token_id).expect("created token should exist");
+        let materialized_value = token_object
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Static(static_ability) => {
+                    let model = static_ability.compiled_model()?;
+                    let ironsmith_core::StaticAbilityPayload::CharacteristicDefiningPt {
+                        power,
+                        ..
+                    } = &model.payload
+                    else {
+                        return None;
+                    };
+                    Some(power)
+                }
+                _ => None,
+            })
+            .expect("created token should retain its compiled CDA");
+        let crate::effect::Value::CountersOn(spec, Some(counter_type)) =
+            materialized_value.unhinted()
+        else {
+            panic!("expected creator counter value: {materialized_value:#?}");
+        };
+        assert_eq!(*counter_type, slime);
+        assert_eq!(spec.base(), &ChooseSpec::SpecificObject(creator));
+        assert_eq!(
+            spec.source_reference_surface(),
+            Some(&SourceReferenceSurface::FullName(
+                "Slime Foundry".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn token_local_cda_source_is_not_rebound_to_the_creator() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creator_definition = CardDefinitionBuilder::new(CardId::new(), "Creator")
+            .card_types(vec![CardType::Enchantment])
+            .build();
+        let creator =
+            game.create_object_from_definition(&creator_definition, alice, Zone::Battlefield);
+        game.add_counters(creator, CounterType::Charge, 3)
+            .expect("creator should receive charge counters");
+
+        let count = crate::effect::Value::CountersOnSource(CounterType::Charge);
+        let token = CardDefinitionBuilder::new(CardId::new(), "Construct")
+            .token()
+            .card_types(vec![CardType::Artifact, CardType::Creature])
+            .subtypes(vec![Subtype::Construct])
+            .power_toughness(PowerToughness::fixed(0, 0))
+            .with_ability(Ability::static_ability(StaticAbility::from_model(
+                crate::static_abilities::CompiledStaticAbility::characteristic_defining_pt(
+                    count.clone(),
+                    count,
+                ),
+            )))
+            .build();
+        let mut ctx = ExecutionContext::new_default(creator, alice);
+        let result = CreateTokenEffect::one(token)
+            .execute(&mut game, &mut ctx)
+            .expect("token-local Construct should be created");
+        let crate::effect::OutcomeValue::Objects(ids) = result.value else {
+            panic!("expected a created token");
+        };
+        let [token_id] = ids.as_slice() else {
+            panic!("expected exactly one created token: {ids:#?}");
+        };
+
+        game.refresh_continuous_state();
+        assert_eq!(
+            game.current_power(*token_id),
+            Some(0),
+            "an unmarked source value must remain local to the token"
+        );
+        game.add_counters(*token_id, CounterType::Charge, 1)
+            .expect("token should receive a charge counter");
+        game.refresh_continuous_state();
+        assert_eq!(game.current_power(*token_id), Some(1));
+        assert_eq!(game.current_toughness(*token_id), Some(1));
     }
 
     #[test]

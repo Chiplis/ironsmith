@@ -310,7 +310,20 @@ pub(crate) fn rewrite_lower_parsed_modal(
 
     let mut combined_effects = prefix_effects;
     if let Some(modal_gate) = modal_gate {
-        if modal_gate.remove_mode_only
+        if modal_gate.reflexive {
+            if let Some(last_effect) = combined_effects.pop() {
+                let gate_id = crate::effect::EffectId(1_000_000_000);
+                combined_effects.push(crate::effect::Effect::with_id(gate_id.0, last_effect));
+                combined_effects.push(crate::effect::Effect::reflexive_trigger(
+                    gate_id,
+                    modal_gate.predicate,
+                    vec![modal_effect],
+                    Vec::new(),
+                ));
+            } else {
+                combined_effects.push(modal_effect);
+            }
+        } else if modal_gate.remove_mode_only
             && try_merge_modal_into_remove_mode(
                 &mut combined_effects,
                 modal_effect.clone(),

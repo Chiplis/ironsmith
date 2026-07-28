@@ -57,9 +57,17 @@ pub(crate) fn object_filter_mentions_iterated_player(filter: &ObjectFilter) -> b
             .as_deref()
             .is_some_and(object_filter_mentions_iterated_player)
         || filter
+            .blocked_or_was_blocked_by_this_turn
+            .as_deref()
+            .is_some_and(object_filter_mentions_iterated_player)
+        || filter
             .no_shared_creature_types_with
             .iter()
             .any(object_filter_mentions_iterated_player)
+        || filter
+            .characteristic_relations
+            .iter()
+            .any(|relation| object_filter_mentions_iterated_player(&relation.comparison))
         || filter
             .any_of
             .iter()
@@ -86,9 +94,17 @@ fn object_filter_contains_pending_effect_metric(filter: &ObjectFilter) -> bool {
             .as_deref()
             .is_some_and(object_filter_contains_pending_effect_metric)
         || filter
+            .blocked_or_was_blocked_by_this_turn
+            .as_deref()
+            .is_some_and(object_filter_contains_pending_effect_metric)
+        || filter
             .no_shared_creature_types_with
             .iter()
             .any(object_filter_contains_pending_effect_metric)
+        || filter
+            .characteristic_relations
+            .iter()
+            .any(|relation| object_filter_contains_pending_effect_metric(&relation.comparison))
         || filter
             .any_of
             .iter()
@@ -190,6 +206,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
         | Value::CountersOn(spec, _) => choose_spec_mentions_iterated_player(spec),
         Value::CreaturesDiedThisTurnControlledBy(player)
         | Value::CountPlayers(player)
+        | Value::CountPlayersWithCardsInHandAtLeast(player, _)
         | Value::PartySize(player)
         | Value::LifeTotal(player)
         | Value::LifeTotalAsTurnBegan(player)
@@ -229,7 +246,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
             use ironsmith_core::TurnHistoryCount;
 
             match query {
-                TurnHistoryCount::Died(filter)
+                TurnHistoryCount::Died { filter, .. }
                 | TurnHistoryCount::EnteredBattlefield(filter)
                 | TurnHistoryCount::MovedZones { filter, .. }
                 | TurnHistoryCount::CountersPutOn { filter, .. } => {
@@ -242,6 +259,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
                 | TurnHistoryCount::DiscardedOrCycled(player)
                 | TurnHistoryCount::Cycled(player)
                 | TurnHistoryCount::PlayersLostLife(player)
+                | TurnHistoryCount::Descended(player)
                 | TurnHistoryCount::ColorsAmongPermanentsAndSpellsCast(player) => {
                     player.mentions_iterated_player()
                 }
@@ -261,6 +279,7 @@ pub(crate) fn value_mentions_iterated_player(value: &Value) -> bool {
                     player.mentions_iterated_player()
                         || object_filter_mentions_iterated_player(filter)
                 }
+                TurnHistoryCount::DamageDealtToSource => false,
             }
         }
         _ => false,
@@ -422,6 +441,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
     use Restriction::*;
     match restriction {
         AdditionalLandPlays(player, _)
+        | NoMaximumHandSize(player)
         | GainLife(player)
         | SearchLibraries(player)
         | CastSpellsOnlyAsSorcery(player)
@@ -458,6 +478,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | BeCountered(filter)
         | Transform(filter)
         | PhaseOut(filter)
+        | PhaseIn(filter)
         | AttackOrBlock(filter)
         | AttackOrBlockAlone(filter) => object_filter_mentions_iterated_player(filter),
         AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
@@ -472,7 +493,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         BeTargetedPlayerFrom(player, source) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
-        PreventDamage => false,
+        PreventDamage | AttackYouUnlessControllerPaysPerAttacker(_) => false,
     }
 }
 

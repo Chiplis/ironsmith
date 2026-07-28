@@ -1057,7 +1057,9 @@ fn parsed_exploit_ability() -> ParsedAbility {
         text: Some("Exploit".to_string()),
         effects_ast: None,
         reference_imports: ReferenceImports::default(),
-        trigger_spec: Some(TriggerSpec::ThisEntersBattlefield { origin_condition: None }),
+        trigger_spec: Some(TriggerSpec::ThisEntersBattlefield {
+            origin_condition: None,
+        }),
     }
 }
 
@@ -2426,6 +2428,43 @@ fn subtype_list_anthem_remains_one_subject() {
     );
 }
 
+#[test]
+fn shared_head_supertype_subtype_anthem_remains_one_typed_subject() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Other snow and Zombie creatures you control get +1/+1.",
+        0,
+    )
+    .expect("lex shared-head anthem");
+
+    assert!(
+        parse_multi_subject_anthem_line(&tokens)
+            .expect("probe multi-subject anthem")
+            .is_none(),
+        "a coordinated characteristic phrase must not become sibling anthems"
+    );
+    let ability = parse_anthem_line(&tokens)
+        .expect("parse shared-head anthem")
+        .expect("single-subject anthem should match");
+    let crate::static_abilities::StaticAbilityPayload::Anthem(anthem) = &ability.payload else {
+        panic!("expected a typed anthem: {ability:#?}");
+    };
+    let filter = anthem
+        .filter
+        .as_ref()
+        .expect("coordinated anthem should use an object filter");
+
+    assert_eq!(filter.card_types, [crate::CardType::Creature]);
+    assert_eq!(filter.controller, Some(crate::PlayerFilter::You));
+    assert!(filter.other);
+    assert_eq!(filter.any_of.len(), 2);
+    assert!(filter.any_of.iter().any(|branch| {
+        branch.supertypes == [crate::Supertype::Snow] && branch.card_types.is_empty()
+    }));
+    assert!(filter.any_of.iter().any(|branch| {
+        branch.subtypes == [crate::Subtype::Zombie] && branch.card_types.is_empty()
+    }));
+}
+
 pub(crate) fn parse_has_base_power_toughness_static_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<StaticAbility>, CardTextError> {
@@ -2929,6 +2968,54 @@ fn quoted_static_marker_grants_parse_for_filtered_subjects() {
 }
 
 #[test]
+fn quoted_filtered_subject_cost_tax_routes_as_a_granted_static_ability() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Creatures you control with flying have \"Spells your opponents cast that target this creature cost {2} more to cast.\"",
+        0,
+    )
+    .expect("lex quoted cost-tax grant");
+    let routed = parse_static_ability_ast_line_lexed(&tokens)
+        .expect("route quoted cost-tax grant")
+        .expect("quoted cost-tax grant should be recognized");
+    let [
+        StaticAbilityAst::GrantStaticAbility {
+            filter,
+            ability,
+            condition,
+        },
+    ] = routed.as_slice()
+    else {
+        panic!("expected one filtered static-ability grant: {routed:#?}");
+    };
+
+    assert_eq!(filter.controller, Some(PlayerFilter::You));
+    assert_eq!(filter.card_types, [CardType::Creature]);
+    assert_eq!(
+        filter.static_abilities,
+        [crate::static_abilities::StaticAbilityId::Flying]
+    );
+    assert!(condition.is_none());
+
+    let StaticAbilityAst::Static(ability) = ability.as_ref() else {
+        panic!("expected a typed static cost increase: {ability:#?}");
+    };
+    let ironsmith_core::StaticAbilityPayload::CostIncrease(increase) = &ability.payload else {
+        panic!("expected a generic-mana cost increase: {ability:#?}");
+    };
+    assert_eq!(increase.amount, Value::Fixed(2));
+    assert_eq!(increase.filter.cast_by, Some(PlayerFilter::Opponent));
+    let target = increase
+        .filter
+        .targets_object
+        .as_deref()
+        .expect("the quoted tax should retain its affected-object target");
+    assert!(
+        target.source,
+        "\"this creature\" must refer to each object receiving the ability"
+    );
+}
+
+#[test]
 fn conditional_attached_quoted_equipment_grant_uses_nested_subject() {
     let tokens = crate::runtime_backend::lexer::lex_line(
         "As long as enchanted permanent is an Equipment, it has \"Equipped creature gets +1/+1 and has trample.\"",
@@ -3015,6 +3102,106 @@ fn generic_leading_as_long_as_conditions_every_thunderfoot_sibling() {
         debug.matches("you control your commander").count(),
         3,
         "{debug}"
+    );
+}
+
+#[test]
+fn fixed_not_your_turn_prefix_conditions_source_type_identity() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "During turns other than yours, this Vehicle is an artifact creature.",
+        0,
+    )
+    .expect("lex fixed turn condition");
+
+    let (routed, loss) =
+        crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(&tokens));
+    assert!(!loss.is_lossy(), "unexpected parse loss: {loss:#?}");
+    let routed = routed
+        .expect("route fixed turn condition")
+        .expect("fixed turn condition should parse");
+    assert_eq!(routed.len(), 1, "{routed:#?}");
+    assert!(
+        routed.iter().all(static_ability_ast_has_explicit_condition),
+        "type identity must retain the leading turn condition: {routed:#?}"
+    );
+    let debug = format!("{routed:#?}");
+    assert!(debug.contains("SetCardTypes"), "{debug}");
+    assert!(
+        debug.contains("Not(") && debug.contains("YourTurn"),
+        "{debug}"
+    );
+    assert!(!debug.contains("other: true"), "{debug}");
+}
+
+#[test]
+fn generic_leading_if_conditions_source_spell_keyword() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "If this spell was kicked, it has split second.",
+        0,
+    )
+    .expect("lex kicked static keyword");
+
+    let (routed, loss) =
+        crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(&tokens));
+    assert!(!loss.is_lossy(), "unexpected parse loss: {loss:#?}");
+    let routed = routed
+        .expect("route kicked static keyword")
+        .expect("kicked static keyword should parse");
+    assert_eq!(routed.len(), 1, "{routed:#?}");
+    assert!(
+        routed.iter().all(static_ability_ast_has_explicit_condition),
+        "split second must retain its kicked condition: {routed:#?}"
+    );
+    let debug = format!("{routed:#?}");
+    assert!(debug.contains("SplitSecond"), "{debug}");
+    assert!(debug.contains("ThisSpellWasKicked"), "{debug}");
+    assert!(!debug.contains("other: true"), "{debug}");
+}
+
+#[test]
+fn contracted_source_animation_and_keyword_share_the_threshold_condition() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "As long as this artifact has eight or more +1/+1 counters on it, it's a 0/0 creature in addition to its other types and it has annihilator 2.",
+        0,
+    )
+    .expect("lex contracted source animation");
+
+    let (routed, loss) =
+        crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(&tokens));
+    assert!(!loss.is_lossy(), "unexpected parse loss: {loss:#?}");
+    let routed = routed
+        .expect("route contracted source animation")
+        .expect("contracted source animation should parse");
+    assert_eq!(routed.len(), 3, "{routed:#?}");
+    assert!(
+        routed.iter().all(static_ability_ast_has_explicit_condition),
+        "animation and keyword siblings must share the counter condition: {routed:#?}"
+    );
+    let debug = format!("{routed:#?}");
+    assert!(debug.contains("AddCardTypes"), "{debug}");
+    assert!(debug.contains("SetBasePowerToughness"), "{debug}");
+    assert!(debug.contains("Annihilator"), "{debug}");
+    assert!(debug.contains("PlusOnePlusOne"), "{debug}");
+}
+
+#[test]
+fn rejected_static_rules_do_not_leak_suffix_loss_into_delirium_line() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Delirium — As long as there are four or more card types among cards in your graveyard, this creature gets +2/+2, has flying, and attacks each combat if able.",
+        0,
+    )
+    .expect("lex delirium line");
+
+    let (routed, loss) =
+        crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(&tokens));
+    assert!(!loss.is_lossy(), "unexpected parse loss: {loss:#?}");
+    let routed = routed
+        .expect("route delirium line")
+        .expect("delirium line should parse");
+    assert_eq!(routed.len(), 3, "{routed:#?}");
+    assert!(
+        routed.iter().all(static_ability_ast_has_explicit_condition),
+        "all delirium siblings must retain the threshold condition: {routed:#?}"
     );
 }
 
@@ -3347,13 +3534,22 @@ fn base_power_toughness_grants_accept_quoted_triggered_abilities() {
 
 #[test]
 fn attached_combat_restrictions_preserve_quoted_ability_grants() {
-    let text = "Enchanted creature can't attack or block and has \"{7}: Its controller sacrifices it and draws a card. Activate only as a sorcery.\"";
-    let tokens =
-        crate::runtime_backend::lexer::lex_line(text, 0).expect("lex restriction and grant");
-    let abilities = parse_attached_restriction_and_granted_ability_line(&tokens)
-        .expect("parse restriction and grant")
-        .expect("restriction and grant should be recognized");
-    assert_eq!(abilities.len(), 2);
+    crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+        "Hold for Ransom",
+        || {
+            let text = "Enchanted creature can't attack or block and has \"{7}: Hold for Ransom's controller sacrifices it and draws a card. Activate only as a sorcery.\"";
+            let tokens = crate::runtime_backend::lexer::lex_line(text, 0)
+                .expect("lex restriction and grant");
+            let abilities = parse_static_ability_ast_line_lexed(&tokens)
+                .expect("route restriction and grant")
+                .expect("restriction and grant should be recognized");
+            assert_eq!(abilities.len(), 2);
+            let debug = format!("{abilities:#?}");
+            assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
+            assert!(debug.contains("Hold for Ransom"), "{debug}");
+            assert!(debug.contains("SorcerySpeed"), "{debug}");
+        },
+    );
 }
 
 #[test]
@@ -3454,6 +3650,66 @@ fn keyword_and_unblockable_tail_keeps_multiple_captured_keywords() {
             StaticAbilityAst::KeywordAction(KeywordAction::Flying),
             StaticAbilityAst::KeywordAction(KeywordAction::Vigilance),
             StaticAbilityAst::KeywordAction(KeywordAction::Unblockable),
+        ]
+    ));
+}
+
+#[test]
+fn keyword_and_maximum_blocker_tail_share_the_attached_subject() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Equipped creature has trample and can't be blocked by more than one creature.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_subject_has_keywords_and_cant_be_blocked_by_more_than_line(&tokens)
+        .expect("parser should not error")
+        .expect("line should parse");
+
+    assert!(matches!(
+        parsed.as_slice(),
+        [
+            StaticAbilityAst::GrantKeywordAction {
+                action: KeywordAction::Trample,
+                filter: keyword_filter,
+                ..
+            },
+            StaticAbilityAst::GrantStaticAbility {
+                filter: restriction_filter,
+                ability,
+                ..
+            },
+        ] if keyword_filter == restriction_filter
+            && matches!(
+                ability.as_ref(),
+                StaticAbilityAst::Static(static_ability)
+                    if static_ability.id()
+                        == crate::static_abilities::StaticAbilityId::CantBeBlockedByMoreThan
+            )
+    ));
+}
+
+#[test]
+fn unblockable_and_keyword_tail_keeps_the_reverse_authored_order() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature can't be blocked and has shroud.",
+        0,
+    )
+    .expect("line should lex");
+    let parsed = parse_subject_cant_be_blocked_and_has_keywords_line(&tokens)
+        .expect("parser should not error")
+        .expect("line should parse");
+
+    assert!(matches!(
+        parsed.as_slice(),
+        [
+            StaticAbilityAst::GrantKeywordAction {
+                action: KeywordAction::Unblockable,
+                ..
+            },
+            StaticAbilityAst::GrantKeywordAction {
+                action: KeywordAction::Shroud,
+                ..
+            },
         ]
     ));
 }

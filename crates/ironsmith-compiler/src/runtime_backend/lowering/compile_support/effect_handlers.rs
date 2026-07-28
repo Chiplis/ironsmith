@@ -157,22 +157,31 @@ pub(crate) fn compile_delayed_trigger_spec(
         ),
         TriggerSpec::SpellCast {
             filter,
+            mana_source_filter,
             caster,
             timing,
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
             from_not_hand,
-        } => Ok(ironsmith_core::DelayedTriggerSpec::SpellCast {
-            filter: filter.clone(),
-            caster: caster.clone(),
-            timing: *timing,
-            during_turn: during_turn.clone(),
-            min_spells_this_turn: *min_spells_this_turn,
-            exact_spells_this_turn: *exact_spells_this_turn,
-            from_not_hand: *from_not_hand,
-            first_spell_of_game: false,
-        }),
+        } => {
+            if mana_source_filter.is_some() {
+                return Err(CardTextError::InvariantViolation(
+                    "delayed spell-cast triggers do not yet carry mana-source provenance"
+                        .to_string(),
+                ));
+            }
+            Ok(ironsmith_core::DelayedTriggerSpec::SpellCast {
+                filter: filter.clone(),
+                caster: caster.clone(),
+                timing: *timing,
+                during_turn: during_turn.clone(),
+                min_spells_this_turn: *min_spells_this_turn,
+                exact_spells_this_turn: *exact_spells_this_turn,
+                from_not_hand: *from_not_hand,
+                first_spell_of_game: false,
+            })
+        }
         TriggerSpec::PlayerPlaysLand { player, filter } => {
             Ok(ironsmith_core::DelayedTriggerSpec::PlayerPlaysLand {
                 player: player.clone(),
@@ -313,6 +322,7 @@ fn apply_delayed_trigger_duration(
     duration: &Until,
 ) -> Result<crate::effects::ScheduleDelayedTriggerEffect, CardTextError> {
     match duration {
+        Until::Forever => Ok(delayed),
         Until::EndOfTurn => Ok(delayed.until_end_of_turn()),
         Until::EndOfCombat => Ok(delayed.until_end_of_combat()),
         Until::YourNextTurn => Ok(delayed.until_controller_next_turn()),
@@ -328,6 +338,7 @@ fn compile_duration_scoped_delayed_trigger(
     one_shot: bool,
     duration: &Until,
     either_of_watched_objects: bool,
+    while_any_tagged_object_in_zone: &Option<(TagKey, Zone)>,
     ctx: &mut EffectLoweringContext,
 ) -> Result<(Vec<Effect>, Vec<ChooseSpec>), CardTextError> {
     let (delayed_effects, _delayed_choices) = compile_trigger_effects(Some(trigger), effects)?;
@@ -413,7 +424,10 @@ fn compile_duration_scoped_delayed_trigger(
     if either_of_watched_objects {
         delayed = delayed.with_either_of_watched_objects_surface();
     }
-    delayed = apply_delayed_trigger_duration(delayed, duration)?;
+    if let Some((tag, zone)) = while_any_tagged_object_in_zone {
+        delayed = delayed.while_any_tagged_object_in_zone(tag.clone(), *zone);
+    }
+    delayed = apply_delayed_trigger_duration(delayed, duration)?.with_leading_duration_surface();
 
     Ok((vec![Effect::new(delayed)], Vec::new()))
 }
@@ -433,6 +447,40 @@ pub(super) fn try_compile_timing_and_control_effect(
                 Vec::new(),
                 PlayerFilter::You,
             ));
+            (vec![effect], choices)
+        }
+        EffectAst::DelayedUntilNextCleanupStep { player, effects } => {
+            let (delayed_effects, choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+            let effect = Effect::new(crate::effects::ScheduleDelayedTriggerEffect::new(
+                ironsmith_core::DelayedTriggerSpec::BeginningOfNextCleanupStep(player.clone()),
+                delayed_effects,
+                true,
+                Vec::new(),
+                PlayerFilter::You,
+            ));
+            (vec![effect], choices)
+        }
+        EffectAst::DelayedUntilNextUntapStep { player, effects } => {
+            let subject = LoweredSubject::resolve_affected_player(*player, ctx, true, true, true)?;
+            let player_filter = subject.into_player_filter();
+            let mut choices = subject.into_choices();
+            let (delayed_effects, nested_choices) =
+                compile_delayed_effects_preserving_outer_context(effects, ctx)?;
+            choices.extend(nested_choices);
+            let effect = Effect::new(
+                crate::effects::ScheduleDelayedTriggerEffect::new(
+                    ironsmith_core::DelayedTriggerSpec::AsPermanentsUntap {
+                        player: player_filter,
+                        source_must_be_controlled: true,
+                    },
+                    delayed_effects,
+                    true,
+                    Vec::new(),
+                    PlayerFilter::You,
+                )
+                .watch_ability_source(),
+            );
             (vec![effect], choices)
         }
         EffectAst::DelayedUntilNextUpkeep { player, effects } => {
@@ -522,6 +570,7 @@ pub(super) fn try_compile_timing_and_control_effect(
             one_shot,
             duration,
             either_of_watched_objects,
+            while_any_tagged_object_in_zone,
         } => {
             return compile_duration_scoped_delayed_trigger(
                 trigger,
@@ -529,6 +578,7 @@ pub(super) fn try_compile_timing_and_control_effect(
                 *one_shot,
                 duration,
                 *either_of_watched_objects,
+                while_any_tagged_object_in_zone,
                 ctx,
             )
             .map(Some);

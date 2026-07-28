@@ -103,7 +103,7 @@ fn resolve_non_target_continuous_objects(
     spec: &ChooseSpec,
 ) -> Result<Vec<ObjectId>, ExecutionError> {
     if let ChooseSpec::Object(filter) = spec.base()
-        && !filter.tagged_constraints.is_empty()
+        && object_filter_uses_context_tag(filter)
     {
         return resolve_continuous_filter_objects(game, ctx, filter);
     }
@@ -119,6 +119,35 @@ fn resolve_non_target_continuous_objects(
     }
 
     Err(ExecutionError::InvalidTarget)
+}
+
+fn object_filter_uses_context_tag(filter: &crate::target::ObjectFilter) -> bool {
+    !filter.tagged_constraints.is_empty()
+        || filter
+            .targets_object
+            .as_deref()
+            .is_some_and(object_filter_uses_context_tag)
+        || filter
+            .targets_only_object
+            .as_deref()
+            .is_some_and(object_filter_uses_context_tag)
+        || filter
+            .attached_to_object
+            .as_deref()
+            .is_some_and(object_filter_uses_context_tag)
+        || filter
+            .with_attached_object
+            .as_deref()
+            .is_some_and(object_filter_uses_context_tag)
+        || filter
+            .blocked_or_was_blocked_by_this_turn
+            .as_deref()
+            .is_some_and(object_filter_uses_context_tag)
+        || filter
+            .no_shared_creature_types_with
+            .iter()
+            .any(object_filter_uses_context_tag)
+        || filter.any_of.iter().any(object_filter_uses_context_tag)
 }
 
 fn resolve_continuous_filter_objects(
@@ -519,6 +548,70 @@ fn materialize_duration_predicate(
     })
 }
 
+fn materialize_granted_entry_counter_source(
+    modification: Modification,
+    outer_source: ObjectId,
+) -> Modification {
+    fn is_outer_source_spec(spec: &ChooseSpec) -> bool {
+        if !matches!(spec.base(), ChooseSpec::Source) {
+            return false;
+        }
+        !matches!(
+            spec.source_reference_surface(),
+            Some(SourceReferenceSurface::ThisPermanentType(noun)) if noun == "it"
+        )
+    }
+
+    fn materialize_value(value: &mut Value, outer_source: ObjectId) {
+        match value {
+            Value::SurfaceHinted { value, .. }
+            | Value::Scaled(value, _)
+            | Value::DividedRoundedDown(value, _)
+            | Value::HalfRoundedDown(value) => materialize_value(value, outer_source),
+            Value::Add(left, right) | Value::Min(left, right) => {
+                materialize_value(left, outer_source);
+                materialize_value(right, outer_source);
+            }
+            Value::SourcePower => {
+                *value = Value::PowerOf(Box::new(ChooseSpec::SpecificObject(outer_source)));
+            }
+            Value::SourceToughness => {
+                *value = Value::ToughnessOf(Box::new(ChooseSpec::SpecificObject(outer_source)));
+            }
+            Value::CountersOnSource(counter_type) => {
+                *value = Value::CountersOn(
+                    Box::new(ChooseSpec::SpecificObject(outer_source)),
+                    Some(*counter_type),
+                );
+            }
+            Value::PowerOf(spec)
+            | Value::ToughnessOf(spec)
+            | Value::ManaValueOf(spec)
+            | Value::CountersOn(spec, _)
+                if is_outer_source_spec(spec) =>
+            {
+                *spec = Box::new(ChooseSpec::SpecificObject(outer_source));
+            }
+            _ => {}
+        }
+    }
+
+    let Modification::AddAbility(ability) = modification else {
+        return modification;
+    };
+    let Some(mut model) = ability.compiled_model().cloned() else {
+        return Modification::AddAbility(ability);
+    };
+    let ironsmith_core::StaticAbilityPayload::EntersWithCountersAndSubtypesForFilter {
+        count, ..
+    } = &mut model.payload
+    else {
+        return Modification::AddAbility(ability);
+    };
+    materialize_value(count, outer_source);
+    Modification::AddAbility(crate::static_abilities::StaticAbility::from_model(model))
+}
+
 impl EffectExecutor for ApplyContinuousEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
         true
@@ -540,7 +633,9 @@ impl EffectExecutor for ApplyContinuousEffect {
     }
 
     fn decision_related_object_specs(&self) -> Vec<ChooseSpec> {
-        if let Some(spec) = &self.target_spec {
+        if let Some(spec) = &self.target_spec
+            && spec.is_target()
+        {
             return vec![spec.clone()];
         }
         match &self.target {
@@ -591,6 +686,20 @@ impl EffectExecutor for ApplyContinuousEffect {
                 }
                 Until::ForAsLongAs(predicate)
             }
+            Until::EndOfTurnOrAnyPlayerRolls { result, .. } => {
+                let matching_rolls_observed = game
+                    .turn_store
+                    .turn_history
+                    .die_rolls_this_turn
+                    .values()
+                    .flatten()
+                    .filter(|rolled| **rolled == *result)
+                    .count() as u32;
+                Until::EndOfTurnOrAnyPlayerRolls {
+                    result: *result,
+                    matching_rolls_observed,
+                }
+            }
             until => until.clone(),
         };
 
@@ -623,8 +732,10 @@ impl EffectExecutor for ApplyContinuousEffect {
         }
 
         for modification in mods {
-            let resolved_modification =
-                resolve_set_pt_modification(self, game, ctx, &modification)?;
+            let resolved_modification = materialize_granted_entry_counter_source(
+                resolve_set_pt_modification(self, game, ctx, &modification)?,
+                ctx.source,
+            );
             if let Modification::ChangeController(new_controller) = &resolved_modification {
                 // CR 800.4b: an effect cannot give control of an object to a
                 // player who has left the game.
@@ -643,6 +754,7 @@ impl EffectExecutor for ApplyContinuousEffect {
             }
             let expires_end_of_turn = match self.until {
                 Until::EndOfTurn
+                | Until::EndOfTurnOrAnyPlayerRolls { .. }
                 | Until::YourNextTurn
                 | Until::YourNextUpkeep
                 | Until::ControllersNextUntapStep => game.turn.turn_number,
@@ -737,8 +849,8 @@ mod tests {
     use crate::static_abilities::StaticAbility;
     use crate::tag::TagKey;
     use crate::target::{
-        ChooseSpecSurfaceHint, ObjectFilter, SacrificedObjectKind, TaggedObjectConstraint,
-        TaggedOpbjectRelation,
+        ChooseSpecSurfaceHint, ObjectFilter, PlayerFilter, SacrificedObjectKind,
+        TaggedObjectConstraint, TaggedOpbjectRelation,
     };
     use crate::types::{CardType, Subtype, Supertype};
     use crate::zone::Zone;
@@ -1039,6 +1151,38 @@ mod tests {
     }
 
     #[test]
+    fn seat_relative_control_uses_the_nearest_in_game_player_to_your_right() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".into(),
+                "Bob".into(),
+                "Charlie".into(),
+                "Dana".into(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let charlie = PlayerId::from_index(2);
+        let dana = PlayerId::from_index(3);
+        let target = create_creature(&mut game, "Passing Artifact", alice);
+        game.player_mut(dana).expect("Dana").has_left_game = true;
+        let mut ctx = ExecutionContext::new_default(target, alice);
+        let effect = Effect::new(ApplyContinuousEffect::new_runtime(
+            EffectTarget::Specific(target),
+            RuntimeModification::ChangeControllerToPlayer(PlayerFilter::PlayerToYourRight),
+            Until::Forever,
+        ));
+
+        execute_effect(&mut game, &effect, &mut ctx).expect("pass control to the right");
+
+        assert_eq!(
+            game.current_controller(target),
+            Some(charlie),
+            "the rightward seat walk should skip a player who left the game"
+        );
+    }
+
+    #[test]
     fn change_controller_until_next_turn_end_survives_controller_next_turn() {
         let mut game = setup_game();
         let alice = PlayerId::from_index(0);
@@ -1116,6 +1260,81 @@ mod tests {
             }
             _ => panic!("expected resolution-locked effect for tagged filter"),
         }
+    }
+
+    #[test]
+    fn nested_any_of_tagged_filter_locks_the_full_resolution_set() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let source = game.new_object_id();
+        let first = create_creature(&mut game, "First Marked", alice);
+        let second = create_creature(&mut game, "Second Marked", alice);
+        let ambient_target = create_creature(&mut game, "Ambient Target", alice);
+
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(ambient_target)]);
+        ctx.set_tagged_objects(
+            "marked",
+            [first, second]
+                .into_iter()
+                .map(|id| ObjectSnapshot::from_object(game.object(id).unwrap(), &game))
+                .collect(),
+        );
+
+        let constraint = TaggedObjectConstraint {
+            tag: TagKey::from("marked"),
+            relation: TaggedOpbjectRelation::IsTaggedObject,
+        };
+        let mut creature_arm = ObjectFilter::creature();
+        creature_arm.tagged_constraints.push(constraint.clone());
+        let mut equipment_arm = ObjectFilter::default().with_subtype(Subtype::Equipment);
+        equipment_arm.tagged_constraints.push(constraint);
+        let filter = ObjectFilter {
+            zone: Some(Zone::Battlefield),
+            any_of: vec![creature_arm, equipment_arm],
+            ..Default::default()
+        };
+        assert!(object_filter_uses_context_tag(&filter));
+
+        let mut apply = ApplyContinuousEffect::new_runtime(
+            EffectTarget::Filter(filter.clone()),
+            RuntimeModification::ModifyPowerToughness {
+                power: Value::Fixed(1),
+                toughness: Value::Fixed(1),
+            },
+            Until::EndOfTurn,
+        );
+        apply.target_spec = Some(ChooseSpec::Object(filter));
+        execute_effect(&mut game, &Effect::new(apply), &mut ctx).unwrap();
+
+        let effects = game.effect_store.continuous_effects.effects_sorted();
+        assert_eq!(effects.len(), 1);
+        let EffectSourceType::Resolution { locked_targets } = &effects[0].source_type else {
+            panic!(
+                "nested tagged union must lock at resolution: {:#?}",
+                effects[0]
+            );
+        };
+        assert_eq!(locked_targets.len(), 2, "{locked_targets:#?}");
+        assert!(locked_targets.contains(&first), "{locked_targets:#?}");
+        assert!(locked_targets.contains(&second), "{locked_targets:#?}");
+        assert!(
+            !locked_targets.contains(&ambient_target),
+            "{locked_targets:#?}"
+        );
+    }
+
+    #[test]
+    fn ordinary_any_of_filter_does_not_claim_a_context_tag_dependency() {
+        let filter = ObjectFilter {
+            any_of: vec![
+                ObjectFilter::creature(),
+                ObjectFilter::default().with_subtype(Subtype::Equipment),
+            ],
+            ..Default::default()
+        };
+
+        assert!(!object_filter_uses_context_tag(&filter));
     }
 
     #[test]

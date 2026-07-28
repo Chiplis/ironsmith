@@ -96,7 +96,7 @@ pub(crate) enum BecomeExactKind {
     Monarch,
     BasicLandTypeChoice,
     BasicLandType(Subtype),
-    ColorChoice,
+    ColorChoice { allow_multiple: bool },
     CreatureTypeChoice,
     Colorless,
     Saddled,
@@ -569,11 +569,15 @@ pub(crate) fn parse_become_body_surface_shape(
         Some(BecomeExactKind::BasicLandTypeChoice)
     } else if let Some(subtype) = basic_land_type(&words) {
         Some(BecomeExactKind::BasicLandType(subtype))
-    } else if COLOR_CHOICES
-        .iter()
-        .any(|expected| permission_shapes::exact_words(&words, expected))
+    } else if let Some(allow_multiple) =
+        COLOR_CHOICES
+            .iter()
+            .enumerate()
+            .find_map(|(index, expected)| {
+                permission_shapes::exact_words(&words, expected).then_some(index != 0)
+            })
     {
-        Some(BecomeExactKind::ColorChoice)
+        Some(BecomeExactKind::ColorChoice { allow_multiple })
     } else if permission_shapes::exact_words(&words, &["creature", "type", "of", "your", "choice"])
     {
         Some(BecomeExactKind::CreatureTypeChoice)

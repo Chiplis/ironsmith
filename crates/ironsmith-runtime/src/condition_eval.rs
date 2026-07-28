@@ -493,6 +493,174 @@ mod tests {
     }
 
     #[test]
+    fn graveyard_cast_or_ability_activation_history_uses_actor_and_origin_zone() {
+        let cast_condition = Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::PlayerCastSpellFromZoneThisTurn {
+                player: PlayerFilter::You,
+                zone: Zone::Graveyard,
+            },
+        );
+        let activation_condition = Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::PlayerActivatedAbilityOfCardInZoneThisTurn {
+                player: PlayerFilter::You,
+                zone: Zone::Graveyard,
+            },
+        );
+        let combined = Condition::Or(
+            Box::new(cast_condition.clone()),
+            Box::new(activation_condition.clone()),
+        );
+
+        let mut cast_game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = cast_game.players[0].id;
+        let bob = cast_game.players[1].id;
+        let source = cast_game.new_object_id();
+        let cast_ctx = ExecutionContext::new_default(source, alice);
+        assert!(
+            !evaluate_condition(&cast_game, &combined, &cast_ctx).unwrap(),
+            "the disjunction must be false before either history event"
+        );
+
+        let hand_spell = cast_game.new_object_id();
+        let hand_cast = RawEvent::new(
+            crate::events::SpellCastEvent::new(hand_spell, alice, Zone::Hand),
+            ProvNodeId::default(),
+        );
+        cast_game
+            .turn_store
+            .turn_history
+            .record_event(&hand_cast, None, None);
+        let opponents_graveyard_spell = cast_game.new_object_id();
+        let opponents_graveyard_cast = RawEvent::new(
+            crate::events::SpellCastEvent::new(opponents_graveyard_spell, bob, Zone::Graveyard),
+            ProvNodeId::default(),
+        );
+        cast_game
+            .turn_store
+            .turn_history
+            .record_event(&opponents_graveyard_cast, None, None);
+        assert!(
+            !evaluate_condition(&cast_game, &combined, &cast_ctx).unwrap(),
+            "a hand cast and an opponent's graveyard cast must not satisfy your condition"
+        );
+
+        let graveyard_spell = cast_game.new_object_id();
+        let graveyard_cast = RawEvent::new(
+            crate::events::SpellCastEvent::new(graveyard_spell, alice, Zone::Graveyard),
+            ProvNodeId::default(),
+        );
+        cast_game
+            .turn_store
+            .turn_history
+            .record_event(&graveyard_cast, None, None);
+        assert!(
+            evaluate_condition(&cast_game, &cast_condition, &cast_ctx).unwrap()
+                && evaluate_condition(&cast_game, &combined, &cast_ctx).unwrap(),
+            "your graveyard cast must satisfy the cast branch and the disjunction"
+        );
+
+        let mut activation_game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = activation_game.players[0].id;
+        let bob = activation_game.players[1].id;
+        let source = activation_game.new_object_id();
+        let activation_ctx = ExecutionContext::new_default(source, alice);
+
+        for (activator, zone) in [(alice, Zone::Battlefield), (bob, Zone::Graveyard)] {
+            let ability_source = activation_game.new_object_id();
+            let mut snapshot = crate::snapshot::ObjectSnapshot::for_testing(
+                ability_source,
+                activator,
+                "Ability Source",
+            );
+            snapshot.zone = zone;
+            let activation = RawEvent::new(
+                crate::events::AbilityActivatedEvent::new(ability_source, activator, false)
+                    .with_snapshot(Some(snapshot.clone())),
+                ProvNodeId::default(),
+            );
+            activation_game
+                .turn_store
+                .turn_history
+                .record_event(&activation, Some(snapshot), None);
+        }
+        assert!(
+            !evaluate_condition(&activation_game, &combined, &activation_ctx).unwrap(),
+            "your battlefield activation and an opponent's graveyard activation must not qualify"
+        );
+
+        let graveyard_source = activation_game.new_object_id();
+        let mut graveyard_snapshot = crate::snapshot::ObjectSnapshot::for_testing(
+            graveyard_source,
+            alice,
+            "Graveyard Ability Source",
+        );
+        graveyard_snapshot.zone = Zone::Graveyard;
+        let graveyard_activation = RawEvent::new(
+            crate::events::AbilityActivatedEvent::new(graveyard_source, alice, false)
+                .with_snapshot(Some(graveyard_snapshot.clone())),
+            ProvNodeId::default(),
+        );
+        activation_game.turn_store.turn_history.record_event(
+            &graveyard_activation,
+            Some(graveyard_snapshot),
+            None,
+        );
+        assert!(
+            evaluate_condition(&activation_game, &activation_condition, &activation_ctx).unwrap()
+                && evaluate_condition(&activation_game, &combined, &activation_ctx).unwrap(),
+            "your graveyard-card activation must satisfy the activation branch and disjunction"
+        );
+    }
+
+    #[test]
+    fn visited_attraction_history_is_typed_and_player_scoped() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let source = game.new_object_id();
+        let ctx = ExecutionContext::new_default(source, alice);
+        let condition = Condition::TurnHistory(
+            ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(
+                PlayerFilter::You,
+            ),
+        );
+
+        let bobs_visit = RawEvent::new(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::VisitAttraction,
+                bob,
+                source,
+                1,
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&bobs_visit, None, None);
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "another player's visit must not satisfy your visit history"
+        );
+
+        let alices_visit = RawEvent::new(
+            crate::events::KeywordActionEvent::new(
+                crate::events::KeywordActionKind::VisitAttraction,
+                alice,
+                source,
+                1,
+            ),
+            ProvNodeId::default(),
+        );
+        game.turn_store
+            .turn_history
+            .record_event(&alices_visit, None, None);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx).unwrap(),
+            "your typed visit action must satisfy the condition"
+        );
+    }
+
+    #[test]
     fn evaluate_player_has_more_cards_in_hand_than_each_other_player_requires_unique_leader() {
         let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
         let alice = game.players[0].id;
@@ -576,6 +744,51 @@ mod tests {
         assert!(
             !evaluate_condition(&game, &condition, &ctx).expect("ties should evaluate cleanly"),
             "expected tie for most lands to fail the condition"
+        );
+    }
+
+    #[test]
+    fn player_controls_global_greatest_power_uses_all_battlefield_creatures_as_domain() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let alice_creature = CardBuilder::new(CardId::from_raw(71_561), "Alice Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(3, 3))
+            .build();
+        let bob_creature = CardBuilder::new(CardId::from_raw(71_562), "Bob Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 5))
+            .build();
+        let source = game.create_object_from_card(&alice_creature, alice, Zone::Battlefield);
+        game.create_object_from_card(&bob_creature, bob, Zone::Battlefield);
+
+        let global_creatures = crate::target::ObjectFilter::creature().in_zone(Zone::Battlefield);
+        let mut controlled_greatest = global_creatures.clone().controlled_by(PlayerFilter::You);
+        controlled_greatest.power = Some(crate::filter::Comparison::EqualExpr(Box::new(
+            Value::GreatestPower(global_creatures),
+        )));
+        let condition = Condition::PlayerControls {
+            player: PlayerFilter::You,
+            filter: controlled_greatest,
+        };
+        let ctx = ExecutionContext::new_default(source, alice);
+
+        assert!(
+            !evaluate_condition(&game, &condition, &ctx)
+                .expect("global greatest-power condition should evaluate"),
+            "an opponent's stronger creature must make the condition false"
+        );
+
+        let tied_creature = CardBuilder::new(CardId::from_raw(71_563), "Tied Creature")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(5, 5))
+            .build();
+        game.create_object_from_card(&tied_creature, alice, Zone::Battlefield);
+        assert!(
+            evaluate_condition(&game, &condition, &ctx)
+                .expect("tied global greatest-power condition should evaluate"),
+            "controlling one creature tied for greatest power must satisfy the condition"
         );
     }
 
@@ -1026,6 +1239,49 @@ mod tests {
         assert!(
             evaluate_condition(&game, &condition, &effect_ctx)
                 .expect("matching last-known body condition should evaluate")
+        );
+    }
+
+    #[test]
+    fn player_tagged_last_known_match_uses_snapshot_controller_even_if_current_object_exists() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = game.players[0].id;
+        let bob = game.players[1].id;
+        let card = CardBuilder::new(CardId::from_raw(92), "Changed Controller")
+            .card_types(vec![CardType::Artifact])
+            .build();
+        let object = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let snapshot = crate::snapshot::ObjectSnapshot::from_object(
+            game.object(object).expect("object exists"),
+            &game,
+        );
+        game.set_current_controller(object, bob);
+        assert_eq!(game.controller_of_id(object), Some(bob));
+
+        let mut effect_ctx = ExecutionContext::new_default(object, alice);
+        effect_ctx.set_tagged_objects("returned_0", vec![snapshot]);
+        let last_known = Condition::PlayerTaggedObjectMatches {
+            player: PlayerFilter::You,
+            tag: crate::TagKey::from("returned_0"),
+            filter: crate::target::ObjectFilter::default(),
+            mode: crate::effect::TaggedObjectMatchMode::LastKnown,
+        };
+        assert!(
+            evaluate_condition(&game, &last_known, &effect_ctx)
+                .expect("last-known player predicate should evaluate"),
+            "Alice controlled the captured object even though Bob controls its current form"
+        );
+
+        let current = Condition::PlayerTaggedObjectMatches {
+            player: PlayerFilter::You,
+            tag: crate::TagKey::from("returned_0"),
+            filter: crate::target::ObjectFilter::default(),
+            mode: crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown,
+        };
+        assert!(
+            !evaluate_condition(&game, &current, &effect_ctx)
+                .expect("current player predicate should evaluate"),
+            "ordinary this-way predicates must continue to prefer the current object"
         );
     }
 
@@ -1887,6 +2143,50 @@ fn evaluate_turn_history_condition(
                             })
                 })
         }
+        TurnHistoryCondition::PlayerCastSpellFromZoneThisTurn { player, zone } => {
+            let players = matching_players(player);
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::SpellCastEvent>()
+                        .is_some_and(|event| {
+                            event.from_zone == *zone && players.contains(&event.caster)
+                        })
+                })
+        }
+        TurnHistoryCondition::PlayerActivatedAbilityOfCardInZoneThisTurn { player, zone } => {
+            let players = matching_players(player);
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .any(|record| {
+                    record
+                        .event
+                        .downcast::<crate::events::AbilityActivatedEvent>()
+                        .is_some_and(|event| {
+                            players.contains(&event.activator)
+                                && event
+                                    .snapshot
+                                    .as_ref()
+                                    .or(record.object_snapshot.as_ref())
+                                    .is_some_and(|snapshot| snapshot.zone == *zone)
+                        })
+                })
+        }
+        TurnHistoryCondition::PlayerVisitedAttractionThisTurn(player) => {
+            let players = matching_players(player);
+            game.turn_store
+                .turn_history
+                .projected_records()
+                .filter_map(|record| record.event.downcast::<crate::events::KeywordActionEvent>())
+                .any(|event| {
+                    event.action == crate::events::KeywordActionKind::VisitAttraction
+                        && players.contains(&event.player)
+                })
+        }
         TurnHistoryCondition::TriggeringPlayerAttackedControllerLastTurn => {
             let Some(triggering_player) = ctx
                 .triggering_event
@@ -2186,7 +2486,7 @@ fn evaluate_condition_shared_core(
         Condition::SpellWasWarpedThisTurn => {
             Some(game.turn_store.turn_history.spell_was_warped_this_turn())
         }
-        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => Some(
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. } => Some(
             game.turn_store
                 .turn_history
                 .permanents_left_battlefield_under_controller(ctx.controller)
@@ -2437,7 +2737,7 @@ fn assert_condition_variant_coverage(condition: &Condition) {
         Condition::PermanentLeftBattlefieldThisTurn => {}
         Condition::NonlandPermanentLeftBattlefieldThisTurn => {}
         Condition::SpellWasWarpedThisTurn => {}
-        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn => {}
+        Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. } => {}
         Condition::ObjectEnteredBattlefieldThisTurn(..) => {}
         Condition::ObjectEnteredBattlefieldLastTurn(..) => {}
         Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(..) => {}
@@ -3499,7 +3799,7 @@ pub fn evaluate_condition_external(
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
         | Condition::SpellWasWarpedThisTurn
-        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
@@ -4333,7 +4633,7 @@ fn evaluate_condition_simple(
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
         | Condition::SpellWasWarpedThisTurn
-        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)
@@ -4386,6 +4686,12 @@ fn resolve_condition_player_simple(
                 None
             }
         }),
+        PlayerFilter::PlayerToYourLeft => {
+            game.closest_in_game_player_to_left_matching(controller, |_| true)
+        }
+        PlayerFilter::PlayerToYourRight => {
+            game.closest_in_game_player_to_right_matching(controller, |_| true)
+        }
         PlayerFilter::MostLifeTied => {
             let max_life = game
                 .players
@@ -5340,6 +5646,7 @@ fn evaluate_condition(
             player,
             tag,
             filter,
+            mode,
         } => {
             let player_id = crate::effects::helpers::resolve_player_filter(game, player, ctx)?;
             let Some(tagged) = ctx.get_tagged_all(tag.as_str()) else {
@@ -5348,19 +5655,21 @@ fn evaluate_condition(
             let mut filter_ctx = ctx.filter_context(game);
             filter_ctx.iterated_player = Some(player_id);
             for snapshot in tagged {
-                let current_id = game
-                    .object(snapshot.object_id)
-                    .map(|object| object.id)
-                    .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
-                if let Some(current_id) = current_id
-                    && let Some(object) = game.object(current_id)
-                {
-                    if game.controller_of(object) == player_id
-                        && filter.matches(object, &filter_ctx, game)
+                if *mode == crate::effect::TaggedObjectMatchMode::CurrentOrLastKnown {
+                    let current_id = game
+                        .object(snapshot.object_id)
+                        .map(|object| object.id)
+                        .or_else(|| game.find_object_by_stable_id(snapshot.stable_id));
+                    if let Some(current_id) = current_id
+                        && let Some(object) = game.object(current_id)
                     {
-                        return Ok(true);
+                        if game.controller_of(object) == player_id
+                            && filter.matches(object, &filter_ctx, game)
+                        {
+                            return Ok(true);
+                        }
+                        continue;
                     }
-                    continue;
                 }
                 if snapshot.controller != player_id {
                     continue;
@@ -5584,7 +5893,7 @@ fn evaluate_condition(
         | Condition::PermanentLeftBattlefieldThisTurn
         | Condition::NonlandPermanentLeftBattlefieldThisTurn
         | Condition::SpellWasWarpedThisTurn
-        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn
+        | Condition::PermanentLeftBattlefieldUnderYourControlThisTurn { .. }
         | Condition::ObjectEnteredBattlefieldThisTurn(_)
         | Condition::ObjectEnteredBattlefieldLastTurn(_)
         | Condition::ObjectPutIntoGraveyardFromBattlefieldThisTurn(_)

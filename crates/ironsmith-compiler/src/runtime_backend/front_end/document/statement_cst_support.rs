@@ -5,6 +5,29 @@ use super::super::grammar::effects::{
 use super::super::grammar::statement_shapes::{self, StatementForceShape};
 use super::super::grammar::structure;
 use super::*;
+use crate::runtime_backend::ast::{EffectAst, StaticAbilityAst};
+
+fn probe_static_ability_ast_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    crate::parse_loss::capture(|| parse_static_ability_ast_line_lexed(tokens)).0
+}
+
+fn probe_effect_sentences_lexed(tokens: &[OwnedLexToken]) -> Result<Vec<EffectAst>, CardTextError> {
+    crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens)).0
+}
+
+fn parse_effect_sentences_committing_loss_on_success(
+    tokens: &[OwnedLexToken],
+) -> Result<Vec<EffectAst>, CardTextError> {
+    let (result, loss) = crate::parse_loss::capture(|| parse_effect_sentences_lexed(tokens));
+    if result.is_ok() {
+        for diagnostic in loss.diagnostics() {
+            crate::parse_loss::record(diagnostic.code.clone(), diagnostic.message.clone());
+        }
+    }
+    result
+}
 
 fn is_die_roll_result_adjustment_statement(tokens: &[OwnedLexToken]) -> bool {
     statement_shapes::parse_die_roll_adjustment_tokens(tokens).is_some()
@@ -20,7 +43,7 @@ fn parse_any_player_no_one_does_statement(
 
     let parse_groups = vec![join_statement_parse_sentence_group(&sentences)];
     for group_tokens in &parse_groups {
-        parse_effect_sentences_lexed(group_tokens)?;
+        parse_effect_sentences_committing_loss_on_success(group_tokens)?;
     }
 
     Ok(Some(StatementLineCst {
@@ -71,7 +94,7 @@ pub(super) fn parse_statement_line_cst(
         return Ok(Some(statement));
     }
     if is_each_player_choose_unselected_bounce_then_draw_statement(&line.tokens) {
-        parse_effect_sentences_lexed(&line.tokens)?;
+        parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -80,7 +103,7 @@ pub(super) fn parse_statement_line_cst(
         }));
     }
     let line_family = structure::classify_statement_line_family_lexed(&line.tokens);
-    let static_probe = parse_static_ability_ast_line_lexed(&line.tokens)
+    let static_probe = probe_static_ability_ast_line_lexed(&line.tokens)
         .ok()
         .flatten();
     let typed_effect_prefix_before_static =
@@ -94,12 +117,17 @@ pub(super) fn parse_statement_line_cst(
         super::super::grammar::effects::parse_energy_pay_any_destroy_tokens(&line.tokens).is_some();
     let typed_counter_linked_land_subtype = super::super::grammar::effects::followup_shapes::parse_counter_linked_land_subtype_followup(&line.tokens)
         .is_some();
+    let typed_persistent_player_rule =
+        super::super::grammar::effects::parse_persistent_no_maximum_hand_size_player_lexed(
+            &line.tokens,
+        )
+        .is_some();
     if typed_counter_linked_land_subtype {
         // This follow-up is intentionally close to a static sentence, but it
         // is an effect-backed continuation of the preceding tagged land.
         // Route it through the statement parser before the generic static
         // probe can discard it as a static-only line.
-        parse_effect_sentences_lexed(&line.tokens)?;
+        parse_effect_sentences_committing_loss_on_success(&line.tokens)?;
         return Ok(Some(StatementLineCst {
             info: line.info.clone(),
             text: normalized.to_string(),
@@ -111,6 +139,7 @@ pub(super) fn parse_statement_line_cst(
     let persistent_static_modifier = !typed_create_statement
         && !typed_energy_payment_threshold
         && !typed_counter_linked_land_subtype
+        && !typed_persistent_player_rule
         && !typed_effect_prefix_before_static
         && force_surface != Some(StatementForceShape::PlayerGetsCounters)
         && !matches!(
@@ -125,6 +154,7 @@ pub(super) fn parse_statement_line_cst(
     let force_statement = typed_create_statement
         || typed_energy_payment_threshold
         || typed_counter_linked_land_subtype
+        || typed_persistent_player_rule
         || typed_effect_prefix_before_static
         || matches!(
             line_family,
@@ -200,11 +230,11 @@ pub(super) fn parse_statement_line_cst(
     let parse_groups = normalize_statement_parse_groups_lexed(&line.tokens);
     let mut found_effects = false;
     for group_tokens in &parse_groups {
-        let effects = match parse_effect_sentences_lexed(group_tokens) {
+        let effects = match parse_effect_sentences_committing_loss_on_success(group_tokens) {
             Ok(effects) => effects,
             Err(_)
                 if matches!(
-                    parse_static_ability_ast_line_lexed(group_tokens),
+                    probe_static_ability_ast_line_lexed(group_tokens),
                     Ok(Some(_))
                 ) =>
             {
@@ -339,6 +369,10 @@ pub(super) fn extend_statement_line_with_result_followups(
 }
 
 fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
+    crate::parse_loss::capture(|| looks_like_statement_line_tokens_inner(tokens)).0
+}
+
+fn looks_like_statement_line_tokens_inner(tokens: &[OwnedLexToken]) -> bool {
     if matches!(
         structure::classify_static_line_family_lexed(tokens),
         Some(
@@ -346,6 +380,25 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
                 | structure::StaticLineFamily::GrantedQuotedAbility
         )
     ) {
+        return false;
+    }
+    // A global phase-in prohibition is also superficially a valid phase-in
+    // effect sentence. Prefer its complete typed static parse, while leaving
+    // targeted or explicitly temporary prohibitions on the effect path.
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    let is_phase_in_prohibition = words.windows(3).any(|window| {
+        matches!(window[0], "can't" | "cant" | "cannot")
+            && window[1] == "phase"
+            && window[2] == "in"
+    }) || words
+        .windows(4)
+        .any(|window| window == ["can", "not", "phase", "in"]);
+    let is_timeless_phase_in_prohibition =
+        is_phase_in_prohibition && !words.windows(2).any(|window| window == ["this", "turn"]);
+    if is_timeless_phase_in_prohibition
+        && structure::classify_static_line_family_lexed(tokens).is_some()
+        && matches!(probe_static_ability_ast_line_lexed(tokens), Ok(Some(_)))
+    {
         return false;
     }
     if is_each_player_choose_unselected_bounce_then_draw_statement(tokens) {
@@ -357,7 +410,7 @@ fn looks_like_statement_line_tokens(tokens: &[OwnedLexToken]) -> bool {
         .collect::<Vec<_>>();
     if !effect_sentences.is_empty()
         && effect_sentences.into_iter().all(|sentence| {
-            parse_effect_sentences_lexed(sentence).is_ok_and(|effects| !effects.is_empty())
+            probe_effect_sentences_lexed(sentence).is_ok_and(|effects| !effects.is_empty())
         })
     {
         return true;
@@ -403,11 +456,17 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
     if let Some(first) = sentences.first_mut()
         && first.first().is_some_and(|token| token.is_word("as"))
         && first.get(1).is_some_and(|token| token.is_word("this"))
-        && let Some(enters_idx) = first.iter().position(|token| token.is_word("enters"))
+        && let Some(timing_idx) = first
+            .iter()
+            .position(|token| token.is_word("enters") || token.is_word("transforms"))
+        && (first[timing_idx].is_word("enters")
+            || first
+                .get(timing_idx + 1)
+                .is_some_and(|token| token.is_word("into")))
         && let Some(comma_idx) = first
             .iter()
             .enumerate()
-            .skip(enters_idx + 1)
+            .skip(timing_idx + 1)
             .find_map(|(idx, token)| token.is_comma().then_some(idx))
         && comma_idx + 1 < first.len()
     {
@@ -417,6 +476,12 @@ fn normalize_statement_parse_sentences_lexed(tokens: &[OwnedLexToken]) -> Vec<Ve
 }
 
 fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) -> Option<usize> {
+    crate::parse_loss::capture(|| first_trailing_static_sentence_idx_inner(sentence_tokens)).0
+}
+
+fn first_trailing_static_sentence_idx_inner(
+    sentence_tokens: &[Vec<OwnedLexToken>],
+) -> Option<usize> {
     let first_static_idx =
         sentence_tokens
             .iter()
@@ -427,17 +492,17 @@ fn first_trailing_static_sentence_idx(sentence_tokens: &[Vec<OwnedLexToken>]) ->
                     && followup_shapes::parse_cant_be_regenerated_followup(sentence).is_none()
                     && clause_dispatch_shapes::parse_direct_clause_shape(sentence)
                         != Some(DirectClauseShape::DamageCantBePrevented)
-                    && matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
+                    && matches!(probe_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
                 .then_some(idx)
             })?;
 
     let effect_prefix = join_statement_parse_sentence_group(&sentence_tokens[..first_static_idx]);
-    if parse_effect_sentences_lexed(&effect_prefix).is_err() {
+    if probe_effect_sentences_lexed(&effect_prefix).is_err() {
         return None;
     }
     if !sentence_tokens[first_static_idx..]
         .iter()
-        .all(|sentence| matches!(parse_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
+        .all(|sentence| matches!(probe_static_ability_ast_line_lexed(sentence), Ok(Some(_))))
     {
         return None;
     }

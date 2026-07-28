@@ -6,6 +6,20 @@
             idx += 1;
             continue;
         }
+        if idx + 1 < filtered.len()
+            && let Some(choose) =
+                unwrap_basic_tag_wrappers(filtered[idx])
+                    .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(for_each) =
+                unwrap_basic_tag_wrappers(filtered[idx + 1])
+                    .downcast_ref::<crate::effects::ForEachTaggedEffect>()
+            && let Some(compact) =
+                describe_choose_any_number_then_remove_counter_from_each(choose, for_each)
+        {
+            parts.push(compact);
+            idx += 2;
+            continue;
+        }
         if idx + 2 < filtered.len()
             && let Some(compact) = describe_exile_with_counters_then_gain_suspend(&[
                 filtered[idx].clone(),
@@ -319,6 +333,14 @@
         }
 
         if let Some((rendered, consumed)) =
+            describe_looked_battlefield_then_conditional_remainder(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
             describe_look_may_sacrifice_select_battlefield_rest_bottom(&filtered[idx..])
         {
             parts.push(rendered);
@@ -328,6 +350,30 @@
 
         if let Some((rendered, consumed)) =
             describe_look_exile_face_down_rest_graveyard_then_cast(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_look_exile_face_down_counter_rest_bottom(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_revealed_two_stage_graveyard_partition(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
+            describe_look_reveal_your_turn_battlefield_else_hand_rest_bottom(&filtered[idx..])
         {
             parts.push(rendered);
             idx += consumed;

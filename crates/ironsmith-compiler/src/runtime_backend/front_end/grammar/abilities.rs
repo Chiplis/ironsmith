@@ -1410,6 +1410,16 @@ fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
             primitives::phrase(&["equipped", "creature"]),
             primitives::phrase(&["equipped", "permanent"]),
         )),
+        parse_dependent_doesnt_untap_during_controller_untap_step,
+    )
+        .void()
+        .parse_next(input)
+}
+
+fn parse_dependent_doesnt_untap_during_controller_untap_step<'a>(
+    input: &mut LexStream<'a>,
+) -> Result<(), ErrMode<ContextError>> {
+    (
         winnow::combinator::alt((
             primitives::kw("doesn't").void(),
             primitives::kw("doesnt").void(),
@@ -1428,6 +1438,17 @@ fn parse_attached_doesnt_untap_during_controller_untap_step_line<'a>(
     )
         .void()
         .parse_next(input)
+}
+
+pub(crate) fn is_dependent_doesnt_untap_during_controller_untap_step_line_lexed(
+    tokens: &[OwnedLexToken],
+) -> bool {
+    primitives::parse_all(
+        trim_edge_punctuation_tokens(tokens),
+        parse_dependent_doesnt_untap_during_controller_untap_step,
+        "dependent doesn't-untap during controller untap step",
+    )
+    .is_ok()
 }
 
 pub(crate) fn parse_doesnt_untap_during_untap_step_spec_lexed(

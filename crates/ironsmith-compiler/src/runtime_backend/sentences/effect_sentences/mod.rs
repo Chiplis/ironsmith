@@ -32,13 +32,14 @@ pub(crate) fn parse_artifact_enchantment_or_token_filter(
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TokenCopyFollowup {
-    HasHaste,
-    GainHasteUntilEndOfTurn,
+    HasHaste(crate::effect::TokenCopyReferenceSurface),
+    GainHasteUntilEndOfTurn(crate::effect::TokenCopyReferenceSurface),
     EnterTappedAndAttacking,
-    SacrificeAtNextEndStep,
+    EnterTappedAndAttackingThatPlayer,
+    SacrificeAtNextEndStep(crate::effect::TokenCopyReferenceSurface),
     SacrificeAtNextUpkeep,
-    ExileAtNextEndStep,
-    ExileAtEndOfCombat,
+    ExileAtNextEndStep(crate::effect::TokenCopyReferenceSurface),
+    ExileAtEndOfCombat(crate::effect::TokenCopyReferenceSurface),
     SacrificeAtEndOfCombat,
 }
 

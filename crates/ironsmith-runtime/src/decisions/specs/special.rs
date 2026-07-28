@@ -519,6 +519,8 @@ pub struct CounterRemovalSpec {
     pub source: ObjectId,
     /// The permanent to remove counters from.
     pub target: ObjectId,
+    /// Minimum total counters that must be removed.
+    pub min_total: u32,
     /// Maximum total counters that can be removed.
     pub max_total: u32,
     /// Available counters: (counter_type, count_available).
@@ -536,9 +538,15 @@ impl CounterRemovalSpec {
         Self {
             source,
             target,
+            min_total: 0,
             max_total,
             available_counters,
         }
+    }
+
+    pub fn with_min_total(mut self, min_total: u32) -> Self {
+        self.min_total = min_total.min(self.max_total);
+        self
     }
 }
 
@@ -549,11 +557,16 @@ impl DecisionSpec for CounterRemovalSpec {
     type Response = CounterRemovalResponse;
 
     fn description(&self) -> String {
-        format!("Choose up to {} counters to remove", self.max_total)
+        if self.min_total == self.max_total {
+            format!("Choose {} counters to remove", self.max_total)
+        } else {
+            format!("Choose up to {} counters to remove", self.max_total)
+        }
     }
 
     fn primitive(&self) -> DecisionPrimitive {
         DecisionPrimitive::SelectCounters {
+            min_total: self.min_total,
             max_total: self.max_total,
         }
     }
@@ -596,6 +609,7 @@ impl DecisionSpec for CounterRemovalSpec {
             Some(self.source),
             self.target,
             target_name,
+            self.min_total,
             self.max_total,
             self.available_counters.clone(),
         ))
@@ -805,5 +819,15 @@ mod tests {
         let max = spec.default_response(FallbackStrategy::Maximum);
         let total_removed: u32 = max.iter().map(|(_, count)| count).sum();
         assert_eq!(total_removed, 4);
+
+        let mandatory = spec.clone().with_min_total(4);
+        assert_eq!(mandatory.description(), "Choose 4 counters to remove");
+        assert!(matches!(
+            mandatory.primitive(),
+            DecisionPrimitive::SelectCounters {
+                min_total: 4,
+                max_total: 4,
+            }
+        ));
     }
 }

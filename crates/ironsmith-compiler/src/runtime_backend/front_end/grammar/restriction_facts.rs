@@ -47,6 +47,10 @@ pub(crate) fn parse_activation_restriction_surface_tokens(
         normalization,
         mana_usage_restriction: abilities::parse_mana_usage_restriction_sentence_lexed(tokens)
             .or_else(|| abilities::parse_mana_spend_bonus_sentence_lexed(tokens)),
+        once_per_turn_after_other_restrictions: timing == Some(ActivationTiming::OncePerTurn)
+            && tokens.windows(3).any(|window| {
+                window[0].is_word("and") && window[1].is_word("only") && window[2].is_word("once")
+            }),
     }
 }
 
@@ -159,6 +163,7 @@ mod tests {
                 "only if this creature attacked this turn".to_string()
             )
         );
+        assert!(!parsed.once_per_turn_after_other_restrictions);
     }
 
     #[test]
@@ -172,6 +177,18 @@ mod tests {
             parsed.normalization,
             ActivationRestrictionNormalizationFact::Redundant
         );
+        assert!(!parsed.once_per_turn_after_other_restrictions);
+    }
+
+    #[test]
+    fn activation_fact_records_a_trailing_once_per_turn_clause() {
+        let parsed = parse_activation_restriction_tokens(&lex(
+            "Activate only if an opponent lost life this turn and only once each turn.",
+        ))
+        .expect("activation restriction should parse");
+
+        assert_eq!(parsed.timing, Some(ActivationTiming::OncePerTurn));
+        assert!(parsed.once_per_turn_after_other_restrictions);
     }
 
     #[test]

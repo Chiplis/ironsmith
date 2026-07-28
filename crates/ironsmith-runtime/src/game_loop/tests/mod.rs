@@ -58,3 +58,4 @@ mod shard_16;
 mod shard_17;
 mod shard_18;
 mod shard_19;
+mod valkyries_call;

@@ -35,6 +35,7 @@ pub(crate) struct ReturnDestinationShape {
     pub(crate) destination_player_surface: Option<PlayerAst>,
     pub(crate) tapped: bool,
     pub(crate) attacking: bool,
+    pub(crate) face_down: bool,
     pub(crate) transformed: bool,
     pub(crate) converted: bool,
     pub(crate) controller: ReturnControllerShape,
@@ -54,6 +55,7 @@ pub(crate) enum ReturnTargetShape {
         count: Option<ChoiceCount>,
     },
     All {
+        set_quantifier_surface: ironsmith_core::SetQuantifierSurface,
         raw_filter_tokens: Vec<OwnedLexToken>,
         filter_tokens: Vec<OwnedLexToken>,
         chosen_this_way_excluded: Option<bool>,
@@ -76,6 +78,7 @@ pub(crate) enum ReturnTargetShape {
 pub(crate) struct ReturnClauseShape {
     pub(crate) target: ReturnTargetShape,
     pub(crate) destination: ReturnDestinationShape,
+    pub(crate) destination_first: bool,
     pub(crate) random: bool,
     pub(crate) has_unless: bool,
 }
@@ -325,6 +328,14 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
     };
     let tapped = marker_anywhere(destination_head, primitives::kw("tapped"));
     let attacking = marker_anywhere(destination_head, primitives::kw("attacking"));
+    let face_down = marker_anywhere(
+        destination_head,
+        alt((
+            primitives::phrase(&["face", "down"]).void(),
+            primitives::kw("face-down").void(),
+            primitives::kw("facedown").void(),
+        )),
+    );
     let transformed = marker_anywhere(tokens, primitives::kw("transformed"));
     let converted = marker_anywhere(tokens, primitives::kw("converted"));
     let controller = if marker_anywhere(
@@ -357,6 +368,7 @@ fn parse_destination(tokens: &[OwnedLexToken]) -> Option<ReturnDestinationShape>
         destination_player_surface,
         tapped,
         attacking,
+        face_down,
         transformed,
         converted,
         controller,
@@ -497,9 +509,13 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
         });
     }
 
-    if let Some((_, rest)) =
-        primitives::parse_prefix(tokens, alt((primitives::kw("all"), primitives::kw("each"))))
-    {
+    if let Some((set_quantifier_surface, rest)) = primitives::parse_prefix(
+        tokens,
+        alt((
+            primitives::kw("all").value(ironsmith_core::SetQuantifierSurface::All),
+            primitives::kw("each").value(ironsmith_core::SetQuantifierSurface::Each),
+        )),
+    ) {
         let raw_filter_tokens = trim_lexed_commas(rest).to_vec();
         let unsupported_qualifier = marker_anywhere(rest, primitives::kw("dealt"))
             || (marker_anywhere(rest, primitives::kw("without"))
@@ -538,6 +554,7 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
                 None => (without_type, None),
             };
         return Some(ReturnTargetShape::All {
+            set_quantifier_surface,
             raw_filter_tokens,
             filter_tokens: trim_lexed_commas(&filter_tokens).to_vec(),
             chosen_this_way_excluded,
@@ -594,8 +611,9 @@ fn classify_target(tokens: &[OwnedLexToken], zone: ReturnZoneShape) -> Option<Re
 }
 
 pub(crate) fn parse_return_clause_shape(tokens: &[OwnedLexToken]) -> Option<ReturnClauseShape> {
+    let destination_first = primitives::parse_prefix(tokens, primitives::kw("to")).is_some();
     let normalized;
-    let tokens = if primitives::parse_prefix(tokens, primitives::kw("to")).is_some() {
+    let tokens = if destination_first {
         normalized = normalize_destination_first(tokens)?;
         normalized.as_slice()
     } else {
@@ -609,6 +627,7 @@ pub(crate) fn parse_return_clause_shape(tokens: &[OwnedLexToken]) -> Option<Retu
     Some(ReturnClauseShape {
         target,
         destination,
+        destination_first,
         random,
         has_unless,
     })
@@ -630,11 +649,26 @@ mod tests {
         assert!(matches!(
             shape.target,
             ReturnTargetShape::All {
+                set_quantifier_surface: ironsmith_core::SetQuantifierSurface::All,
                 chosen_this_way_excluded: Some(true),
                 ..
             }
         ));
         assert_eq!(shape.destination.zone, ReturnZoneShape::Hand);
+
+        let each = lex_line(
+            "each creature that isn't a Kraken, Leviathan, or Serpent to its owner's hand",
+            0,
+        )
+        .unwrap();
+        let each = parse_return_clause_shape(&each).expect("each-return shape");
+        assert!(matches!(
+            each.target,
+            ReturnTargetShape::All {
+                set_quantifier_surface: ironsmith_core::SetQuantifierSurface::Each,
+                ..
+            }
+        ));
     }
 
     #[test]
@@ -672,6 +706,7 @@ mod tests {
     fn normalizes_destination_first_return_surface() {
         let tokens = lex_line("to their owners' hands all creatures", 0).unwrap();
         let shape = parse_return_clause_shape(&tokens).expect("shape");
+        assert!(shape.destination_first);
         assert!(matches!(shape.target, ReturnTargetShape::All { .. }));
         assert_eq!(shape.destination.zone, ReturnZoneShape::Hand);
         assert_eq!(shape.destination.controller, ReturnControllerShape::Owner);

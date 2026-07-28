@@ -103,6 +103,16 @@ pub(crate) fn apply_pending_activation_restriction(
     if let Some(restriction) = additional_restriction {
         ability.additional_restrictions.push(restriction);
     }
+    if restriction.once_per_turn_after_other_restrictions
+        && ability
+            .additional_restrictions
+            .iter()
+            .all(|existing| existing != "__ironsmith_once_per_turn_after_other_restrictions")
+    {
+        ability
+            .additional_restrictions
+            .push("__ironsmith_once_per_turn_after_other_restrictions".to_string());
+    }
 }
 
 fn apply_pending_trigger_restriction(

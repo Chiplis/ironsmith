@@ -47,7 +47,10 @@ mod color_and_sticker_facts;
 mod counter_constraints;
 mod decorations;
 mod domain_unions;
-pub(crate) use domain_unions::parse_domain_union_object_filter_lexed;
+pub(crate) use domain_unions::{
+    parse_branch_scoped_object_filter_union_lexed, parse_domain_union_object_filter_lexed,
+    parse_elided_shared_domain_union,
+};
 mod extremum;
 mod meld_and_special_subjects;
 mod naming_and_reference;
@@ -60,7 +63,6 @@ pub(crate) mod spell_filters;
 
 pub(super) use chosen_type_references::*;
 use color_and_sticker_facts::*;
-use domain_unions::*;
 pub(crate) use extremum::{parse_extremum_object_filter_lexed, parse_extremum_object_filter_words};
 pub(super) use meld_and_special_subjects::*;
 use naming_and_reference::*;

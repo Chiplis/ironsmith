@@ -49,6 +49,17 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         parse_sentence_fallback_mechanic_marker
     ),
     primitive!(
+        "relative-opponent-damage-difference",
+        24,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("this"),
+            LexRuleHeadHint::Single("that"),
+            LexRuleHeadHint::Single("it"),
+        ],
+        parse_sentence_relative_opponent_damage_difference
+    ),
+    primitive!(
         "target-gains-or-loses-all-creature-types",
         25,
         PreDiagnostic,
@@ -96,6 +107,16 @@ pub(crate) const PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitive
         PreDiagnostic,
         &[LexRuleHeadHint::Single("if")],
         parse_if_enters_with_additional_counter_sentence
+    ),
+    primitive!(
+        "tagged-conditional-entry-counters",
+        51,
+        PreDiagnostic,
+        &[
+            LexRuleHeadHint::Single("each"),
+            LexRuleHeadHint::Single("all")
+        ],
+        parse_tagged_conditional_entry_counters_sentence
     ),
     primitive!(
         "tagged-enters-with-additional-counter",
@@ -795,6 +816,7 @@ pub(crate) const POST_CONDITIONAL_SUBJECT_VERB_PRIMITIVES: &[SubjectVerbPrimitiv
             LexRuleHeadHint::Single("damage"),
             LexRuleHeadHint::Single("this"),
             LexRuleHeadHint::Single("it"),
+            LexRuleHeadHint::Single("destroy"),
         ],
         parse_sentence_damage_unless_controller_has_source_deal_damage
     ),
@@ -900,6 +922,30 @@ mod tests {
                     && subtypes.contains(&crate::types::Subtype::Cyberman)
             ),
             "expected plural tagged characteristics to parse structurally, got {effects:?}"
+        );
+    }
+
+    #[test]
+    fn preconditional_registry_claims_coordinated_conditional_entry_counters() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "Each of them enters with an additional +1/+1 counter on it if it's a creature and an additional loyalty counter on it if it's a planeswalker.",
+            0,
+        )
+        .expect("conditional entry-counter fixture should lex");
+        let effects = run_subject_verb_primitives_lexed(
+            &tokens,
+            PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVES,
+            &PRE_CONDITIONAL_SUBJECT_VERB_PRIMITIVE_INDEX,
+        )
+        .expect("registry parse should succeed")
+        .expect("conditional entry-counter primitive should claim the sentence");
+
+        assert_eq!(effects.len(), 2, "{effects:#?}");
+        assert!(
+            effects
+                .iter()
+                .all(|effect| matches!(effect, EffectAst::Conditional { .. })),
+            "{effects:#?}"
         );
     }
 

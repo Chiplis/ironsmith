@@ -390,6 +390,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && filter.power_relative_to_source.is_none()
         && !filter.shares_creature_type_with_source
         && filter.no_shared_creature_types_with.is_empty()
+        && filter.characteristic_relations.is_empty()
         && !filter.is_commander
         && !filter.noncommander
         && !filter.has_tap_activated_ability
@@ -398,6 +399,7 @@ fn filter_supports_chars_class_dedup(filter: &ObjectFilter) -> bool {
         && filter.excluded_ability_markers.is_empty()
         && !filter.uses_power_or_toughness_characteristics()
         && filter.attached_to_object.is_none()
+        && filter.blocked_or_was_blocked_by_this_turn.is_none()
         && filter.attached_to_player.is_none()
         && filter.alternative_cast.is_none()
 }
@@ -1080,6 +1082,8 @@ fn object_matches_filter_with_chars(
             | PlayerFilter::MaxSpeed { .. }
             | PlayerFilter::CastCardTypeThisTurn(_)
             | PlayerFilter::Teammate
+            | PlayerFilter::PlayerToYourLeft
+            | PlayerFilter::PlayerToYourRight
             | PlayerFilter::Active
             | PlayerFilter::Defending
             | PlayerFilter::Attacking
@@ -1121,6 +1125,9 @@ fn object_matches_filter_with_chars(
     if let Some(require_face_down) = filter.face_down
         && game.is_face_down(object.id) != require_face_down
     {
+        return false;
+    }
+    if filter.foretold && !game.is_foretold(object.id) {
         return false;
     }
 
@@ -1641,18 +1648,21 @@ fn value_references_pt(value: &Value) -> bool {
         | Value::CreaturesDiedThisTurnControlledBy(_)
         | Value::PlayersBeingAttacked
         | Value::CountPlayers(_)
+        | Value::CountPlayersWithCardsInHandAtLeast(_, _)
         | Value::PlayersWhoControlMoreThanYou { .. }
         | Value::PlayersWhoControlAtLeastMoreThanYou { .. }
         | Value::PartySize(_)
         | Value::Devotion { .. }
         | Value::DevotionToChosenColor(_)
         | Value::ManaSpentToCastThisSpell
+        | Value::ManaSymbolSpentToCastThisSpell { .. }
         | Value::ManaFromSourceSpentToCastThisSpell { .. }
         | Value::ManaSpentToCastTriggeringObject
         | Value::UnspentMana(_)
         | Value::ColorsOfManaSpentToCastThisSpell
         | Value::ManaValueOf(_)
         | Value::ManaSymbolsInManaCostOf { .. }
+        | Value::NameStickerCharacterCountOnSource { .. }
         | Value::LifeTotal(_)
         | Value::LifeTotalAsTurnBegan(_)
         | Value::LifeTotalDifference(_)
@@ -2244,6 +2254,7 @@ fn filter_uses_type_characteristics(filter: &ObjectFilter) -> bool {
         || !filter.excluded_supertypes.is_empty()
         || filter.historic
         || filter.nonhistoric
+        || filter.one_per_card_type
 }
 
 fn filter_uses_color_characteristics(filter: &ObjectFilter) -> bool {

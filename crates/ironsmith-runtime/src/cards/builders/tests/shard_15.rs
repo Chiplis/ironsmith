@@ -572,6 +572,168 @@ pub(super) fn twenty_toed_toad_strict_parser_and_compiled_text_regression() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
+pub(super) fn tide_skimmer_preserves_explicit_attack_with_threshold_surface() {
+    let def = parse_oracle_card_definition("Tide Skimmer");
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Flying".to_string(),
+            "Whenever you attack with two or more creatures with flying, draw a card.".to_string(),
+        ]
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn combustion_man_preserves_targeted_destroy_unless_source_power_damage() {
+    let oracle = "Whenever Combustion Man attacks, destroy target permanent unless its controller has Combustion Man deal damage to them equal to his power.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Combustion Man")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Human, Subtype::Assassin])
+        .power_toughness(PowerToughness::fixed(4, 6))
+        .parse_text(oracle)
+        .expect("Combustion Man text should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle.to_string()]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn go_shintai_hidden_cruelty_keeps_where_x_out_of_the_target_domain() {
+    let oracle = "Deathtouch\nAt the beginning of your end step, you may pay {1}. When you do, destroy target creature with toughness X or less, where X is the number of Shrines you control.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Go-Shintai of Hidden Cruelty")
+        .supertypes(vec![Supertype::Legendary])
+        .card_types(vec![CardType::Enchantment, CardType::Creature])
+        .subtypes(vec![Subtype::Shrine])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .parse_text(oracle)
+        .expect("Go-Shintai of Hidden Cruelty text should parse");
+
+    assert_eq!(
+        compiled_text_lines(&def),
+        oracle.lines().map(str::to_string).collect::<Vec<_>>()
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn leave_no_trace_preserves_the_radiance_shared_color_fanout() {
+    let oracle = "Radiance — Destroy target enchantment and each other enchantment that shares a color with it.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Leave No Trace")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Leave No Trace text should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle.to_string()]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn fold_into_aether_preserves_countered_spell_controller_hand_move() {
+    let oracle = "Counter target spell. If that spell is countered this way, its controller may put a creature card from their hand onto the battlefield.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Fold into Aether")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("Fold into Aether text should parse");
+
+    assert_eq!(compiled_text_lines(&def), vec![oracle.to_string()]);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn triassic_egg_preserves_modal_counter_activation_restriction() {
+    let oracle = "{3}, {T}: Put a hatchling counter on this artifact.\nSacrifice this artifact: Choose one. Activate only if there are two or more hatchling counters on this artifact.\n• You may put a creature card from your hand onto the battlefield.\n• Return target creature card from your graveyard to the battlefield.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Triassic Egg")
+        .card_types(vec![CardType::Artifact])
+        .parse_text(oracle)
+        .expect("Triassic Egg text should parse");
+
+    let modal = def
+        .abilities
+        .iter()
+        .filter_map(|ability| match &ability.kind {
+            AbilityKind::Activated(activated) => Some(activated),
+            _ => None,
+        })
+        .nth(1)
+        .expect("Triassic Egg should have a second activated ability");
+    let restrictions = format!("{:#?}", modal.activation_restrictions);
+    assert!(
+        restrictions.contains("hatchling") && restrictions.contains("count: 2"),
+        "expected the modal activation to retain its typed hatchling-counter threshold, got {restrictions}"
+    );
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn authored_once_per_turn_activation_restriction_order_is_preserved() {
+    for oracle in [
+        "{1}{R}: Put a +1/+1 counter on this creature. Activate only if an opponent lost life this turn and only once each turn.",
+        "{1}{R}: Put a +1/+1 counter on this creature. Activate only once each turn and only if an opponent lost life this turn.",
+    ] {
+        let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Restriction Order")
+            .card_types(vec![CardType::Creature])
+            .parse_text(oracle)
+            .expect("ordered activation restriction text should parse");
+
+        assert_eq!(compiled_text_lines(&def), vec![oracle.to_string()]);
+    }
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn standalone_spell_draw_line_keeps_the_imperative_subject_surface() {
+    let oracle = "Tap target artifact or creature.\nDraw a card.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Imperative Draw")
+        .card_types(vec![CardType::Instant])
+        .parse_text(oracle)
+        .expect("separate imperative draw line should parse");
+
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn shorecrasher_elemental_keeps_its_face_down_blink_sequence() {
+    let oracle = "{U}: Exile this creature, then return it to the battlefield face down under its owner's control.\n{1}: This creature gets +1/-1 or -1/+1 until end of turn.\nMegamorph {4}{U}";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Shorecrasher Elemental")
+        .card_types(vec![CardType::Creature])
+        .subtypes(vec![Subtype::Elemental])
+        .power_toughness(PowerToughness::fixed(3, 3))
+        .parse_text(oracle)
+        .expect("Shorecrasher Elemental text should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("zone: Exile")
+            && debug.contains("zone: Battlefield")
+            && debug.contains("enters_face_down: true"),
+        "expected a linked exile and face-down battlefield return, got {debug}"
+    );
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn comma_bearing_full_source_name_keeps_the_complete_etb_trigger() {
+    let oracle = "When Malik, Grim Manipulator enters, you and target opponent each secretly choose a creature that player controls. Then those choices are revealed, and that player sacrifices those creatures.\nWhenever an opponent sacrifices a creature, you create a Treasure token.";
+    let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Malik, Grim Manipulator")
+        .card_types(vec![CardType::Creature])
+        .parse_text(oracle)
+        .expect("the comma-bearing named-source trigger should parse");
+
+    let debug = format!("{:#?}", def.abilities);
+    assert!(
+        debug.contains("ZoneChange") && debug.contains("CreateToken"),
+        "expected the ETB and sacrifice triggers to remain distinct, got {debug}"
+    );
+    assert_eq!(compiled_text_lines(&def).join("\n"), oracle);
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
 pub(super) fn parse_exile_top_x_until_end_of_your_next_turn_may_play_those_cards() {
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Commune with Lava Variant")
         .card_types(vec![CardType::Instant])
@@ -1151,6 +1313,7 @@ pub(super) fn parse_until_end_of_turn_you_may_play_that_card_without_paying_mana
 #[test]
 pub(super) fn temporal_aperture_oracle_parses_and_renders_top_library_permission() {
     let def = parse_oracle_card_definition("Temporal Aperture");
+    let oracle = "{5}, {T}: Shuffle your library, then reveal the top card. Until end of turn, for as long as that card remains on top of your library, play with the top card of your library revealed and you may play that card without paying its mana cost.";
 
     let abilities_debug = format!("{:#?}", def.abilities);
     assert!(
@@ -1185,6 +1348,7 @@ pub(super) fn temporal_aperture_oracle_parses_and_renders_top_library_permission
         !rendered_lower.contains("unsupported") && !rendered_lower.contains("unimplemented"),
         "Temporal Aperture should compile without fallback markers, got {rendered}"
     );
+    assert_eq!(unprocessed_compiled_lines(&def), vec![oracle.to_string()]);
 }
 
 #[test]
@@ -2533,6 +2697,157 @@ pub(super) fn parse_oracle_roshan_hidden_magister_regression() {
 }
 
 #[test]
+pub(super) fn parse_oracle_dune_chanter_keeps_control_and_ownership_domains_independent() {
+    let def = parse_oracle_card_definition("Dune Chanter");
+    let rendered = unprocessed_compiled_lines(&def);
+
+    assert_eq!(
+        rendered,
+        vec![
+            "Reach".to_string(),
+            "Lands you control and land cards you own that aren't on the battlefield are Deserts in addition to their other types.".to_string(),
+            "Lands you control have \"{T}: Add one mana of any color.\"".to_string(),
+            "{T}: Mill two cards. You gain 1 life for each land card milled this way.".to_string(),
+        ]
+    );
+    let desert_filter = def
+        .abilities
+        .iter()
+        .find_map(|ability| {
+            let AbilityKind::Static(static_ability) = &ability.kind else {
+                return None;
+            };
+            let model = static_ability.compiled_model()?;
+            match &model.payload {
+                ironsmith_core::StaticAbilityPayload::AddSubtypes { filter, subtypes }
+                    if subtypes.contains(&Subtype::Desert) =>
+                {
+                    Some(filter)
+                }
+                _ => None,
+            }
+        })
+        .expect("Dune Chanter should have its Desert type-addition filter");
+    assert!(
+        desert_filter.has_conjunctive_set_surface()
+            && desert_filter.any_of.len() == 6
+            && desert_filter.any_of.iter().any(|branch| {
+                branch.zone == Some(Zone::Battlefield)
+                    && branch.controller == Some(PlayerFilter::You)
+                    && branch.owner.is_none()
+                    && branch.card_types == [CardType::Land]
+            })
+            && [
+                Zone::Hand,
+                Zone::Library,
+                Zone::Graveyard,
+                Zone::Exile,
+                Zone::Command,
+            ]
+            .into_iter()
+            .all(|zone| desert_filter.any_of.iter().any(|branch| {
+                branch.zone == Some(zone)
+                    && branch.owner == Some(PlayerFilter::You)
+                    && branch.controller.is_none()
+                    && branch.card_types == [CardType::Land]
+            })),
+        "expected separately scoped battlefield/controller and nonbattlefield/owner branches: {desert_filter:#?}"
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_word_of_undoing_preserves_the_shared_owner_destination() {
+    let def = parse_oracle_card_definition("Word of Undoing");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Return target creature and all white Auras you own attached to it to their owners' hands."
+                .to_string(),
+        ]
+    );
+}
+
+#[test]
+pub(super) fn parse_oracle_eaten_by_spiders_keeps_the_target_and_its_attachments_linked() {
+    let def = parse_oracle_card_definition("Eaten by Spiders");
+
+    assert_eq!(
+        unprocessed_compiled_lines(&def),
+        vec![
+            "Destroy target creature with flying and all Equipment attached to that creature."
+                .to_string(),
+        ]
+    );
+    let raw = format!("{def:#?}");
+    assert!(
+        raw.contains("AttachedToTaggedObject") && raw.contains("DestroyEffect"),
+        "expected separately executable target and attachment destruction linked by tag: {raw}"
+    );
+}
+
+#[test]
+pub(super) fn eaten_by_spiders_destroys_the_target_and_attached_equipment_at_runtime() {
+    use crate::effects::{ExecutionContext, ResolvedTarget, execute_effect};
+
+    let def = parse_oracle_card_definition("Eaten by Spiders");
+    let effects = def.spell_effect.as_ref().expect("spell effects");
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let flier = CardDefinitionBuilder::new(CardId::from_raw(72_010), "Target Flier")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(2, 2))
+        .flying()
+        .build();
+    let flier_id = game.create_object_from_definition(&flier, bob, Zone::Battlefield);
+    create_attached_test_equipment(&mut game, alice, flier_id);
+    let unattached_equipment =
+        CardDefinitionBuilder::new(CardId::from_raw(72_011), "Unattached Equipment")
+            .card_types(vec![CardType::Artifact])
+            .subtypes(vec![Subtype::Equipment])
+            .build();
+    let unattached_id =
+        game.create_object_from_definition(&unattached_equipment, alice, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![ResolvedTarget::Object(flier_id)]);
+    for effect in effects {
+        execute_effect(&mut game, effect, &mut ctx)
+            .unwrap_or_else(|error| panic!("Eaten by Spiders should resolve: {error:?}"));
+    }
+
+    let alice_graveyard_names: Vec<_> = game
+        .player(alice)
+        .expect("alice")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
+        .collect();
+    let bob_graveyard_names: Vec<_> = game
+        .player(bob)
+        .expect("bob")
+        .graveyard
+        .iter()
+        .filter_map(|id| game.object(*id).map(|object| object.name.as_str()))
+        .collect();
+    assert!(
+        alice_graveyard_names.contains(&"Vibranium Shield"),
+        "the attached Equipment should be destroyed, got {alice_graveyard_names:?}"
+    );
+    assert!(
+        bob_graveyard_names.contains(&"Target Flier"),
+        "the target creature should be destroyed, got {bob_graveyard_names:?}"
+    );
+    assert!(
+        game.object(unattached_id).is_some(),
+        "unattached Equipment should remain on the battlefield"
+    );
+}
+
+#[test]
 pub(super) fn parse_oracle_leyline_of_transformation_regression() {
     let def = parse_oracle_card_definition("Leyline of Transformation");
 
@@ -3232,7 +3547,7 @@ pub(super) fn parse_oracle_sarkhan_dragon_ascendant_behold_regression() {
         "expected Sarkhan to preserve the behold follow-up, got {rendered}"
     );
     assert!(
-        rendered.contains("Sarkhan becomes a dragon in addition to its other types"),
+        rendered.contains("Sarkhan becomes a Dragon in addition to its other types"),
         "expected Sarkhan's named self-reference to survive continuous-effect rendering, got {rendered}"
     );
 }
@@ -3680,9 +3995,10 @@ pub(super) fn parse_oracle_over_the_top_dynamic_reveal_and_distribution_regressi
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("for each player")
+        rendered.contains("each player reveals")
             && rendered.contains("number of nonland permanents they control")
-            && rendered.contains("put all permanent cards revealed this way onto the battlefield")
+            && rendered
+                .contains("puts all permanent cards they revealed this way onto the battlefield")
             && rendered.contains("rest into their graveyard"),
         "expected Over the Top to preserve dynamic reveal and battlefield/graveyard distribution, got {rendered}"
     );

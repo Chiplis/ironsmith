@@ -429,6 +429,15 @@ pub(crate) fn parse_put_counter_target_shape(
     let (_, target_tokens) =
         primitives::split_lexed_once_on_separator(tokens, || primitives::kw("on").void())?;
     let mut target_tokens = trim_shape_edges(target_tokens);
+    // A trailing `where X is ...` binds the counter amount and is consumed by
+    // the surrounding effect dispatcher. Keep it out of the target phrase so
+    // nouns in the value definition (notably "that card") cannot widen the
+    // target's surface metadata to "target creature card".
+    if let Some((where_idx, (), _)) = primitives::find_prefix(target_tokens, || {
+        primitives::phrase(&["where", "x", "is"]).void()
+    }) {
+        target_tokens = trim_shape_edges(&target_tokens[..where_idx]);
+    }
     let mut equal_to_difference = false;
     if let Some((equal_idx, (), after_equal)) = primitives::find_prefix(target_tokens, || {
         primitives::phrase(&["equal", "to"]).void()
@@ -644,6 +653,30 @@ fn source_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
+fn target_leaves_suffix<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
+    primitives::kw("until").parse_next(input)?;
+    let target = (
+        primitives::kw("target"),
+        repeat_till::<_, _, (), _, _, _, _>(
+            0..,
+            any.void(),
+            peek(primitives::phrase(&["leaves", "the", "battlefield"])),
+        )
+        .void(),
+    )
+        .take()
+        .parse_next(input)?;
+    primitives::phrase(&["leaves", "the", "battlefield"]).parse_next(input)?;
+    primitives::sentence_end().parse_next(input)?;
+    Ok(target)
+}
+
+pub(crate) fn split_until_target_leaves_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<(&[OwnedLexToken], &[OwnedLexToken])> {
+    primitives::split_lexed_once_before_suffix(tokens, 1, || target_leaves_suffix)
+}
+
 pub(crate) fn split_until_source_leaves_shape(
     tokens: &[OwnedLexToken],
 ) -> (&[OwnedLexToken], bool) {
@@ -794,6 +827,8 @@ pub(crate) fn player_filter_for_half_reference(player: PlayerAst) -> Option<Play
         PlayerAst::Active => Some(PlayerFilter::Active),
         PlayerAst::Any => Some(PlayerFilter::Any),
         PlayerAst::Opponent => Some(PlayerFilter::Opponent),
+        PlayerAst::PlayerToYourLeft => Some(PlayerFilter::PlayerToYourLeft),
+        PlayerAst::PlayerToYourRight => Some(PlayerFilter::PlayerToYourRight),
         PlayerAst::NotYou => Some(PlayerFilter::NotYou),
         PlayerAst::Target => Some(PlayerFilter::target_player()),
         PlayerAst::TargetOpponent => Some(PlayerFilter::target_opponent()),
@@ -868,5 +903,40 @@ mod tests {
         let counter_tokens = tokens("+1/+1 counters on target creature equal to the difference");
         let shape = parse_put_counter_target_shape(&counter_tokens).unwrap();
         assert!(shape.equal_to_difference);
+
+        let counter_tokens = tokens(
+            "X +1/+1 counters on target creature you control, where X is the mana value of that card",
+        );
+        let shape = parse_put_counter_target_shape(&counter_tokens).unwrap();
+        assert_eq!(
+            primitives::TokenWordView::new(shape.target_tokens).to_word_refs(),
+            ["target", "creature", "you", "control"]
+        );
+    }
+
+    #[test]
+    fn preserves_distinct_target_in_until_leaves_suffix() {
+        let tokens = tokens(
+            "target creature or enchantment you don't control until target enchantment you control leaves the battlefield",
+        );
+        let (exiled, watcher) =
+            split_until_target_leaves_shape(&tokens).expect("target watcher suffix");
+
+        assert_eq!(
+            primitives::TokenWordView::new(exiled).to_word_refs(),
+            [
+                "target",
+                "creature",
+                "or",
+                "enchantment",
+                "you",
+                "don't",
+                "control"
+            ]
+        );
+        assert_eq!(
+            primitives::TokenWordView::new(watcher).to_word_refs(),
+            ["target", "enchantment", "you", "control"]
+        );
     }
 }

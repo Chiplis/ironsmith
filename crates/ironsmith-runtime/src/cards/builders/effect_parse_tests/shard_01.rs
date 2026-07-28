@@ -2412,7 +2412,11 @@ fn parse_investigate_for_each_clause_uses_prior_effect_count() {
         );
     };
     assert_eq!(filter.zone, Some(crate::zone::Zone::Exile));
-    assert!(filter.card_types.contains(&crate::types::CardType::Creature));
+    assert!(
+        filter
+            .card_types
+            .contains(&crate::types::CardType::Creature)
+    );
     assert!(filter.nontoken);
     assert!(
         filter.tagged_constraints.iter().any(|constraint| {

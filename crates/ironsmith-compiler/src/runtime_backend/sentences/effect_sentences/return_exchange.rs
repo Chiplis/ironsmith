@@ -19,6 +19,18 @@ fn parse_return_back_reference_target(
     }
 }
 
+fn set_return_destination_first_surface(target: &mut TargetAst, destination_first: bool) {
+    match target {
+        TargetAst::Object(filter, _, _) | TargetAst::ObjectOrPlayer(filter, _, _) => {
+            filter.set_return_destination_first_surface(destination_first);
+        }
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            set_return_destination_first_surface(inner, destination_first);
+        }
+        _ => {}
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DelayedReturnTimingAst {
     NextEndStep(PlayerFilter),
@@ -65,6 +77,25 @@ pub(crate) fn wrap_return_with_delayed_timing(
 }
 
 pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    if let Some(for_each_idx) = (0..tokens.len().saturating_sub(1))
+        .rev()
+        .find(|&idx| tokens[idx].is_word("for") && tokens[idx + 1].is_word("each"))
+    {
+        let count_words = crate::runtime_backend::token_word_refs(&tokens[for_each_idx..]);
+        if let Some((count, used_words)) =
+            crate::runtime_backend::util::parse_for_each_count_value_words(&count_words)
+            && used_words == count_words.len()
+        {
+            let base_tokens = trim_commas(&tokens[..for_each_idx]);
+            if !base_tokens.is_empty() {
+                return Ok(EffectAst::RepeatEffects {
+                    count,
+                    effects: vec![parse_return(&base_tokens)?],
+                });
+            }
+        }
+    }
+
     let clause_text = crate::runtime_backend::token_word_refs(tokens).join(" ");
     let shape = crate::runtime_backend::grammar::effects::parse_return_clause_shape(tokens)
         .ok_or_else(|| {
@@ -78,6 +109,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
         )));
     }
 
+    let destination_first = shape.destination_first;
     let destination = shape.destination;
     if destination.has_unparsed_timing_words {
         return Err(CardTextError::ParseError(format!(
@@ -109,7 +141,20 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
     let attached_to_target = destination
         .attached_to_tokens
         .as_deref()
-        .map(parse_return_back_reference_target)
+        .map(|tokens| {
+            let mut target = parse_return_back_reference_target(tokens)?;
+            if crate::runtime_backend::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
+                tokens,
+            )
+                && let Some(filter) =
+                    crate::runtime_backend::sentences::effect_sentences::zone_counter_helpers::target_object_filter_mut(
+                        &mut target,
+                    )
+            {
+                filter.set_plural_object_noun_surface(true);
+            }
+            Ok::<_, CardTextError>(target)
+        })
         .transpose()?;
 
     let effect = match shape.target {
@@ -145,12 +190,50 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             );
             match destination.zone {
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Battlefield => {
-                    EffectAst::subject_verb_return_all_to_battlefield(
-                        filter,
-                        destination.tapped,
-                        false,
-                        return_controller,
-                    )
+                    if let Some(attached_to) = attached_to_target.clone() {
+                        if destination.face_down {
+                            return Err(CardTextError::ParseError(format!(
+                                "unsupported face-down attached return-all clause (clause: '{clause_text}')"
+                            )));
+                        }
+                        // A return-all instruction with an attachment
+                        // destination must keep the returned collection and
+                        // the preexisting attachment target as two distinct
+                        // references. The generic move-all lowering already
+                        // tags every returned object before emitting one
+                        // AttachObjectsEffect, so use that typed path instead
+                        // of dropping the attachment from ReturnAll.
+                        let target = TargetAst::Object(filter, None, None);
+                        let effect = if let Some(count) = count {
+                            EffectAst::subject_verb_move_to_zone(
+                                TargetAst::WithCount(Box::new(target), count),
+                                Zone::Battlefield,
+                                false,
+                                return_controller,
+                                destination.tapped,
+                                Some(attached_to),
+                            )
+                        } else {
+                            EffectAst::subject_verb_move_all_to_zone(
+                                target,
+                                Zone::Battlefield,
+                                false,
+                                return_controller,
+                                destination.tapped,
+                                Some(attached_to),
+                            )
+                        };
+                        effect.with_move_to_zone_verb_surface(
+                            ironsmith_core::MoveToZoneVerbSurface::Return,
+                        )
+                    } else {
+                        EffectAst::subject_verb_return_all_to_battlefield(
+                            filter,
+                            destination.tapped,
+                            destination.face_down,
+                            return_controller,
+                        )
+                    }
                 }
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Graveyard => {
                     EffectAst::subject_verb_move_to_zone(
@@ -184,6 +267,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
             )));
         }
         crate::runtime_backend::grammar::effects::ReturnTargetShape::All {
+            set_quantifier_surface,
             raw_filter_tokens,
             filter_tokens,
             chosen_this_way_excluded,
@@ -219,6 +303,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                     )));
                 }
                 let mut filter = parse_object_filter(&base_filter_tokens, false)?;
+                filter.set_return_destination_first_surface(destination_first);
                 for subtype in &destination.excluded_subtypes {
                     if filter
                         .excluded_subtypes
@@ -234,6 +319,8 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 ));
             }
             let mut filter = parse_object_filter(&filter_tokens, false)?;
+            filter.set_set_quantifier_surface(Some(set_quantifier_surface));
+            filter.set_return_destination_first_surface(destination_first);
             filter.chosen_creature_type |= chosen_creature_type;
             filter.excluded_chosen_creature_type |= excluded_chosen_creature_type;
             filter.discarded_or_cycled_this_turn_by = discarded_or_cycled_this_turn_by;
@@ -258,7 +345,7 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                     EffectAst::subject_verb_return_all_to_battlefield(
                         filter,
                         destination.tapped,
-                        false,
+                        destination.face_down,
                         return_controller,
                     )
                 }
@@ -311,8 +398,14 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                 target =
                     TargetAst::WithCount(Box::new(target), crate::effect::ChoiceCount::dynamic_x());
             }
+            set_return_destination_first_surface(&mut target, destination_first);
             match destination.zone {
                 crate::runtime_backend::grammar::effects::ReturnZoneShape::Battlefield => {
+                    if destination.face_down && (destination.transformed || destination.converted) {
+                        return Err(CardTextError::ParseError(format!(
+                            "unsupported face-down transformed/converted return clause (clause: '{clause_text}')"
+                        )));
+                    }
                     if let Some(attached_to) = attached_to_target {
                         if destination.transformed || destination.converted || count_value.is_some()
                         {
@@ -320,26 +413,28 @@ pub(crate) fn parse_return(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTe
                                 "unsupported transformed/converted/dynamic return attached clause (clause: '{clause_text}')"
                             )));
                         }
-                        EffectAst::subject_verb_move_to_zone(
-                            target,
-                            Zone::Battlefield,
-                            false,
-                            return_controller,
-                            destination.tapped,
-                            Some(attached_to),
-                        )
-                        .with_move_to_zone_verb_surface(
-                            ironsmith_core::MoveToZoneVerbSurface::Return,
-                        )
-                    } else if destination.attacking {
                         EffectAst::subject_verb_move_to_zone_with_attacking(
                             target,
                             Zone::Battlefield,
                             false,
                             return_controller,
                             destination.tapped,
-                            true,
                             false,
+                            destination.face_down,
+                            Some(attached_to),
+                        )
+                        .with_move_to_zone_verb_surface(
+                            ironsmith_core::MoveToZoneVerbSurface::Return,
+                        )
+                    } else if destination.attacking || destination.face_down {
+                        EffectAst::subject_verb_move_to_zone_with_attacking(
+                            target,
+                            Zone::Battlefield,
+                            false,
+                            return_controller,
+                            destination.tapped,
+                            destination.attacking,
+                            destination.face_down,
                             None,
                         )
                         .with_move_to_zone_verb_surface(
@@ -520,6 +615,7 @@ mod tests {
     use super::*;
     use crate::runtime_backend::ast::{SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::runtime_backend::front_end::lexer::lex_line;
+    use crate::runtime_backend::parse_effect_sentence_lexed;
     use crate::types::CardType;
 
     #[test]
@@ -573,5 +669,141 @@ mod tests {
                 .iter()
                 .any(|constraint| { constraint.tag.as_str() == crate::tag::SOURCE_EXILED_TAG })
         );
+    }
+
+    #[test]
+    fn preserves_destination_first_surface_on_a_singular_graveyard_target() {
+        let tokens = lex_line(
+            "to your hand target artifact card in your graveyard with lesser mana value",
+            0,
+        )
+        .expect("lex destination-first return clause");
+        let effect = parse_return(&tokens).expect("parse destination-first return clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ReturnToHand { target, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected a singular hand return");
+        };
+        let TargetAst::Object(filter, Some(_), _) = target else {
+            panic!("expected a targeted graveyard object filter");
+        };
+
+        assert!(filter.has_return_destination_first_surface());
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(filter.owner, Some(PlayerFilter::You));
+        assert_eq!(filter.card_types, [CardType::Artifact]);
+    }
+
+    #[test]
+    fn destination_first_return_preserves_branch_scoped_collection() {
+        let tokens = lex_line(
+            "to your hand all enchantments you both own and control, all Auras you own attached to permanents you control, and all Auras you own attached to attacking creatures your opponents control",
+            0,
+        )
+        .expect("lex destination-first branch-scoped return clause");
+        let effect = parse_return(&tokens).expect("parse branch-scoped return clause");
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::ReturnAllToHand { filter, .. },
+            ..
+        }) = effect
+        else {
+            panic!("expected a bulk hand return");
+        };
+
+        assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+        assert!(filter.has_return_destination_first_surface(), "{filter:#?}");
+    }
+
+    #[test]
+    fn full_return_sentence_preserves_branch_scoped_collection() {
+        let tokens = lex_line(
+            "Return to your hand all enchantments you both own and control, all Auras you own attached to permanents you control, and all Auras you own attached to attacking creatures your opponents control.",
+            0,
+        )
+        .expect("lex full branch-scoped return sentence");
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("parse full branch-scoped return sentence");
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnAllToHand { filter, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one bulk hand return, got {effects:#?}");
+        };
+
+        assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.any_of.len(), 3, "{filter:#?}");
+        assert!(filter.has_conjunctive_set_surface(), "{filter:#?}");
+    }
+
+    #[test]
+    fn each_player_destination_first_return_keeps_graveyard_history() {
+        let tokens = lex_line(
+            "Each player returns to the battlefield all artifact, creature, enchantment, and land cards in their graveyard that were put there from the battlefield this turn.",
+            0,
+        )
+        .expect("lex each-player historical return sentence");
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("parse each-player historical return");
+        let [EffectAst::ForEachPlayer { effects }] = effects.as_slice() else {
+            panic!("expected an each-player return, got {effects:#?}");
+        };
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. },
+                ..
+            }),
+        ] = effects.as_slice()
+        else {
+            panic!("expected one return-all action, got {effects:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Graveyard), "{filter:#?}");
+        assert_eq!(
+            filter.owner,
+            Some(PlayerFilter::IteratedPlayer),
+            "{filter:#?}"
+        );
+        assert_eq!(
+            filter.card_types,
+            [
+                CardType::Artifact,
+                CardType::Creature,
+                CardType::Enchantment,
+                CardType::Land,
+            ],
+            "{filter:#?}"
+        );
+        assert!(filter.entered_graveyard_this_turn, "{filter:#?}");
+        assert!(
+            filter.entered_graveyard_from_battlefield_this_turn,
+            "{filter:#?}"
+        );
+        assert!(filter.has_return_destination_first_surface(), "{filter:#?}");
+    }
+
+    #[test]
+    fn return_for_each_discarded_card_repeats_from_exact_prior_effect() {
+        let tokens = lex_line(
+            "a card from your graveyard to your hand for each card discarded this way",
+            0,
+        )
+        .expect("lex return-for-each clause");
+        let effect = parse_return(&tokens).expect("parse return-for-each clause");
+        let EffectAst::RepeatEffects { count, effects } = effect else {
+            panic!("expected repeated return effect");
+        };
+        assert_eq!(effects.len(), 1);
+        assert!(matches!(
+            count.unhinted(),
+            Value::PendingPriorEffectMetric(query)
+                if query.action == Some(ironsmith_core::PriorEffectAction::Discarded)
+        ));
     }
 }
