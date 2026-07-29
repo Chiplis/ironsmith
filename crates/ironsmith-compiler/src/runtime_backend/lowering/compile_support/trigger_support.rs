@@ -206,10 +206,12 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             other_count,
             display_subject,
             other_filter,
-        } => Trigger::this_attacks_with_n_others_display_subject_and_filter(
+            other_surface,
+        } => Trigger::this_attacks_with_n_others_display_subject_filter_and_other_surface(
             other_count as usize,
             display_subject,
             other_filter,
+            other_surface,
         ),
         TriggerSpec::ThisAttacksWithExactlyNOthers(other_count) => {
             Trigger::this_attacks_with_exact_n_others(other_count as usize)
@@ -587,6 +589,11 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             }
             Trigger::new(trigger)
         }
+        TriggerSpec::NthCounterPutOn {
+            filter,
+            counter_type,
+            counter_number,
+        } => Trigger::nth_counter_put_on(filter, counter_type, counter_number),
         TriggerSpec::CounterRemovedFrom {
             filter,
             one_or_more,
@@ -645,6 +652,9 @@ pub(crate) fn compile_trigger_spec(trigger: TriggerSpec) -> Trigger {
             exact_spells_this_turn,
             from_not_hand,
         ),
+        TriggerSpec::NthSpellOfTurnCast { spell_number } => {
+            Trigger::nth_spell_of_turn_cast(spell_number)
+        }
         TriggerSpec::SpellCopied { filter, copier } => Trigger::spell_copied(filter, copier),
         TriggerSpec::SpellCountered { filter, controller } => {
             Trigger::spell_countered(filter, controller)
@@ -899,6 +909,7 @@ fn trigger_binds_iterated_player(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_binds_iterated_player(trigger),
         TriggerSpec::SpellCast { .. }
+        | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. }
         | TriggerSpec::PlayerLosesLife(_)
@@ -985,6 +996,7 @@ pub(crate) fn inferred_trigger_player_filter(trigger: &TriggerSpec) -> Option<Pl
                 )))
             }
         }
+        TriggerSpec::NthSpellOfTurnCast { .. } => Some(PlayerFilter::IteratedPlayer),
         TriggerSpec::SpellCountered { controller, .. } => {
             if *controller == PlayerFilter::Any {
                 Some(PlayerFilter::IteratedPlayer)
@@ -1193,6 +1205,7 @@ pub(crate) fn trigger_supports_event_value(trigger: &TriggerSpec, spec: &EventVa
             | TriggerSpec::KeywordActionTaggedObject { .. }
             | TriggerSpec::KeywordActionFromSource { .. }
             | TriggerSpec::CounterPutOn { .. }
+            | TriggerSpec::NthCounterPutOn { .. }
             | TriggerSpec::CounterRemovedFrom { .. }
             | TriggerSpec::TokensCreated { .. }
             | TriggerSpec::EntersBattlefieldOneOrMore { .. } => true,

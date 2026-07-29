@@ -136,10 +136,12 @@ pub(crate) fn interpret_trigger_model(
             count,
             display_subject,
             other_filter,
-        } => crate::triggers::Trigger::this_attacks_with_n_others_display_subject_and_filter(
+            other_surface,
+        } => crate::triggers::Trigger::this_attacks_with_n_others_display_subject_filter_and_other_surface(
             count,
             display_subject,
             other_filter,
+            other_surface,
         ),
         TriggerKind::ThisAttacksWithExactNOthers { count } => {
             crate::triggers::Trigger::this_attacks_with_exact_n_others(count)
@@ -520,6 +522,9 @@ pub(crate) fn interpret_trigger_model(
         TriggerKind::SpellCast { filter, caster } => {
             crate::triggers::Trigger::spell_cast(filter, caster)
         }
+        TriggerKind::NthSpellOfTurnCast { spell_number } => {
+            crate::triggers::Trigger::nth_spell_of_turn_cast(spell_number)
+        }
         TriggerKind::SpellCopied { filter, copier } => {
             crate::triggers::Trigger::spell_copied(filter, copier)
         }
@@ -642,6 +647,15 @@ pub(crate) fn interpret_trigger_model(
             convert_player_gets_counters_trigger(player_gets_counters)
         }
         TriggerKind::CounterPutOn(counter_put_on) => convert_counter_put_on_trigger(counter_put_on),
+        TriggerKind::NthCounterPutOn {
+            filter,
+            counter_type,
+            counter_number,
+        } => crate::triggers::Trigger::nth_counter_put_on(
+            filter,
+            counter_type,
+            counter_number,
+        ),
         TriggerKind::CounterRemovedFrom(counter_removed_from) => {
             convert_counter_removed_from_trigger(counter_removed_from)
         }

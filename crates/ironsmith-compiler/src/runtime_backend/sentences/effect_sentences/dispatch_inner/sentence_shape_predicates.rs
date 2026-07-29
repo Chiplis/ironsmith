@@ -904,22 +904,42 @@ fn parse_gain_ability_before_effect_chain(
 pub(crate) fn parse_effect_sentence_lexed(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    // Triggered and activated line parsers can enter this single-sentence
+    // dispatcher directly, bypassing the document-level pass that normally
+    // hides quoted token rules from outer effect-chain parsing. Keep those
+    // rule bodies inside the token blueprint: parse the create action from
+    // the stripped surface, then reattach every quoted ability under the
+    // token's own source identity.
+    let stripped_tokens = strip_embedded_token_rules_text(tokens);
+    let has_embedded_token_rules = stripped_tokens.len() != tokens.len();
+    let parse_tokens = if has_embedded_token_rules {
+        stripped_tokens.as_slice()
+    } else {
+        tokens
+    };
     let mut effects = stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
-        if let Some(effects) = parse_bounded_x_mana_payment_sentence(tokens) {
+        if let Some(effects) = parse_bounded_x_mana_payment_sentence(parse_tokens) {
             Ok(effects)
         } else {
-            parse_effect_sentence_lexed_inner(tokens)
+            parse_effect_sentence_lexed_inner(parse_tokens)
         }
     })?;
-    if let Some(surface) = parse_set_quantifier_surface(tokens) {
+    if has_embedded_token_rules {
+        super::creation_handlers::attach_inline_token_granted_abilities_to_last_create(
+            &mut effects,
+            tokens,
+        );
+    }
+    if let Some(surface) = parse_set_quantifier_surface(parse_tokens) {
         set_first_continuous_set_quantifier(&mut effects, surface);
     }
-    if let Some(surface) = parse_return_set_reference_surface(tokens) {
+    if let Some(surface) = parse_return_set_reference_surface(parse_tokens) {
         set_first_return_set_reference_surface(&mut effects, &surface);
     }
     Ok(
         crate::runtime_backend::effect_sentences::preserve_coordinated_effect_chain_surface(
-            tokens, effects,
+            parse_tokens,
+            effects,
         ),
     )
 }
@@ -1923,11 +1943,7 @@ fn rebind_plural_create_followup_damage_source(effects: &mut [EffectAst]) {
             continue;
         }
         let EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::DealDamageEqualToPower {
-                    source,
-                    ..
-                },
+            action: SubjectVerbActionAst::DealDamageEqualToPower { source, .. },
             ..
         }) = &mut effects[index]
         else {

@@ -150,6 +150,7 @@ mod thousand_moons_smithy;
 mod threshold_cardinality;
 mod tidewalker;
 mod token_copy_followup_surfaces;
+mod triggering_source_controller;
 mod typed_aura_attach_surfaces;
 mod vaevictis_result_sets;
 mod valkyries_call;

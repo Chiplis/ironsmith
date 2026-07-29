@@ -4180,6 +4180,24 @@ fn describe_may_causative_grant_all(may: &crate::effects::MayEffect) -> Option<S
     ))
 }
 
+fn describe_may_causative_become_color_choice(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    let decider = may.decider.as_ref().unwrap_or(&PlayerFilter::You);
+    let [effect] = may.effects.as_slice() else {
+        return None;
+    };
+    unwrap_basic_tag_wrappers(effect)
+        .downcast_ref::<crate::effects::BecomeColorChoiceEffect>()?;
+    let rendered = describe_effect(effect);
+    let (subject, predicate) = rendered.split_once(" becomes ")?;
+    Some(format!(
+        "{} {} become {predicate}",
+        may_causative_prefix(decider),
+        lowercase_first(subject)
+    ))
+}
+
 /// Render optional causatives from the typed chooser/actor relationship. A
 /// `MayEffect` answers who decides; its child effect still identifies who or
 /// what performs the action.
@@ -4190,6 +4208,7 @@ pub(super) fn describe_typed_may_causative(may: &crate::effects::MayEffect) -> O
         .or_else(|| describe_may_causative_fight(may))
         .or_else(|| describe_may_causative_source_damage(may))
         .or_else(|| describe_may_causative_grant_all(may))
+        .or_else(|| describe_may_causative_become_color_choice(may))
 }
 
 #[cfg(test)]
@@ -4232,6 +4251,29 @@ mod may_grant_all_causative_tests {
         assert_eq!(
             describe_may_causative_grant_all(&crate::effects::MayEffect::new(vec![type_change])),
             None
+        );
+    }
+
+    #[test]
+    fn optional_color_choice_uses_typed_have_causative() {
+        let target = ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType(
+                    "this creature".to_string(),
+                ),
+            ),
+        );
+        let change = Effect::new(
+            crate::effects::BecomeColorChoiceEffect::new(target, Until::Forever)
+                .with_multiple_colors(true),
+        );
+        let may = crate::effects::MayEffect::new(vec![change]);
+
+        assert_eq!(
+            describe_typed_may_causative(&may).as_deref(),
+            Some(
+                "You may have this creature become the color or colors of your choice"
+            )
         );
     }
 }
@@ -5387,13 +5429,14 @@ pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
 
     let (reveal_text, choice_text, look_player) =
         describe_reveal_hand_choose_from_it(look, choose)?;
+    let choice_from_it = card_choice_from_it_text(&choice_text);
 
     if let Some(discard) = action_effect.downcast_ref::<crate::effects::DiscardEffect>() {
         if !discard_discards_chosen_card(discard, choose, &look_player) {
             return None;
         }
         return Some(format!(
-            "{reveal_text}. You choose {choice_text} from it. That player discards that card"
+            "{reveal_text}. You choose {choice_from_it}. That player discards that card"
         ));
     }
 
@@ -5401,14 +5444,14 @@ pub(in crate::compiled_text) fn describe_look_hand_choose_then_discard_or_exile(
         && exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
     {
         return Some(format!(
-            "{reveal_text}. You choose {choice_text} from it and exile that card"
+            "{reveal_text}. You choose {choice_from_it} and exile that card"
         ));
     }
     if let Some(move_to_zone) = action_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
         && move_to_exile_uses_chosen_tag(move_to_zone, choose.tag.as_str())
     {
         return Some(format!(
-            "{reveal_text}. You choose {choice_text} from it and exile that card"
+            "{reveal_text}. You choose {choice_from_it} and exile that card"
         ));
     }
     None
@@ -6342,6 +6385,14 @@ pub(super) fn hand_choice_from_it_text(
     Some(with_indefinite_article(&choice))
 }
 
+pub(super) fn card_choice_from_it_text(choice: &str) -> String {
+    if let Some((noun, qualifier)) = choice.split_once(" with ") {
+        format!("{noun} from it with {qualifier}")
+    } else {
+        format!("{choice} from it")
+    }
+}
+
 pub(super) fn tagged_move_to_library_nth_from_effect(
     effect: &Effect,
 ) -> Option<&crate::effects::MoveToLibraryNthFromTopEffect> {
@@ -6577,6 +6628,7 @@ pub(super) fn describe_reveal_hand_choose_discard_then_scry(effects: &[&Effect])
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let (reveal_text, choice_text, look_player) =
         describe_reveal_hand_choose_from_it(look, choose)?;
+    let choice_from_it = card_choice_from_it_text(&choice_text);
     let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
     if !discard_discards_chosen_card(discard, choose, &look_player) {
         return None;
@@ -6586,7 +6638,7 @@ pub(super) fn describe_reveal_hand_choose_discard_then_scry(effects: &[&Effect])
         return None;
     }
     Some(format!(
-        "{reveal_text}. You choose {choice_text} from it. That player discards that card. Scry {}",
+        "{reveal_text}. You choose {choice_from_it}. That player discards that card. Scry {}",
         describe_value(&scry.count)
     ))
 }
@@ -6601,6 +6653,7 @@ pub(in crate::compiled_text) fn describe_reveal_hand_choose_discard_then_adventu
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let (reveal_text, choice_text, look_player) =
         describe_reveal_hand_choose_from_it(look, choose)?;
+    let choice_from_it = card_choice_from_it_text(&choice_text);
     let discard = discard_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
     if !discard_discards_chosen_card(discard, choose, &look_player) {
         return None;
@@ -6641,7 +6694,7 @@ pub(in crate::compiled_text) fn describe_reveal_hand_choose_discard_then_adventu
     }
 
     Some(format!(
-        "{reveal_text}. You choose {choice_text} from it. That player discards that card. You may put a card that has an Adventure that player owns from exile into that player's graveyard"
+        "{reveal_text}. You choose {choice_from_it}. That player discards that card. You may put a card that has an Adventure that player owns from exile into that player's graveyard"
     ))
 }
 
@@ -6655,6 +6708,7 @@ pub(super) fn describe_reveal_hand_choose_gain_toughness_then_discard(
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let (reveal_text, choice_text, look_player) =
         describe_reveal_hand_choose_from_it(look, choose)?;
+    let choice_from_it = card_choice_from_it_text(&choice_text);
     let gain = gain_effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
     if gain.player != ChooseSpec::Player(PlayerFilter::You) {
         return None;
@@ -6674,7 +6728,7 @@ pub(super) fn describe_reveal_hand_choose_gain_toughness_then_discard(
     }
 
     Some(format!(
-        "{reveal_text}. You choose {choice_text} from it. You gain life equal to that creature card's toughness, then that player discards that card"
+        "{reveal_text}. You choose {choice_from_it}. You gain life equal to that creature card's toughness, then that player discards that card"
     ))
 }
 

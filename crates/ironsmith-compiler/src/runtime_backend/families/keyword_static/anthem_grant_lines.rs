@@ -2623,6 +2623,11 @@ pub(crate) fn parse_static_condition_clause(
         });
     }
 
+    if let Some(condition) = parse_independently_articled_graveyard_cards_static_condition(&tokens)
+    {
+        return Ok(condition);
+    }
+
     if let Some(conjoined) = parse_conjoined_static_condition_clause(&tokens) {
         return Ok(conjoined);
     }
@@ -2807,6 +2812,39 @@ pub(crate) fn parse_static_condition_clause(
     Err(CardTextError::ParseError(format!(
         "unsupported static condition clause (clause: '{display}')"
     )))
+}
+
+fn parse_independently_articled_graveyard_cards_static_condition(
+    tokens: &[OwnedLexToken],
+) -> Option<crate::ConditionExpr> {
+    fn is_owned_graveyard_card_requirement(
+        predicate: &crate::cards::builders::PredicateAst,
+    ) -> bool {
+        let crate::cards::builders::PredicateAst::PlayerControls { player, filter } = predicate
+        else {
+            return false;
+        };
+        *player == crate::cards::builders::PlayerAst::You
+            && filter.zone == Some(Zone::Graveyard)
+            && filter.owner == Some(PlayerFilter::You)
+            && filter.card_types.len() == 1
+    }
+
+    let predicate =
+        crate::runtime_backend::grammar::filters::parse_condition_predicate_lexed(tokens).ok()?;
+    let crate::cards::builders::PredicateAst::And(left, right) = &predicate else {
+        return None;
+    };
+    if !is_owned_graveyard_card_requirement(left) || !is_owned_graveyard_card_requirement(right) {
+        return None;
+    }
+
+    crate::runtime_backend::compile_support::compile_condition_from_predicate_ast_with_env(
+        &predicate,
+        &crate::runtime_backend::reference_model::ReferenceEnv::default(),
+        None,
+    )
+    .ok()
 }
 
 fn parse_devotion_static_condition(
@@ -3438,18 +3476,15 @@ pub(crate) fn parse_anthem_clause(
     }
 
     let tail_words = crate::runtime_backend::token_word_refs(anthem_tail_tokens);
-    let counts_cards_in_affected_controller_hand = tail_words.windows(3).any(|words| {
+    let count_belongs_to_affected_controller = tail_words.windows(2).any(|words| {
         matches!(
             words,
-            ["its", "controller", "hand"]
-                | ["its", "controllers", "hand"]
-                | ["its", "controller's", "hand"]
+            ["its", "controller"] | ["its", "controllers"] | ["its", "controller's"]
         )
     });
-    if counts_cards_in_affected_controller_hand
+    if count_belongs_to_affected_controller
         && let Some(AnthemCountExpression::MatchingFilter(filter)) = scale.as_mut()
     {
-        filter.zone = Some(Zone::Hand);
         filter.owner = Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target));
     }
 
@@ -4176,10 +4211,7 @@ mod dynamic_anthem_tests {
             panic!("compound subtype anthem must have a filtered subject");
         };
         assert!(filter.subtypes.is_empty(), "{filter:#?}");
-        assert_eq!(
-            filter.all_subtypes,
-            vec![Subtype::Eldrazi, Subtype::Spawn]
-        );
+        assert_eq!(filter.all_subtypes, vec![Subtype::Eldrazi, Subtype::Spawn]);
         assert_eq!(
             filter.description(),
             "an Eldrazi Spawn creature you control"
@@ -4205,14 +4237,10 @@ mod dynamic_anthem_tests {
             assert!(filter.has_conjunctive_set_surface());
             assert_eq!(filter.any_of.len(), 2);
             assert!(filter.any_of.iter().any(|branch| {
-                branch.zone == Some(Zone::Hand)
-                    && branch.owner.is_none()
-                    && !branch.foretold
+                branch.zone == Some(Zone::Hand) && branch.owner.is_none() && !branch.foretold
             }));
             assert!(filter.any_of.iter().any(|branch| {
-                branch.zone == Some(Zone::Exile)
-                    && branch.owner.is_none()
-                    && branch.foretold
+                branch.zone == Some(Zone::Exile) && branch.owner.is_none() && branch.foretold
             }));
         }
     }
@@ -4386,6 +4414,34 @@ mod dynamic_anthem_tests {
     }
 
     #[test]
+    fn affected_controller_graveyard_count_stays_bound_to_affected_creature() {
+        let tokens = lex_line(
+            "Enchanted creature gets -1/-1 for each creature card in its controller's graveyard.",
+            0,
+        )
+        .expect("controller-graveyard anthem fixture should lex");
+        let get_idx = tokens
+            .iter()
+            .position(|token| token.is_word("gets"))
+            .expect("gets token");
+        let clause = parse_anthem_clause(&tokens, get_idx, tokens.len())
+            .expect("controller-graveyard anthem should parse");
+
+        let AnthemValue::PerCount {
+            count: AnthemCountExpression::MatchingFilter(filter),
+            ..
+        } = clause.power
+        else {
+            panic!("expected a matching-filter anthem count");
+        };
+        assert_eq!(filter.zone, Some(Zone::Graveyard));
+        assert_eq!(
+            filter.owner,
+            Some(PlayerFilter::ControllerOf(crate::filter::ObjectRef::Target))
+        );
+    }
+
+    #[test]
     fn for_each_anthem_keeps_trailing_condition_out_of_count_filter() {
         let clause = parse_clause(
             "This creature gets +1/+1 for each black permanent your opponents control as long as there are seven or more cards in your graveyard.",
@@ -4432,6 +4488,33 @@ mod dynamic_anthem_tests {
         assert_eq!(conditioned.power, AnthemValue::Fixed(1));
         assert_eq!(conditioned.toughness, AnthemValue::Fixed(1));
         assert!(conditioned.condition.is_some());
+    }
+
+    #[test]
+    fn independently_articled_graveyard_cards_stay_conjunctive_in_static_conditions() {
+        let tokens = lex_line(
+            "An instant card and a sorcery card are in your graveyard.",
+            0,
+        )
+        .expect("graveyard condition fixture should lex");
+        let condition = parse_static_condition_clause(&tokens)
+            .expect("graveyard condition should parse through the static-condition path");
+
+        let crate::ConditionExpr::And(left, right) = condition else {
+            panic!("expected two independent graveyard requirements");
+        };
+        for (condition, expected_type) in [
+            (left.as_ref(), CardType::Instant),
+            (right.as_ref(), CardType::Sorcery),
+        ] {
+            let crate::ConditionExpr::PlayerControls { player, filter } = condition else {
+                panic!("expected an owned-zone card requirement, got {condition:#?}");
+            };
+            assert_eq!(*player, PlayerFilter::You);
+            assert_eq!(filter.zone, Some(Zone::Graveyard));
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+            assert_eq!(filter.card_types, vec![expected_type]);
+        }
     }
 
     #[test]

@@ -38,6 +38,14 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
         StaticAbilityId::CharacteristicDefiningPT
     }
 
+    fn prefers_card_name_subject(&self) -> bool {
+        self.power
+            .has_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject)
+            || self
+                .toughness
+                .has_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject)
+    }
+
     fn display(&self) -> String {
         let describe_characteristic_value = |value: &Value| {
             describe_value(value).replace(" counters on this source", " counters on it")
@@ -118,6 +126,15 @@ mod tests {
     fn test_characteristic_defining_pt() {
         let cdp = CharacteristicDefiningPT::fixed(3, 3);
         assert_eq!(cdp.id(), StaticAbilityId::CharacteristicDefiningPT);
+    }
+
+    #[test]
+    fn named_source_surface_prefers_the_card_name_subject() {
+        let value = Value::Fixed(3)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject);
+        let cdp = CharacteristicDefiningPT::new(value.clone(), value);
+
+        assert!(cdp.prefers_card_name_subject());
     }
 
     #[test]

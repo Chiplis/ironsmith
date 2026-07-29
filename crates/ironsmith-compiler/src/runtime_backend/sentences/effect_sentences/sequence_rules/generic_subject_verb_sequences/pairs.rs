@@ -1749,6 +1749,7 @@ fn parse_copy_for_each_target_sentence(
             let player = match parse_subject(&tokens[subject]) {
                 SubjectAst::Player(player) => player,
                 SubjectAst::This => PlayerAst::Implicit,
+                SubjectAst::TriggeringSourceController => return Ok(None),
             };
             let target_tokens = trim_commas(&tokens[target]);
             let candidate_tokens = trim_commas(&tokens[candidate]);

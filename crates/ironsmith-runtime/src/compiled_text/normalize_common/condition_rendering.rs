@@ -1572,10 +1572,14 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             )
         }
         Condition::PlayerHasPoisonCountersOrMore { player, count } => {
+            let subject = describe_player_filter(player);
+            let count_text =
+                small_number_word(*count).unwrap_or_else(|| count.to_string());
             format!(
-                "{} has {} or more poison counters",
-                describe_player_filter(player),
-                count
+                "{} {} {} or more poison counters",
+                subject,
+                player_verb(&subject, "have", "has"),
+                count_text
             )
         }
         Condition::PlayerHasCountersOrMore {
@@ -2972,15 +2976,15 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 );
             }
             if let (
-                Value::PoisonCounters(player),
+                Value::PlayerCounters(player, CounterType::Poison),
                 crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
                 Value::Fixed(count),
             ) = (left.unhinted(), operator, right.unhinted())
                 && *count >= 0
             {
                 let subject = describe_player_filter(player);
-                let count_text = small_number_word(*count as u32)
-                    .unwrap_or_else(|| count.to_string());
+                let count_text =
+                    small_number_word(*count as u32).unwrap_or_else(|| count.to_string());
                 return format!(
                     "{} {} {} or more poison counters",
                     subject,
@@ -3639,6 +3643,11 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 describe_shared_player_owned_and_controlled_condition(left, right)
             {
                 return owned_and_controlled;
+            }
+            if let Some(graveyard_cards) =
+                describe_two_owned_graveyard_card_types_condition(left, right)
+            {
+                return graveyard_cards;
             }
             if let Some(control_types_condition) =
                 describe_you_control_two_card_types_condition(left, right)
@@ -4378,6 +4387,42 @@ pub(crate) fn describe_you_control_two_card_types_condition(
     Some(format!("you control {left_text} and {right_text}"))
 }
 
+fn describe_two_owned_graveyard_card_types_condition(
+    left: &Condition,
+    right: &Condition,
+) -> Option<String> {
+    fn owned_graveyard_card_type(condition: &Condition) -> Option<crate::types::CardType> {
+        let Condition::PlayerControls { player, filter } = condition else {
+            return None;
+        };
+        if *player != PlayerFilter::You {
+            return None;
+        }
+        let [card_type] = filter.card_types.as_slice() else {
+            return None;
+        };
+        let expected = ObjectFilter::default()
+            .in_zone(Zone::Graveyard)
+            .owned_by(PlayerFilter::You)
+            .with_type(*card_type);
+        (filter == &expected).then_some(*card_type)
+    }
+
+    let left_type = owned_graveyard_card_type(left)?;
+    let right_type = owned_graveyard_card_type(right)?;
+    if left_type == right_type {
+        return None;
+    }
+
+    let left = format!("{} card", left_type).to_ascii_lowercase();
+    let right = format!("{} card", right_type).to_ascii_lowercase();
+    Some(format!(
+        "{} and {} are in your graveyard",
+        with_indefinite_article(&left),
+        with_indefinite_article(&right)
+    ))
+}
+
 fn describe_player_owned_and_controlled_object(
     player: &PlayerFilter,
     filter: &ObjectFilter,
@@ -4744,6 +4789,28 @@ mod greatest_power_control_tests {
         assert_eq!(
             describe_condition(&Condition::CreatureDiedThisTurn),
             "a creature died this turn"
+        );
+    }
+
+    #[test]
+    fn independently_articled_graveyard_cards_keep_shared_location_surface() {
+        let instant = Condition::PlayerControls {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You)
+                .with_type(CardType::Instant),
+        };
+        let sorcery = Condition::PlayerControls {
+            player: PlayerFilter::You,
+            filter: ObjectFilter::default()
+                .in_zone(Zone::Graveyard)
+                .owned_by(PlayerFilter::You)
+                .with_type(CardType::Sorcery),
+        };
+        assert_eq!(
+            describe_condition(&Condition::And(Box::new(instant), Box::new(sorcery))),
+            "an instant card and a sorcery card are in your graveyard"
         );
     }
 

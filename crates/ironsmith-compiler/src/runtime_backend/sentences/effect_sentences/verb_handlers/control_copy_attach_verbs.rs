@@ -296,6 +296,8 @@ pub(crate) fn parse_gain_control(
     tokens: &[OwnedLexToken],
     subject: Option<SubjectAst>,
 ) -> Result<EffectAst, CardTextError> {
+    let explicit_triggering_source_controller =
+        matches!(subject, Some(SubjectAst::TriggeringSourceController));
     let clause_words = crate::runtime_backend::token_word_refs(tokens);
     let shape = cca_shapes::parse_gain_control_clause_shape(tokens)
         .ok_or_else(|| CardTextError::ParseError("missing control keyword".to_string()))?;
@@ -333,7 +335,7 @@ pub(crate) fn parse_gain_control(
         (parse_target_phrase(shape.target_tokens)?, None, false)
     };
     let player = extract_subject_player(subject).unwrap_or(PlayerAst::Implicit);
-    let base_effect = match target_ast {
+    let mut base_effect = match target_ast {
         TargetAst::Player(filter, _) => {
             let duration = parse_control_duration(shape.duration_tokens)?;
             if matches!(duration, ControlDurationAst::UntilYourNextTurnEnd) {
@@ -360,6 +362,15 @@ pub(crate) fn parse_gain_control(
             )
         }
     };
+    if explicit_triggering_source_controller
+        && let EffectAst::SubjectVerb(subject_verb) = &mut base_effect
+        && let SubjectVerbActionAst::GainControl {
+            controller_reference,
+            ..
+        } = &mut subject_verb.action
+    {
+        *controller_reference = Some(crate::target::ObjectRef::tagged("triggering_source"));
+    }
 
     let effect = if let Some(predicate) = trailing_predicate {
         if is_unless {
@@ -1528,6 +1539,32 @@ mod looked_card_count_tests {
                     ..
                 })]
             )
+        ));
+    }
+
+    #[test]
+    fn explicit_that_source_controller_keeps_the_triggering_source_reference() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "control of this creature.",
+            0,
+        )
+        .expect("lex triggering-source controller clause");
+        let effect = parse_gain_control(
+            &tokens,
+            Some(SubjectAst::TriggeringSourceController),
+        )
+        .expect("parse triggering-source controller clause");
+
+        assert!(matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::GainControl {
+                    controller_reference:
+                        Some(crate::target::ObjectRef::Tagged(ref tag)),
+                    ..
+                },
+                ..
+            }) if tag.as_str() == "triggering_source"
         ));
     }
 

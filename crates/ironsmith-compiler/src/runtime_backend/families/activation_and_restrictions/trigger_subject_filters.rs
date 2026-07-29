@@ -630,6 +630,13 @@ pub(crate) fn parse_spell_activity_trigger(
         .during_combat
         .then_some(ironsmith_core::TriggerTimingRestriction::DuringCombat);
 
+    if activity_facts.count_all_spells_this_turn
+        && cast_idx.is_some()
+        && let Some(spell_number) = exact_spells_this_turn
+    {
+        return Ok(Some(TriggerSpec::NthSpellOfTurnCast { spell_number }));
+    }
+
     let parse_filter =
         |filter_tokens: &[OwnedLexToken]| -> Result<Option<ObjectFilter>, CardTextError> {
             let envelope =
@@ -1465,6 +1472,17 @@ mod typed_trigger_subject_migration_tests {
                 crate::types::CardType::Instant,
                 crate::types::CardType::Sorcery
             ]
+        );
+    }
+
+    #[test]
+    fn passive_nth_spell_of_turn_uses_global_ordinal_trigger() {
+        let tokens = lex_line("the fourth spell of a turn is cast", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+
+        assert_eq!(
+            trigger,
+            TriggerSpec::NthSpellOfTurnCast { spell_number: 4 }
         );
     }
 

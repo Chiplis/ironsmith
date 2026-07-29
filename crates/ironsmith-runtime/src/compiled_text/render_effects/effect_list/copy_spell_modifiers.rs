@@ -8,9 +8,15 @@ use super::*;
 /// tag, permanent duration, and explicit type-retention surface prove that
 /// the second effect is the authored copy exception rather than an unrelated
 /// later type-changing instruction.
-pub(super) fn describe_copy_spell_with_added_card_types(effects: &[Effect]) -> Option<String> {
-    let [copy_effect, modification_effect] = effects else {
-        return None;
+pub(super) fn describe_copy_spell_with_characteristic_modifiers(
+    effects: &[Effect],
+) -> Option<String> {
+    let (copy_effect, modification_effect, retarget_effect) = match effects {
+        [copy_effect, modification_effect] => (copy_effect, modification_effect, None),
+        [copy_effect, modification_effect, retarget_effect] => {
+            (copy_effect, modification_effect, Some(retarget_effect))
+        }
+        _ => return None,
     };
 
     let tagged_copy = copy_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
@@ -24,17 +30,10 @@ pub(super) fn describe_copy_spell_with_added_card_types(effects: &[Effect]) -> O
 
     let apply = structural_unwrap_render_wrappers(modification_effect)
         .downcast_ref::<crate::effects::ApplyContinuousEffect>()?;
-    let Some(crate::continuous::Modification::AddCardTypes(card_types)) = &apply.modification
-    else {
-        return None;
-    };
-    if card_types.is_empty()
-        || apply.until != Until::Forever
+    if apply.until != Until::Forever
         || apply.condition.is_some()
         || !apply.additional_modifications.is_empty()
         || !apply.runtime_modifications.is_empty()
-        || apply.type_retention_surface
-            != Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes)
         || !matches!(
             apply.target_spec.as_ref().map(ChooseSpec::base),
             Some(ChooseSpec::Tagged(tag)) if tag == &tagged_copy.tag
@@ -43,15 +42,61 @@ pub(super) fn describe_copy_spell_with_added_card_types(effects: &[Effect]) -> O
         return None;
     }
 
-    let copied_types = card_types
-        .iter()
-        .map(|card_type| card_type.name())
-        .collect::<Vec<_>>()
-        .join(" ");
+    let exception = match &apply.modification {
+        Some(crate::continuous::Modification::AddCardTypes(card_types))
+            if !card_types.is_empty()
+                && apply.type_retention_surface
+                    == Some(ironsmith_core::TypeRetentionSurface::InAdditionToOtherTypes) =>
+        {
+            let copied_types = card_types
+                .iter()
+                .map(|card_type| card_type.name())
+                .collect::<Vec<_>>()
+                .join(" ");
+            format!(
+                "except the copy is {} in addition to its other types",
+                with_indefinite_article(&copied_types)
+            )
+        }
+        Some(crate::continuous::Modification::SetColors(colors))
+            if !colors.is_empty() && apply.type_retention_surface.is_none() =>
+        {
+            format!(
+                "except that the copy is {}",
+                describe_token_color_words(*colors, false)
+            )
+        }
+        _ => return None,
+    };
+
     let copy_text = describe_effect(copy_effect);
-    Some(format!(
-        "{}, except the copy is {} in addition to its other types",
-        copy_text.trim_end_matches('.'),
-        with_indefinite_article(&copied_types)
-    ))
+    let mut text = format!("{}, {exception}", copy_text.trim_end_matches('.'));
+
+    if let Some(retarget_effect) = retarget_effect {
+        fn with_id(effect: &Effect) -> Option<&crate::effects::WithIdEffect> {
+            if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+                return Some(with_id);
+            }
+            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+            with_id(&tagged.effect)
+        }
+
+        let copy_with_id = with_id(copy_effect)?;
+        let retarget = structural_unwrap_render_wrappers(retarget_effect)
+            .downcast_ref::<crate::effects::ChooseNewTargetsEffect>()?;
+        if retarget.from_effect != copy_with_id.id
+            || !retarget.may
+            || !matches!(retarget.chooser, None | Some(PlayerFilter::You))
+        {
+            return None;
+        }
+        let targets = if retarget.single_target_surface {
+            "a new target"
+        } else {
+            "new targets"
+        };
+        text.push_str(&format!(". You may choose {targets} for the copy"));
+    }
+
+    Some(text)
 }

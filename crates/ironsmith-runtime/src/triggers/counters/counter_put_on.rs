@@ -18,6 +18,10 @@ pub struct CounterPutOnTrigger {
     pub count_mode: CountMode,
     /// "on a permanent or player" — counters placed on players match too.
     pub include_players: bool,
+    /// Match the event that crosses a particular resulting counter number.
+    /// For example, adding two counters to a permanent with three counters
+    /// crosses both the fourth and fifth counter ordinals.
+    pub counter_number: Option<u32>,
 }
 
 impl CounterPutOnTrigger {
@@ -28,6 +32,7 @@ impl CounterPutOnTrigger {
             source_controller: None,
             count_mode: CountMode::Each,
             include_players: false,
+            counter_number: None,
         }
     }
 
@@ -50,16 +55,21 @@ impl CounterPutOnTrigger {
         self.count_mode = count_mode;
         self
     }
+
+    pub fn counter_number(mut self, counter_number: u32) -> Self {
+        self.counter_number = Some(counter_number);
+        self
+    }
 }
 
 impl TriggerMatcher for CounterPutOnTrigger {
     fn matches(&self, event: &TriggerEvent, ctx: &TriggerContext) -> bool {
-        let (permanent, counter_type, source_controller) = match event.kind() {
+        let (permanent, counter_type, source_controller, amount, count_after) = match event.kind() {
             EventKind::CounterPlaced => {
                 let Some(e) = event.downcast::<CounterPlacedEvent>() else {
                     return false;
                 };
-                (e.permanent, e.counter_type, None)
+                (e.permanent, e.counter_type, None, e.amount, None)
             }
             EventKind::MarkersChanged => {
                 let Some(e) = event.downcast::<MarkersChangedEvent>() else {
@@ -72,7 +82,13 @@ impl TriggerMatcher for CounterPutOnTrigger {
                     return false;
                 };
                 if let Some(permanent) = e.object() {
-                    (permanent, counter_type, e.source_controller)
+                    (
+                        permanent,
+                        counter_type,
+                        e.source_controller,
+                        e.amount,
+                        e.count_after,
+                    )
                 } else if self.include_players && e.player().is_some() {
                     // Player recipient of an "on a permanent or player"
                     // trigger: the object filter does not apply.
@@ -113,11 +129,19 @@ impl TriggerMatcher for CounterPutOnTrigger {
         {
             return false;
         }
-        if let Some(obj) = ctx.game.object(permanent) {
-            self.filter.matches(obj, &ctx.filter_ctx, ctx.game)
-        } else {
-            false
+        let Some(obj) = ctx.game.object(permanent) else {
+            return false;
+        };
+        if !self.filter.matches(obj, &ctx.filter_ctx, ctx.game) {
+            return false;
         }
+        if let Some(counter_number) = self.counter_number {
+            let count_after =
+                count_after.unwrap_or_else(|| ctx.game.counter_count(permanent, counter_type));
+            let count_before = count_after.saturating_sub(amount);
+            return count_before < counter_number && counter_number <= count_after;
+        }
+        true
     }
 
     fn subscribed_kinds(&self) -> Option<Vec<EventKind>> {
@@ -125,6 +149,9 @@ impl TriggerMatcher for CounterPutOnTrigger {
     }
 
     fn trigger_count(&self, event: &TriggerEvent) -> u32 {
+        if self.counter_number.is_some() {
+            return 1;
+        }
         match self.count_mode {
             CountMode::OneOrMore => 1,
             CountMode::Each => {
@@ -192,6 +219,14 @@ impl TriggerMatcher for CounterPutOnTrigger {
         } else {
             ""
         };
+        if let Some(counter_number) = self.counter_number {
+            let ordinal =
+                ironsmith_core::ordinal_word(counter_number).unwrap_or_else(|| "nth".to_string());
+            return format!(
+                "Whenever the {ordinal} {counters} is put on {}{player_suffix}",
+                recipient_with_article(self.filter.description())
+            );
+        }
         if let Some(source_controller) = &self.source_controller {
             let (subject, verb) = if source_controller == &PlayerFilter::You {
                 ("you".to_string(), "put")
@@ -292,5 +327,36 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert_eq!(trigger.trigger_count(&event), 4);
+    }
+
+    #[test]
+    fn numbered_counter_trigger_matches_a_batched_crossing_once() {
+        let mut game = crate::tests::test_helpers::setup_two_player_game();
+        let alice = PlayerId::from_index(0);
+        let permanent =
+            game.create_object_from_definition(&grizzly_bears(), alice, Zone::Battlefield);
+        let trigger = CounterPutOnTrigger::new(ObjectFilter::creature())
+            .counter_type(CounterType::Charge)
+            .counter_number(4);
+        let ctx = TriggerContext::for_source(permanent, alice, &game);
+
+        let crossing = TriggerEvent::new_with_provenance(
+            MarkersChangedEvent::added(CounterType::Charge, permanent, 2, None, None)
+                .with_count_after(5),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(trigger.matches(&crossing, &ctx));
+        assert_eq!(trigger.trigger_count(&crossing), 1);
+
+        let after_threshold = TriggerEvent::new_with_provenance(
+            MarkersChangedEvent::added(CounterType::Charge, permanent, 1, None, None)
+                .with_count_after(6),
+            crate::provenance::ProvNodeId::default(),
+        );
+        assert!(!trigger.matches(&after_threshold, &ctx));
+        assert_eq!(
+            trigger.display(),
+            "Whenever the fourth charge counter is put on a creature"
+        );
     }
 }

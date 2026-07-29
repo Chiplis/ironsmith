@@ -2617,24 +2617,26 @@ fn parse_predicate_card_in_your_graveyard_uses_capture_parser() -> Result<(), Ca
 #[test]
 fn parse_predicate_independently_articled_graveyard_cards_are_conjunctive()
 -> Result<(), CardTextError> {
-    let tokens = lex_line(
+    for text in [
         "If there is an instant card and a sorcery card in your graveyard",
-        0,
-    )?;
-    let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
+        "If an instant card and a sorcery card are in your graveyard",
+    ] {
+        let tokens = lex_line(text, 0)?;
+        let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
 
-    let PredicateAst::And(left, right) = parsed else {
-        panic!("expected two independent graveyard existentials");
-    };
-    let expected = [CardType::Instant, CardType::Sorcery];
-    for (predicate, expected_type) in [left, right].into_iter().zip(expected) {
-        let PredicateAst::PlayerControls { player, filter } = *predicate else {
-            panic!("expected each existential arm to be a controls predicate");
+        let PredicateAst::And(left, right) = parsed else {
+            panic!("expected two independent graveyard existentials for {text}: {parsed:?}");
         };
-        assert_eq!(player, PlayerAst::You);
-        assert_eq!(filter.zone, Some(Zone::Graveyard));
-        assert_eq!(filter.owner, Some(PlayerFilter::You));
-        assert_eq!(filter.card_types, vec![expected_type]);
+        let expected = [CardType::Instant, CardType::Sorcery];
+        for (predicate, expected_type) in [left, right].into_iter().zip(expected) {
+            let PredicateAst::PlayerControls { player, filter } = *predicate else {
+                panic!("expected each existential arm to be a controls predicate");
+            };
+            assert_eq!(player, PlayerAst::You);
+            assert_eq!(filter.zone, Some(Zone::Graveyard));
+            assert_eq!(filter.owner, Some(PlayerFilter::You));
+            assert_eq!(filter.card_types, vec![expected_type]);
+        }
     }
     Ok(())
 }

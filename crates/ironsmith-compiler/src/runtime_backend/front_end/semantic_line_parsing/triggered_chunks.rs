@@ -196,7 +196,7 @@ fn retarget_spell_cast_mana_spent_predicate(
     fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
         match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
-            TriggerSpec::SpellCast { .. } => true,
+            TriggerSpec::SpellCast { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
             _ => false,
         }
     }

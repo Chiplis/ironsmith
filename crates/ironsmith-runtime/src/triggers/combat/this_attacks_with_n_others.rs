@@ -21,6 +21,8 @@ pub struct ThisAttacksWithNOthersTrigger {
     pub display_subject: Option<String>,
     /// Optional filter for the required other attackers.
     pub other_filter: Option<ObjectFilter>,
+    /// Whether the authored subject explicitly used the word "other".
+    pub other_surface: bool,
 }
 
 impl ThisAttacksWithNOthersTrigger {
@@ -30,6 +32,7 @@ impl ThisAttacksWithNOthersTrigger {
             exact: false,
             display_subject: None,
             other_filter: None,
+            other_surface: true,
         }
     }
 
@@ -43,6 +46,22 @@ impl ThisAttacksWithNOthersTrigger {
             exact: false,
             display_subject,
             other_filter,
+            other_surface: true,
+        }
+    }
+
+    pub fn with_display_subject_filter_and_other_surface(
+        other_count: usize,
+        display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
+        other_surface: bool,
+    ) -> Self {
+        Self {
+            other_count,
+            exact: false,
+            display_subject,
+            other_filter,
+            other_surface,
         }
     }
 
@@ -52,6 +71,7 @@ impl ThisAttacksWithNOthersTrigger {
             exact: true,
             display_subject: None,
             other_filter: None,
+            other_surface: true,
         }
     }
 
@@ -172,7 +192,8 @@ impl TriggerMatcher for ThisAttacksWithNOthersTrigger {
             }
             let count = ironsmith_core::cardinal_word(self.other_count as u32)
                 .unwrap_or_else(|| self.other_count.to_string());
-            format!("Whenever {source_subject} and at least {count} other {subject} attack",)
+            let other = if self.other_surface { "other " } else { "" };
+            format!("Whenever {source_subject} and at least {count} {other}{subject} attack",)
         }
     }
 }
@@ -329,6 +350,26 @@ mod tests {
         assert_eq!(
             trigger.display(),
             "Whenever Merry and another legendary creature attack"
+        );
+    }
+
+    #[test]
+    fn filtered_attack_count_can_preserve_omitted_other_word() {
+        let trigger =
+            ThisAttacksWithNOthersTrigger::with_display_subject_filter_and_other_surface(
+                2,
+                Some("this creature".to_string()),
+                Some(
+                    ObjectFilter::creature()
+                        .with_subtype(Subtype::Zombie)
+                        .in_zone(Zone::Battlefield),
+                ),
+                false,
+            );
+
+        assert_eq!(
+            trigger.display(),
+            "Whenever this creature and at least two Zombies attack"
         );
     }
 

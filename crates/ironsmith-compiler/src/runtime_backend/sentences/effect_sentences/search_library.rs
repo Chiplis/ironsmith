@@ -112,7 +112,7 @@ pub(crate) fn parse_shuffle_graveyard_into_library_sentence(
     };
     let player = match subject {
         SubjectAst::Player(player) => player,
-        SubjectAst::This => return Ok(None),
+        SubjectAst::This | SubjectAst::TriggeringSourceController => return Ok(None),
     };
     let owner_library_destination = shape.owner_library_destination;
     let trailing_tokens = trim_edge_punctuation(shape.trailing_tokens);
@@ -347,7 +347,7 @@ pub(crate) fn parse_shuffle_object_into_library_sentence(
     };
     let player = match subject {
         SubjectAst::Player(player) => player,
-        SubjectAst::This => return Ok(None),
+        SubjectAst::This | SubjectAst::TriggeringSourceController => return Ok(None),
     };
     let owner_library_destination = shape.owner_library_destination;
 

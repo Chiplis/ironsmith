@@ -88,6 +88,7 @@ pub enum TriggerKind {
         count: usize,
         display_subject: Option<String>,
         other_filter: Option<ObjectFilter>,
+        other_surface: bool,
     },
     ThisAttacksWithExactNOthers {
         count: usize,
@@ -401,6 +402,10 @@ pub enum TriggerKind {
         filter: Option<ObjectFilter>,
         caster: PlayerFilter,
     },
+    /// The Nth spell cast during the turn, counted across every player.
+    NthSpellOfTurnCast {
+        spell_number: u32,
+    },
     SpellCopied {
         filter: Option<ObjectFilter>,
         copier: PlayerFilter,
@@ -487,6 +492,11 @@ pub enum TriggerKind {
     ZoneChange(ZoneChangeTrigger),
     PlayerGetsCounters(PlayerGetsCountersTrigger),
     CounterPutOn(CounterPutOnTrigger),
+    NthCounterPutOn {
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        counter_number: u32,
+    },
     CounterRemovedFrom(CounterRemovedFromTrigger),
 }
 
@@ -602,12 +612,27 @@ impl Trigger {
         display_subject: Option<String>,
         other_filter: Option<ObjectFilter>,
     ) -> Self {
+        Self::this_attacks_with_n_others_display_subject_filter_and_other_surface(
+            count,
+            display_subject,
+            other_filter,
+            true,
+        )
+    }
+
+    pub fn this_attacks_with_n_others_display_subject_filter_and_other_surface(
+        count: usize,
+        display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
+        other_surface: bool,
+    ) -> Self {
         Self::typed(
             "this_attacks_with_n_others",
             TriggerKind::ThisAttacksWithNOthers {
                 count,
                 display_subject,
                 other_filter,
+                other_surface,
             },
         )
     }
@@ -1444,6 +1469,26 @@ impl Trigger {
     }
     pub fn spell_cast(filter: Option<ObjectFilter>, caster: PlayerFilter) -> Self {
         Self::typed("spell_cast", TriggerKind::SpellCast { filter, caster })
+    }
+    pub fn nth_spell_of_turn_cast(spell_number: u32) -> Self {
+        Self::typed(
+            "nth_spell_of_turn_cast",
+            TriggerKind::NthSpellOfTurnCast { spell_number },
+        )
+    }
+    pub fn nth_counter_put_on(
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        counter_number: u32,
+    ) -> Self {
+        Self::typed(
+            "nth_counter_put_on",
+            TriggerKind::NthCounterPutOn {
+                filter,
+                counter_type,
+                counter_number,
+            },
+        )
     }
     pub fn spell_copied(filter: Option<ObjectFilter>, copier: PlayerFilter) -> Self {
         Self::typed("spell_copied", TriggerKind::SpellCopied { filter, copier })

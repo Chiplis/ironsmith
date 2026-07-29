@@ -4170,8 +4170,9 @@ pub(super) fn parse_subtype_card_descriptor_clause(
 
 /// Parse independently articulated existential objects that share a graveyard
 /// suffix, such as "there is an instant card and a sorcery card in your
-/// graveyard." The repeated articles make this two existential requirements,
-/// not one disjunctive type filter.
+/// graveyard" or "an instant card and a sorcery card are in your graveyard."
+/// The repeated articles make this two existential requirements, not one
+/// disjunctive type filter.
 pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<PredicateAst>, CardTextError> {
@@ -4182,25 +4183,32 @@ pub(super) fn parse_conjoined_cards_in_your_graveyard_predicate(
         WinnowSequence::action("preposition", WinnowCaptureKind::OneOf(&["in"])),
         WinnowSequence::modifier("location", WinnowCaptureKind::Rest),
     ];
-    let Some(outer) = WinnowSequence::new(&outer_atoms).parse_full(clause) else {
+    let descriptors = if let Some(location_idx) =
+        surface::find(clause, &["are", "in", "your", "graveyard"])
+        && location_idx + 4 == clause.word_len()
+    {
+        clause
+            .before_word(location_idx)
+            .ok_or_else(|| CardTextError::ParseError("missing existential objects".to_string()))?
+    } else if let Some(outer) = WinnowSequence::new(&outer_atoms).parse_full(clause) {
+        let existential = outer
+            .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
+            .ok_or_else(|| CardTextError::ParseError("missing existential subject".to_string()))?;
+        if !is_card_graveyard_existential_clause(existential) {
+            return Ok(None);
+        }
+        let location = outer
+            .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
+            .ok_or_else(|| CardTextError::ParseError("missing existential location".to_string()))?;
+        if !surface::exact(location, &["your", "graveyard"]) {
+            return Ok(None);
+        }
+        outer
+            .capture_clause("descriptors", clause)
+            .ok_or_else(|| CardTextError::ParseError("missing existential objects".to_string()))?
+    } else {
         return Ok(None);
     };
-    let existential = outer
-        .capture_clause_by_role(WinnowCaptureRole::Subject, clause)
-        .ok_or_else(|| CardTextError::ParseError("missing existential subject".to_string()))?;
-    if !is_card_graveyard_existential_clause(existential) {
-        return Ok(None);
-    }
-    let location = outer
-        .capture_clause_by_role(WinnowCaptureRole::Modifier, clause)
-        .ok_or_else(|| CardTextError::ParseError("missing existential location".to_string()))?;
-    if !surface::exact(location, &["your", "graveyard"]) {
-        return Ok(None);
-    }
-
-    let descriptors = outer
-        .capture_clause("descriptors", clause)
-        .ok_or_else(|| CardTextError::ParseError("missing existential objects".to_string()))?;
     let descriptor_atoms = [
         WinnowSequence::object("left", WinnowCaptureKind::UntilPhrase(&["and"])),
         WinnowSequence::word("and"),
@@ -4693,6 +4701,13 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
         ));
     }
 
+    // Repeated articles on both sides of "and" are independent existential
+    // requirements. Preserve that relationship before the broad conjunction
+    // parsers can merge both card types into one disjunctive filter.
+    if let Some(predicate) = parse_conjoined_cards_in_your_graveyard_predicate(predicate_tokens)? {
+        return Ok(predicate);
+    }
+
     // Keep independently articulated control conjunctions ahead of the broad
     // phase-step control gate, whose generic object-filter parser would merge
     // them into one filter (for example, "an artifact and a creature").
@@ -4825,10 +4840,6 @@ pub(crate) fn parse_predicate(tokens: &[OwnedLexToken]) -> Result<PredicateAst, 
     }
 
     if let Some(predicate) = parse_graveyard_threshold_predicate(predicate_tokens)? {
-        return Ok(predicate);
-    }
-
-    if let Some(predicate) = parse_conjoined_cards_in_your_graveyard_predicate(predicate_tokens)? {
         return Ok(predicate);
     }
 

@@ -1069,8 +1069,19 @@ fn describe_empty_graveyard_condition_uses_no_cards_surface() {
 #[test]
 fn describe_opponent_poison_threshold_uses_player_predicate_surface() {
     assert_eq!(
+        describe_condition(&Condition::PlayerHasPoisonCountersOrMore {
+            player: PlayerFilter::Opponent,
+            count: 3,
+        }),
+        "an opponent has three or more poison counters"
+    );
+}
+
+#[test]
+fn describe_player_counter_value_poison_threshold_uses_player_predicate_surface() {
+    assert_eq!(
         describe_condition(&Condition::ValueComparison {
-            left: Value::PoisonCounters(PlayerFilter::Opponent),
+            left: Value::PlayerCounters(PlayerFilter::Opponent, CounterType::Poison),
             operator: crate::effect::ValueComparisonOperator::GreaterThanOrEqual,
             right: Value::Fixed(3),
         }),

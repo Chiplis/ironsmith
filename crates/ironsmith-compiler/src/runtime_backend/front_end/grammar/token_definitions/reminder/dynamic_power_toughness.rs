@@ -21,10 +21,11 @@ pub(super) fn normalized_reminder_words<'a>(words: &'a [&'a str]) -> Vec<&'a str
     ] {
         if let Some(start) = common::phrase_offset(words, subject)
             && let Some(tail) = words.get(start + subject.len()..)
-            && common::phrase_present(
+            && (common::phrase_present(
                 tail,
                 &["power", "and", "toughness", "are", "each", "equal", "to"],
-            )
+            ) || (common::phrase_present(tail, &["power", "is", "equal", "to"])
+                && common::phrase_present(tail, &["toughness", "is", "equal", "to"])))
         {
             let mut normalized = vec!["its"];
             normalized.extend_from_slice(tail);
@@ -149,7 +150,22 @@ pub(super) fn parse_dynamic_power_toughness(words: &[&str]) -> Option<(Value, Va
         power_rhs.get(and_idx + 1..)?,
         &["its", "toughness", "is", "equal", "to"],
     )?;
-    Some((power, parse_dynamic_rhs(toughness_rhs)?))
+    let toughness = if let Some(offset_words) =
+        common::strip_phrase_prefix(toughness_rhs, &["that", "number", "plus"])
+            .or_else(|| common::strip_phrase_prefix(toughness_rhs, &["that", "amount", "plus"]))
+    {
+        Value::Add(
+            Box::new(power.clone()),
+            Box::new(parse_dynamic_rhs(offset_words)?),
+        )
+    } else if common::phrase_exact(toughness_rhs, &["that", "number"])
+        || common::phrase_exact(toughness_rhs, &["that", "amount"])
+    {
+        power.clone()
+    } else {
+        parse_dynamic_rhs(toughness_rhs)?
+    };
+    Some((power, toughness))
 }
 
 pub(crate) fn parse_token_dynamic_power_toughness_tokens(

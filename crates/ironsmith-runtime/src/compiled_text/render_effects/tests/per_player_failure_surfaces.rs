@@ -73,7 +73,7 @@ fn explicit_iterated_decider_is_the_same_per_player_may_subject() {
     assert_eq!(
         describe_effect_clause_list(&[action, failure]).as_deref(),
         Some(
-            "each player may put a land card from their hand onto the battlefield. For each opponent who doesn't, that player draws a card"
+            "each player may put a land card from their hand onto the battlefield, then each opponent who didn't draws a card"
         )
     );
 }

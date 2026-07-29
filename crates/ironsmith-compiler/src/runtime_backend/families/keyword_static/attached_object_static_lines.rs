@@ -18,6 +18,117 @@ fn split_attached_keyword_condition_suffix(
     Ok((trim_edge_punctuation(parsed.ability_tokens()), condition))
 }
 
+fn explicit_attached_subject_tokens(tokens: &[OwnedLexToken]) -> Option<&[OwnedLexToken]> {
+    if let Some(parsed) = attached_grammar::parse_attached_transform_tokens(tokens) {
+        return Some(parsed.subject_tokens);
+    }
+    if let Some(parsed) = attached_grammar::parse_attached_has_tokens(tokens) {
+        return Some(parsed.subject_tokens);
+    }
+    if attached_grammar::parse_attached_combat_restriction_tokens(tokens).is_some() {
+        // Every currently modeled attached subject is the adjective/noun pair
+        // `enchanted|equipped creature|permanent|land|artifact|equipment`.
+        return tokens.get(..2);
+    }
+    None
+}
+
+fn parse_attached_loses_all_abilities_and_has_line(
+    tokens: &[OwnedLexToken],
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let words = crate::runtime_backend::token_word_refs(tokens);
+    if !matches!(
+        words.get(..5),
+        Some(["loses", "all", "abilities", "and", "has"])
+    ) {
+        return Ok(None);
+    }
+    let has_idx = tokens
+        .iter()
+        .position(|token| token.is_word("has"))
+        .expect("matched attached ability grant");
+    let mut grant_tokens = subject_tokens.to_vec();
+    grant_tokens.extend_from_slice(&tokens[has_idx..]);
+    let Some(mut grants) = parse_filter_has_granted_ability_line(&grant_tokens)? else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(subject_tokens, false)?;
+    let mut abilities = vec![StaticAbility::remove_all_abilities(filter).into()];
+    abilities.append(&mut grants);
+    Ok(Some(abilities))
+}
+
+fn parse_attached_combat_restriction_and_loses_all_abilities_line(
+    tokens: &[OwnedLexToken],
+    subject_tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let Some(loss_idx) = tokens.iter().position(|token| token.is_word("loses")) else {
+        return Ok(None);
+    };
+    let Some(and_idx) = (0..loss_idx).rev().find(|idx| tokens[*idx].is_word("and")) else {
+        return Ok(None);
+    };
+    if crate::runtime_backend::token_word_refs(&tokens[loss_idx..]) != ["loses", "all", "abilities"]
+    {
+        return Ok(None);
+    }
+
+    let mut restriction_tokens = subject_tokens.to_vec();
+    restriction_tokens.extend_from_slice(trim_edge_punctuation(&tokens[..and_idx]).as_slice());
+    let Some(restriction) = parse_attached_cant_attack_or_block_line(&restriction_tokens)? else {
+        return Ok(None);
+    };
+    let filter = parse_object_filter(subject_tokens, false)?;
+    Ok(Some(vec![
+        restriction,
+        StaticAbility::remove_all_abilities(filter).into(),
+    ]))
+}
+
+/// Carry an explicit attached-object subject into a following `It ...`
+/// sentence before ordinary sentence splitting. The reconstructed token slice
+/// is routed through the same typed attached-object parsers as an explicit
+/// subject, so the pronoun cannot silently fall back to the Aura itself or to
+/// every permanent.
+pub(crate) fn parse_carried_attached_subject_line(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    let sentences = crate::runtime_backend::lexer::split_lexed_sentences(tokens);
+    let [first, second] = sentences.as_slice() else {
+        return Ok(None);
+    };
+    let Some(subject_tokens) = explicit_attached_subject_tokens(first) else {
+        return Ok(None);
+    };
+    let Some((pronoun, continuation)) = second.split_first() else {
+        return Ok(None);
+    };
+    if !pronoun.is_word("it") {
+        return Ok(None);
+    }
+    let continuation = trim_edge_punctuation(continuation);
+    let Some(mut abilities) = parse_static_ability_ast_line_lexed_single(first)? else {
+        return Ok(None);
+    };
+
+    let parsed_continuation = if let Some(parsed) =
+        parse_attached_loses_all_abilities_and_has_line(&continuation, subject_tokens)?
+    {
+        Some(parsed)
+    } else {
+        parse_attached_combat_restriction_and_loses_all_abilities_line(
+            &continuation,
+            subject_tokens,
+        )?
+    };
+    let Some(mut continuation_abilities) = parsed_continuation else {
+        return Ok(None);
+    };
+    abilities.append(&mut continuation_abilities);
+    Ok(Some(abilities))
+}
+
 fn negate_attached_keyword_condition(condition: crate::ConditionExpr) -> crate::ConditionExpr {
     match condition {
         crate::ConditionExpr::Not(inner) => *inner,

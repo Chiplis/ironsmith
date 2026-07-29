@@ -298,6 +298,37 @@ fn destroy_all_split_uses_captured_verb_and_object_tail() {
 }
 
 #[test]
+fn repeated_all_or_branches_remain_a_resolution_choice() {
+    let tokens = crate::runtime_backend::lex_line(
+        "Destroy all lands or all creatures.",
+        0,
+    )
+    .expect("destroy-all alternative text should lex");
+
+    let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
+        .expect("destroy-all alternative parser should not error")
+        .expect("destroy-all alternative parser should match");
+    let [EffectAst::ChooseOneOf { modes }] = effects.as_slice() else {
+        panic!("expected one typed choice, got {effects:#?}");
+    };
+    assert_eq!(modes.len(), 2, "{modes:#?}");
+
+    let expected = [CardType::Land, CardType::Creature];
+    for (mode, expected_type) in modes.iter().zip(expected) {
+        let [
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::DestroyAll { filter, .. },
+                ..
+            }),
+        ] = mode.effects.as_slice()
+        else {
+            panic!("expected one destroy-all effect per mode, got {mode:#?}");
+        };
+        assert_eq!(filter.card_types, vec![expected_type], "{filter:#?}");
+    }
+}
+
+#[test]
 fn destroy_all_split_preserves_branch_scoped_collection_surface() {
     let tokens = crate::runtime_backend::lex_line(
         "Destroy all other enchantments you control, all other Auras attached to permanents you control, and all other Auras attached to attacking creatures your opponents control.",

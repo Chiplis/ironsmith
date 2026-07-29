@@ -73,6 +73,12 @@ pub(crate) use predicate_phrases::{
     WinnowCaptureRole as PermissionCaptureRole, WinnowSequence as PermissionSequence,
     parse_source_keyword_condition_filter as parse_source_keyword_condition_filter_lexed,
 };
+
+pub(crate) fn parse_condition_predicate_lexed(
+    tokens: &[OwnedLexToken],
+) -> Result<PredicateAst, CardTextError> {
+    predicate_phrases::parse_predicate(tokens)
+}
 pub(super) use reference_tag_stage::*;
 
 pub(crate) use counter_constraints::{

@@ -194,6 +194,11 @@ pub(crate) fn parse_end(
     let player = match subject.unwrap_or(SubjectAst::This) {
         SubjectAst::Player(player) => player,
         SubjectAst::This => PlayerAst::Implicit,
+        SubjectAst::TriggeringSourceController => {
+            return Err(CardTextError::ParseError(
+                "unsupported triggering-source controller subject for end action".to_string(),
+            ));
+        }
     };
 
     match misc_action_shapes::parse_end_action_tokens(tokens) {
@@ -216,6 +221,11 @@ pub(crate) fn parse_flip(
     let player = match subject.unwrap_or(SubjectAst::This) {
         SubjectAst::Player(player) => player,
         SubjectAst::This => PlayerAst::Implicit,
+        SubjectAst::TriggeringSourceController => {
+            return Err(CardTextError::ParseError(
+                "unsupported triggering-source controller subject for flip action".to_string(),
+            ));
+        }
     };
     let shape = misc_action_shapes::parse_flip_action_tokens(tokens);
     let effect = match shape.target {
@@ -245,6 +255,11 @@ pub(crate) fn parse_roll(
     let player = match subject.unwrap_or(SubjectAst::This) {
         SubjectAst::Player(player) => player,
         SubjectAst::This => PlayerAst::Implicit,
+        SubjectAst::TriggeringSourceController => {
+            return Err(CardTextError::ParseError(
+                "unsupported triggering-source controller subject for roll action".to_string(),
+            ));
+        }
     };
     let Some(shape) = misc_action_shapes::parse_roll_die_tokens(tokens) else {
         return Err(CardTextError::ParseError(format!(

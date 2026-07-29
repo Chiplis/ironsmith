@@ -295,6 +295,8 @@ impl CreationPhrase {
                 &["it", "s"],
                 &["it's"],
                 &["it’s"],
+                &["that", "copy", "is"],
+                &["that", "the", "copy", "is"],
                 &["theyre"],
                 &["they", "re"],
                 &["they're"],

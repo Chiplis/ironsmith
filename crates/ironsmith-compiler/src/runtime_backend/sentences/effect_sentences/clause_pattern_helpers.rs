@@ -276,6 +276,7 @@ pub(crate) fn parse_copy_spell_clause(
     }
     let copy_modifiers =
         super::super::grammar::effects::parse_copy_modifier_words(&clause.word_refs())?;
+    let set_colors = copy_modifiers.set_colors;
     let added_card_types = copy_modifiers.added_card_types;
     let copy_idx = copy_shape.copy_word;
     let tail = &tokens[copy_idx + 1..];
@@ -380,6 +381,7 @@ pub(crate) fn parse_copy_spell_clause(
             copy_clause_tail_shape.retarget_single_target,
             removed_supertypes(&copy_clause_shape),
         )
+        .with_copy_set_colors(set_colors)
         .with_copy_added_card_types(added_card_types)
         .with_copy_target_reference_pronoun(target_reference_pronoun);
         if let Some(kind) = target_reference_kind(copy_target_tail) {
@@ -397,6 +399,7 @@ pub(crate) fn parse_copy_spell_clause(
     let player = match subject {
         SubjectAst::Player(player) => player,
         SubjectAst::This => PlayerAst::Implicit,
+        SubjectAst::TriggeringSourceController => return Ok(None),
     };
 
     if !copy_shape.mentions_spell_or_ability {
@@ -511,6 +514,7 @@ pub(crate) fn parse_copy_spell_clause(
         choose_new_target_singular,
         removed_supertypes(&copy_shape),
     )
+    .with_copy_set_colors(set_colors)
     .with_copy_added_card_types(added_card_types)
     .with_copy_all_matches(copy_all_matches)
     .with_copy_target_reference_pronoun(target_reference_pronoun);

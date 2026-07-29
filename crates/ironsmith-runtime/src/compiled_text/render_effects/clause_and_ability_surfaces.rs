@@ -1894,6 +1894,81 @@ fn describe_typed_coordinated_clause_fallback(effects: &[Effect]) -> Option<Stri
     join_coordinated_parts(&parts)
 }
 
+/// Preserve three explicitly coordinated player clauses when an each-opponent
+/// action is followed by the controller drawing and gaining life. The generic
+/// effect-list renderer correctly combines the two same-player actions, but
+/// doing so erases the source sequence's three-clause boundary and produces
+/// "each opponent ... and you ... and ...".
+fn describe_each_opponent_then_you_draw_and_gain(effects: &[Effect]) -> Option<String> {
+    let [opponent_effect, second, third] = effects else {
+        return None;
+    };
+    let for_opponents = opponent_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_opponents.filter != PlayerFilter::Opponent || for_opponents.effects.len() != 1 {
+        return None;
+    }
+
+    fn explicit_you_draw_or_gain(effect: &Effect) -> Option<String> {
+        let is_fixed_you_draw = effect
+            .downcast_ref::<crate::effects::DrawCardsEffect>()
+            .is_some_and(|draw| {
+                draw.player == PlayerFilter::You && matches!(draw.count, Value::Fixed(_))
+            });
+        let is_fixed_you_gain = effect
+            .downcast_ref::<crate::effects::GainLifeEffect>()
+            .is_some_and(|gain| {
+                gain.player == ChooseSpec::Player(PlayerFilter::You)
+                    && matches!(gain.amount, Value::Fixed(_))
+            });
+        if !is_fixed_you_draw && !is_fixed_you_gain {
+            return None;
+        }
+
+        let rendered = describe_effect(effect);
+        let action = rendered
+            .trim()
+            .trim_end_matches('.')
+            .strip_prefix("You ")
+            .or_else(|| rendered.trim().trim_end_matches('.').strip_prefix("you "))
+            .unwrap_or_else(|| rendered.trim().trim_end_matches('.'));
+        if action.is_empty() || action.contains(". ") {
+            return None;
+        }
+        Some(format!("you {}", lowercase_first(action)))
+    }
+
+    let second_is_draw = second
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some();
+    let third_is_draw = third
+        .downcast_ref::<crate::effects::DrawCardsEffect>()
+        .is_some();
+    let second_is_gain = second
+        .downcast_ref::<crate::effects::GainLifeEffect>()
+        .is_some();
+    let third_is_gain = third
+        .downcast_ref::<crate::effects::GainLifeEffect>()
+        .is_some();
+    if !(second_is_draw && third_is_gain || second_is_gain && third_is_draw) {
+        return None;
+    }
+
+    let opponent_clause = describe_effect(opponent_effect);
+    let opponent_clause = opponent_clause.trim().trim_end_matches('.');
+    if opponent_clause.is_empty()
+        || opponent_clause.contains(". ")
+        || opponent_clause.contains(", ")
+        || !opponent_clause.starts_with("Each opponent")
+    {
+        return None;
+    }
+    let second_clause = explicit_you_draw_or_gain(second)?;
+    let third_clause = explicit_you_draw_or_gain(third)?;
+    Some(format!(
+        "{opponent_clause}, {second_clause}, and {third_clause}"
+    ))
+}
+
 fn describe_source_sacrifice_then_coordinated_suffix(effects: &[Effect]) -> Option<String> {
     let [sacrifice_effect, trailing @ ..] = effects else {
         return None;
@@ -2457,6 +2532,11 @@ pub(super) fn describe_coordinated_sequence(
         return Some(compact);
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let Some(compact) = describe_each_opponent_then_you_draw_and_gain(&sequence.effects)
+    {
+        return Some(compact);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
         && let Some(compact) =
             describe_coordinated_draw_then_pump_and_grant_same_filter(&sequence.effects)
     {
@@ -2992,6 +3072,42 @@ mod coordinated_sequence_tests {
         assert_eq!(
             describe_effect(&variable),
             "You gain X life and draw X cards"
+        );
+    }
+
+    #[test]
+    fn coordinated_opponent_action_draw_and_gain_keeps_three_authored_clauses() {
+        let discard_draw_gain = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            Effect::for_players(
+                PlayerFilter::Opponent,
+                vec![Effect::new(crate::effects::DiscardEffect::new(
+                    1,
+                    PlayerFilter::IteratedPlayer,
+                    false,
+                ))],
+            ),
+            Effect::draw(Value::Fixed(1)),
+            Effect::gain_life(Value::Fixed(2)),
+        ]));
+        let lose_gain_draw = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
+            Effect::for_players(
+                PlayerFilter::Opponent,
+                vec![Effect::new(crate::effects::LoseLifeEffect::with_filter(
+                    1,
+                    PlayerFilter::IteratedPlayer,
+                ))],
+            ),
+            Effect::gain_life(Value::Fixed(1)),
+            Effect::draw(Value::Fixed(1)),
+        ]));
+
+        assert_eq!(
+            describe_effect(&discard_draw_gain),
+            "Each opponent discards a card, you draw a card, and you gain 2 life"
+        );
+        assert_eq!(
+            describe_effect(&lose_gain_draw),
+            "Each opponent loses 1 life, you gain 1 life, and you draw a card"
         );
     }
 

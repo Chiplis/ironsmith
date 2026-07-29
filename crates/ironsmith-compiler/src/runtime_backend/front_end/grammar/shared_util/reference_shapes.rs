@@ -13,6 +13,12 @@ pub(crate) enum FilterKeywordConstraint {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum SubjectAst {
     Player(PlayerAst),
+    /// The controller of the source object from the enclosing trigger event.
+    ///
+    /// This remains distinct from `PlayerAst::ItsController`: the latter
+    /// resolves through ordinary last-object antecedent memory, which may be
+    /// the object damaged by the triggering source.
+    TriggeringSourceController,
     This,
 }
 
@@ -173,7 +179,12 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
     }
     if prefix_one_of(
         slice,
-        &[&["enchanted", "player"], &["enchanted", "players"]],
+        &[
+            &["enchanted", "player"],
+            &["enchanted", "players"],
+            &["enchanted", "opponent"],
+            &["enchanted", "opponents"],
+        ],
     ) {
         return SubjectAst::Player(PlayerAst::Enchanted);
     }
@@ -242,6 +253,16 @@ pub(crate) fn parse_subject_words(words: &[&str]) -> SubjectAst {
         ],
     ) {
         return SubjectAst::Player(PlayerAst::ItsOwner);
+    }
+    if prefix_one_of(
+        slice,
+        &[
+            &["that", "source's", "controller"],
+            &["that", "source", "s", "controller"],
+            &["that", "sources", "controller"],
+        ],
+    ) {
+        return SubjectAst::TriggeringSourceController;
     }
     // "That artifact's controller gains …" — possessive singular subject.
     if slice.len() >= 3
@@ -653,6 +674,10 @@ mod tests {
             SubjectAst::Player(PlayerAst::MostLifeTied)
         );
         assert_eq!(
+            parse_subject_words(&["enchanted", "opponent", "creates"]),
+            SubjectAst::Player(PlayerAst::Enchanted)
+        );
+        assert_eq!(
             parse_subject_words(&[
                 "that",
                 "player",
@@ -665,6 +690,10 @@ mod tests {
                 "cards",
             ]),
             SubjectAst::Player(PlayerAst::ThatPlayerOrTargetController)
+        );
+        assert_eq!(
+            parse_subject_words(&["that", "source's", "controller", "gains", "control",]),
+            SubjectAst::TriggeringSourceController
         );
         assert!(contains_source_from_your_hand(&[
             "discard", "this", "card", "from", "your", "hand"

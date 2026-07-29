@@ -1132,6 +1132,56 @@ fn inline_named_token_creation_choice_renders_as_authored_or_instruction() {
     );
 }
 
+#[test]
+fn inline_destroy_all_choice_renders_as_authored_or_instruction() {
+    let choose = ironsmith_core::ChooseModeEffect::choose_one(vec![
+        ironsmith_core::EffectMode::new(
+            "",
+            vec![Effect::new(crate::effects::DestroyEffect::all(
+                ObjectFilter::default().with_type(crate::types::CardType::Land),
+            ))],
+        ),
+        ironsmith_core::EffectMode::new(
+            "",
+            vec![Effect::new(crate::effects::DestroyEffect::all(
+                ObjectFilter::creature(),
+            ))],
+        ),
+    ])
+    .with_chooser(PlayerFilter::You);
+
+    assert_eq!(
+        describe_effect(&Effect::new(choose)),
+        "Destroy all lands or all creatures"
+    );
+}
+
+#[test]
+fn inline_destroy_all_choice_keeps_shared_no_regeneration_followup() {
+    let choose = ironsmith_core::ChooseModeEffect::choose_one(vec![
+        ironsmith_core::EffectMode::new(
+            "",
+            vec![Effect::new(
+                crate::effects::DestroyNoRegenerationEffect::all(
+                    ObjectFilter::default().with_type(crate::types::CardType::Land),
+                ),
+            )],
+        ),
+        ironsmith_core::EffectMode::new(
+            "",
+            vec![Effect::new(
+                crate::effects::DestroyNoRegenerationEffect::all(ObjectFilter::creature()),
+            )],
+        ),
+    ])
+    .with_chooser(PlayerFilter::You);
+
+    assert_eq!(
+        describe_effect(&Effect::new(choose)),
+        "Destroy all lands or all creatures. They can't be regenerated"
+    );
+}
+
 fn source_exiled_filter() -> ObjectFilter {
     ObjectFilter::tagged(crate::tag::SOURCE_EXILED_TAG).in_zone(Zone::Exile)
 }

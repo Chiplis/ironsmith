@@ -152,6 +152,7 @@ pub(crate) enum TriggerSpec {
         other_count: u32,
         display_subject: Option<String>,
         other_filter: Option<ObjectFilter>,
+        other_surface: bool,
     },
     ThisAttacksWithExactlyNOthers(u32),
     ThisAttacksAndIsntBlocked,
@@ -385,6 +386,11 @@ pub(crate) enum TriggerSpec {
         one_or_more: bool,
         include_players: bool,
     },
+    NthCounterPutOn {
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        counter_number: u32,
+    },
     CounterRemovedFrom {
         filter: ObjectFilter,
         one_or_more: bool,
@@ -408,6 +414,11 @@ pub(crate) enum TriggerSpec {
         min_spells_this_turn: Option<u32>,
         exact_spells_this_turn: Option<u32>,
         from_not_hand: bool,
+    },
+    /// Passive "the Nth spell of a turn is cast" trigger. Unlike a player's
+    /// Nth-spell trigger, this count spans spells cast by every player.
+    NthSpellOfTurnCast {
+        spell_number: u32,
     },
     SpellCopied {
         filter: Option<ObjectFilter>,
@@ -1418,6 +1429,9 @@ pub(crate) enum SubjectVerbActionAst {
         may_choose_new_targets: bool,
         choose_new_target_singular: bool,
         removed_supertypes: Vec<crate::types::Supertype>,
+        /// Colors set by an explicit copy exception, such as
+        /// "except that the copy is red."
+        set_colors: Option<crate::color::ColorSet>,
         /// Card types added by an explicit copy exception, such as
         /// "except the copy is an artifact in addition to its other types."
         added_card_types: Vec<CardType>,
@@ -2883,6 +2897,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 may_choose_new_targets,
                 choose_new_target_singular,
                 removed_supertypes,
+                set_colors,
                 added_card_types,
             } => f
                 .debug_struct("CopySpell")
@@ -2895,6 +2910,7 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 .field("may_choose_new_targets", may_choose_new_targets)
                 .field("choose_new_target_singular", choose_new_target_singular)
                 .field("removed_supertypes", removed_supertypes)
+                .field("set_colors", set_colors)
                 .field("added_card_types", added_card_types)
                 .finish(),
             Self::CopySpellForEachTarget {

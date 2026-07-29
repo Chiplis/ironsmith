@@ -70,6 +70,7 @@ pub(super) fn compile_subject_verb_middle(
             may_choose_new_targets,
             choose_new_target_singular,
             removed_supertypes,
+            set_colors,
             added_card_types,
         } => {
             let (mut spec, choices) =
@@ -113,6 +114,15 @@ pub(super) fn compile_subject_verb_middle(
                 None
             };
             let mut compiled = vec![copy_effect];
+            if let Some(colors) = set_colors {
+                compiled.push(Effect::new(
+                    crate::effects::ApplyContinuousEffect::with_spec(
+                        ChooseSpec::Tagged(TagKey::from(COPIED_STACK_OBJECT_TAG)),
+                        crate::continuous::Modification::SetColors(*colors),
+                        Until::Forever,
+                    ),
+                ));
+            }
             if !added_card_types.is_empty() {
                 compiled.push(Effect::new(
                     crate::effects::ApplyContinuousEffect::with_spec(

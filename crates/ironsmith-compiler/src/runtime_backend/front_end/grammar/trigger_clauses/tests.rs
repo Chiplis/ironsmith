@@ -331,6 +331,38 @@ fn parses_counter_spans_and_recipient() {
 }
 
 #[test]
+fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
+    let tokens = tokenize_line(
+        "the fourth plan counter is put on this enchantment",
+        0,
+    );
+    let parsed =
+        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+            "Plan Probe",
+            &[CardType::Enchantment],
+            &[],
+            || {
+                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+                    &tokens,
+                )
+            },
+        )
+        .expect("ordinal counter trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::NthCounterPutOn {
+        filter,
+        counter_type,
+        counter_number,
+    } = parsed
+    else {
+        panic!("expected a numbered counter trigger, got {parsed:#?}");
+    };
+    assert!(filter.source);
+    assert_eq!(counter_type, CounterType::Named("plan".into()));
+    assert_eq!(counter_number, 4);
+}
+
+#[test]
 fn parses_ability_owner_tails() {
     let named = tokenize_line("a ninjutsu ability", 0);
     assert_eq!(

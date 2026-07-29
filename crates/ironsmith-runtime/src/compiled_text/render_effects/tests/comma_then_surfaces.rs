@@ -31,14 +31,14 @@ fn typed_comma_then_draw_discard_keeps_the_shared_player_subject() {
 
 #[test]
 fn typed_comma_then_reveal_choose_discard_ignores_implicit_target_scaffolding() {
-    let target = ChooseSpec::Player(PlayerFilter::Any);
+    let target = ChooseSpec::target(ChooseSpec::Player(PlayerFilter::Any));
     let player = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any));
     let chosen = TagKey::from("chosen_hand_card");
     let look = Effect::new(crate::effects::LookAtHandEffect::reveal(target.clone()));
     let mut choice_filter = ObjectFilter::default()
         .in_zone(Zone::Hand)
-        .owned_by(player.clone())
-        .with_explicit_card_noun(true);
+        .owned_by(player.clone());
+    choice_filter.set_explicit_card_noun(true);
     choice_filter.excluded_card_types.push(CardType::Land);
     let choose = Effect::new(
         crate::effects::ChooseObjectsEffect::new(

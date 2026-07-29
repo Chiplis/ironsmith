@@ -6,7 +6,7 @@ use crate::cards::builders::{
 use crate::color::ColorSet;
 use crate::effect::Value;
 use crate::static_abilities::StaticAbility;
-use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, SourceReferenceSurface};
+use crate::target::{ObjectFilter, PlayerFilter};
 use crate::types::{CardType, Subtype, Supertype};
 use ironsmith_core::ValueSurfaceHint;
 
@@ -327,39 +327,6 @@ fn intrinsic_token_ability_represents_dynamic_power_toughness(
         )
 }
 
-fn value_references_named_source(value: &Value) -> bool {
-    match value.unhinted() {
-        Value::Add(left, right) | Value::Min(left, right) => {
-            value_references_named_source(left) || value_references_named_source(right)
-        }
-        Value::Scaled(value, _)
-        | Value::DividedRoundedDown(value, _)
-        | Value::HalfRoundedDown(value) => value_references_named_source(value),
-        Value::PowerOf(spec)
-        | Value::ToughnessOf(spec)
-        | Value::ManaValueOf(spec)
-        | Value::CountersOn(spec, _) => {
-            matches!(spec.base(), ChooseSpec::Source)
-                && matches!(
-                    spec.source_reference_surface(),
-                    Some(
-                        SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_)
-                    )
-                )
-        }
-        Value::ManaSymbolsInManaCostOf { spec, .. } => {
-            matches!(spec.base(), ChooseSpec::Source)
-                && matches!(
-                    spec.source_reference_surface(),
-                    Some(
-                        SourceReferenceSurface::FullName(_) | SourceReferenceSurface::ShortName(_)
-                    )
-                )
-        }
-        _ => false,
-    }
-}
-
 fn reconcile_quoted_dynamic_power_toughness(
     definition: &crate::runtime_backend::token_definition::TokenDefinitionSpec,
     granted_abilities: &mut Vec<GrantedAbilityAst>,
@@ -375,20 +342,19 @@ fn reconcile_quoted_dynamic_power_toughness(
         return;
     }
 
-    if value_references_named_source(&quoted_dynamic.0)
-        || value_references_named_source(&quoted_dynamic.1)
-    {
-        let ability = GrantedAbilityAst::StaticAbility(StaticAbility::characteristic_defining_pt(
-            quoted_dynamic.0,
-            quoted_dynamic.1,
-        ));
-        if !granted_abilities.contains(&ability) {
-            granted_abilities.push(ability);
-        }
-        *dynamic_power_toughness = None;
-    } else {
-        *dynamic_power_toughness = Some(quoted_dynamic);
+    // A P/T rule authored inside quotes is an intrinsic characteristic-
+    // defining ability of the token, even when it references only the
+    // creating player's state. Treating it as a one-time post-creation base
+    // P/T assignment loses both its runtime behavior and its token-blueprint
+    // surface.
+    let ability = GrantedAbilityAst::StaticAbility(StaticAbility::characteristic_defining_pt(
+        quoted_dynamic.0,
+        quoted_dynamic.1,
+    ));
+    if !granted_abilities.contains(&ability) {
+        granted_abilities.push(ability);
     }
+    *dynamic_power_toughness = None;
 }
 
 fn parse_inline_copy_granted_abilities(tokens: &[OwnedLexToken]) -> Vec<StaticAbility> {
@@ -1421,6 +1387,7 @@ mod tests {
     use super::super::super::lexer::lex_line;
     use super::*;
     use crate::static_abilities::StaticAbilityId;
+    use crate::target::{ChooseSpec, SourceReferenceSurface};
     use ironsmith_core::TurnHistoryCount;
 
     fn parse_token_count(clause: &str) -> Value {
@@ -1482,6 +1449,32 @@ mod tests {
         };
 
         assert_eq!(creature.subtypes, vec![Subtype::Sand, Subtype::Warrior]);
+        assert_eq!(
+            creature.colors,
+            ColorSet::RED.union(ColorSet::GREEN).union(ColorSet::WHITE)
+        );
+    }
+
+    #[test]
+    fn contracted_postnominal_token_colors_are_typed() {
+        let tokens = lex_line(
+            "Create an 8/8 Beast creature token that's red, green, and white.",
+            0,
+        )
+        .expect("contracted postnominal color creation should lex");
+        let effect = parse_create(&tokens, None).expect("postnominal color creation should parse");
+        let EffectAst::SubjectVerb(effect) = effect else {
+            panic!("expected a subject-verb token creation");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods { definition, .. } = effect.action else {
+            panic!("expected a token creation with modifiers");
+        };
+        let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
+            definition
+        else {
+            panic!("expected a creature token definition");
+        };
+
         assert_eq!(
             creature.colors,
             ColorSet::RED.union(ColorSet::GREEN).union(ColorSet::WHITE)
@@ -1681,6 +1674,93 @@ mod tests {
         assert!(
             format!("{granted_abilities:#?}").contains("CharacteristicDefining"),
             "{granted_abilities:#?}"
+        );
+    }
+
+    #[test]
+    fn quoted_distinct_dynamic_token_pt_is_an_intrinsic_ability() {
+        let tokens = lex_line(
+            "Create a green Ooze creature token with \"This token's power is equal to the number of card types among cards in your graveyard and its toughness is equal to that number plus 1.\"",
+            0,
+        )
+        .expect("quoted distinct dynamic token creation should lex");
+        let effect =
+            parse_create(&tokens, None).expect("quoted dynamic token creation should parse");
+        let EffectAst::SubjectVerb(effect) = effect else {
+            panic!("expected a subject-verb token creation");
+        };
+        let SubjectVerbActionAst::CreateTokenWithMods {
+            dynamic_power_toughness,
+            granted_abilities,
+            ..
+        } = effect.action
+        else {
+            panic!("expected a token creation with modifiers");
+        };
+
+        assert_eq!(dynamic_power_toughness, None);
+        assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
+        assert!(
+            format!("{granted_abilities:#?}").contains("CharacteristicDefining"),
+            "{granted_abilities:#?}"
+        );
+    }
+
+    #[test]
+    fn direct_effect_dispatch_keeps_multiple_quoted_rules_in_token_blueprint() {
+        let tokens = lex_line(
+            "Create a 0/1 colorless Goblin Construct artifact creature token with \"This token can't block\" and \"At the beginning of your upkeep, this token deals 1 damage to you.\"",
+            0,
+        )
+        .expect("multi-rule token creation should lex");
+        let quoted = double_quoted_rule_bodies(&tokens);
+        assert_eq!(quoted.len(), 2, "{tokens:#?}");
+        let definition = token_definition_grammar::parse_token_definition_shape_text(
+            "0/1 colorless Goblin Construct artifact creature token",
+        )
+        .expect("Goblin Construct token definition");
+        let upkeep_rule =
+            super::super::parse_granted_abilities_for_token_definition(&definition, quoted[1])
+                .expect("quoted upkeep-damage rule should parse");
+        assert!(
+            matches!(
+                upkeep_rule.as_slice(),
+                [GrantedAbilityAst::ParsedObjectAbility { .. }]
+            ),
+            "{upkeep_rule:#?}"
+        );
+        let ast = crate::runtime_backend::sentences::effect_sentences::parse_effect_sentence_lexed(
+            &tokens,
+        )
+        .expect("single-sentence dispatcher should parse the token creation");
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+            &ast,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("multi-rule token creation should lower");
+        let create = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("lowered create-token effect");
+
+        assert_eq!(effects.len(), 1, "{effects:#?}");
+        assert!(
+            create
+                .token
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Static(_))),
+            "{:#?}",
+            create.token.abilities
+        );
+        assert!(
+            create
+                .token
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Triggered(_))),
+            "{:#?}",
+            create.token.abilities
         );
     }
 

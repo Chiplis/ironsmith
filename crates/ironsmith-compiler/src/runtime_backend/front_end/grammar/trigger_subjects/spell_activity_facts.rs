@@ -26,6 +26,7 @@ pub(crate) struct SpellActivitySurfaceFacts {
     pub(crate) during_turn: Option<TriggerControllerReference>,
     pub(crate) exact_spells_this_turn: Option<u32>,
     pub(crate) min_spells_this_turn: Option<u32>,
+    pub(crate) count_all_spells_this_turn: bool,
     pub(crate) from_not_hand: bool,
 }
 
@@ -73,7 +74,9 @@ pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivit
             && all_words_present(words, &["spell", "casts", "turn"]));
     let first_spell_each_turn = !other_than_first_spell && first_spell_turn_surface(words);
     let second_spell_each_turn = !other_than_first_spell && second_spell_turn_surface(words);
-    let exact_spells_this_turn = exact_spell_count_surface(words)
+    let global_exact_spells_this_turn = global_exact_spell_count_surface(words);
+    let exact_spells_this_turn = global_exact_spells_this_turn
+        .or_else(|| exact_spell_count_surface(words))
         .or_else(|| first_spell_each_turn.then_some(1))
         .or_else(|| second_spell_each_turn.then_some(2));
 
@@ -85,6 +88,7 @@ pub(crate) fn parse_spell_activity_surface_facts(words: &[&str]) -> SpellActivit
         exact_spells_this_turn,
         min_spells_this_turn: (exact_spells_this_turn.is_none() && other_than_first_spell)
             .then_some(2),
+        count_all_spells_this_turn: global_exact_spells_this_turn.is_some(),
         from_not_hand: cast_from_outside_hand_surface(words),
     }
 }
@@ -208,6 +212,19 @@ fn exact_spell_count_surface(words: &[&str]) -> Option<u32> {
         }
     }
     None
+}
+
+fn global_exact_spell_count_surface(words: &[&str]) -> Option<u32> {
+    ordinal_counts(1).find_map(|(ordinal, count)| {
+        any_sequence_present(
+            words,
+            &[
+                &["the", ordinal, "spell", "of", "a", "turn"],
+                &[ordinal, "spell", "of", "a", "turn"],
+            ],
+        )
+        .then_some(count)
+    })
 }
 
 fn draw_number_set_surface(words: &[&str]) -> Vec<u32> {
@@ -367,6 +384,7 @@ fn opponent_turn_phrases() -> &'static [&'static [&'static str]] {
 
 fn ordinal_counts(first: u32) -> impl Iterator<Item = (&'static str, u32)> {
     [
+        ("first", 1),
         ("second", 2),
         ("third", 3),
         ("fourth", 4),
@@ -411,6 +429,16 @@ mod tests {
             "hand",
         ]);
         assert!(outside_hand.from_not_hand);
+    }
+
+    #[test]
+    fn passive_nth_spell_of_turn_counts_all_players() {
+        let facts = parse_spell_activity_surface_facts(&[
+            "whenever", "the", "fourth", "spell", "of", "a", "turn", "is", "cast",
+        ]);
+
+        assert_eq!(facts.exact_spells_this_turn, Some(4));
+        assert!(facts.count_all_spells_this_turn);
     }
 
     #[test]

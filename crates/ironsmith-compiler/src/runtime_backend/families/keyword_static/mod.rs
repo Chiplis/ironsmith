@@ -1452,6 +1452,9 @@ fn parse_static_ability_ast_line_lexed_unstacked(
     if let Some(abilities) = parse_carried_subject_type_addition_line(tokens)? {
         return Ok(Some(abilities));
     }
+    if let Some(abilities) = parse_carried_attached_subject_line(tokens)? {
+        return Ok(Some(abilities));
+    }
     // The attached object's controller receives a turn-scoped special action,
     // not a one-shot choice as this Aura resolves. Keep the complete
     // two-sentence rule together before ordinary sentence splitting can lower
@@ -1478,6 +1481,25 @@ fn parse_static_ability_ast_line_lexed_unstacked(
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    if let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens)
+        && crate::runtime_backend::token_word_refs(spec.remainder_tokens)
+            == ["it", "must", "be", "blocked", "if", "able"]
+        && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
+        && matches!(
+            condition,
+            crate::ConditionExpr::SourceIsEquipped
+                | crate::ConditionExpr::SourceIsEnchanted
+                | crate::ConditionExpr::SourceIsMonstrous
+        )
+    {
+        return Ok(Some(vec![StaticAbilityAst::ConditionalStaticAbility {
+            ability: Box::new(StaticAbilityAst::Static(StaticAbility::restriction(
+                crate::effect::Restriction::must_be_blocked(ObjectFilter::source()),
+                "this creature must be blocked if able".to_string(),
+            ))),
+            condition,
+        }]));
+    }
     if let Some(spec) =
         crate::runtime_backend::grammar::static_line_support::parse_leading_if_clause(tokens)
         && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
@@ -1571,6 +1593,29 @@ fn parse_static_ability_ast_line_lexed_single(
         conditioned.push(ability);
     }
     Ok(Some(conditioned))
+}
+
+#[cfg(test)]
+mod conditioned_source_block_requirement_tests {
+    use super::*;
+
+    #[test]
+    fn equipped_named_source_must_be_blocked_is_a_conditioned_static_rule() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "As long as Probe is equipped, it must be blocked if able.",
+            0,
+        )
+        .expect("conditioned block requirement should lex");
+        let parsed = crate::runtime_backend::util::with_source_reference_context("Probe", || {
+            parse_static_ability_ast_line_lexed(&tokens)
+        })
+        .expect("conditioned block requirement should parse")
+        .expect("conditioned block requirement should be claimed");
+        let debug = format!("{parsed:#?}");
+        assert!(debug.contains("ConditionalStaticAbility"), "{debug}");
+        assert!(debug.contains("SourceIsEquipped"), "{debug}");
+        assert!(debug.contains("MustBeBlocked"), "{debug}");
+    }
 }
 
 fn parse_static_ability_ast_line_lexed_single_without_leading_condition(
@@ -3779,6 +3824,26 @@ pub(crate) fn parse_characteristic_defining_pt_line(
         return Ok(None);
     }
     let sentence_words = parser_token_word_refs(&sentence_tokens);
+    let uses_source_name_subject = sentence_words
+        .iter()
+        .position(|word| is_characteristic_axis_word(word))
+        .and_then(|axis_idx| {
+            source_reference_surface_for_possessive_words(&sentence_words[..axis_idx])
+        })
+        .is_some_and(|surface| {
+            matches!(
+                surface,
+                crate::target::SourceReferenceSurface::FullName(_)
+                    | crate::target::SourceReferenceSurface::ShortName(_)
+            )
+        });
+    let preserve_subject = |value: Value| {
+        if uses_source_name_subject {
+            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject)
+        } else {
+            value
+        }
+    };
     if sentence_words
         .iter()
         .any(|word| matches!(*word, "target" | "targets" | "become" | "becomes" | "until"))
@@ -3796,6 +3861,7 @@ pub(crate) fn parse_characteristic_defining_pt_line(
                     crate::runtime_backend::token_word_refs(tail_tokens).join(" ")
                 ))
             })?;
+            let value = preserve_subject(value);
             return Ok(Some(StaticAbility::characteristic_defining_pt(
                 value.clone(),
                 value,
@@ -3885,8 +3951,8 @@ pub(crate) fn parse_characteristic_defining_pt_line(
     }
 
     Ok(Some(StaticAbility::characteristic_defining_pt(
-        parsed_power.unwrap_or(Value::SourcePower),
-        parsed_toughness.unwrap_or(Value::SourceToughness),
+        preserve_subject(parsed_power.unwrap_or(Value::SourcePower)),
+        preserve_subject(parsed_toughness.unwrap_or(Value::SourceToughness)),
     )))
 }
 

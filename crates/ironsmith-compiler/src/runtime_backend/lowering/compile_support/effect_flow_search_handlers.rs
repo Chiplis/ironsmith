@@ -752,6 +752,31 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     effects: may_effects,
                 },
             ] = effects.as_slice()
+                && let [
+                    EffectAst::CommaThen {
+                        effects: comma_then_effects,
+                    },
+                ] = may_effects.as_slice()
+                && let Some((followup, antecedent_may_effects)) = comma_then_effects.split_last()
+                && !antecedent_may_effects.is_empty()
+                && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })
+            {
+                let antecedent = EffectAst::ForEachPlayer {
+                    effects: vec![EffectAst::May {
+                        effects: antecedent_may_effects.to_vec(),
+                    }],
+                };
+                if let Some((effects, choices)) =
+                    compile_if_do_with_opponent_doesnt(&antecedent, followup, ctx)?
+                {
+                    return Ok(Some((effects, choices)));
+                }
+            }
+            if let [
+                EffectAst::May {
+                    effects: may_effects,
+                },
+            ] = effects.as_slice()
                 && let Some((followup, antecedent_may_effects)) = may_effects.split_last()
                 && !antecedent_may_effects.is_empty()
                 && matches!(followup, EffectAst::ForEachOpponentDoesNot { .. })

@@ -12,6 +12,22 @@ fn contains_choice_debug(debug: &str) -> bool {
 }
 
 #[test]
+fn each_player_may_comma_then_each_opponent_who_didnt_lowers_as_one_flow() {
+    let compiled = super::super::compile_card_text(
+        CardDefinitionBuilder::new(CardId::new(), "Kynaios Flow Variant")
+            .card_types(vec![CardType::Creature]),
+        "At the beginning of your end step, draw a card. Each player may put a land card from their hand onto the battlefield, then each opponent who didn't draws a card.",
+        false,
+    )
+    .expect("each-player offer and opponent-decline follow-up should compile together");
+    let debug = format!("{:#?}", compiled.definition);
+
+    assert!(debug.contains("ForPlayersEffect"), "{debug}");
+    assert!(debug.contains("MayEffect"), "{debug}");
+    assert!(debug.contains("DrawCardsEffect"), "{debug}");
+}
+
+#[test]
 pub(super) fn convert_then_adapt_routes_through_effect_lowering() {
     let compiled = super::super::compile_card_text(
         CardDefinitionBuilder::new(CardId::new(), "Convert Then Adapt Variant")

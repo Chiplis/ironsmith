@@ -33,6 +33,9 @@
         if let Some(compact) = describe_inline_token_creation_choice(choose_mode) {
             return compact;
         }
+        if let Some(compact) = describe_inline_destroy_all_choice(choose_mode) {
+            return compact;
+        }
         if let Some(compact) = describe_inline_pt_modifier_choice(choose_mode) {
             return compact;
         }

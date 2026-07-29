@@ -136,15 +136,20 @@ fn token_colors(words: &[&str]) -> ColorSet {
 /// "Sand Warrior creature tokens that are red, green, and white." Token
 /// identity normally appears before `token(s)`, so this suffix is not part of
 /// the definition slice passed to the ordinary token-shape parser.
-pub(crate) fn parse_postnominal_token_colors_tokens(
-    tokens: &[OwnedLexToken],
-) -> Option<ColorSet> {
+pub(crate) fn parse_postnominal_token_colors_tokens(tokens: &[OwnedLexToken]) -> Option<ColorSet> {
     let words = parser_token_word_refs(tokens);
-    if !words.starts_with(&["that", "are"]) && !words.starts_with(&["that", "is"]) {
+    let color_start = if words.starts_with(&["that", "are"]) || words.starts_with(&["that", "is"]) {
+        2
+    } else if words
+        .first()
+        .is_some_and(|word| matches!(*word, "that's" | "thats" | "that’s"))
+    {
+        1
+    } else {
         return None;
-    }
+    };
     let mut colors = ColorSet::new();
-    for word in &words[2..] {
+    for word in &words[color_start..] {
         let color = match *word {
             "white" => ColorSet::WHITE,
             "blue" => ColorSet::BLUE,

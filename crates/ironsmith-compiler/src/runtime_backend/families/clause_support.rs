@@ -148,6 +148,7 @@ fn parse_source_and_another_attack_with_trigger(
         other_count: 1,
         display_subject: Some(display_subject),
         other_filter: Some(other_filter),
+        other_surface: true,
     }))
 }
 
@@ -1394,6 +1395,7 @@ mod tests {
                     other_count,
                     display_subject,
                     other_filter: Some(other_filter),
+                    other_surface,
                 },
             effects,
             ..
@@ -1402,6 +1404,7 @@ mod tests {
             panic!("expected source-bound attack trigger, got {parsed:#?}");
         };
         assert_eq!(*other_count, 1);
+        assert!(*other_surface);
         assert_eq!(display_subject.as_deref(), Some("Merry"));
         assert!(other_filter.other);
         assert!(
@@ -1411,6 +1414,39 @@ mod tests {
         );
         assert!(other_filter.card_types.contains(&CardType::Creature));
         assert!(format!("{effects:#?}").contains("Draw"));
+    }
+
+    #[test]
+    fn source_and_filtered_attack_count_can_omit_other_surface() {
+        let tokens = lex_line(
+            "Whenever Probe and at least two Zombies attack, Probe gains indestructible until end of turn.",
+            0,
+        )
+        .unwrap();
+        let parsed = crate::runtime_backend::util::with_source_reference_context("Probe", || {
+            parse_triggered_line_lexed(&tokens).unwrap()
+        });
+        let LineAst::Triggered {
+            trigger:
+                TriggerSpec::ThisAttacksWithNOthers {
+                    other_count,
+                    display_subject,
+                    other_filter: Some(other_filter),
+                    other_surface,
+                },
+            ..
+        } = parsed
+        else {
+            panic!("expected source-plus-filtered-attack-count trigger");
+        };
+        assert_eq!(other_count, 2);
+        assert_eq!(display_subject.as_deref(), Some("Probe"));
+        assert!(!other_surface);
+        assert!(
+            other_filter
+                .subtypes
+                .contains(&crate::types::Subtype::Zombie)
+        );
     }
 
     #[test]

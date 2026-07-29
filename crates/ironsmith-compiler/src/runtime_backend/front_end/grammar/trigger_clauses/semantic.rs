@@ -5147,6 +5147,19 @@ fn parse_trigger_clause_lexed_unstacked(
             ))
         })?;
 
+        let counter_number = words[..counter_word_idx]
+            .iter()
+            .find_map(|word| ironsmith_core::parse_ordinal_word(word));
+        if !include_players
+            && let (Some(counter_number), Some(counter_type)) = (counter_number, counter_type)
+        {
+            return Ok(TriggerSpec::NthCounterPutOn {
+                filter,
+                counter_type,
+                counter_number,
+            });
+        }
+
         return Ok(TriggerSpec::CounterPutOn {
             filter,
             counter_type,
@@ -5433,12 +5446,21 @@ fn parse_trigger_clause_lexed_unstacked(
                     && token_slice_at_is(&right, 0, "at")
                     && token_slice_at_is(&right, 1, "least")
                     && let Some((other_count, used)) = parse_number(&right[2..])
-                    && right
+                    && {
+                        let other_surface = right
+                            .get(2 + used)
+                            .is_some_and(|token| token.is_word("other"));
+                        let filter_start = 2 + used + usize::from(other_surface);
+                        !right[filter_start..].is_empty()
+                            && parse_attack_trigger_subject_filter_lexed(&right[filter_start..])?
+                                .is_some()
+                    }
+                    && let other_surface = right
                         .get(2 + used)
                         .is_some_and(|token| token.is_word("other"))
-                    && !right[3 + used..].is_empty()
+                    && let filter_start = 2 + used + usize::from(other_surface)
                     && let Some(other_filter) =
-                        parse_attack_trigger_subject_filter_lexed(&right[3 + used..])?
+                        parse_attack_trigger_subject_filter_lexed(&right[filter_start..])?
                 {
                     let rendered_subject = crate::runtime_backend::lexer::render_token_slice(&left)
                         .trim()
@@ -5453,6 +5475,7 @@ fn parse_trigger_clause_lexed_unstacked(
                         other_count,
                         display_subject,
                         other_filter: Some(other_filter),
+                        other_surface,
                     });
                 }
             }

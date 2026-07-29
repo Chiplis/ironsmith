@@ -24,3 +24,19 @@ fn bounded_x_payment_and_linked_draw_preserve_authored_x_surface() {
         "You may pay {X}, where X is less than or equal to the amount of life you gained. If you do, draw X cards"
     );
 }
+
+#[test]
+fn object_count_payment_preserves_authored_for_each_surface() {
+    let enchanted_player = PlayerFilter::TaggedPlayer("enchanted".into());
+    let artifacts = ObjectFilter::artifact().controlled_by(enchanted_player.clone());
+    let payment = crate::effects::PayManaEffect::new(
+        crate::mana::ManaCost::from_symbols(vec![crate::mana::ManaSymbol::X]),
+        ChooseSpec::Player(enchanted_player),
+    )
+    .with_x_value(Value::Count(artifacts).with_surface_hint(ValueSurfaceHint::ForEach));
+
+    assert_eq!(
+        describe_pay_mana_cost(&payment),
+        "{1} for each artifact they control"
+    );
+}

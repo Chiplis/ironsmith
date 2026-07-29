@@ -86,6 +86,7 @@ pub use zone_changes::*;
 
 use crate::events::EventKind;
 use crate::events::cause::CauseFilter;
+use crate::object::CounterType;
 use crate::tag::TagKey;
 use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter};
 use crate::zone::Zone;
@@ -581,6 +582,22 @@ impl Trigger {
         ))
     }
 
+    pub fn this_attacks_with_n_others_display_subject_filter_and_other_surface(
+        other_count: usize,
+        display_subject: Option<String>,
+        other_filter: Option<ObjectFilter>,
+        other_surface: bool,
+    ) -> Self {
+        Self::new(
+            ThisAttacksWithNOthersTrigger::with_display_subject_filter_and_other_surface(
+                other_count,
+                display_subject,
+                other_filter,
+                other_surface,
+            ),
+        )
+    }
+
     /// Create a "when this creature and exactly N other creatures attack" trigger.
     pub fn this_attacks_with_exact_n_others(other_count: usize) -> Self {
         Self::new(ThisAttacksWithNOthersTrigger::exact(other_count))
@@ -952,6 +969,12 @@ impl Trigger {
         Self::new(SpellCastTrigger::new(filter, caster))
     }
 
+    /// Create a passive ordinal trigger such as "when the fourth spell of a
+    /// turn is cast." The ordinal counts spells cast by all players.
+    pub fn nth_spell_of_turn_cast(spell_number: u32) -> Self {
+        Self::new(SpellCastTrigger::nth_spell_of_turn(spell_number))
+    }
+
     /// Create a qualified spell-cast trigger.
     pub fn spell_cast_qualified(
         filter: Option<ObjectFilter>,
@@ -1274,6 +1297,20 @@ impl Trigger {
     /// Create a "when a counter is put on [filter]" trigger.
     pub fn counter_put_on(filter: ObjectFilter) -> Self {
         Self::new(CounterPutOnTrigger::new(filter))
+    }
+
+    /// Create a trigger for the event that crosses the Nth counter of a
+    /// particular type on a matching permanent.
+    pub fn nth_counter_put_on(
+        filter: ObjectFilter,
+        counter_type: CounterType,
+        counter_number: u32,
+    ) -> Self {
+        Self::new(
+            CounterPutOnTrigger::new(filter)
+                .counter_type(counter_type)
+                .counter_number(counter_number),
+        )
     }
 
     /// Create a "when [player] gets counters" trigger.

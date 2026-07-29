@@ -43,6 +43,45 @@ fn typed_attached_restriction_shapes_preserve_static_semantics() {
 }
 
 #[test]
+fn attached_subject_carries_into_pronoun_loss_and_grant_sentence() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature can't attack or block. It loses all abilities and has \"{1}: Draw a card.\"",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_carried_attached_subject_line(&tokens)
+        .unwrap()
+        .expect("attached subject should carry into the pronoun sentence");
+    let debug = format!("{abilities:#?}");
+    assert_eq!(abilities.len(), 3, "{debug}");
+    assert!(debug.contains("AttackOrBlock"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+    assert!(
+        debug.contains("AttachedObjectAbilityGrant")
+            || debug.contains("GrantObjectAbilityForFilter"),
+        "{debug}"
+    );
+}
+
+#[test]
+fn attached_transform_subject_carries_into_combat_and_ability_loss_sentence() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Enchanted creature is a Turtle with base power and toughness 0/1. It can't attack and loses all abilities.",
+        0,
+    )
+    .unwrap();
+    let abilities = parse_carried_attached_subject_line(&tokens)
+        .unwrap()
+        .expect("transform subject should carry into the pronoun sentence");
+    let debug = format!("{abilities:#?}");
+    assert!(debug.contains("SetCreatureSubtypes"), "{debug}");
+    assert!(debug.contains("SetBasePowerToughness"), "{debug}");
+    assert!(debug.contains("Attack"), "{debug}");
+    assert!(debug.contains("RemoveAllAbilities"), "{debug}");
+    assert!(!debug.contains("ObjectFilter::source"), "{debug}");
+}
+
+#[test]
 fn attached_keyword_and_goaded_clause_keeps_both_continuous_abilities() {
     let tokens = crate::runtime_backend::lexer::lex_line(
         "Enchanted creature has indestructible and is goaded.",

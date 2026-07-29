@@ -4512,8 +4512,9 @@ pub(crate) fn render_reveal_hand_choose_same_name_exile_shuffle(
 
     let search_origin = "that player's graveyard, hand, and library";
     let count_text = same_name_extraction_selection(search)?;
+    let selection_from_it = card_choice_from_it_text(&selection);
     Some(format!(
-        "{reveal}. You choose {selection} from it. Search {search_origin} for {count_text} with the same name as that card and exile them. Then that player shuffles"
+        "{reveal}. You choose {selection_from_it}. Search {search_origin} for {count_text} with the same name as that card and exile them. Then that player shuffles"
     ))
 }
 

@@ -2972,6 +2972,26 @@ impl StaticAbilityKind for Anthem {
                     multiplier: toughness,
                     count: toughness_count,
                 },
+            ) if self.count_uses_where_x
+                && power_count == toughness_count
+                && power == toughness =>
+            {
+                format!(
+                    "{subject} {verb} {}/{}, where X is {}",
+                    x_component(*power),
+                    x_component(*toughness),
+                    describe_anthem_where_x_count_expression(power_count),
+                )
+            }
+            (
+                AnthemValue::PerCount {
+                    multiplier: power,
+                    count: power_count,
+                },
+                AnthemValue::PerCount {
+                    multiplier: toughness,
+                    count: toughness_count,
+                },
             ) if power_count == toughness_count
                 && matches!(power_count, AnthemCountExpression::PlayerSpeed(_)) =>
             {

@@ -884,7 +884,9 @@ fn token_rule_is_already_lowered_by_specialized_shape(
         return true;
     }
 
-    if rules.combat_restriction.is_some() {
+    if rules.combat_restriction.is_some()
+        && (has("attack") || has("attacks") || has("block") || has("blocked"))
+    {
         let qualified_blocking_rule = has("by") || all(&["more", "than"]);
         if !qualified_blocking_rule {
             return true;

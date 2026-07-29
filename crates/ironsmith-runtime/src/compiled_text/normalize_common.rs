@@ -212,6 +212,11 @@ pub(super) fn describe_player_filter(filter: &PlayerFilter) -> String {
             "equipped creature's controller".to_string()
         }
         PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
+            if tag.as_str() == "triggering_source" =>
+        {
+            "that source's controller".to_string()
+        }
+        PlayerFilter::ControllerOf(crate::target::ObjectRef::Tagged(tag))
             if tag.as_str() == "__it__" =>
         {
             "its controller".to_string()
@@ -1202,8 +1207,24 @@ pub(super) fn describe_token_blueprint_with_presentation(
     }
     keyword_texts.sort();
     keyword_texts.dedup();
-    extra_ability_texts.sort();
-    extra_ability_texts.dedup();
+    if matches!(
+        grouped_ability_presentation,
+        Some(ironsmith_core::TokenAbilityPresentation::InlineWith)
+    ) {
+        // Quoted inline rules are authored in a meaningful source order.
+        // Deduplicate without sorting so a token with `"This token can't
+        // block"` followed by an upkeep trigger keeps that exact order.
+        let mut ordered_unique = Vec::with_capacity(extra_ability_texts.len());
+        for ability_text in extra_ability_texts.drain(..) {
+            if !ordered_unique.contains(&ability_text) {
+                ordered_unique.push(ability_text);
+            }
+        }
+        extra_ability_texts = ordered_unique;
+    } else {
+        extra_ability_texts.sort();
+        extra_ability_texts.dedup();
+    }
     strip_nonfinal_quoted_ability_periods(&mut extra_ability_texts);
     if matches!(
         grouped_ability_presentation,

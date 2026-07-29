@@ -953,6 +953,165 @@ fn describe_structural_quoted_static_grant_bundle(
     ))
 }
 
+#[derive(Debug)]
+enum AttachedGrantSurface {
+    Keyword(String),
+    Quoted(String),
+}
+
+fn modeled_attached_grant_surface(ability: &Ability) -> Option<(String, AttachedGrantSurface)> {
+    if ability.functional_zones.as_slice() != [Zone::Battlefield] {
+        return None;
+    }
+    let AbilityKind::Static(static_ability) = &ability.kind else {
+        return None;
+    };
+    let model = static_ability.compiled_model()?;
+    let (authored_tail, granted) = match &model.payload {
+        ironsmith_core::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_none()
+                && grant.additional_abilities.is_empty()
+                && grant.set_quantifier_surface.is_none() =>
+        {
+            (
+                grant.display.as_str(),
+                crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
+                    &grant.ability,
+                ),
+            )
+        }
+        ironsmith_core::StaticAbilityPayload::AttachedAbilityGrant(grant)
+            if grant.condition.is_none() && grant.additional_abilities.is_empty() =>
+        {
+            let display = grant.display.trim().trim_end_matches('.');
+            let (_, tail, _) = split_static_predicate_with_verb(display, &[" has ", " have "])?;
+            (
+                tail,
+                crate::static_abilities::StaticAbilityModelInterpreter::ability_from_model(
+                    &grant.ability,
+                ),
+            )
+        }
+        _ => return None,
+    };
+
+    let display = static_ability.display();
+    let display = display.trim().trim_end_matches('.');
+    let (subject, _, _) = split_static_predicate_with_verb(display, &[" has ", " have "])?;
+    let normalized_subject = subject.to_ascii_lowercase();
+    if !matches!(
+        normalized_subject.as_str(),
+        "enchanted creature" | "equipped creature"
+    ) {
+        return None;
+    }
+
+    let surface = match &granted.kind {
+        AbilityKind::Static(granted_static) if granted_static.is_keyword() => {
+            AttachedGrantSurface::Keyword(
+                granted_static
+                    .display()
+                    .trim()
+                    .trim_end_matches('.')
+                    .to_ascii_lowercase(),
+            )
+        }
+        AbilityKind::Triggered(triggered) if describe_annihilator_keyword(triggered).is_some() => {
+            AttachedGrantSurface::Keyword(lowercase_first(&describe_annihilator_keyword(
+                triggered,
+            )?))
+        }
+        AbilityKind::Activated(_) | AbilityKind::Triggered(_) | AbilityKind::Static(_) => {
+            let tail = authored_tail
+                .strip_prefix('"')
+                .and_then(|body| body.strip_suffix('"'))
+                .unwrap_or(authored_tail)
+                .trim()
+                .trim_end_matches('.');
+            if tail.is_empty() {
+                return None;
+            }
+            AttachedGrantSurface::Quoted(capitalize_first(tail))
+        }
+    };
+    Some((normalized_subject, surface))
+}
+
+fn render_attached_grant_surfaces(surfaces: &[AttachedGrantSurface]) -> Option<String> {
+    if surfaces.is_empty()
+        || !surfaces
+            .iter()
+            .any(|surface| matches!(surface, AttachedGrantSurface::Quoted(_)))
+    {
+        return None;
+    }
+
+    let last = surfaces.len() - 1;
+    let mut rendered = Vec::with_capacity(surfaces.len());
+    for (idx, surface) in surfaces.iter().enumerate() {
+        let is_last = idx == last;
+        let use_serial_comma = surfaces.len() > 2 && !is_last;
+        let item = match surface {
+            AttachedGrantSurface::Keyword(keyword) => {
+                if use_serial_comma {
+                    format!("{},", keyword.trim_end_matches([',', '.']))
+                } else {
+                    keyword.trim_end_matches([',', '.']).to_string()
+                }
+            }
+            AttachedGrantSurface::Quoted(text) => {
+                let text = text.trim_end_matches([',', '.']);
+                let punctuation = if is_last {
+                    "."
+                } else if use_serial_comma {
+                    ","
+                } else {
+                    ""
+                };
+                format!("\"{text}{punctuation}\"")
+            }
+        };
+        rendered.push(item);
+    }
+    let final_item = rendered.pop()?;
+    Some(if rendered.is_empty() {
+        final_item
+    } else {
+        format!("{} and {final_item}", rendered.join(" "))
+    })
+}
+
+/// Render authored attached-object grants from their typed payloads. Lowering
+/// intentionally emits one continuous effect per granted ability, while a
+/// mixed authored surface is one keyword/quoted-ability list.
+fn describe_structural_attached_mixed_grant_bundle(
+    abilities: &[Ability],
+) -> Option<(String, usize)> {
+    let (subject, first_surface) = modeled_attached_grant_surface(abilities.first()?)?;
+    let mut surfaces = vec![first_surface];
+    let mut consumed = 1usize;
+
+    while let Some(ability) = abilities.get(consumed) {
+        let Some((next_subject, next_surface)) = modeled_attached_grant_surface(ability) else {
+            break;
+        };
+        if next_subject != subject {
+            break;
+        }
+        surfaces.push(next_surface);
+        consumed += 1;
+    }
+
+    Some((
+        format!(
+            "{} has {}",
+            capitalize_first(&subject),
+            render_attached_grant_surfaces(&surfaces)?
+        ),
+        consumed,
+    ))
+}
+
 #[cfg(test)]
 mod quoted_static_grant_bundle_tests {
     use super::*;
@@ -991,6 +1150,26 @@ mod quoted_static_grant_bundle_tests {
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
             vec!["Creatures you control have flying.".to_string()]
+        );
+    }
+
+    #[test]
+    fn attached_mixed_keyword_and_quoted_grants_restore_one_authored_list() {
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Attached Grant Probe",
+        )
+        .card_types(vec![CardType::Artifact])
+        .parse_text(
+            "Equipped creature has reach, \"{2}, {T}: Tap target artifact or creature,\" and \"{8}, {T}: Discover 10.\"",
+        )
+        .expect("mixed attached grants should compile");
+        assert_eq!(
+            crate::compiled_text::compiled_text_lines(&definition),
+            vec![
+                "Equipped creature has reach, \"{2}, {T}: Tap target artifact or creature,\" and \"{8}, {T}: Discover 10.\""
+                    .to_string()
+            ]
         );
     }
 }
@@ -8481,22 +8660,8 @@ fn describe_single_self_replacement_segment(
     if let Some(rendered) = describe_target_threshold_paid_cost_self_replacement(segment) {
         return Some(rendered);
     }
-    if !branch.condition_after_replacement
-        && let [default_effect] = segment.default_effects.as_slice()
-        && default_effect
-            .downcast_ref::<crate::effects::DiscardEffect>()
-            .is_some()
-    {
-        let replacement_refs = branch.replacement_effects.iter().collect::<Vec<_>>();
-        if let Some(inline) = describe_reveal_hand_choose_discard_inline(&replacement_refs) {
-            let default_text = describe_effect_list(&segment.default_effects);
-            let condition_text = super::normalize_common::describe_condition(&branch.condition);
-            let rendered = format!(
-                "{default_text}. If {condition_text}, instead {}",
-                super::normalize_common::lowercase_first(&inline)
-            );
-            return Some(super::normalize_common::capitalize_first(&rendered));
-        }
+    if let Some(rendered) = describe_reveal_hand_choose_discard_self_replacement(segment) {
+        return Some(rendered);
     }
     let conditional = Effect::conditional(
         branch.condition.clone(),
@@ -8670,6 +8835,71 @@ fn describe_single_self_replacement_segment(
         &replacement,
         branch.leading_instead_surface,
     ))
+}
+
+/// Preserve an authored reveal/choose/discard replacement as one comma-then
+/// clause. Sentence lowering may keep the replacement inside a typed
+/// `CommaThen` sequence and synthesize an implicit target declaration in both
+/// branches; neither scaffold is an authored action. The existing inline
+/// matcher still proves the revealed hand, chooser, selected-card tag,
+/// discard player, and count before this bridge changes presentation.
+fn describe_reveal_hand_choose_discard_self_replacement(
+    segment: &crate::resolution::ResolutionSegment,
+) -> Option<String> {
+    let [branch] = segment.self_replacements.as_slice() else {
+        return None;
+    };
+    if branch.condition_after_replacement {
+        return None;
+    }
+
+    let default_visible = segment
+        .default_effects
+        .iter()
+        .map(structural_unwrap_render_wrappers)
+        .filter(|effect| {
+            !effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some_and(|target| !target.explicit_declaration)
+        })
+        .collect::<Vec<_>>();
+    let [default_effect] = default_visible.as_slice() else {
+        return None;
+    };
+    default_effect.downcast_ref::<crate::effects::DiscardEffect>()?;
+
+    let replacement_effects = match branch.replacement_effects.as_slice() {
+        [sequence_effect] => {
+            if let Some(sequence) = structural_unwrap_render_wrappers(sequence_effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()
+            {
+                if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
+                    return None;
+                }
+                sequence.effects.as_slice()
+            } else {
+                branch.replacement_effects.as_slice()
+            }
+        }
+        effects => effects,
+    };
+    let replacement_visible = replacement_effects
+        .iter()
+        .map(structural_unwrap_render_wrappers)
+        .filter(|effect| {
+            !effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some_and(|target| !target.explicit_declaration)
+        })
+        .collect::<Vec<_>>();
+    let inline = describe_reveal_hand_choose_discard_inline(&replacement_visible)?;
+    let default_text = describe_effect_list(&segment.default_effects);
+    let condition_text = super::normalize_common::describe_condition(&branch.condition);
+    let rendered = format!(
+        "{default_text}. If {condition_text}, instead {}",
+        super::normalize_common::lowercase_first(&inline)
+    );
+    Some(super::normalize_common::capitalize_first(&rendered))
 }
 
 /// Recognize a complete search/reveal/move/shuffle replacement pipeline whose
@@ -9820,13 +10050,12 @@ fn bracket_removed_cleave_words(default_text: &str, cleaved_text: &str) -> Optio
     let mut lcs = vec![vec![0usize; cleaved_words.len() + 1]; default_words.len() + 1];
     for default_index in (0..default_words.len()).rev() {
         for cleaved_index in (0..cleaved_words.len()).rev() {
-            lcs[default_index][cleaved_index] = if default_words[default_index]
-                .eq_ignore_ascii_case(cleaved_words[cleaved_index])
-            {
-                1 + lcs[default_index + 1][cleaved_index + 1]
-            } else {
-                lcs[default_index + 1][cleaved_index].max(lcs[default_index][cleaved_index + 1])
-            };
+            lcs[default_index][cleaved_index] =
+                if cleave_words_match(default_words[default_index], cleaved_words[cleaved_index]) {
+                    1 + lcs[default_index + 1][cleaved_index + 1]
+                } else {
+                    lcs[default_index + 1][cleaved_index].max(lcs[default_index][cleaved_index + 1])
+                };
         }
     }
     if lcs[0][0] != cleaved_words.len() {
@@ -9836,7 +10065,7 @@ fn bracket_removed_cleave_words(default_text: &str, cleaved_text: &str) -> Optio
     let mut retained = vec![false; default_words.len()];
     let (mut default_index, mut cleaved_index) = (0usize, 0usize);
     while default_index < default_words.len() && cleaved_index < cleaved_words.len() {
-        if default_words[default_index].eq_ignore_ascii_case(cleaved_words[cleaved_index])
+        if cleave_words_match(default_words[default_index], cleaved_words[cleaved_index])
             && lcs[default_index][cleaved_index] == 1 + lcs[default_index + 1][cleaved_index + 1]
         {
             retained[default_index] = true;
@@ -9863,7 +10092,19 @@ fn bracket_removed_cleave_words(default_text: &str, cleaved_text: &str) -> Optio
         }
         rendered.push(format!("[{}]", default_words[start..index].join(" ")));
     }
-    Some(rendered.join(" "))
+    let mut rendered = rendered.join(" ");
+    for punctuation in ['.', '!', '?'] {
+        let bracketed_punctuation = format!("{punctuation}]");
+        rendered = rendered.replace(&bracketed_punctuation, &format!("]{punctuation}"));
+    }
+    Some(rendered)
+}
+
+fn cleave_words_match(default_word: &str, cleaved_word: &str) -> bool {
+    default_word.eq_ignore_ascii_case(cleaved_word)
+        || default_word
+            .trim_end_matches(['.', '!', '?'])
+            .eq_ignore_ascii_case(cleaved_word.trim_end_matches(['.', '!', '?']))
 }
 
 fn preserve_cleave_bracket_surface(def: &CardDefinition, default_text: &str) -> Option<String> {
@@ -9872,7 +10113,10 @@ fn preserve_cleave_bracket_surface(def: &CardDefinition, default_text: &str) -> 
         .iter()
         .find_map(AlternativeCastingMethod::cleave_effects)?;
     let cleaved_text = describe_effect_list(cleaved_effects);
-    bracket_removed_cleave_words(default_text, &cleaved_text)
+    bracket_removed_cleave_words(default_text, &cleaved_text).map(|text| {
+        text.replace('[', CLEAVE_BRACKET_OPEN_SENTINEL)
+            .replace(']', CLEAVE_BRACKET_CLOSE_SENTINEL)
+    })
 }
 
 fn describe_named_spell_shared_target_damage_self_replacement(
@@ -9985,11 +10229,20 @@ mod source_line_program_tests {
             None,
             "cleave reconstruction must not erase authored source lines"
         );
+        assert_eq!(
+            bracket_removed_cleave_words(
+                "You choose a nonland card from it with mana value 2 or less.",
+                "You choose a nonland card from it.",
+            )
+            .as_deref(),
+            Some("You choose a nonland card from it [with mana value 2 or less].")
+        );
     }
 
     #[test]
     fn cleave_card_renderer_preserves_cast_origin_restriction_brackets() {
-        let oracle = "Cleave {1}{U}{U}\nCounter target spell [that wasn't cast from its owner's hand].";
+        let oracle =
+            "Cleave {1}{U}{U}\nCounter target spell [that wasn't cast from its owner's hand].";
         let definition = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Wash Away",
@@ -10006,8 +10259,7 @@ mod source_line_program_tests {
 
     #[test]
     fn cleave_card_renderer_preserves_mana_value_restriction_brackets() {
-        let oracle =
-            "Cleave {4}{W}{B}\nDestroy all creatures [with mana value 2 or less].";
+        let oracle = "Cleave {4}{W}{B}\nDestroy all creatures [with mana value 2 or less].";
         let definition = crate::cards::builders::CardDefinitionBuilder::new(
             crate::ids::CardId::new(),
             "Path of Peril",
@@ -10041,13 +10293,11 @@ mod source_line_program_tests {
                 "Cleave {5}{W}\nDestroy target [attacking] creature.",
             ),
         ] {
-            let definition = crate::cards::builders::CardDefinitionBuilder::new(
-                crate::ids::CardId::new(),
-                name,
-            )
-            .card_types(vec![card_type])
-            .parse_text(oracle)
-            .expect("frozen Cleave card should compile");
+            let definition =
+                crate::cards::builders::CardDefinitionBuilder::new(crate::ids::CardId::new(), name)
+                    .card_types(vec![card_type])
+                    .parse_text(oracle)
+                    .expect("frozen Cleave card should compile");
 
             assert_eq!(
                 crate::compiled_text::compiled_text_lines(&definition).join("\n"),
@@ -12875,6 +13125,13 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 continue;
             }
             if let Some((text, consumed)) =
+                describe_structural_attached_mixed_grant_bundle(&def.abilities[ability_idx..])
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += consumed;
+                continue;
+            }
+            if let Some((text, consumed)) =
                 describe_structural_keyword_maximum_blocker_bundle(&def.abilities[ability_idx..])
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
@@ -13623,6 +13880,14 @@ fn describe_source_line_grant_all_other_loss_group(abilities: &[Ability]) -> Opt
 
     let mut removal = None;
     let mut grant = None;
+    let removal_precedes_grant = matches!(
+        &first.kind,
+        AbilityKind::Static(static_ability)
+            if matches!(
+                &static_ability.compiled_model()?.payload,
+                ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(_)
+            )
+    );
     for ability in [first, second] {
         let AbilityKind::Static(static_ability) = &ability.kind else {
             return None;
@@ -13639,13 +13904,13 @@ fn describe_source_line_grant_all_other_loss_group(abilities: &[Ability]) -> Opt
                     && spec.condition.is_none()
                     && spec.additional_abilities.is_empty() =>
             {
-                grant = Some((static_ability, &spec.filter));
+                grant = Some((static_ability, &spec.filter, spec.display.as_str()));
             }
             _ => return None,
         }
     }
     let (removal, removal_filter) = removal?;
-    let (grant, grant_filter) = grant?;
+    let (grant, grant_filter, authored_grant_tail) = grant?;
     if removal_filter != grant_filter {
         return None;
     }
@@ -13661,16 +13926,31 @@ fn describe_source_line_grant_all_other_loss_group(abilities: &[Ability]) -> Opt
     if removal_tail != "all abilities" || !static_bundle_subjects_match(subject, removal_subject) {
         return None;
     }
-    let grant_tail = grant_tail
-        .strip_prefix('"')
-        .and_then(|body| body.strip_suffix('"'))
-        .map(|body| format!("\"{}\"", body.trim_end_matches('.')))
-        .unwrap_or_else(|| grant_tail.to_string());
+    let grant_tail = if removal_precedes_grant {
+        let body = authored_grant_tail
+            .trim()
+            .trim_matches('"')
+            .trim_end_matches('.');
+        format!("\"{}.\"", capitalize_first(body))
+    } else {
+        grant_tail
+            .strip_prefix('"')
+            .and_then(|body| body.strip_suffix('"'))
+            .map(|body| format!("\"{}\"", body.trim_end_matches('.')))
+            .unwrap_or_else(|| grant_tail.to_string())
+    };
 
-    Some(format!(
-        "{} {grant_verb} {grant_tail} and {removal_verb} all other abilities",
-        capitalize_first(subject)
-    ))
+    if removal_precedes_grant {
+        Some(format!(
+            "{} {removal_verb} all abilities and {grant_verb} {grant_tail}",
+            capitalize_first(subject)
+        ))
+    } else {
+        Some(format!(
+            "{} {grant_verb} {grant_tail} and {removal_verb} all other abilities",
+            capitalize_first(subject)
+        ))
+    }
 }
 
 enum TypeAdditionGrantSurface {
@@ -13814,11 +14094,46 @@ fn describe_source_line_static_group(abilities: &[Ability], member_count: usize)
         return None;
     }
     let members = abilities.get(..member_count)?;
-    describe_source_line_static_ability_loss_group(members)
+    describe_source_line_attached_restriction_loss_grant_group(members)
+        .or_else(|| {
+            describe_structural_attached_mixed_grant_bundle(members)
+                .and_then(|(text, consumed)| (consumed == member_count).then_some(text))
+        })
+        .or_else(|| describe_source_line_static_ability_loss_group(members))
         .or_else(|| describe_source_line_cast_activation_restriction_group(members))
         .or_else(|| describe_source_line_base_pt_grant_loss_group(members))
         .or_else(|| describe_source_line_grant_all_other_loss_group(members))
         .or_else(|| describe_source_line_type_addition_grant_group(members))
+}
+
+fn describe_source_line_attached_restriction_loss_grant_group(
+    abilities: &[Ability],
+) -> Option<String> {
+    let [restriction, loss, grant] = abilities else {
+        return None;
+    };
+    let AbilityKind::Static(restriction_static) = &restriction.kind else {
+        return None;
+    };
+    let restriction_display = restriction_static.display();
+    let restriction_display = restriction_display.trim().trim_end_matches('.');
+    let (restriction_subject, _) =
+        split_static_predicate(restriction_display, " can't attack or block")?;
+    if !matches!(
+        restriction_subject.to_ascii_lowercase().as_str(),
+        "enchanted creature" | "equipped creature"
+    ) {
+        return None;
+    }
+
+    let loss_grant =
+        describe_source_line_grant_all_other_loss_group(&[loss.clone(), grant.clone()])?;
+    let (loss_subject, _, _) =
+        split_static_predicate_with_verb(&loss_grant, &[" loses ", " lose "])?;
+    if !static_bundle_subjects_match(restriction_subject, loss_subject) {
+        return None;
+    }
+    Some(format!("{restriction_display}. {loss_grant}"))
 }
 
 #[cfg(test)]
@@ -15886,6 +16201,7 @@ mod self_replacement_rendering_tests {
 
     #[test]
     fn morbid_discard_replacement_keeps_reveal_choice_discard_inline() {
+        let target = ChooseSpec::Player(PlayerFilter::Any);
         let player = PlayerFilter::AliasedTarget(Box::new(PlayerFilter::Any));
         let chosen = TagKey::from("chosen_hand_cards");
         let look = Effect::new(crate::effects::LookAtHandEffect::reveal(
@@ -15909,19 +16225,28 @@ mod self_replacement_rendering_tests {
             false,
             Some(chosen_filter),
         ));
+        let replacement = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+            Effect::new(crate::effects::TargetOnlyEffect::new(target.clone())),
+            look,
+            choose,
+            discard,
+        ]));
         let branch = crate::resolution::SelfReplacementBranch::new(
             Condition::CreatureDiedThisTurn,
-            vec![look, choose, discard],
+            vec![replacement],
         )
         .with_presentation_label(Some(
             crate::ability::PresentationLabel::from_ability_word("Morbid"),
         ));
         let segment = crate::resolution::ResolutionSegment {
-            default_effects: vec![Effect::new(crate::effects::DiscardEffect::new(
-                Value::Fixed(2),
-                PlayerFilter::target_player(),
-                false,
-            ))],
+            default_effects: vec![
+                Effect::new(crate::effects::TargetOnlyEffect::new(target)),
+                Effect::new(crate::effects::DiscardEffect::new(
+                    Value::Fixed(2),
+                    PlayerFilter::target_player(),
+                    false,
+                )),
+            ],
             self_replacements: vec![branch],
             starts_new_source_line: false,
         };
@@ -16072,14 +16397,13 @@ mod self_replacement_rendering_tests {
     #[test]
     fn same_target_zone_sequence_uses_pronoun_then_card_referent() {
         let oracle = "{2}{W}: Return target permanent you control to its owner's hand. If it has unearth, instead exile it, then return that card to its owner's hand. Activate only during your turn.";
-        let definition =
-            crate::cards::builders::CardDefinitionBuilder::new(
-                crate::ids::CardId::new(),
-                "Meticulous Excavation",
-            )
-            .card_types(vec![CardType::Enchantment])
-            .parse_text(oracle)
-            .expect("same-target sequential zone replacement should compile");
+        let definition = crate::cards::builders::CardDefinitionBuilder::new(
+            crate::ids::CardId::new(),
+            "Meticulous Excavation",
+        )
+        .card_types(vec![CardType::Enchantment])
+        .parse_text(oracle)
+        .expect("same-target sequential zone replacement should compile");
 
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),

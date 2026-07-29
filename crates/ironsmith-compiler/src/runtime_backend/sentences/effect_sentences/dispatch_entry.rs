@@ -3501,6 +3501,13 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
             }
             _ => false,
         },
+        EffectAst::ChooseOneOf { modes } | EffectAst::VillainousChoice { modes, .. } => {
+            let mut applied = false;
+            for mode in modes {
+                applied |= apply_cant_be_regenerated_to_effects_tail(&mut mode.effects);
+            }
+            applied
+        }
         _ => {
             let mut applied = false;
             for_each_nested_effects_mut(effect, true, |nested| {
@@ -5097,6 +5104,46 @@ mod tests {
             Some(ironsmith_core::SetQuantifierSurface::They)
         );
         assert_eq!(surface("It gains haste until end of turn."), None);
+    }
+
+    #[test]
+    fn cant_be_regenerated_followup_applies_to_every_choice_mode() {
+        let mut effects = vec![EffectAst::ChooseOneOf {
+            modes: vec![
+                crate::cards::builders::ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![EffectAst::subject_verb_destroy_all(
+                        crate::target::ObjectFilter::default()
+                            .with_type(crate::types::CardType::Land),
+                    )],
+                },
+                crate::cards::builders::ChooseOneModeAst {
+                    description: String::new(),
+                    effects: vec![EffectAst::subject_verb_destroy_all(
+                        crate::target::ObjectFilter::creature(),
+                    )],
+                },
+            ],
+        }];
+
+        assert!(super::apply_cant_be_regenerated_to_last_destroy_effect(
+            &mut effects
+        ));
+        let [EffectAst::ChooseOneOf { modes }] = effects.as_slice() else {
+            panic!("expected modal destroy");
+        };
+        assert!(modes.iter().all(|mode| {
+            matches!(
+                mode.effects.as_slice(),
+                [EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::DestroyAll {
+                        no_regeneration: true,
+                        ..
+                    },
+                    ..
+                })]
+            )
+        }));
     }
 }
 

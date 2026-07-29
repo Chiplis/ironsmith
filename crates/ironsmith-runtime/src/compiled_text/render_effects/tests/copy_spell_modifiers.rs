@@ -65,3 +65,25 @@ fn copied_pronoun_surface_overrides_resolved_trigger_kind() {
 
     assert_eq!(describe_effect(&effect), "Copy it");
 }
+
+#[test]
+fn copied_spell_color_exception_stays_with_retarget_sentence() {
+    let copy_id = crate::effect::EffectId(7);
+    let copied = TagKey::from("__copied_stack_object__");
+    let copy = Effect::with_id(
+        copy_id.0,
+        Effect::new(crate::effects::CopySpellEffect::single(ChooseSpec::spell())),
+    )
+    .tag(copied.clone());
+    let set_red = Effect::new(crate::effects::ApplyContinuousEffect::with_spec(
+        ChooseSpec::Tagged(copied),
+        crate::continuous::Modification::SetColors(crate::color::ColorSet::RED),
+        Until::Forever,
+    ));
+    let retarget = Effect::new(crate::effects::ChooseNewTargetsEffect::may(copy_id));
+
+    assert_eq!(
+        describe_effect_list(&[copy, set_red, retarget]),
+        "Copy target spell, except that the copy is red. You may choose new targets for the copy"
+    );
+}

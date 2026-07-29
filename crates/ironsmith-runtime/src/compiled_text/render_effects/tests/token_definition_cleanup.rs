@@ -38,3 +38,11 @@ fn inline_token_presentation_does_not_claim_the_post_create_surface() {
         None
     );
 }
+
+#[test]
+fn standard_junk_token_uses_its_named_token_surface() {
+    let create =
+        crate::effects::CreateTokenEffect::one(crate::cards::tokens::junk_token_definition());
+
+    assert_eq!(describe_effect(&Effect::new(create)), "Create a Junk token");
+}

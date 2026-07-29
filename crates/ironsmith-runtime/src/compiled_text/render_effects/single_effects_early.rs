@@ -1948,6 +1948,82 @@ pub(super) fn describe_inline_token_creation_choice(
     })
 }
 
+/// Compact an instruction-level choice between two non-targeted destruction
+/// scopes. Empty mode labels prove that this came from inline "all A or all
+/// B" wording rather than from a printed modal spell block.
+pub(super) fn describe_inline_destroy_all_choice(
+    choose: &crate::effects::ChooseModeEffect,
+) -> Option<String> {
+    if choose.modes.len() != 2
+        || !matches!(&choose.chooser, None | Some(PlayerFilter::You))
+        || choose.min != Value::Fixed(1)
+        || choose.max != Value::Fixed(1)
+        || choose.choose_count != Value::Fixed(1)
+        || choose.min_choose_count != Value::Fixed(1)
+        || choose.allow_repeat
+        || choose.random
+        || choose.allow_repeated_modes
+        || choose.spree
+        || choose.disallow_previously_chosen_modes
+        || choose.disallow_previously_chosen_modes_this_turn
+        || choose.distinct_player_targets_per_mode
+        || choose.conditional_mode_range.is_some()
+        || !choose.mode_additional_mana_costs.is_empty()
+        || choose.mode_point_costs.iter().any(|cost| *cost != 1)
+        || choose
+            .modes
+            .iter()
+            .any(|mode| !mode.source_text.trim().is_empty())
+    {
+        return None;
+    }
+
+    fn branch(mode: &crate::effect::EffectMode) -> Option<(String, bool)> {
+        let [effect] = mode.effects.as_slice() else {
+            return None;
+        };
+        let effect = unwrap_basic_tag_wrappers(effect);
+        let (spec, no_regeneration) = if let Some(destroy) =
+            effect.downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+        {
+            (&destroy.spec, true)
+        } else {
+            let destroy = effect.downcast_ref::<crate::effects::DestroyEffect>()?;
+            (&destroy.spec, false)
+        };
+        let ChooseSpec::All(filter) = spec.base() else {
+            return None;
+        };
+        // Destroy effects operate on battlefield permanents even when a
+        // directly constructed filter leaves its zone implicit. Normalize
+        // only that implicit default before applying the strict noun check.
+        let mut battlefield_filter = filter.clone();
+        if battlefield_filter.zone.is_none() {
+            battlefield_filter.zone = Some(Zone::Battlefield);
+        }
+        Some((
+            simple_filter_plural_noun(&battlefield_filter)?,
+            no_regeneration,
+        ))
+    }
+
+    let first = branch(&choose.modes[0])?;
+    let second = branch(&choose.modes[1])?;
+    if first.1 != second.1 {
+        return None;
+    }
+
+    let suffix = if first.1 {
+        ". They can't be regenerated"
+    } else {
+        ""
+    };
+    Some(format!(
+        "Destroy all {} or all {}{suffix}",
+        first.0, second.0
+    ))
+}
+
 pub(super) fn describe_compact_choose_mode_branch(effects: &[Effect]) -> Option<String> {
     let [effect] = effects else {
         return None;
@@ -2188,10 +2264,10 @@ pub(super) fn describe_pay_mana_cost(pay_mana: &crate::effects::PayManaEffect) -
         Some(value)
             if cost == "{X}"
                 && value.has_surface_hint(ValueSurfaceHint::ForEach)
-                && crate::compiled_text::describe_counter_for_each_basis(value).is_some() =>
+                && describe_for_each_multiplier_and_basis(value).is_some() =>
         {
-            let (multiplier, basis) = crate::compiled_text::describe_counter_for_each_basis(value)
-                .expect("counter for-each basis checked in match guard");
+            let (multiplier, basis) = describe_for_each_multiplier_and_basis(value)
+                .expect("for-each payment basis checked in match guard");
             format!("{{{multiplier}}} for each {basis}")
         }
         Some(value) => format!("{cost}, where X is {}", describe_value(value)),
@@ -2381,6 +2457,18 @@ pub(crate) fn describe_with_id_then_for_players_if_didnt(
                 .strip_prefix("that player ")
                 .or_else(|| followup.strip_prefix("That player "))
         {
+            let is_optional_per_player = antecedent.effects[0]
+                .downcast_ref::<crate::effects::MayEffect>()
+                .is_some_and(|may| {
+                    may.decider
+                        .as_ref()
+                        .is_none_or(|decider| *decider == PlayerFilter::IteratedPlayer)
+                });
+            if is_optional_per_player {
+                return Some(format!(
+                    "{setup}, then each {each_player} who didn't {action}"
+                ));
+            }
             return Some(format!("{setup}. Each {each_player} who can't {action}"));
         }
     }

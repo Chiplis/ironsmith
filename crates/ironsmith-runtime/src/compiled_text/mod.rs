@@ -38,18 +38,33 @@ pub(crate) fn pluralize_noun_phrase_for_trigger(phrase: &str) -> String {
     self::render_effects::pluralize_noun_phrase(phrase)
 }
 
-/// Render the structured runtime model for debug/inspector use.
-pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
+const CLEAVE_BRACKET_OPEN_SENTINEL: &str = "\u{e000}";
+const CLEAVE_BRACKET_CLOSE_SENTINEL: &str = "\u{e001}";
+
+fn restore_cleave_bracket_surface(line: String) -> String {
+    line.replace(CLEAVE_BRACKET_OPEN_SENTINEL, "[")
+        .replace(CLEAVE_BRACKET_CLOSE_SENTINEL, "]")
+}
+
+fn debug_compiled_surface_lines(def: &CardDefinition) -> Vec<String> {
     debug_safe::normalize_debug_safe_surface(ast_compiled_lines(def))
         .into_iter()
         .map(debug_safe::DebugSafeLine::into_string)
         .collect()
 }
 
+/// Render the structured runtime model for debug/inspector use.
+pub fn debug_compiled_lines(def: &CardDefinition) -> Vec<String> {
+    debug_compiled_surface_lines(def)
+        .into_iter()
+        .map(restore_cleave_bracket_surface)
+        .collect()
+}
+
 /// Render the structured compiled-text surface used for DB scoring.
 pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = oracle_short_self_name(def);
-    let lines = normalize_ast_surface_lines(debug_compiled_lines(def))
+    let lines = normalize_ast_surface_lines(debug_compiled_surface_lines(def))
         .into_iter()
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
@@ -61,13 +76,14 @@ pub fn compiled_text_lines(def: &CardDefinition) -> Vec<String> {
         .into_iter()
         .map(normalize_scored_compiled_line)
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
+        .map(restore_cleave_bracket_surface)
         .collect();
     prefix_attraction_visit_surface(def, lines)
 }
 
 pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
     let oracle_short = oracle_short_self_name(def);
-    let lines = normalize_ast_surface_lines(debug_compiled_lines(def))
+    let lines = normalize_ast_surface_lines(debug_compiled_surface_lines(def))
         .into_iter()
         .map(|line| {
             substitute_legendary_source_reference(&line, &def.card, "", oracle_short.as_deref())
@@ -79,6 +95,7 @@ pub fn unprocessed_compiled_lines(def: &CardDefinition) -> Vec<String> {
         .map(normalize_unprocessed_compiled_line)
         .map(|line| normalize_duplicate_optional_subject(&line))
         .map(|line| normalize_punctuated_card_name_damage_case(line, &def.card.name))
+        .map(restore_cleave_bracket_surface)
         .collect();
     prefix_attraction_visit_surface(def, lines)
 }

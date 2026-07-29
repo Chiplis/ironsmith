@@ -243,4 +243,12 @@ mod tests {
             vec![StaticAbility::keyword_marker("toxic 1")]
         );
     }
+
+    #[test]
+    fn parses_explicit_spell_copy_color_exception() {
+        let spec =
+            parse_copy_modifier_words(&["except", "that", "the", "copy", "is", "red"]).unwrap();
+
+        assert_eq!(spec.set_colors, Some(ColorSet::RED));
+    }
 }

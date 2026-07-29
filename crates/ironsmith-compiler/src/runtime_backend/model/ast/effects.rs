@@ -924,6 +924,7 @@ impl EffectAst {
                 may_choose_new_targets,
                 choose_new_target_singular,
                 removed_supertypes,
+                set_colors: None,
                 added_card_types: Vec::new(),
             },
         )
@@ -992,6 +993,25 @@ impl EffectAst {
         }) = &mut self
         {
             *action_added_card_types = added_card_types;
+        }
+        self
+    }
+
+    /// Preserve colors set by a copy exception.
+    pub(crate) fn with_copy_set_colors(
+        mut self,
+        set_colors: Option<crate::color::ColorSet>,
+    ) -> Self {
+        if let Self::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    set_colors: action_set_colors,
+                    ..
+                },
+            ..
+        }) = &mut self
+        {
+            *action_set_colors = set_colors;
         }
         self
     }

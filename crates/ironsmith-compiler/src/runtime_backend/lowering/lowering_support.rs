@@ -817,7 +817,7 @@ fn spell_cast_trigger_targets_source(trigger: &TriggerSpec) -> bool {
 fn trigger_is_spell_cast(trigger: &TriggerSpec) -> bool {
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => trigger_is_spell_cast(trigger),
-        TriggerSpec::SpellCast { .. } => true,
+        TriggerSpec::SpellCast { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
         _ => false,
     }
 }
@@ -828,6 +828,7 @@ fn triggering_stack_object_kind(trigger: &TriggerSpec) -> Option<crate::filter::
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => triggering_stack_object_kind(trigger),
         TriggerSpec::SpellCast { .. }
+        | TriggerSpec::NthSpellOfTurnCast { .. }
         | TriggerSpec::SpellCopied { .. }
         | TriggerSpec::SpellCountered { .. } => Some(StackObjectKind::Spell),
         TriggerSpec::AbilityActivated { .. } | TriggerSpec::AbilityTriggered { .. } => {
@@ -1674,7 +1675,7 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     fn trigger_object_is_stack_object(trigger: &TriggerSpec) -> bool {
         match trigger {
             TriggerSpec::WithIntro { trigger, .. } => trigger_object_is_stack_object(trigger),
-            TriggerSpec::SpellCast { .. } => true,
+            TriggerSpec::SpellCast { .. } | TriggerSpec::NthSpellOfTurnCast { .. } => true,
             _ => false,
         }
     }

@@ -111,6 +111,7 @@ fn trigger_supports_event_amount(trigger: &TriggerSpec) -> bool {
                     | TriggerSpec::AttacksOneOrMoreWithExactTotal { .. }
                     | TriggerSpec::AttacksYouOrPlaneswalkerYouControlOneOrMore(_)
                     | TriggerSpec::CounterPutOn { .. }
+                    | TriggerSpec::NthCounterPutOn { .. }
                     | TriggerSpec::CounterRemovedFrom { .. }
                     | TriggerSpec::EntersBattlefieldOneOrMore { .. }
             ) || matches!(

@@ -60,6 +60,31 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
         return Ok(None);
     };
 
+    if shape.connective == replacement_grammar::SplitAllConnectiveShape::Or {
+        let mut modes = Vec::with_capacity(shape.filter_tokens.len());
+        for filter_tokens in shape.filter_tokens {
+            let filter = parse_object_filter(filter_tokens, false).map_err(|_| {
+                CardTextError::ParseError(format!(
+                    "unsupported filter in split all choice (clause: '{}')",
+                    render_token_slice(tokens).trim()
+                ))
+            })?;
+            let effect = match shape.verb {
+                replacement_grammar::SplitAllVerbShape::Destroy => {
+                    EffectAst::subject_verb_destroy_all(filter)
+                }
+                replacement_grammar::SplitAllVerbShape::Exile => {
+                    EffectAst::subject_verb_exile_all(filter, false)
+                }
+            };
+            modes.push(crate::cards::builders::ChooseOneModeAst {
+                description: String::new(),
+                effects: vec![effect],
+            });
+        }
+        return Ok(Some(vec![EffectAst::ChooseOneOf { modes }]));
+    }
+
     // A coordinated all-object clause can carry independent scope on each
     // authored branch, for example controller, owner, attachment, or combat
     // state. The complete object-filter grammar preserves those branches and

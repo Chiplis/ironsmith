@@ -1525,16 +1525,6 @@ pub(crate) fn describe_compact_create_token(
     if let Some(state) = state {
         amount = amount.replacen(token_name, &format!("{state} {token_name}"), 1);
     }
-    if token_name == "Junk" {
-        let text = format!(
-            "{amount} with \"{{T}}, Sacrifice this token, exile the top card of your library: You may play that card this turn. Activate only as a sorcery\""
-        );
-        return Some(describe_create_token_action(
-            &text,
-            &create_token.controller,
-            create_token.actor_surface_explicit,
-        ));
-    }
 
     Some(describe_create_token_action(
         &amount,

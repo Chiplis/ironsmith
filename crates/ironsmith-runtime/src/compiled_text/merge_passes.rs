@@ -257,6 +257,7 @@ fn split_attack_or_block_restriction_clause(line: &str) -> Option<(&str, &str)> 
 #[derive(Debug, Clone)]
 struct ConditionalSubjectPredicate {
     condition: String,
+    condition_precedes_subject: bool,
     subject: String,
     verb: String,
     predicate: String,
@@ -292,6 +293,7 @@ fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectP
             let (subject, verb, predicate) = split_subject_predicate_clause(body)?;
             return Some(ConditionalSubjectPredicate {
                 condition: normalized_condition,
+                condition_precedes_subject: true,
                 subject: subject.trim().to_string(),
                 verb: verb.trim().to_string(),
                 predicate: predicate.trim().to_string(),
@@ -303,6 +305,7 @@ fn parse_conditional_subject_predicate(line: &str) -> Option<ConditionalSubjectP
     let (predicate, condition) = predicate_with_condition.rsplit_once(" as long as ")?;
     Some(ConditionalSubjectPredicate {
         condition: format!("As long as {}", condition.trim()),
+        condition_precedes_subject: false,
         subject: subject.trim().to_string(),
         verb: verb.trim().to_string(),
         predicate: predicate.trim().to_string(),
@@ -1055,6 +1058,15 @@ fn format_conditioned_subject_predicate_merge(
         );
     }
     if is_trait(&left.verb) && is_trait(right_verb) {
+        if !left.condition_precedes_subject {
+            return format!(
+                "{ability_word}{} {} {} and {} as long as {condition}",
+                left.subject,
+                have_verb_for_subject(&left.subject),
+                left_predicate,
+                right_predicate
+            );
+        }
         return format!(
             "{ability_word}As long as {condition}, {} {} {} and {}",
             lowercase_first(&left.subject),
@@ -1327,6 +1339,10 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             && let Some((trait_subject, trait_verb, trait_rest)) =
                 split_subject_predicate_clause(&lines[idx + 1])
             && matches!(trait_verb, "has" | "have" | "gains" | "gain")
+            // A quoted activated ability on the following line is an authored
+            // ability boundary. Compound restriction-and-grant clauses are
+            // already preserved structurally by their source-line group.
+            && !trait_rest.contains(':')
             && conditioned_subjects_equivalent(restriction_subject, trait_subject)
         {
             let trait_rest =
@@ -1460,6 +1476,11 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
             // separately authored abilities one resolution program.
             && !left_subject.contains(':')
             && !right_subject.contains(':')
+            // A separately authored activated-ability grant must not be
+            // absorbed into a neighboring blocking restriction merely
+            // because both affect the same attached object.
+            && !((left_verb == "can't be" || right_verb == "can't be")
+                && (left_rest.contains(':') || right_rest.contains(':')))
             && conditioned_subjects_equivalent(left_subject, right_subject)
             && can_merge_subject_predicates(left_verb, right_verb)
         {
@@ -3614,6 +3635,24 @@ mod tests {
     }
 
     #[test]
+    fn merge_subject_has_keyword_lines_preserves_trailing_shared_condition() {
+        let merged = merge_subject_has_keyword_lines(vec![
+            "This creature has first strike as long as an instant card and a sorcery card are in your graveyard."
+                .to_string(),
+            "This creature has trample as long as an instant card and a sorcery card are in your graveyard."
+                .to_string(),
+        ]);
+
+        assert_eq!(
+            merged,
+            vec![
+                "This creature has first strike and trample as long as an instant card and a sorcery card are in your graveyard"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
     fn merge_subject_has_keyword_lines_compacts_color_filtered_grants() {
         let merged = merge_subject_has_keyword_lines(vec![
             "Each white creature you control has vigilance.".to_string(),
@@ -3719,6 +3758,17 @@ mod tests {
             merged,
             vec!["All creatures have double strike and attack each combat if able".to_string()]
         );
+    }
+
+    #[test]
+    fn attached_block_restriction_does_not_absorb_separate_quoted_activation() {
+        let lines = vec![
+            "Equipped creature can't be blocked by Vampires or Zombies.".to_string(),
+            "Equipped creature has \"{T}, Sacrifice this Equipment: It deals 2 damage to any target.\""
+                .to_string(),
+        ];
+
+        assert_eq!(merge_adjacent_subject_predicate_lines(lines.clone()), lines);
     }
 
     #[test]

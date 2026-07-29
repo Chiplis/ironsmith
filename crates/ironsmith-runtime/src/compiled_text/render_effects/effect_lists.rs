@@ -8155,7 +8155,7 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_condition_collection_choice_gain_control_then_untap(effects) {
         return compact;
     }
-    if let Some(compact) = describe_copy_spell_with_added_card_types(effects) {
+    if let Some(compact) = describe_copy_spell_with_characteristic_modifiers(effects) {
         return compact;
     }
     if let Some((prefix, consumed)) = describe_explicit_target_then_coin_flip(effects) {
@@ -10698,7 +10698,7 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     {
         return Some(lowercase_first(&compact));
     }
-    if let Some(compact) = describe_copy_spell_with_added_card_types(effects) {
+    if let Some(compact) = describe_copy_spell_with_characteristic_modifiers(effects) {
         return Some(lowercase_first(&compact));
     }
     if let Some(compact) = describe_discard_then_draw_for_discarded(effects) {

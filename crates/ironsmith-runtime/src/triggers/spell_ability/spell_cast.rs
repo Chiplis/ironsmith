@@ -24,6 +24,10 @@ pub struct SpellCastTrigger {
     pub during_turn: Option<PlayerFilter>,
     pub min_spells_this_turn: Option<u32>,
     pub exact_spells_this_turn: Option<u32>,
+    /// Count every spell cast in the turn rather than only spells cast by the
+    /// triggering spell's caster. This models passive ordinal surfaces such
+    /// as "the fourth spell of a turn is cast."
+    pub count_all_spells_this_turn: bool,
     pub from_not_hand: bool,
     pub first_spell_of_game: bool,
 }
@@ -38,6 +42,7 @@ impl SpellCastTrigger {
             during_turn: None,
             min_spells_this_turn: None,
             exact_spells_this_turn: None,
+            count_all_spells_this_turn: false,
             from_not_hand: false,
             first_spell_of_game: false,
         }
@@ -60,8 +65,17 @@ impl SpellCastTrigger {
             during_turn,
             min_spells_this_turn,
             exact_spells_this_turn,
+            count_all_spells_this_turn: false,
             from_not_hand,
             first_spell_of_game: false,
+        }
+    }
+
+    pub fn nth_spell_of_turn(spell_number: u32) -> Self {
+        Self {
+            exact_spells_this_turn: Some(spell_number),
+            count_all_spells_this_turn: true,
+            ..Self::any_cast_any()
         }
     }
 
@@ -116,11 +130,17 @@ impl TriggerMatcher for SpellCastTrigger {
             }
         }
 
-        let cast_count = ctx
-            .game
-            .turn_store
-            .turn_history
-            .spells_cast_by_player(e.caster);
+        let cast_count = if self.count_all_spells_this_turn {
+            ctx.game
+                .turn_store
+                .turn_history
+                .total_spells_cast_this_turn()
+        } else {
+            ctx.game
+                .turn_store
+                .turn_history
+                .spells_cast_by_player(e.caster)
+        };
         if let Some(exact_spells) = self.exact_spells_this_turn {
             if cast_count != exact_spells {
                 return false;
@@ -261,6 +281,13 @@ impl TriggerMatcher for SpellCastTrigger {
     }
 
     fn display(&self) -> String {
+        if self.count_all_spells_this_turn
+            && let Some(spell_number) = self.exact_spells_this_turn
+        {
+            let ordinal =
+                ironsmith_core::ordinal_word(spell_number).unwrap_or_else(|| "nth".to_string());
+            return format!("Whenever the {ordinal} spell of a turn is cast");
+        }
         let caster_text = match &self.caster {
             PlayerFilter::You => "you cast",
             PlayerFilter::Any => "a player casts",
@@ -874,6 +901,36 @@ mod tests {
     fn test_display() {
         let trigger = SpellCastTrigger::you_cast_any();
         assert!(trigger.display().contains("you cast"));
+    }
+
+    #[test]
+    fn nth_spell_of_turn_counts_spells_across_players() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let source_id = ObjectId::from_raw(1);
+        let trigger = SpellCastTrigger::nth_spell_of_turn(2);
+
+        let first = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(ObjectId::from_raw(2), alice, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&first);
+        assert!(!trigger.matches(&first, &TriggerContext::for_source(source_id, alice, &game),));
+
+        let second = TriggerEvent::new_with_provenance(
+            SpellCastEvent::new(ObjectId::from_raw(3), bob, Zone::Hand),
+            crate::provenance::ProvNodeId::default(),
+        );
+        game.record_turn_history_event(&second);
+        assert!(trigger.matches(
+            &second,
+            &TriggerContext::for_source(source_id, alice, &game),
+        ));
+        assert_eq!(
+            trigger.display(),
+            "Whenever the second spell of a turn is cast"
+        );
     }
 
     #[test]
