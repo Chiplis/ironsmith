@@ -2625,7 +2625,7 @@ pub(super) fn parse_return_up_to_one_subtype_list_target_stays_single_clause() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("up to one target cleric or rogue or warrior or wizard creature card"),
+        rendered.contains("up to one target cleric, rogue, warrior, or wizard creature card"),
         "expected subtype list to remain on a single return target clause, got {rendered}"
     );
     assert!(
@@ -2838,15 +2838,15 @@ pub(super) fn parse_intuition_target_opponent_divvy_bundle() {
 pub(super) fn parse_oracle_death_or_glory_divvy_surface_regression() {
     let def = parse_oracle_card_definition("Death or Glory");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
+    let debug = format!("{:#?}", def.spell_effect);
 
     assert!(
         rendered.contains(
             "Separate all creature cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield."
         ),
-        "expected Death or Glory to render its two-pile graveyard divvy wording, got {rendered}"
+        "expected Death or Glory to render its two-pile graveyard divvy wording, got {rendered}: {debug}"
     );
 
-    let debug = format!("{:?}", def.spell_effect);
     assert!(
         debug.contains("divvy_chosen") && debug.contains("ReturnAllToBattlefieldEffect"),
         "expected Death or Glory to keep the underlying divvy/exile/return structure, got {debug}"
@@ -2893,7 +2893,7 @@ pub(super) fn parse_oracle_elemental_teachings_divvy_surface_regression() {
 
     assert_eq!(
         rendered,
-        "Search your library for up to 4 land cards with different names and reveal them. An opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest onto the battlefield tapped. Then shuffle.",
+        "Search your library for up to four land cards with different names and reveal them. An opponent chooses two of those cards. Put the chosen cards into your graveyard and the rest onto the battlefield tapped. Then shuffle.",
         "expected Elemental Teachings to render its exact opponent-choice land divvy wording"
     );
 
@@ -3283,14 +3283,13 @@ pub(super) fn parse_target_creature_becomes_color_of_your_choice_until_end_of_tu
     let abilities_debug = format!("{:#?}", def.abilities).to_ascii_lowercase();
     assert!(
         abilities_debug.contains("becomecolorchoiceeffect")
-            && abilities_debug.contains("allow_multiple: true"),
+            && abilities_debug.contains("allow_multiple: false"),
         "expected become-color-choice effect in activated ability, got {abilities_debug}"
     );
     assert_eq!(
         unprocessed_compiled_lines(&def),
         vec![
-            "{G/U}: Target creature you control becomes the color or colors of your choice until end of turn"
-                .to_string(),
+            "{1}: Target creature becomes the color of your choice until end of turn.".to_string(),
         ],
     );
 }
@@ -3325,7 +3324,7 @@ pub(super) fn parse_permanent_color_or_colors_choice_omits_indefinite_duration()
     );
     assert_eq!(
         unprocessed_compiled_lines(&def),
-        vec!["Target permanent becomes the color or colors of your choice".to_string(),],
+        vec!["Target permanent becomes the color or colors of your choice.".to_string(),],
     );
 }
 

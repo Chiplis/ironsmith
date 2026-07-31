@@ -197,8 +197,7 @@ pub(crate) fn parse_starting_each_player_optional_repeat_shape<'a>(
     first: &'a [OwnedLexToken],
     second: &[OwnedLexToken],
 ) -> Option<StartingEachPlayerOptionalRepeatShape<'a>> {
-    let ((), after_starting) =
-        primitives::parse_prefix(trimmed(first), starting_with_you_prefix)?;
+    let ((), after_starting) = primitives::parse_prefix(trimmed(first), starting_with_you_prefix)?;
     let each_player_clause_tokens = trimmed(after_starting);
     let ((), first_action) =
         primitives::parse_prefix(each_player_clause_tokens, each_player_may_prefix)?;
@@ -661,11 +660,9 @@ mod tests {
         );
         let eureka_repeat =
             lex("Repeat this process until no one puts a card onto the battlefield.");
-        let eureka = parse_starting_each_player_optional_repeat_shape(
-            &eureka_first,
-            &eureka_repeat,
-        )
-        .expect("the repeated optional action should be recognized");
+        let eureka =
+            parse_starting_each_player_optional_repeat_shape(&eureka_first, &eureka_repeat)
+                .expect("the repeated optional action should be recognized");
         assert_eq!(
             LexedClause::new(eureka.each_player_clause_tokens).word_refs(),
             vec![

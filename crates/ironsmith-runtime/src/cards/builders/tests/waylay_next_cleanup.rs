@@ -15,16 +15,21 @@ fn waylay_preserves_group_reference_and_the_next_cleanup_timing() {
         ]
     );
 
-    let debug = format!("{:#?}", definition.abilities);
+    // Waylay is an instant, so resolving the spell schedules the delayed
+    // trigger. It is not a printed ability stored in `definition.abilities`.
+    let debug = format!("{:#?}", definition.spell_effect);
+    let compact_debug = debug.split_whitespace().collect::<String>();
     for expected in [
         "BeginningOfCleanupStepTrigger",
         "next: true",
-        "Tagged(TagKey(\"created_0\"))",
+        "TaggedEffect",
+        "TagKey(\"created_0\"",
         "target_plural_surface: true",
         "one_shot: true",
     ] {
+        let compact_expected = expected.split_whitespace().collect::<String>();
         assert!(
-            debug.contains(expected),
+            compact_debug.contains(&compact_expected),
             "Waylay should retain {expected:?} in its lowered definition; got {debug}"
         );
     }

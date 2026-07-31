@@ -174,9 +174,15 @@ pub(super) fn generate_damage_triggers(
         return;
     }
 
+    let mut damage_batch_groups = std::collections::HashMap::new();
     for event in events {
         let (damage_event, life_loss_event) = combat_damage_trigger_events(game, event);
-        queue_triggers_from_event(game, trigger_queue, damage_event, false);
+        queue_incremental_combat_damage_event(
+            game,
+            trigger_queue,
+            damage_event,
+            &mut damage_batch_groups,
+        );
         if let Some(life_loss_event) = life_loss_event {
             queue_triggers_from_event(game, trigger_queue, life_loss_event, false);
         }
@@ -194,6 +200,66 @@ pub(super) fn generate_damage_triggers(
     }
     game.clear_combat_damage_player_batch_hits();
     game.clear_combat_damage_object_batch_hits();
+}
+
+type DamageBatchTriggerKey = (
+    StableId,
+    crate::triggers::TriggerIdentity,
+    crate::triggers::matcher_trait::SimultaneousTriggerKey,
+);
+
+fn queue_incremental_combat_damage_event(
+    game: &mut GameState,
+    trigger_queue: &mut TriggerQueue,
+    event: TriggerEvent,
+    damage_batch_groups: &mut std::collections::HashMap<DamageBatchTriggerKey, Vec<usize>>,
+) {
+    let mut candidates = TriggerQueue::new();
+    queue_triggers_from_event(game, &mut candidates, event, false);
+
+    // A single event may legitimately match multiple identical ability
+    // instances on the same object. Delay publishing their group indices until
+    // the whole event has been handled, matching the simultaneous-event path.
+    let mut groups_from_this_event: std::collections::HashMap<DamageBatchTriggerKey, Vec<usize>> =
+        std::collections::HashMap::new();
+    for candidate in candidates.entries {
+        let Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch) = candidate
+            .ability
+            .trigger
+            .simultaneous_trigger_key(&candidate.triggering_event)
+        else {
+            trigger_queue.add(candidate);
+            continue;
+        };
+        let key = (
+            candidate.source_stable_id,
+            candidate.trigger_identity,
+            crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch,
+        );
+
+        if let Some(existing_indices) = damage_batch_groups.get(&key) {
+            if let Some(amount) = candidate.event_value_amount {
+                for index in existing_indices {
+                    if let Some(existing) = trigger_queue.entries.get_mut(*index) {
+                        existing.event_value_amount = Some(
+                            existing
+                                .event_value_amount
+                                .map_or(amount, |prior| prior.max(amount)),
+                        );
+                    }
+                }
+            }
+            continue;
+        }
+
+        let index = trigger_queue.entries.len();
+        trigger_queue.add(candidate);
+        groups_from_this_event.entry(key).or_default().push(index);
+    }
+
+    for (key, indices) in groups_from_this_event {
+        damage_batch_groups.entry(key).or_default().extend(indices);
+    }
 }
 
 fn can_batch_combat_damage_trigger_events(game: &GameState) -> bool {
@@ -270,6 +336,21 @@ pub fn queue_combat_damage_triggers(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ability::Ability;
+    use crate::card::{CardBuilder, PowerToughness};
+    use crate::effect::{EventValueSpec, Value};
+    use crate::ids::CardId;
+    use crate::target::PlayerFilter;
+    use crate::triggers::Trigger;
+
+    fn create_zombie(game: &mut GameState, name: &str, controller: PlayerId) -> ObjectId {
+        let card = CardBuilder::new(CardId::from_raw(game.new_object_id().0 as u32), name)
+            .card_types(vec![CardType::Creature])
+            .subtypes(vec![Subtype::Zombie])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        game.create_object_from_card(&card, controller, Zone::Battlefield)
+    }
 
     #[test]
     fn subscriber_free_combat_damage_batch_reuses_one_trigger_view() {
@@ -321,5 +402,81 @@ mod tests {
         game.initiative = Some(PlayerId::from_index(1));
 
         assert!(!can_batch_combat_damage_trigger_events(&game));
+    }
+
+    #[test]
+    fn incremental_combat_coalesces_damage_batch_and_keeps_ordinary_triggers() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let trigger_source = create_zombie(&mut game, "Hordewing", alice);
+        let attacker_one = create_zombie(&mut game, "Attacker One", alice);
+        let attacker_two = create_zombie(&mut game, "Attacker Two", alice);
+        let zombie_you_control = ObjectFilter::creature()
+            .with_subtype(Subtype::Zombie)
+            .controlled_by(PlayerFilter::You);
+
+        let source = game
+            .object_mut(trigger_source)
+            .expect("trigger source should exist");
+        source.abilities_mut().push(Ability::triggered(
+            Trigger::deals_combat_damage_to_player_one_or_more(
+                zombie_you_control.clone(),
+                PlayerFilter::Opponent,
+            ),
+            vec![Effect::draw(Value::EventValue(EventValueSpec::Amount))],
+        ));
+        source.abilities_mut().push(Ability::triggered(
+            Trigger::deals_combat_damage_to_player(zombie_you_control, PlayerFilter::Opponent),
+            vec![Effect::draw(1)],
+        ));
+        game.refresh_continuous_state();
+
+        let events = vec![
+            CombatDamageEvent {
+                source: attacker_one,
+                target: DamageEventTarget::Player(bob),
+                amount: 2,
+                life_lost: 2,
+                result: DamageResult::default(),
+            },
+            CombatDamageEvent {
+                source: attacker_two,
+                target: DamageEventTarget::Player(charlie),
+                amount: 2,
+                life_lost: 2,
+                result: DamageResult::default(),
+            },
+        ];
+        let mut trigger_queue = TriggerQueue::new();
+
+        generate_damage_triggers(&mut game, &events, &mut trigger_queue);
+
+        let grouped = trigger_queue
+            .entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .ability
+                    .trigger
+                    .simultaneous_trigger_key(&entry.triggering_event)
+                    == Some(crate::triggers::matcher_trait::SimultaneousTriggerKey::DamageBatch)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(grouped.len(), 1);
+        assert_eq!(grouped[0].event_value_amount, Some(2));
+        assert_eq!(
+            trigger_queue.entries.len() - grouped.len(),
+            2,
+            "ordinary per-event combat-damage triggers should not be coalesced"
+        );
     }
 }

@@ -534,7 +534,25 @@ impl EffectExecutor for MoveToZoneEffect {
                         }
                     }
                     if !result.new_object_ids.is_empty() {
+                        // Counters authored as part of the move ("Exile this
+                        // with three time counters on it") belong to the object
+                        // that arrives, not the one that left.
+                        let arriving_counters = if self.enters_with_counters.is_empty() {
+                            Vec::new()
+                        } else {
+                            resolve_battlefield_entry_counters(
+                                game,
+                                ctx,
+                                object_id,
+                                &self.enters_with_counters,
+                            )?
+                        };
                         for &new_id in &result.new_object_ids {
+                            for &(counter_type, amount) in &arriving_counters {
+                                if let Some(object) = game.object_mut(new_id) {
+                                    object.add_counters(counter_type, amount);
+                                }
+                            }
                             if final_zone == Zone::Exile {
                                 game.add_exiled_with_source_link(ctx.source, new_id);
                                 if let Some(object) = game.object(new_id) {

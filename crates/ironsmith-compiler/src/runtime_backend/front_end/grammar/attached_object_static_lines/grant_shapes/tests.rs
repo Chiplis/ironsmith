@@ -45,3 +45,19 @@ fn parses_land_type_ability_reset_with_multiple_quoted_grants() {
         "{T}, Pay 1 life: Add one mana of any color."
     );
 }
+
+#[test]
+fn attached_grant_splits_ignore_nested_rule_and_reminder_conjunctions() {
+    let tokens = lex_line(
+        "vigilance and \"{W}, {T}: Bolster 1 and draw a card.\" (Choose a creature and put a counter on it.)",
+        0,
+    )
+    .unwrap();
+
+    let splits = parse_attached_ability_splits_tokens(&tokens);
+    assert_eq!(splits.len(), 1, "{splits:#?}");
+    assert_eq!(
+        super::super::super::super::lexer::render_token_slice(splits[0].keyword_tokens),
+        "vigilance"
+    );
+}

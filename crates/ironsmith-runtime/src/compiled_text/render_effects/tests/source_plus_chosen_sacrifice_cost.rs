@@ -57,6 +57,38 @@ fn comma_then_source_and_plural_cost_set_exile_stays_one_instruction() {
     );
 }
 
+#[test]
+fn aggregate_of_a_sacrifice_cost_result_set_uses_a_definite_article() {
+    let sacrificed = ObjectFilter::creature().match_tagged(
+        TagKey::from("sacrifice_cost_0"),
+        crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+    );
+    let total_power = Value::TotalPower(sacrificed);
+
+    assert_eq!(
+        describe_where_x_basis(&total_power).as_deref(),
+        Some("the total power of the creatures sacrificed this way")
+    );
+    assert_eq!(
+        describe_value(&total_power),
+        "the total power of the creatures sacrificed this way"
+    );
+}
+
+#[test]
+fn aggregate_of_an_open_controlled_set_remains_unarticled() {
+    let total_power = Value::TotalPower(ObjectFilter::creature().you_control());
+
+    assert_eq!(
+        describe_where_x_basis(&total_power).as_deref(),
+        Some("the total power of creatures you control")
+    );
+    assert_eq!(
+        describe_value(&total_power),
+        "the total power of creatures you control"
+    );
+}
+
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 fn source_plus_any_number_sacrifice_preserves_the_result_set() {

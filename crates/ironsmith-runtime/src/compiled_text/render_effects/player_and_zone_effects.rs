@@ -521,22 +521,35 @@ pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
         return None;
     }
 
-    let tagged_shuffle = for_players.effects[0].downcast_ref::<crate::effects::TaggedEffect>()?;
-    let moved_tag = tagged_shuffle.tag.clone();
-    let with_id = tagged_shuffle
-        .effect
-        .downcast_ref::<crate::effects::WithIdEffect>()?;
+    let (with_id, moved_tag) = if let Some(tagged_shuffle) =
+        for_players.effects[0].downcast_ref::<crate::effects::TaggedEffect>()
+    {
+        (
+            tagged_shuffle
+                .effect
+                .downcast_ref::<crate::effects::WithIdEffect>()?,
+            Some(&tagged_shuffle.tag),
+        )
+    } else {
+        (
+            for_players.effects[0].downcast_ref::<crate::effects::WithIdEffect>()?,
+            None,
+        )
+    };
     let shuffle = with_id
         .effect
         .downcast_ref::<crate::effects::ShuffleObjectsIntoLibraryEffect>()?;
     if shuffle.player != PlayerFilter::IteratedPlayer {
         return None;
     }
-    let ChooseSpec::Object(shuffled_filter) = shuffle.target.base() else {
+    let (ChooseSpec::Object(shuffled_filter) | ChooseSpec::All(shuffled_filter)) =
+        shuffle.target.base()
+    else {
         return None;
     };
     if shuffled_filter.zone != Some(Zone::Battlefield)
         || shuffled_filter.owner != Some(PlayerFilter::IteratedPlayer)
+        || !shuffled_filter.all_card_types.is_empty()
         || !shuffled_filter.card_types.contains(&CardType::Artifact)
         || !shuffled_filter.card_types.contains(&CardType::Creature)
         || !shuffled_filter.card_types.contains(&CardType::Enchantment)
@@ -547,7 +560,9 @@ pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
 
     let look = for_players.effects[1].downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     let look_player_matches = look.player == PlayerFilter::IteratedPlayer
-        || look.player == PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(moved_tag));
+        || moved_tag.is_some_and(|tag| {
+            look.player == PlayerFilter::OwnerOf(crate::filter::ObjectRef::Tagged(tag.clone()))
+        });
     if !look_player_matches {
         return None;
     }
@@ -571,6 +586,8 @@ pub(super) fn describe_for_players_shuffle_reveal_permanents_put_rest_bottom(
         return None;
     };
     if tag.as_str() != "__it__"
+        || !filter.all_card_types.is_empty()
+        || filter.card_types.len() != 4
         || !filter.card_types.contains(&CardType::Artifact)
         || !filter.card_types.contains(&CardType::Creature)
         || !filter.card_types.contains(&CardType::Land)
@@ -818,6 +835,17 @@ pub(super) fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str)
     {
         return format!("{}'s {attribute}", surface.display_text());
     }
+    // A consult match is a revealed card even when the lowering wraps its
+    // helper tag in a target-like ChooseSpec for the follow-up effect. Check
+    // that provenance before the broad target fallback, which otherwise
+    // invents a creature reference for values such as its mana value.
+    if matches!(
+        spec.base(),
+        ChooseSpec::Tagged(tag)
+            if crate::cards::is_sentence_helper_tag(tag.as_str(), "consult_match")
+    ) {
+        return format!("the {attribute} of that card");
+    }
     if spec.is_target() {
         return format!("that creature's {attribute}");
     }
@@ -864,6 +892,68 @@ pub(super) fn describe_dynamic_counter_basis(spec: &ChooseSpec, attribute: &str)
     }
 }
 
+fn describe_repeated_each_union_count(filter: &ObjectFilter) -> Option<String> {
+    if filter.any_of.len() < 2 {
+        return None;
+    }
+
+    // Repeated "each" is materially different from an ordinary noun union:
+    // it counts every arm separately. Limit this surface to a semantically
+    // bare union whose arms live in distinct zones, so same-domain phrases
+    // such as "each artifact or enchantment" retain their ordinary wording.
+    let mut outer = filter.clone();
+    outer.any_of.clear();
+    outer.union_surface = Default::default();
+    if outer != ObjectFilter::default() {
+        return None;
+    }
+
+    let mut zones = Vec::with_capacity(filter.any_of.len());
+    let mut arms = Vec::with_capacity(filter.any_of.len());
+    for arm in &filter.any_of {
+        if !arm.any_of.is_empty() {
+            return None;
+        }
+        let zone = arm.zone?;
+        if zones.contains(&zone) {
+            return None;
+        }
+        zones.push(zone);
+        arms.push(describe_repeated_each_union_arm(arm));
+    }
+
+    let mut rendered = arms.first()?.clone();
+    for (index, arm) in arms.iter().enumerate().skip(1) {
+        if index + 1 == arms.len() && arms.len() > 2 {
+            rendered.push_str(", and each ");
+        } else if index + 1 == arms.len() {
+            rendered.push_str(" and each ");
+        } else {
+            rendered.push_str(", each ");
+        }
+        rendered.push_str(arm);
+    }
+    Some(rendered)
+}
+
+fn describe_repeated_each_union_arm(filter: &ObjectFilter) -> String {
+    let mut suspended = filter.clone();
+    let is_suspended_card_you_own = suspended.zone == Some(Zone::Exile)
+        && suspended.alternative_cast == Some(crate::filter::AlternativeCastKind::Suspend)
+        && suspended.owner == Some(PlayerFilter::You);
+    if is_suspended_card_you_own {
+        suspended.zone = None;
+        suspended.alternative_cast = None;
+        suspended.owner = None;
+        suspended.union_surface = Default::default();
+        if suspended == ObjectFilter::default() {
+            return "suspended card you own".to_string();
+        }
+    }
+
+    describe_for_each_count_filter(filter)
+}
+
 pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     if value.has_surface_hint(ValueSurfaceHint::EqualTo) || value_prefers_where_x(value) {
         return None;
@@ -878,6 +968,13 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
         return Some("card drawn this way".to_string());
     }
     if value.has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay) {
+        if let Value::PriorEffectMetric { query, .. } | Value::PendingPriorEffectMetric(query) =
+            value.unhinted()
+            && query.metric == crate::effect::EffectMetric::Count
+            && query.action == Some(crate::effect::PriorEffectAction::Discarded)
+        {
+            return Some(describe_prior_effect_metric_basis(query, false));
+        }
         return Some("card discarded this way".to_string());
     }
     // Let typed prior-effect metrics render their own filter below.  A broad
@@ -907,6 +1004,7 @@ pub(crate) fn describe_create_for_each_count(value: &Value) -> Option<String> {
     match value.unhinted() {
         Value::Count(filter) => Some(
             describe_prior_effect_source_count_basis(filter, false)
+                .or_else(|| describe_repeated_each_union_count(filter))
                 .unwrap_or_else(|| describe_for_each_count_filter(filter)),
         ),
         Value::ManaSymbolsInManaCostOf { spec, color } => {

@@ -157,6 +157,12 @@ pub(crate) fn parse_consult_traversal_with_inline_followup(
     if shape.trailing_effect.is_empty() {
         return Ok(None);
     }
+    let each_opponent = matches!(
+        &shape.player,
+        effect_grammar::ConsultTraversalPlayerShape::Subject(subject)
+            if crate::runtime_backend::front_end::lexer::parser_token_word_refs(subject).as_slice()
+                == ["each", "opponent"]
+    );
     let Some(parts) = parse_consult_traversal_sentence(tokens)? else {
         return Ok(None);
     };
@@ -166,6 +172,25 @@ pub(crate) fn parse_consult_traversal_with_inline_followup(
     }
     let mut effects = parts.effects;
     effects.append(&mut trailing);
+    if each_opponent {
+        for effect in &mut effects {
+            super::chain_carry::bind_implicit_player_context(effect, PlayerAst::That);
+            if let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+                subject,
+                action:
+                    crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { player, .. },
+            }) = effect
+            {
+                // The consult action carries its library owner separately
+                // from the subject surface. Both must point at the active
+                // loop participant; changing only the subject leaves the
+                // executable consult bound to the broad Opponent filter.
+                subject.player = PlayerAst::That;
+                *player = PlayerAst::That;
+            }
+        }
+        effects = vec![EffectAst::ForEachOpponent { effects }];
+    }
     Ok(Some(effects))
 }
 
@@ -757,5 +782,30 @@ mod tests {
                 })]
             )
         ));
+    }
+
+    #[test]
+    fn each_opponent_inline_consult_binds_the_executable_library_owner() {
+        let tokens = lex_line(
+            "Each opponent reveals cards from the top of their library until they reveal a land card, then puts those cards into their graveyard.",
+            0,
+        )
+        .expect("each-opponent consult should lex");
+        let effects = parse_consult_traversal_with_inline_followup(&tokens)
+            .expect("each-opponent consult should parse")
+            .expect("each-opponent consult traversal");
+
+        let [EffectAst::ForEachOpponent { effects }] = effects.as_slice() else {
+            panic!("expected one each-opponent loop: {effects:#?}");
+        };
+        let Some(EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            subject,
+            action: crate::cards::builders::SubjectVerbActionAst::ConsultTopOfLibrary { player, .. },
+        })) = effects.first()
+        else {
+            panic!("expected consult as the first loop action: {effects:#?}");
+        };
+        assert_eq!(subject.player, PlayerAst::That);
+        assert_eq!(*player, PlayerAst::That);
     }
 }

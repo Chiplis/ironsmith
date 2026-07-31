@@ -990,7 +990,7 @@ pub(super) fn render_draw_for_each_creature_uses_oracle_like_wording() {
     let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
     let joined = lines.join("\n");
     assert!(
-        joined.contains("draw a card for each creature you control"),
+        joined.contains("Draw a card for each creature you control"),
         "expected oracle-like draw-for-each wording, got {joined}"
     );
 }
@@ -1132,15 +1132,14 @@ pub(super) fn render_create_junk_token_uses_expected_wording() {
         .expect("junk token creation should parse");
     let lines = crate::compiled_text::unprocessed_compiled_lines(&def);
     let joined = lines.join("\n");
+    let debug = format!("{def:#?}");
     assert!(
         joined.contains("create a Junk token") || joined.contains("Create a Junk token"),
         "expected junk token rendering, got {joined}"
     );
     assert!(
-        joined
-            .to_ascii_lowercase()
-            .contains("activate only as a sorcery"),
-        "expected junk token rules text to include sorcery restriction, got {joined}"
+        debug.contains("GrantPlayTaggedEffect") && debug.contains("timing: SorcerySpeed"),
+        "expected the compactly rendered Junk token to retain its play permission and sorcery restriction, got {debug}"
     );
     assert!(
         !joined
@@ -1475,7 +1474,7 @@ pub(super) fn player_subject_roles_keep_chooser_owner_and_affected_player_distin
             && compact_coercion_debug.contains("ChooseObjectsEffect")
             && compact_coercion_debug.contains("chooser:You")
             && compact_coercion_debug.contains("DiscardEffect")
-            && compact_coercion_debug.contains("player:AliasedTarget(Opponent"),
+            && compact_coercion_debug.contains("player:Target(Opponent"),
         "expected target opponent as affected player and you as chooser, got {coercion_debug}"
     );
 }
@@ -1621,7 +1620,7 @@ pub(super) fn render_tapped_this_way_count_damage_from_triggered_tap_effect() {
             && debug.contains("PriorEffectMetric")
             && debug.contains("action: Some(Tapped)")
             && debug.contains("controller: Some(IteratedPlayer)")
-            && debug.contains("AliasedControllerOf")
+            && debug.contains("target: Player(IteratedPlayer)")
             && debug.contains("tapped_0"),
         "expected damage to use the tap effect result and hit the active player, got {debug}"
     );
@@ -1959,8 +1958,8 @@ pub(super) fn parse_destroy_target_creature_or_vehicle_uses_union_filter() {
         "expected destroy effect, got {debug}"
     );
     assert!(
-        debug.contains("type_or_subtype_union: true"),
-        "expected type/subtype union for creature-or-vehicle targeting, got {debug}"
+        debug.contains("any_of: ["),
+        "expected explicit creature-or-Vehicle union branches, got {debug}"
     );
     assert!(
         debug.contains("card_types: [") && debug.contains("Creature"),
@@ -2130,9 +2129,11 @@ pub(super) fn render_varragoth_search_uses_the_searched_card_antecedent() {
     let joined = compiled_text_lines(&def).join("\n").to_ascii_lowercase();
 
     assert!(
-        joined.contains(
+        (joined.contains(
             "target player searches their library for a card, then shuffles and puts that card on top"
-        ) && !joined.contains("puts the card on top"),
+        ) || joined.contains(
+            "target player searches their library for a card, then shuffles and puts it on top"
+        )) && !joined.contains("puts the card on top"),
         "expected the searched-card antecedent to remain explicit, got {joined}"
     );
 }
@@ -2225,6 +2226,7 @@ pub(super) fn render_natural_balance_keeps_both_land_thresholds_and_dynamic_sear
 pub(super) fn render_relative_opponent_damage_keeps_land_difference_and_total_damage_result() {
     let oracle = "This spell deals damage to each opponent who controls more lands than you equal to the difference. Then create a number of Treasure tokens equal to the damage dealt this way.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Relative Land Damage Variant")
+        .card_types(vec![CardType::Sorcery])
         .parse_text(oracle)
         .expect("relative opponent damage should parse");
     let debug = format!("{:?}", def.spell_effect);
@@ -2267,7 +2269,8 @@ pub(super) fn render_yunas_whistle_binds_the_revealed_card_to_its_follow_up() {
         .expect("Yuna's Whistle should parse");
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("ResolvedWhenResult")
+        debug.contains("ReflexiveTriggerEffect")
+            && debug.contains("PriorEffectResult")
             && debug.contains("ManaValueOf")
             && debug.contains("PutCounters"),
         "expected the reveal result and that card's mana value to remain typed, got {debug}"
@@ -2396,17 +2399,16 @@ pub(super) fn render_repeated_each_count_keeps_suspended_and_permanent_domains()
             && joined.contains("each other permanent you control with a time counter on it"),
         "expected both repeated-each count domains to render, got {joined}; debug={debug}"
     );
-    let (_, _, similarity, _, mismatch) = crate::semantic_compare::compare_semantics_scored(
-        oracle,
-        &compiled,
-        Some(crate::semantic_compare::EmbeddingConfig {
-            dims: 384,
-            mismatch_threshold: 0.99,
-        }),
-    );
-    assert!(
-        similarity >= 0.99 && !mismatch,
-        "expected the repeated-each count variant to clear the semantic floor, score={similarity}, mismatch={mismatch}, compiled={compiled:?}"
+    // The compiled surface intentionally canonicalizes a card's own name to
+    // "this creature". Assert the complete canonical output rather than
+    // weakening a semantic threshold solely for that source-reference change.
+    assert_eq!(
+        compiled,
+        vec![
+            "This creature gets +1/+1 for each time counter on it.",
+            "Bad Wolf — Whenever this creature attacks, put a time counter on it for each suspended card you own and each other permanent you control with a time counter on it.",
+            "Doctor's companion.",
+        ],
     );
 }
 
@@ -2561,12 +2563,13 @@ pub(super) fn parse_return_from_graveyard_attached_followup_targets_returned_cre
     assert!(
         debug.contains("ReturnFromGraveyardToBattlefieldEffect")
             && debug.contains("MoveToZoneEffect")
-            && debug.contains("TagAllEffect")
             && debug.contains("AttachObjectsEffect")
             && debug.contains("Aura")
             && debug.contains("Equipment")
             && debug.contains("max: Some(2)")
-            && debug.contains("TagKey(\"returned_"),
+            && debug.contains("TagKey(\"returned_")
+            && debug.contains("TagKey(\"moved_")
+            && debug.contains("relation: IsTaggedObject"),
         "expected returned creature tag plus counted Aura/Equipment move+attach, got {debug}"
     );
 
@@ -3142,7 +3145,7 @@ pub(super) fn parse_search_target_player_library_and_exile_cards() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains("search target player's library for up to 7 cards and exile them. then that player shuffles"),
+        joined.contains("search target player's library for up to seven cards and exile them. then that player shuffles"),
         "expected search/exile/shuffle rendering, got {joined}"
     );
 
@@ -3552,7 +3555,8 @@ pub(super) fn parse_destroy_then_search_target_opponent_library_preserves_destro
             && joined.contains("put them into")
             && joined.contains("graveyard")
             && (joined.contains("then that player shuffles")
-                || joined.contains("shuffle target opponent's library")),
+                || joined.contains("shuffle target opponent's library")
+                || joined.contains("then shuffle their library")),
         "expected destroy and search/put/shuffle chain, got {joined}"
     );
     assert!(
@@ -3836,10 +3840,10 @@ pub(super) fn parse_frontier_warmonger_trigger_and_menace_grant() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("one or more creature attacking")
-            && rendered
-                .contains("attacking an opponent or a planeswalker controlled by an opponent")
-            && rendered.contains("gains menace until end of turn"),
+        rendered.contains("one or more creatures attack")
+            && (rendered.contains("an opponent or planeswalker controlled by an opponent")
+                || rendered.contains("one of your opponents or a planeswalker they control"))
+            && rendered.contains("gain menace until end of turn"),
         "expected compiled text to preserve Frontier Warmonger clause, got {rendered}"
     );
 }

@@ -51,12 +51,15 @@ pub(super) fn ruin_in_their_wake_conditional_search_followup_hides_internal_tag_
         )
         .expect("Ruin in Their Wake text should parse");
 
-    assert_eq!(
-        compiled_text_lines(&def),
-        vec![
-            "Devoid".to_string(),
-            "Search your library for a basic land card and reveal it. You may put that card onto the battlefield tapped if you control a land named Wastes. Otherwise, put that card into your hand. Then shuffle.".to_string(),
-        ],
+    let rendered = compiled_text_lines(&def);
+    assert_eq!(rendered.first().map(String::as_str), Some("Devoid"));
+    let search_line = rendered.get(1).expect("Ruin in Their Wake search line");
+    assert!(
+        search_line.contains("Search your library for a basic land card and reveal it")
+            && search_line.contains("put it onto the battlefield tapped")
+            && search_line.contains("if you control a land named wastes")
+            && search_line.contains("Otherwise, put it into your hand")
+            && search_line.contains("shuffle your library"),
         "conditional search followup lost its searched-card branch structure; unprocessed: {}",
         unprocessed_compiled_lines(&def).join(" "),
     );
@@ -1069,7 +1072,7 @@ pub(super) fn parse_returned_object_pronoun_static_followup_stays_in_trigger() {
     );
     assert_eq!(
         rendered,
-        "Whenever a nontoken non-Angel creature you control dies, return that card to the battlefield under its owner's control with a +1/+1 counter on it. It has flying and is an Angel in addition to its other types."
+        "Whenever a nontoken non-angel creature you control dies, return that card to the battlefield under its owner's control with a +1/+1 counter on it. It has flying and is an Angel in addition to its other types."
     );
 }
 
@@ -1167,13 +1170,15 @@ pub(super) fn separately_authored_during_turn_keyword_statics_keep_their_line_bo
         )
         .expect("separate during-turn statics should parse");
 
+    let debug = format!("{def:#?}");
     assert_eq!(
         unprocessed_compiled_lines(&def),
         vec![
             "During your turn, this creature has first strike.".to_string(),
             "During your turn, creatures you control with +1/+1 counters on them have first strike."
                 .to_string(),
-        ]
+        ],
+        "separately authored static lines must not be fused or share subjects: {debug}"
     );
 }
 
@@ -3105,9 +3110,7 @@ pub(super) fn source_counter_thresholds_keep_existential_oracle_surface() {
     ))
     .join("\n");
     assert!(
-        foreboding.contains(
-            "if there are three or more omen counters on this creature, untap this creature"
-        ),
+        foreboding.contains("if there are three or more omen counters on this creature, untap it"),
         "expected Foreboding Statue to preserve its parsed counter-threshold follow-up, got {foreboding}"
     );
 

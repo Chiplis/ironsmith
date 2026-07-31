@@ -2042,6 +2042,44 @@ impl StaticAbilityKind for CantAttackYouUnlessControllerPaysPerAttacker {
     }
 }
 
+/// "Creatures can't attack you or planeswalkers you control unless their controller
+/// pays {N} for each of those creatures."
+///
+/// Oracle pairs the planeswalker-inclusive restriction with the shorter "each of
+/// those creatures" payment wording, so the two travel together as one surface.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker {
+    amount: u32,
+}
+
+impl CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker {
+    pub fn new(amount: u32) -> Self {
+        Self { amount }
+    }
+}
+
+impl StaticAbilityKind for CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker {
+    fn id(&self) -> StaticAbilityId {
+        StaticAbilityId::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker
+    }
+
+    fn display(&self) -> String {
+        format!(
+            "Creatures can't attack you or planeswalkers you control unless their controller pays {{{}}} for each of those creatures",
+            self.amount
+        )
+    }
+
+    fn generic_attack_tax_per_attacker_against_you(
+        &self,
+        _game: &GameState,
+        _source: ObjectId,
+        _controller: PlayerId,
+    ) -> Option<u32> {
+        Some(self.amount)
+    }
+}
+
 fn count_basic_land_types_among_lands_you_control(game: &GameState, controller: PlayerId) -> u32 {
     use crate::types::{CardType, Subtype};
     use std::collections::HashSet;

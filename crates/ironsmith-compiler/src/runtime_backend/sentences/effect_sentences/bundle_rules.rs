@@ -560,8 +560,7 @@ fn parse_optional_result_exile_choice_play_bundle(
     else {
         return Ok(None);
     };
-    if prefix.kind
-        != crate::runtime_backend::grammar::structure::LeadingResultPrefixKind::If
+    if prefix.kind != crate::runtime_backend::grammar::structure::LeadingResultPrefixKind::If
         || prefix.predicate != IfResultPredicate::Did
     {
         return Ok(None);
@@ -757,6 +756,7 @@ fn promote_exile_effect_to_source_leaves(effect: EffectAst) -> Option<EffectAst>
                 target,
                 face_down,
                 source_top_only: false,
+                ..
             } => Some(
                 EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
                     .with_explicit_exile_return_surface(),
@@ -1498,10 +1498,7 @@ fn parse_each_player_hand_exile_play_constraints_bundle(
                     player: PlayerAst::That,
                     tag: exiled_tag.clone(),
                 },
-                EffectAst::subject_verb_exile(
-                    TargetAst::Tagged(exiled_tag.clone(), None),
-                    false,
-                ),
+                EffectAst::subject_verb_exile(TargetAst::Tagged(exiled_tag.clone(), None), false),
             ],
         },
         EffectAst::subject_verb_grant_play_tagged_with_play_constraints(
@@ -2028,6 +2025,17 @@ fn parse_untap_then_phase_out_until_source_leaves_bundle(
 }
 
 pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
+    let sentences = split_lexed_sentences(tokens);
+    // A consult procedure nested under "for each of" belongs to the declared
+    // mixed target collection. Claim that typed declaration/iteration shape
+    // before the broad consult-disposition recognizer can start at the inner
+    // reveal clause and discard the outer target declaration.
+    if sentences.len() == 2
+        && let Ok(Some(effects)) =
+            parse_choose_mixed_targets_then_for_each_bundle(sentences[0], sentences[1], None)
+    {
+        return Some(effects);
+    }
     if let Some(effects) = parse_untap_then_phase_out_until_source_leaves_bundle(tokens) {
         return Some(effects);
     }
@@ -2085,7 +2093,6 @@ pub(crate) fn parse_typed_effect_bundle_lexed(tokens: &[OwnedLexToken]) -> Optio
     if let Some(effects) = parse_bid_life_for_control_bundle(tokens) {
         return Some(effects);
     }
-    let sentences = split_lexed_sentences(tokens);
     if sentences.len() == 2
         && let Ok(Some(effects)) =
             parse_exile_collection_each_upkeep_return_bundle(sentences[0], sentences[1])
@@ -2457,52 +2464,77 @@ mod tests {
                 TargetAst::PlayerOrPlaneswalker(PlayerFilter::Any, _)
             ) && count == &ChoiceCount::any_number()
         ));
-        assert_eq!(player_body.len(), 3, "{player_body:#?}");
+        let [
+            EffectAst::CommaThen {
+                effects: player_procedure,
+            },
+        ] = player_body.as_slice()
+        else {
+            panic!("expected one authored consult procedure per player: {player_body:#?}");
+        };
         assert!(matches!(
-            player_body.as_slice(),
+            player_procedure.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
                     ..
                 }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::DealDamage {
-                        target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                EffectAst::CommaThen { effects: tail },
+            ] if matches!(
+                tail.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::DealDamage {
+                            target: TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                            ..
+                        },
                         ..
-                    },
-                    ..
-                }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                        keep_tagged: None,
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                            keep_tagged: None,
+                            ..
+                        },
                         ..
-                    },
-                    ..
-                }),
-            ]
+                    }),
+                ]
+            )
         ));
+        let [
+            EffectAst::CommaThen {
+                effects: object_procedure,
+            },
+        ] = object_body.as_slice()
+        else {
+            panic!("expected one authored consult procedure per planeswalker: {object_body:#?}");
+        };
         assert!(matches!(
-            object_body.as_slice(),
+            object_procedure.as_slice(),
             [
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
                     action: SubjectVerbActionAst::ConsultTopOfLibrary { .. },
                     ..
                 }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::DealDamage {
-                        target: TargetAst::Tagged(tag, _),
+                EffectAst::CommaThen { effects: tail },
+            ] if matches!(
+                tail.as_slice(),
+                [
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::DealDamage {
+                            target: TargetAst::Tagged(tag, _),
+                            ..
+                        },
                         ..
-                    },
-                    ..
-                }),
-                EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
-                        keep_tagged: None,
+                    }),
+                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::PutTaggedRemainderOnBottomOfLibrary {
+                            keep_tagged: None,
+                            ..
+                        },
                         ..
-                    },
-                    ..
-                }),
-            ] if tag.as_str() == IT_TAG
+                    }),
+                ] if tag.as_str() == IT_TAG
+            )
         ));
     }
 
@@ -3125,5 +3157,22 @@ mod tests {
                 ..
             })]
         ));
+    }
+
+    #[test]
+    fn inline_mill_then_return_from_among_them_keeps_one_milled_collection() {
+        let tokens = lex_line(
+            "Mill four cards, then you may return a permanent card from among them to your hand.",
+            0,
+        )
+        .unwrap();
+        let effects = parse_typed_effect_bundle_lexed(&tokens).expect("inline mill bundle");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("TagAffected"), "{debug}");
+        assert!(debug.contains("ChooseTaggedObjectsInZone"), "{debug}");
+        assert!(debug.contains("zone: Graveyard"), "{debug}");
+        assert!(debug.contains("IsTaggedObject"), "{debug}");
+        assert!(debug.contains("zone: Hand"), "{debug}");
     }
 }

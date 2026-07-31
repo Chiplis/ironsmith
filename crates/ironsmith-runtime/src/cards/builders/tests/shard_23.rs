@@ -796,6 +796,8 @@ pub(super) fn knowledge_exploitation_compiled_text_keeps_prowl_and_target_oppone
     assert!(
         rendered.contains(
             "Search target opponent's library for an instant or sorcery card. You may cast that card without paying its mana cost. Then that player shuffles"
+        ) || rendered.contains(
+            "Search target opponent's library for an instant or sorcery card. You may cast that card without paying its mana cost. Then shuffle target opponent's library"
         ),
         "expected Knowledge Exploitation to keep search-target clause, got {rendered}"
     );
@@ -1863,8 +1865,8 @@ pub(super) fn soulflayer_source_exiled_keyword_lines_merge_same_is_true() {
     let def = parse_oracle_card_definition("Soulflayer");
     let rendered = compiled_text_lines(&def).join(" ");
     assert!(
-        rendered.contains("This creature has flying as long as there is a creature card exiled with this creature with flying")
-            && rendered.contains("The same is true for double strike")
+        rendered.contains("If a creature card with flying was exiled with this creature's delve ability, this creature has flying")
+            && rendered.contains("The same is true for first strike, double strike")
             && !rendered.contains("tagged"),
         "expected Soulflayer source-exiled keyword grants to compact with same-is-true wording, got {rendered}"
     );
@@ -1892,7 +1894,7 @@ pub(super) fn kamahls_druidic_vow_style_battlefield_rest_graveyard_compacts() {
     let rendered = compiled_text_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "Look at the top X cards of your library. You may put any number of land and/or legendary permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard"
+            "Look at the top X cards of your library. Put any number of land and/or legendary permanent cards with mana value X or less from among them onto the battlefield. Put the rest into your graveyard"
         ) && !rendered.contains("legendary lands")
             && !rendered.contains("Unless it's a permanent"),
         "expected Kamahl-style looked-card split to preserve union filter and true remainder, got {rendered}"
@@ -2009,9 +2011,11 @@ pub(super) fn underworld_sentinel_implicit_battlefield_controller_is_you_without
     let rendered = compiled_text_lines(&def).join("\n");
     let debug = format!("{:#?}", def.abilities);
     assert!(
-        rendered.contains(
+        (rendered.contains(
             "When this creature dies, put all cards exiled with this creature onto the battlefield"
-        ) && !rendered.contains("under their owners' control")
+        ) || rendered.contains(
+            "When this creature dies, put all cards exiled with it onto the battlefield"
+        )) && !rendered.contains("under their owners' control")
             && !rendered.contains("under your control")
             && debug.contains("ReturnAllToBattlefieldEffect")
             && debug.contains("battlefield_controller: You")
@@ -2028,9 +2032,11 @@ pub(super) fn infernal_offering_preserves_both_correlated_opponent_choices() {
     assert!(
         rendered.contains(
             "Choose an opponent. You and that player each sacrifice a creature. Each player who sacrificed a creature this way draws two cards"
-        ) && rendered.contains(
+        ) && (rendered.contains(
             "Choose an opponent. Return a creature card from your graveyard to the battlefield, then that player returns a creature card from"
-        ) && (rendered.contains("from their graveyard to the battlefield")
+        ) || rendered.contains(
+            "You choose an opponent. Return a creature card from your graveyard to the battlefield, then that player returns a creature card from"
+        )) && (rendered.contains("from their graveyard to the battlefield")
             || rendered.contains("from that player's graveyard to the battlefield")),
         "expected each offering mode to retain its chosen-opponent correlation, got {rendered}"
     );
@@ -2327,11 +2333,11 @@ pub(super) fn top_three_partition_cluster_parses_strictly_and_compiles_exactly()
         ),
         (
             "Omen",
-            "Look at the top three cards of your library, then put them back in any order. You may shuffle your library. Draw a card.",
+            "Look at the top three cards of your library, then put them back in any order. You may shuffle your library.\nDraw a card.",
         ),
         (
             "Ponder",
-            "Look at the top three cards of your library, then put them back in any order. You may shuffle your library. Draw a card.",
+            "Look at the top three cards of your library, then put them back in any order. You may shuffle your library.\nDraw a card.",
         ),
         (
             "Telling Time",

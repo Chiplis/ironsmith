@@ -4,6 +4,10 @@ pub(super) fn normalize_looked_card_filter_description(
     filter: &ObjectFilter,
     card_desc: &str,
 ) -> String {
+    if let Some(desc) = describe_land_or_legendary_permanent_looked_filter(filter) {
+        return desc;
+    }
+
     if let Some(desc) = describe_card_type_looked_card_disjunction(filter) {
         return desc;
     }
@@ -2939,9 +2943,17 @@ fn describe_put_milled_cards_clause(
             == Some(crate::effect::PriorEffectAction::Milled)
     });
 
+    let mut return_verb_surface = false;
     let destination = if for_each_moves_tag_to_hand(move_chosen, first.tag.as_str()) {
+        return_verb_surface = move_chosen.effects.len() == 1
+            && unwrap_tag_wrapped_effect(&move_chosen.effects[0])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+                .is_some_and(|move_to_zone| {
+                    move_to_zone.verb_surface == ironsmith_core::MoveToZoneVerbSurface::Return
+                });
         format!(
-            "into {} hand",
+            "{} {} hand",
+            if return_verb_surface { "to" } else { "into" },
             describe_possessive_player_filter(&first.chooser)
         )
     } else {
@@ -2978,8 +2990,9 @@ fn describe_put_milled_cards_clause(
     };
     let may = choices.iter().all(|choose| choose.count.min == 0);
     Some(format!(
-        "You{} put {chosen} from among {} {destination}",
+        "You{} {} {chosen} from among {} {destination}",
         if may { " may" } else { "" },
+        if return_verb_surface { "return" } else { "put" },
         if explicit_milled_reference {
             "the milled cards"
         } else {
@@ -4263,4 +4276,48 @@ pub(crate) fn describe_may_search_choose_for_each_with_shuffle(
         ));
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn looked_battlefield_selection_factors_land_or_legendary_permanent_qualifiers() {
+        let maximum =
+            crate::filter::Comparison::LessThanOrEqualExpr(Box::new(crate::effect::Value::X));
+        let mut land = ObjectFilter::default();
+        land.card_types = vec![CardType::Land];
+        land.mana_value = Some(maximum.clone());
+
+        let mut legendary = ObjectFilter::permanent_card();
+        legendary.supertypes = vec![crate::types::Supertype::Legendary];
+        legendary.mana_value = Some(maximum);
+
+        let mut filter = ObjectFilter::default();
+        filter.any_of = vec![land, legendary];
+        filter.set_union_connective(crate::filter::ObjectFilterUnionConnective::AndOr);
+        filter.zone = Some(Zone::Library);
+        filter
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: TagKey::from("looked"),
+                relation: crate::filter::TaggedOpbjectRelation::IsTaggedObject,
+            });
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            TagKey::from("chosen"),
+        )
+        .in_zone(Zone::Library);
+
+        assert_eq!(
+            describe_looked_battlefield_selection(&choose),
+            Some(
+                "any number of land and/or legendary permanent cards with mana value X or less"
+                    .to_string()
+            )
+        );
+    }
 }

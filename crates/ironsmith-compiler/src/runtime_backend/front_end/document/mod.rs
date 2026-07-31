@@ -54,6 +54,7 @@ use super::lexer::{
 };
 use super::preprocess::{
     PreprocessedDocument, PreprocessedItem, PreprocessedLine, preprocess_document,
+    strip_parenthetical_segments,
 };
 use super::rule_engine::{LexRuleHeadHint, LexRuleHintIndex, build_lex_rule_hint_index};
 use super::token_primitives::{
@@ -1095,6 +1096,17 @@ fn normalize_named_source_sentence_for_builder(
             if source_alias_prefix_looks_like_effect_verb(name_lower.as_str(), remainder.as_str()) {
                 return None;
             }
+            // Characteristic-defining P/T lines deliberately retain whether
+            // Oracle used the card's proper name. Rewriting a leading
+            // possessive name here (for example, "Tidewalker's power ...")
+            // erases that presentation information before the typed static
+            // ability parser can attach its `SourceNameSubject` hint.
+            if lexed_word_strings(remainder.as_str())
+                .and_then(|words| words.first().cloned())
+                .is_some_and(|word| matches!(word.as_str(), "power" | "toughness"))
+            {
+                return None;
+            }
             return Some(format!("{subject} {remainder}"));
         }
     }
@@ -1476,6 +1488,12 @@ fn replace_named_source_aliases_with_options(
         if !preserve_surface {
             rewritten.push_str(&lower[cursor..start]);
             rewritten.push_str(replacement);
+            // The matched source-name span includes the authored possessive
+            // suffix. Preserve that grammar when replacing a proper name such
+            // as "Hold for Ransom's" with a typed source surface.
+            if pieces[end_word - 1].possessive {
+                rewritten.push_str("'s");
+            }
             cursor = end;
             word_idx = end_word;
             continue;
@@ -1602,7 +1620,15 @@ fn source_alias_occurrence_should_preserve_surface_lexed(
         return true;
     }
 
-    next_word == Some(TOKEN_NAME_SUFFIX_WORD)
+    let is_control_action_noun = end_word == start_word + 1
+        && pieces
+            .get(start_word)
+            .is_some_and(|piece| piece.text == "control")
+        && matches!(previous_word, Some("gain" | "gains" | "lose" | "loses"))
+        && next_word == Some("of");
+
+    is_control_action_noun
+        || next_word == Some(TOKEN_NAME_SUFFIX_WORD)
         // A named vote option remains option data in later references such as
         // "cards equal to the number of truth votes". It cannot denote the
         // source here because only players vote.
@@ -2140,6 +2166,33 @@ mod tests {
             }
             other => panic!("expected one merged triggered line, got {other:?}"),
         }
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_document_cst_merges_plural_animation_result_into_statement()
+    -> Result<(), CardTextError> {
+        let preprocessed = preprocess_document(
+            CardDefinitionBuilder::new(CardId::new(), "Plural Return Probe"),
+            "Return up to one target artifact card and up to one target land card from your graveyard to the battlefield.\nThey are 5/5 Elemental creatures in addition to their other types.",
+        )?;
+        let cst = super::parse_document_cst(&preprocessed, false)?;
+
+        let [super::RewriteLineCst::Statement(statement)] = cst.lines.as_slice() else {
+            panic!("expected one merged statement line, got {:#?}", cst.lines);
+        };
+        let parse_text = render_token_slice(&statement.parse_tokens);
+        assert!(
+            parse_text.contains("they are 5/5 elemental creatures"),
+            "{parse_text}"
+        );
+        assert_eq!(
+            statement.parse_groups.len(),
+            1,
+            "{:#?}",
+            statement.parse_groups
+        );
 
         Ok(())
     }
@@ -3255,6 +3308,55 @@ mod tests {
     }
 
     #[test]
+    fn comma_bearing_named_trigger_rewrite_does_not_parse_reminder_text_as_effects() {
+        let builder =
+            CardDefinitionBuilder::new(CardId::from_raw(1), "Sophina, Spearsage Deserter")
+                .card_types(vec![CardType::Creature]);
+        let text = "Whenever Sophina, Spearsage Deserter attacks, investigate once for each nontoken attacking creature. (To investigate, create a Clue token. It's an artifact with \"{2}, Sacrifice this artifact: Draw a card.\")";
+
+        let preprocessed =
+            preprocess_document(builder, text).expect("the Sophina trigger should preprocess");
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected one preprocessed trigger line");
+        };
+        let dispatch = super::try_parse_triggered_line_dispatch(&preprocessed, 0, line, false)
+            .expect("the trigger dispatch should not fail")
+            .expect("the trigger family should claim the line");
+        let Some(RewriteLineCst::Triggered(triggered)) = dispatch.lines.first() else {
+            panic!("expected a triggered CST");
+        };
+
+        assert_eq!(
+            render_token_slice(&triggered.effect_parse_tokens),
+            "investigate once for each nontoken attacking creature."
+        );
+    }
+
+    #[test]
+    fn named_source_fallback_restores_authored_trigger_subject() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "God-Eternal Rhonas")
+            .card_types(vec![CardType::Creature]);
+        let text = "When God-Eternal Rhonas dies or is put into exile from the battlefield, you may put it into its owner's library third from the top.";
+
+        let preprocessed =
+            preprocess_document(builder, text).expect("the trigger fixture should preprocess");
+        let Some(PreprocessedItem::Line(line)) = preprocessed.items.first() else {
+            panic!("expected one preprocessed trigger line");
+        };
+        let dispatch = super::try_parse_triggered_line_dispatch(&preprocessed, 0, line, false)
+            .expect("the trigger dispatch should not fail")
+            .expect("the trigger family should claim the line");
+        let Some(RewriteLineCst::Triggered(triggered)) = dispatch.lines.first() else {
+            panic!("expected a triggered CST");
+        };
+
+        assert_eq!(
+            render_token_slice(&triggered.trigger_parse_tokens),
+            "God-Eternal Rhonas dies or is put into exile from the battlefield"
+        );
+    }
+
+    #[test]
     fn named_source_rewrite_covers_trigger_body_when_head_needs_no_rewrite() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Rayne, Academy Chancellor")
             .card_types(vec![CardType::Creature]);
@@ -3284,7 +3386,7 @@ mod tests {
 
         assert_eq!(
             rewritten,
-            "whenever a white instant or sorcery spell causes you to gain life, this creature deals 3 damage to target creature or player"
+            "whenever a white instant or sorcery spell causes you to gain life, this creature deals 3 damage to target creature or player."
         );
     }
 
@@ -3355,6 +3457,21 @@ mod tests {
     }
 
     #[test]
+    fn named_source_sentence_rewrite_preserves_named_characteristic_subject() {
+        let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Tidewalker")
+            .card_types(vec![CardType::Creature]);
+
+        assert_eq!(
+            normalize_named_source_sentence_for_builder(
+                &builder,
+                "Tidewalker's power and toughness are each equal to the number of time counters on it.",
+            ),
+            None,
+            "the characteristic parser needs the authored proper-name subject"
+        );
+    }
+
+    #[test]
     fn named_source_sentence_rewrite_still_normalizes_leading_short_alias_with_named_reference() {
         let builder = CardDefinitionBuilder::new(CardId::from_raw(1), "Brago, King Eternal")
             .card_types(vec![CardType::Creature]);
@@ -3404,6 +3521,30 @@ mod tests {
                 "this permanent",
             ),
             "reveal the top five cards of your library. you may put one of them into your hand."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_control_as_the_gain_control_action_noun() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "The player to your right gains control of this artifact.",
+                "control",
+                "this permanent",
+            ),
+            "the player to your right gains control of this artifact."
+        );
+    }
+
+    #[test]
+    fn named_source_rewrite_preserves_possessive_suffix() {
+        assert_eq!(
+            replace_named_source_aliases(
+                "Hold for Ransom's controller sacrifices it.",
+                "hold for ransom",
+                "this enchantment",
+            ),
+            "this enchantment's controller sacrifices it."
         );
     }
 
@@ -3957,7 +4098,15 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     line: &PreprocessedLine,
     text: &str,
 ) -> Result<Option<TriggeredLineCst>, CardTextError> {
-    let Some(rewritten) = normalize_named_source_trigger_for_builder(builder, text) else {
+    // This fallback can be reached with `LineInfo::raw_line` so an authored
+    // comma-bearing source name is still available. Reapply the same
+    // parenthetical preprocessing used to build `line.tokens` before parsing
+    // the rewritten candidate; reminder text is presentation, not a second
+    // executable trigger body.
+    let semantic_text = strip_parenthetical_segments(text);
+    let Some(rewritten) =
+        normalize_named_source_trigger_for_builder(builder, semantic_text.as_str())
+    else {
         return Ok(None);
     };
 
@@ -3981,24 +4130,71 @@ fn try_parse_triggered_line_with_named_source_rewrite(
     for candidate in candidates {
         let rewritten_line = rewrite_line_normalized(line, candidate.as_str())?;
         if let Ok(mut triggered) = parse_triggered_line_cst(&rewritten_line) {
-            // The builder-aware rewrite protects an exact full name containing
-            // a comma from the generic trigger/effect splitter. Restore that
-            // authored subject on the already-split trigger token slice so
-            // semantic trigger parsing retains `FullName` provenance.
-            if normalize_comma_bearing_leading_source_trigger(builder, text).is_some() {
-                let generic_subject = named_source_subject_for_builder(builder);
-                let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
-                if let Some(rest) = trigger_text.strip_prefix(generic_subject) {
-                    let full_name = builder.card_builder.name_ref().trim();
-                    triggered.trigger_parse_tokens =
-                        lex_line(&format!("{full_name}{rest}"), line.info.line_index)?;
-                }
-            }
+            restore_authored_named_source_trigger_subject(builder, line, text, &mut triggered)?;
             return Ok(Some(triggered));
         }
     }
 
     Ok(None)
+}
+
+fn restore_authored_named_source_trigger_subject(
+    builder: &CardDefinitionBuilder,
+    line: &PreprocessedLine,
+    text: &str,
+    triggered: &mut TriggeredLineCst,
+) -> Result<(), CardTextError> {
+    let Some(authored_subject) = leading_named_source_trigger_subject_for_builder(builder, text)
+    else {
+        return Ok(());
+    };
+
+    let generic_subject = named_source_subject_for_builder(builder);
+    let trigger_text = render_token_slice(&triggered.trigger_parse_tokens);
+    let rest = trigger_text.strip_prefix(generic_subject).or_else(|| {
+        // Preprocessing and some typed trigger shapes canonicalize a named
+        // source to the source-only subject "this". Restore its authored
+        // provenance after either canonicalization.
+        trigger_text.strip_prefix("this").filter(|rest| {
+            rest.chars()
+                .next()
+                .is_some_and(|ch| ch.is_whitespace() || ch == '\'' || ch == '’')
+        })
+    });
+    if let Some(rest) = rest {
+        triggered.trigger_parse_tokens =
+            lex_line(&format!("{authored_subject}{rest}"), line.info.line_index)?;
+    }
+    Ok(())
+}
+
+fn leading_named_source_trigger_subject_for_builder(
+    builder: &CardDefinitionBuilder,
+    text: &str,
+) -> Option<String> {
+    let trimmed = text.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    let (intro_len, after_intro) = if let Some(after_intro) = lower.strip_prefix("when ") {
+        ("when ".len(), after_intro)
+    } else {
+        ("whenever ".len(), lower.strip_prefix("whenever ")?)
+    };
+
+    source_name_aliases_for_builder(builder)
+        .into_iter()
+        .find_map(|alias| {
+            let rest = after_intro.strip_prefix(alias.as_str())?;
+            if rest
+                .chars()
+                .next()
+                .is_some_and(|ch| ch.is_alphanumeric() || ch == '\'' || ch == '’')
+            {
+                return None;
+            }
+            trimmed
+                .get(intro_len..intro_len + alias.len())
+                .map(str::to_string)
+        })
 }
 
 fn line_mentions_this_permanent_token_phrase(text: &str) -> bool {
@@ -4184,6 +4380,7 @@ fn try_parse_labeled_line_dispatch(
         )));
     }
 
+    let authored_body_text = render_original_text_for_token_slice(line, body_tokens);
     let body_line = rewrite_line_tokens(line, body_tokens);
     let labeled_activation = if (!line_starts_with_lparen_token(line)
         || is_fully_parenthetical_line(line))
@@ -4200,6 +4397,14 @@ fn try_parse_labeled_line_dispatch(
 
     if line_starts_with_trigger_intro_tokens(&body_line.tokens) {
         if let Ok(mut triggered) = parse_triggered_line_cst(&body_line) {
+            restore_authored_named_source_trigger_subject(
+                &preprocessed.builder,
+                line,
+                authored_body_text
+                    .as_deref()
+                    .unwrap_or(body_line.info.normalized.normalized.as_str()),
+                &mut triggered,
+            )?;
             if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
                 triggered.chosen_option =
                     document_grammar::parse_chosen_option_context_tokens(label_tokens);
@@ -4218,7 +4423,9 @@ fn try_parse_labeled_line_dispatch(
         if let Some(mut triggered) = try_parse_triggered_line_with_named_source_rewrite(
             &preprocessed.builder,
             line,
-            body_line.info.normalized.normalized.as_str(),
+            authored_body_text
+                .as_deref()
+                .unwrap_or(body_line.info.normalized.normalized.as_str()),
         )? {
             if preserve_as_choice_label && !is_case_ability_label(label_tokens) {
                 triggered.chosen_option =
@@ -4297,8 +4504,9 @@ fn try_parse_labeled_line_dispatch(
     }
 
     if should_prefer_statement_before_static_for_nonpermanent_spell(preprocessed, &body_line.tokens)
-        && let Some(statement_line) = parse_statement_line_cst(&body_line)?
+        && let Some(mut statement_line) = parse_statement_line_cst(&body_line)?
     {
+        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation.clone());
         let (statement_line, next_idx) =
             extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
         return Ok(Some(LineDispatchResult::single(
@@ -4409,7 +4617,8 @@ fn try_parse_labeled_line_dispatch(
         }
     }
 
-    if let Some(statement_line) = parse_statement_line_cst(&body_line)? {
+    if let Some(mut statement_line) = parse_statement_line_cst(&body_line)? {
+        apply_labeled_statement_surface_facts(&mut statement_line, line, presentation);
         let (statement_line, next_idx) =
             extend_statement_line_with_result_followups(&preprocessed.items, idx, statement_line);
         return Ok(Some(LineDispatchResult::single(
@@ -4419,6 +4628,28 @@ fn try_parse_labeled_line_dispatch(
     }
 
     Ok(None)
+}
+
+fn apply_labeled_statement_surface_facts(
+    statement: &mut StatementLineCst,
+    source_line: &PreprocessedLine,
+    presentation: Option<PresentationLabel>,
+) {
+    // The statement body is parsed after the label is stripped and named card
+    // references have been rewritten to "this". Keep the original label and
+    // transform destination as presentation metadata while the lowered effect
+    // program continues to use the normalized self reference.
+    let source_facts = super::grammar::line_semantic_facts::parse_line_semantic_facts_tokens(
+        &source_line.info.source_tokens,
+    );
+    if let Some(as_transforms) = source_facts.statement.as_transforms_effect_program {
+        statement
+            .info
+            .semantic_facts
+            .statement
+            .as_transforms_effect_program = Some(as_transforms);
+    }
+    statement.info.semantic_facts.statement.presentation_label = presentation;
 }
 
 fn try_parse_triggered_line_dispatch(
@@ -4444,9 +4675,20 @@ fn try_parse_triggered_line_dispatch(
     if trigger_chunks.len() > 1 {
         let mut lines = Vec::with_capacity(trigger_chunks.len());
         for chunk_tokens in trigger_chunks {
+            let authored_chunk_text = render_original_text_for_token_slice(line, &chunk_tokens);
             let chunk_line = rewrite_line_tokens(line, &chunk_tokens);
             match parse_triggered_line_cst(&chunk_line) {
-                Ok(triggered) => lines.push(RewriteLineCst::Triggered(triggered)),
+                Ok(mut triggered) => {
+                    restore_authored_named_source_trigger_subject(
+                        &preprocessed.builder,
+                        line,
+                        authored_chunk_text
+                            .as_deref()
+                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
+                        &mut triggered,
+                    )?;
+                    lines.push(RewriteLineCst::Triggered(triggered));
+                }
                 Err(_) => {
                     if starts_with_when_one_or_more_this_way_clause(&chunk_line.tokens)
                         && let Some(statement) = parse_statement_line_cst(
@@ -4463,7 +4705,9 @@ fn try_parse_triggered_line_dispatch(
                     if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
                         &preprocessed.builder,
                         line,
-                        chunk_line.info.normalized.normalized.as_str(),
+                        authored_chunk_text
+                            .as_deref()
+                            .unwrap_or(chunk_line.info.normalized.normalized.as_str()),
                     )? {
                         lines.push(RewriteLineCst::Triggered(triggered));
                         continue;
@@ -4492,15 +4736,12 @@ fn try_parse_triggered_line_dispatch(
     // comma-bearing full source name its builder-aware rewrite before a
     // syntactically valid but lossy split can claim the comma inside the
     // name as the trigger/effect boundary.
-    if normalize_comma_bearing_leading_source_trigger(
-        &preprocessed.builder,
-        &line.info.normalized.normalized,
-    )
-    .is_some()
+    if normalize_comma_bearing_leading_source_trigger(&preprocessed.builder, &line.info.raw_line)
+        .is_some()
         && let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
             &preprocessed.builder,
             line,
-            &line.info.normalized.normalized,
+            &line.info.raw_line,
         )?
     {
         let (triggered, next_idx) =
@@ -4512,7 +4753,13 @@ fn try_parse_triggered_line_dispatch(
     }
 
     match parse_triggered_line_cst(line) {
-        Ok(triggered) => {
+        Ok(mut triggered) => {
+            restore_authored_named_source_trigger_subject(
+                &preprocessed.builder,
+                line,
+                &line.info.raw_line,
+                &mut triggered,
+            )?;
             let (triggered, next_idx) =
                 extend_triggered_line_with_result_followups(&preprocessed.items, idx, triggered);
             Ok(Some(LineDispatchResult::single(
@@ -4524,7 +4771,7 @@ fn try_parse_triggered_line_dispatch(
             if let Some(triggered) = try_parse_triggered_line_with_named_source_rewrite(
                 &preprocessed.builder,
                 line,
-                &line.info.normalized.normalized,
+                &line.info.raw_line,
             )? {
                 let (triggered, next_idx) = extend_triggered_line_with_result_followups(
                     &preprocessed.items,

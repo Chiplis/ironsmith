@@ -3449,8 +3449,12 @@ pub(super) fn rewrite_lexed_effect_sentence_keeps_where_x_trailing_clause_after_
     let debug = format!("{parsed:?}");
 
     assert!(
-        debug.contains("SourcePower") && debug.contains("WhereXIs"),
+        debug.contains("PowerOf") && debug.contains("WhereXIs"),
         "{debug}"
+    );
+    assert!(
+        !debug.contains("SourcePower"),
+        "the possessive refers to the targeted creature, not the spell source: {debug}"
     );
     assert!(debug.contains("GrantAbilitiesToTarget"), "{debug}");
 }
@@ -3681,7 +3685,11 @@ pub(super) fn rewrite_lexed_swindlers_scheme_trigger_keeps_opponent_hand_reveal_
     };
     assert_eq!(caster, &PlayerFilter::Opponent);
     assert_eq!(filter.zone, Some(Zone::Hand), "{filter:#?}");
-    assert_eq!(filter.owner, None, "{filter:#?}");
+    assert_eq!(
+        filter.owner,
+        Some(PlayerFilter::Opponent),
+        "the cast-origin owner should mirror the typed opponent caster: {filter:#?}"
+    );
     let debug = format!("{parsed:#?}");
 
     assert!(debug.contains("SpellCast"), "{debug}");

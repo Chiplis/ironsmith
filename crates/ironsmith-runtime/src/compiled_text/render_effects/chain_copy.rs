@@ -170,6 +170,7 @@ pub(crate) fn describe_chain_copy_effect_list(effects: &[Effect]) -> Option<Stri
         return None;
     };
 
+    let enabling_effect = unwrap_singleton_sequence_member(enabling_effect);
     let enabling_with_id = enabling_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let enabling_may = enabling_with_id
         .effect

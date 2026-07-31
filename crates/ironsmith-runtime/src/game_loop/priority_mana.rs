@@ -5316,7 +5316,7 @@ pub fn apply_decision_context_with_dm<D: DecisionMaker>(
                 return apply_splice_response(game, trigger_queue, state, &result, decision_maker);
             }
             let chosen = result.first().copied().ok_or_else(|| {
-                GameLoopError::InvalidState("No object selected for required choice".to_string())
+                GameLoopError::ActionCancelled("No object selected for required choice".to_string())
             })?;
 
             if state.pending_activation.as_ref().is_some_and(|pending| {

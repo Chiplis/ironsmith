@@ -810,7 +810,26 @@ fn linked_statement_should_stay_grouped(tokens: &[OwnedLexToken]) -> bool {
         return true;
     }
 
-    semantic_grammar::parse_linked_statement_surface_tokens(tokens).is_some()
+    // A typed statement-replacement surface can depend on both authored
+    // sentences (for example Whirlpool Whelm's clash result and its following
+    // "instead" sentence). Keep the program intact through semantic lowering.
+    crate::runtime_backend::front_end::grammar::lowering_surfaces::parse_statement_replacement_surface_tokens(
+        tokens,
+    )
+    .is_some()
+        || semantic_grammar::parse_linked_statement_surface_tokens(tokens).is_some()
+}
+
+#[cfg(test)]
+#[test]
+fn typed_statement_replacement_surface_stays_grouped() {
+    let tokens = crate::runtime_backend::lexer::lex_line(
+        "Clash with an opponent, then return target creature to its owner's hand. If you win, you may put that creature on top of its owner's library instead.",
+        0,
+    )
+    .expect("lex Whirlpool Whelm");
+
+    assert!(linked_statement_should_stay_grouped(&tokens));
 }
 
 fn statement_group_should_parse_as_effects_first(tokens: &[OwnedLexToken]) -> bool {
@@ -2169,6 +2188,7 @@ fn lower_special_rewrite_triggered_oath(
                     None,
                     crate::effect::SearchResultReferenceSurface::ThatCard,
                     false,
+                    false,
                 )],
             },
         ];
@@ -3258,6 +3278,7 @@ fn try_lower_partner_with_tokens(
                     None,
                     None,
                     crate::effect::SearchResultReferenceSurface::ThatCard,
+                    false,
                     false,
                 )],
             }],

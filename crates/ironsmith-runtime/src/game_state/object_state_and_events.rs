@@ -109,6 +109,14 @@ impl GameState {
             .source_dealt_damage_to_player_this_turn(source, stable_id, player)
     }
 
+    /// The object dealt damage to anything this turn (active voice).
+    pub fn source_dealt_damage_this_turn(&self, source: ObjectId) -> bool {
+        let stable_id = self.object(source).map(|obj| obj.stable_id);
+        self.turn_store
+            .turn_history
+            .source_dealt_damage_this_turn(source, stable_id)
+    }
+
     /// Clear damage from an object.
     pub fn clear_damage(&mut self, id: ObjectId) {
         self.battlefield_flags_mut().damage_marked.remove(&id);

@@ -140,14 +140,13 @@ pub(super) fn storm_herald_keeps_one_destination_choice_per_returned_aura()
         expected: &crate::tag::TagKey,
     ) -> bool {
         match spec.unhinted() {
-            crate::target::ChooseSpec::Object(filter)
-            | crate::target::ChooseSpec::All(filter) => filter.tagged_constraints.iter().any(
-                |constraint| {
+            crate::target::ChooseSpec::Object(filter) | crate::target::ChooseSpec::All(filter) => {
+                filter.tagged_constraints.iter().any(|constraint| {
                     constraint.tag == *expected
                         && constraint.relation
                             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-                },
-            ),
+                })
+            }
             crate::target::ChooseSpec::Target(inner)
             | crate::target::ChooseSpec::WithCount(inner, _)
             | crate::target::ChooseSpec::WithCountValue(inner, _, _) => {
@@ -175,9 +174,7 @@ pub(super) fn storm_herald_keeps_one_destination_choice_per_returned_aura()
         .expect("Storm Herald should have an enters trigger");
     let attach = effects
         .iter()
-        .find_map(|effect| {
-            super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect)
-        })
+        .find_map(|effect| super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect))
         .expect("the returned Auras should retain their attachment instruction");
     assert!(
         attach.individual_targets,
@@ -198,9 +195,8 @@ pub(super) fn storm_herald_keeps_one_destination_choice_per_returned_aura()
     let delayed_exile = effects
         .iter()
         .find_map(|effect| {
-            let schedule = super::find_nested_effect::<
-                crate::effects::ScheduleDelayedTriggerEffect,
-            >(effect)?;
+            let schedule =
+                super::find_nested_effect::<crate::effects::ScheduleDelayedTriggerEffect>(effect)?;
             schedule
                 .effects
                 .iter()
@@ -305,9 +301,7 @@ pub(super) fn return_all_attached_to_a_prior_object_keeps_the_attachment_step() 
         .expect("Flickerform should have an activated ability");
     let attach = effects
         .iter()
-        .find_map(|effect| {
-            super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect)
-        })
+        .find_map(|effect| super::find_nested_effect::<crate::effects::AttachObjectsEffect>(effect))
         .expect("the returned Aura collection should be attached");
     let crate::target::ChooseSpec::All(attached_filter) = attach.objects.base() else {
         panic!("the attachment step should retain the complete returned collection: {attach:#?}");
@@ -2106,7 +2100,11 @@ pub(super) fn rewrite_grammar_add_mana_equal_amount_value_entrypoint_matches_par
         grammar_parsed,
         Some(crate::effect::Value::Add(
             Box::new(crate::effect::Value::ToughnessOf(Box::new(
-                crate::target::ChooseSpec::Source,
+                crate::target::ChooseSpec::Tagged(crate::TagKey::from("__it__")).with_surface_hint(
+                    crate::target::ChooseSpecSurfaceHint::SourceReference(
+                        crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                    )
+                ),
             ))),
             Box::new(crate::effect::Value::Fixed(2)),
         ))

@@ -83,6 +83,7 @@ fn retarget_it_restriction_for_counter_followup(
             retarget_it_filter_for_counter_followup(attacker, source_filter);
         }
         Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+        | Restriction::AttackPlayer { attackers, .. }
         | Restriction::CastSpellsMatching(_, attackers)
         | Restriction::CastMoreThanOneSpellEachTurn(_, attackers) => {
             retarget_it_filter_for_counter_followup(attackers, source_filter);
@@ -653,7 +654,9 @@ pub(crate) fn parse_if_enters_with_additional_counter_sentence(
     };
     let put_counter = EffectAst::subject_verb_put_counters(
         shape.descriptor.counter_type,
-        Value::Fixed(shape.descriptor.count as i32),
+        Value::Fixed(shape.descriptor.count as i32)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::InlineBattlefieldEntryCounter)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::AdditionalEntryCounter),
         TargetAst::Tagged(TagKey::from(IT_TAG), clause.span()),
         None,
         false,

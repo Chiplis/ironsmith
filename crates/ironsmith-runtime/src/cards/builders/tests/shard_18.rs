@@ -679,7 +679,7 @@ pub(super) fn guardian_of_the_ages_strict_parser_and_text_regression() {
         rendered_lines,
         vec![
             "Defender".to_string(),
-            "Whenever a creature attacks you or a planeswalker you control, if this creature has defender, this creature loses defender and this creature gains trample.".to_string(),
+            "Whenever a creature attacks you or a planeswalker you control, if this creature has defender, this creature loses defender and gains trample.".to_string(),
         ],
         "Guardian of the Ages should render the source-keyword intervening-if clause"
     );
@@ -1279,7 +1279,7 @@ pub(super) fn trystan_faces_strict_parser_and_text_regression() {
             "Whenever this creature enters or transforms into Trystan, Callous Cultivator"
         ) && front_rendered.contains("mill three cards")
             && front_rendered
-                .contains("If there is an Elf card in your graveyard, you gain 2 life"),
+                .contains("Then if there is an Elf card in your graveyard, you gain 2 life"),
         "expected front-face transform trigger and Elf-card graveyard condition, got {front_rendered}"
     );
 
@@ -1295,7 +1295,7 @@ pub(super) fn trystan_faces_strict_parser_and_text_regression() {
     assert!(
         back_rendered.contains("Whenever this creature transforms into Trystan, Penitent Culler")
             && back_rendered.contains("mill three cards")
-            && back_rendered.contains("You may exile an Elf card")
+            && back_rendered.contains("then you may exile an Elf card")
             && back_rendered.contains("If you do, each opponent loses 2 life")
             && back_rendered.contains("At the beginning of your first main phase, you may pay {G}"),
         "expected back-face transform trigger, optional Elf exile, opponent life loss, and green transform trigger, got {back_rendered}"
@@ -1393,7 +1393,7 @@ pub(super) fn breaker_of_creation_strict_parser_text_and_structure_regression() 
         rendered.contains(
             "When you cast this spell, you gain 1 life for each colorless permanent you control"
         ) && rendered.contains("Hexproof from each color")
-            && rendered.contains("annihilator 2"),
+            && rendered.contains("Annihilator 2"),
         "expected Breaker of Creation cast trigger, hexproof-from-each-color, and annihilator text, got {rendered}"
     );
     assert!(

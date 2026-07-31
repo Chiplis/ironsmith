@@ -1287,6 +1287,33 @@ pub(super) fn try_apply_drawn_this_turn_clause(
     true
 }
 
+/// Active voice: "target creature that dealt damage this turn" — the object
+/// is the damage DEALER, not the recipient.
+pub(super) fn try_apply_dealt_damage_this_turn_clause(
+    filter: &mut ObjectFilter,
+    all_words: &mut Vec<&str>,
+    segment_tokens: &mut Vec<OwnedLexToken>,
+) -> bool {
+    const ACTIVE_PHRASE: &[&str] = &["that", "dealt", "damage", "this", "turn"];
+    let Some(word_start) = all_words
+        .windows(ACTIVE_PHRASE.len())
+        .position(|window| window == ACTIVE_PHRASE)
+    else {
+        return false;
+    };
+
+    filter.dealt_damage_this_turn = true;
+    all_words.drain(word_start..word_start + ACTIVE_PHRASE.len());
+    drain_segment_phrase_variants(
+        segment_tokens,
+        &[SegmentPhraseVariant {
+            words: ACTIVE_PHRASE,
+            drain_start_offset: 0,
+        }],
+    );
+    true
+}
+
 pub(super) fn try_apply_was_dealt_damage_this_turn_clause(
     filter: &mut ObjectFilter,
     all_words: &mut Vec<&str>,
@@ -1357,13 +1384,10 @@ pub(super) fn try_apply_leading_tagged_reference_prefix(
         } else {
             1
         };
-        if all_words
-            .get(noun_idx)
-            .is_some_and(|word| {
-                is_demonstrative_object_head(word)
-                    || (demonstrative_reference && parse_subtype_flexible(word).is_some())
-            })
-        {
+        if all_words.get(noun_idx).is_some_and(|word| {
+            is_demonstrative_object_head(word)
+                || (demonstrative_reference && parse_subtype_flexible(word).is_some())
+        }) {
             push_it_tagged_object_constraint(filter);
             if plural_demonstrative {
                 filter.set_plural_object_noun_surface(true);

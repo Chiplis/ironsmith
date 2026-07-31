@@ -896,12 +896,17 @@ pub(super) fn last_rites_discards_chosen_nonlands_from_revealed_target_hand() {
     };
     resolve_stack_entry_with(&mut game, &mut dm).expect("Last Rites should resolve");
 
+    let public_reveals = dm
+        .reveal_calls
+        .iter()
+        .filter(|(_, _, public, _)| *public)
+        .collect::<Vec<_>>();
     assert_eq!(
-        dm.reveal_calls.len(),
+        public_reveals.len(),
         game.players.len(),
         "Last Rites should reveal the target player's hand publicly"
     );
-    for (_viewer, subject, public, cards) in &dm.reveal_calls {
+    for (_viewer, subject, public, cards) in public_reveals {
         assert_eq!(*subject, bob);
         assert!(*public);
         assert!(cards.contains(&bob_nonland_one));

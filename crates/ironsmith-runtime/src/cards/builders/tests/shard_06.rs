@@ -1710,9 +1710,10 @@ pub(super) fn compiled_text_kargan_dragonlord_keeps_pump_in_level_block() {
 
     assert!(
         rendered.contains("Level up {R}")
-            && rendered.contains(
-                "Level 8+.\n8/8.\nFlying, trample\n{R}: This creature gets +1/+0 until end of turn."
-            )
+            && rendered.contains("Level 8+.\n8/8.")
+            && rendered.lines().any(|line| line == "Flying")
+            && rendered.lines().any(|line| line == "Trample")
+            && rendered.contains("{R}: This creature gets +1/+0 until end of turn.")
             && !rendered.contains("Activated ability"),
         "Kargan Dragonlord compiled text should render the level-up line and level-8 pump block, got {rendered}"
     );
@@ -1766,7 +1767,7 @@ pub(super) fn test_standalone_may_effect_does_not_emit_with_id_wrapper() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("destroy target vampire or werewolf or zombie"),
+        rendered.contains("destroy target vampire, werewolf, or zombie"),
         "expected one oracle-like disjunctive target, got {rendered}"
     );
     assert!(
@@ -2314,7 +2315,8 @@ pub(super) fn test_experiment_twelve_strict_parse_regression() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        compiled.contains("put x +1/+1 counters on that creature, where x is its power"),
+        compiled
+            .contains("put x +1/+1 counters on that creature, where x is that creature's power"),
         "expected dynamic power-based counter clause in compiled output, got {compiled}"
     );
 }

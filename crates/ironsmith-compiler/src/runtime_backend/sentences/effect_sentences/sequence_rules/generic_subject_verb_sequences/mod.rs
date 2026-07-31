@@ -299,15 +299,16 @@ pub(crate) fn parse_starting_each_player_optional_repeat_sequence(
         return Ok(None);
     };
 
-    let Ok(parsed) =
-        effect_sentences::parse_effect_sentence_lexed(shape.each_player_clause_tokens)
-            .or_else(|_| effect_sentences::parse_effect_chain(shape.each_player_clause_tokens))
+    let Ok(parsed) = effect_sentences::parse_effect_sentence_lexed(shape.each_player_clause_tokens)
+        .or_else(|_| effect_sentences::parse_effect_chain(shape.each_player_clause_tokens))
     else {
         return Ok(None);
     };
-    let [EffectAst::ForEachPlayer {
-        effects: per_player_effects,
-    }] = parsed.as_slice()
+    let [
+        EffectAst::ForEachPlayer {
+            effects: per_player_effects,
+        },
+    ] = parsed.as_slice()
     else {
         return Ok(None);
     };
@@ -364,7 +365,7 @@ pub(crate) fn parse_each_player_shuffle_reveal_then_put_revealed_types_bottom(
 
     Ok(Some(vec![EffectAst::ForEachPlayer {
         effects: vec![
-            EffectAst::subject_verb_shuffle_objects_into_library(
+            EffectAst::subject_verb_shuffle_all_objects_into_library(
                 PlayerAst::That,
                 TargetAst::Object(shuffled_filter, None, None),
             ),

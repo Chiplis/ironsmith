@@ -278,6 +278,10 @@ fn parse_shared_suffix_filter(tokens: &[OwnedLexToken]) -> Option<ObjectFilter> 
                 left_filter.owner = None;
                 right_filter.owner = None;
             }
+            if left_filter.mana_value == right_filter.mana_value {
+                disjunction.mana_value = left_filter.mana_value.take();
+                right_filter.mana_value = None;
+            }
             if left_filter.other == right_filter.other || leading_other {
                 disjunction.other = left_filter.other || right_filter.other;
                 left_filter.other = false;

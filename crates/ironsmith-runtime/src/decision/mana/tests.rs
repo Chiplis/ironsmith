@@ -408,23 +408,19 @@ fn play_from_permission_spell_tax_applies_only_for_its_casting_method() {
         .mana_cost(base_cost.clone())
         .build();
     let spell_id = game.create_object_from_definition(&definition, alice, Zone::Exile);
-    game.effect_store
-        .grant_registry
-        .grant_play_from_to_card(
-            spell_id,
-            Zone::Exile,
-            alice,
-            crate::grant_registry::PlayFromConstraints {
-                spell_cost_increase: Some(ManaCost::from_symbols(vec![
-                    ManaSymbol::Generic(1),
-                ])),
-                lands_enter_tapped: false,
-            },
-            crate::grant_registry::GrantSource::Effect {
-                source_id: source,
-                expires_end_of_turn: u32::MAX,
-            },
-        );
+    game.effect_store.grant_registry.grant_play_from_to_card(
+        spell_id,
+        Zone::Exile,
+        alice,
+        crate::grant_registry::PlayFromConstraints {
+            spell_cost_increase: Some(ManaCost::from_symbols(vec![ManaSymbol::Generic(1)])),
+            lands_enter_tapped: false,
+        },
+        crate::grant_registry::GrantSource::Effect {
+            source_id: source,
+            expires_end_of_turn: u32::MAX,
+        },
+    );
     let spell = game.object(spell_id).expect("exiled spell should exist");
 
     let through_permission =

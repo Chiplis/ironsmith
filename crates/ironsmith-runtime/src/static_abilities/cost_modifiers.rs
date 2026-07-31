@@ -404,10 +404,7 @@ fn describe_shared_multi_zone_characteristic_union_cost_basis(
     let card_type_alternatives = card_types.iter().map(|card_type| {
         let name = card_type.name();
         let article = if name.chars().next().is_some_and(|character| {
-            matches!(
-                character.to_ascii_lowercase(),
-                'a' | 'e' | 'i' | 'o' | 'u'
-            )
+            matches!(character.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
         }) {
             "an"
         } else {
@@ -417,10 +414,7 @@ fn describe_shared_multi_zone_characteristic_union_cost_basis(
     });
     let subtype = subtypes[0].to_string();
     let subtype_article = if subtype.chars().next().is_some_and(|character| {
-        matches!(
-            character.to_ascii_lowercase(),
-            'a' | 'e' | 'i' | 'o' | 'u'
-        )
+        matches!(character.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u')
     }) {
         "an"
     } else {

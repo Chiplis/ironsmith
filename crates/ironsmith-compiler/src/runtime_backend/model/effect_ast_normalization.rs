@@ -167,7 +167,7 @@ fn retag_quantified_choice_collection(effect: &mut EffectAst) -> bool {
     let Some(original_tag) = common_object_choice_tag(choice_effects) else {
         return false;
     };
-    if original_tag.as_str() != IT_TAG && original_tag.as_str() != CHOSEN_OBJECTS_TAG {
+    if !choice_collection_tag_can_accumulate(&original_tag) {
         return false;
     }
     for effect in choice_effects {
@@ -221,6 +221,7 @@ fn choice_collection_producer_is_quantified(effect: &EffectAst) -> Option<bool> 
 
 fn choice_collection_tag_can_accumulate(tag: &crate::tag::TagKey) -> bool {
     matches!(tag.as_str(), IT_TAG | CHOSEN_OBJECTS_TAG)
+        || tag.as_str().starts_with("participant_choice_l")
 }
 
 fn choice_collection_producer_has_accumulating_tags(effect: &EffectAst) -> bool {

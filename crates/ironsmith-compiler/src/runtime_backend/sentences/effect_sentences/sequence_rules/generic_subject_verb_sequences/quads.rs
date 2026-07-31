@@ -84,6 +84,123 @@ fn effect_ast_contains_sacrifice(effect: &EffectAst) -> bool {
     }
 }
 
+fn rebind_one_of_those_cards_target(target: &mut TargetAst, looked_tag: &TagKey) -> bool {
+    match target {
+        TargetAst::WithCount(inner, count) if count.is_single() => {
+            rebind_one_of_those_cards_target(inner, looked_tag)
+        }
+        TargetAst::Tagged(tag, _) if tag.as_str() == crate::cards::builders::IT_TAG => {
+            *tag = looked_tag.clone();
+            true
+        }
+        TargetAst::Object(filter, _, reference_span)
+            if *filter == ObjectFilter::tagged(crate::cards::builders::IT_TAG) =>
+        {
+            *target = TargetAst::Tagged(looked_tag.clone(), reference_span.clone());
+            true
+        }
+        _ => false,
+    }
+}
+
+fn parse_looked_card_move_result_branch(
+    tokens: &[OwnedLexToken],
+    predicate: IfResultPredicate,
+    looked_tag: &TagKey,
+) -> Result<Option<EffectAst>, CardTextError> {
+    if !crate::runtime_backend::front_end::grammar::lexical::contains_token_word_sequence(
+        tokens,
+        &["one", "of", "those", "cards"],
+    ) {
+        return Ok(None);
+    }
+    let Ok(mut effects) = effect_sentences::parse_effect_sentence_lexed(tokens) else {
+        return Ok(None);
+    };
+    let [EffectAst::IfResult {
+        predicate: parsed_predicate,
+        effects: branch,
+    }] = effects.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    if *parsed_predicate != predicate {
+        return Ok(None);
+    }
+    let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action: SubjectVerbActionAst::MoveToZone { target, .. },
+        ..
+    })] = branch.as_mut_slice()
+    else {
+        return Ok(None);
+    };
+    if !rebind_one_of_those_cards_target(target, looked_tag) {
+        return Ok(None);
+    }
+    Ok(effects.pop())
+}
+
+/// Keep a looked-card collection stable across an unrelated optional action:
+///
+/// "Look at ... . You may [act]. If you do, put one of those cards ... .
+/// If you don't, put one of those cards ... ."
+///
+/// A source sacrifice inside the optional action intentionally establishes
+/// the source as the newest singular `it` antecedent. Both authored plural
+/// references still name the earlier looked collection, so bind them to that
+/// producer explicitly before reference resolution walks the optional body.
+pub(crate) fn parse_look_then_may_action_if_did_or_did_not_move_looked_card(
+    sentences: &[SentenceInput],
+    sentence_idx: usize,
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    let first_tokens = trim_commas(sentences[sentence_idx].lowered());
+    let Some((library_owner, count, false)) =
+        effect_sentences::parse_top_cards_view_sentence(&first_tokens)
+    else {
+        return Ok(None);
+    };
+    let looked_tag = helper_tag_for_tokens(&first_tokens, "looked_before_optional_action");
+
+    let second_tokens = trim_commas(sentences[sentence_idx + 1].lowered());
+    let Ok(optional_effects) = effect_sentences::parse_effect_sentence_lexed(&second_tokens) else {
+        return Ok(None);
+    };
+    if !matches!(
+        optional_effects.as_slice(),
+        [EffectAst::May { .. } | EffectAst::MayByPlayer { .. }]
+    ) {
+        return Ok(None);
+    }
+
+    let third_tokens = trim_commas(sentences[sentence_idx + 2].lowered());
+    let Some(did) = parse_looked_card_move_result_branch(
+        &third_tokens,
+        IfResultPredicate::Did,
+        &looked_tag,
+    )?
+    else {
+        return Ok(None);
+    };
+    let fourth_tokens = trim_commas(sentences[sentence_idx + 3].lowered());
+    let Some(did_not) = parse_looked_card_move_result_branch(
+        &fourth_tokens,
+        IfResultPredicate::DidNot,
+        &looked_tag,
+    )?
+    else {
+        return Ok(None);
+    };
+
+    let mut effects = vec![EffectAst::subject_verb_look_at_top_cards(
+        library_owner,
+        count,
+        looked_tag,
+    )];
+    effects.extend(optional_effects);
+    effects.extend([did, did_not]);
+    Ok(Some(effects))
+}
+
 fn independent_and_or_looked_card_filters(filter: &ObjectFilter) -> Option<Vec<ObjectFilter>> {
     if filter.card_types.len() > 1
         && filter.all_card_types.is_empty()
@@ -518,6 +635,7 @@ fn parse_exiled_card_cast_filter(
     let mut filter = parse_object_filter_lexed(shape.filter_tokens, false)?;
     if filter.zone == Some(Zone::Stack) {
         filter.zone = None;
+        filter.stack_kind = None;
     }
     Ok(Some(filter))
 }
@@ -2068,6 +2186,27 @@ mod looked_partition_tests {
     use crate::runtime_backend::front_end::lexer::lex_line;
 
     #[test]
+    fn discover_cast_condition_describes_the_exiled_card_not_a_stack_object() {
+        let tokens = lex_line(
+            "You may cast the exiled card without paying its mana cost if it's an instant spell with mana value 2 or less",
+            0,
+        )
+        .expect("cast condition should lex");
+
+        let filter = parse_exiled_card_cast_filter(&tokens)
+            .expect("cast condition should not error")
+            .expect("cast condition should parse");
+
+        assert_eq!(filter.zone, None);
+        assert_eq!(filter.stack_kind, None);
+        assert_eq!(filter.card_types, vec![crate::types::CardType::Instant]);
+        assert_eq!(
+            filter.mana_value,
+            Some(crate::filter::Comparison::LessThanOrEqual(2))
+        );
+    }
+
+    #[test]
     fn selected_card_condition_uses_the_chosen_tag_and_exact_remainder() {
         let raw = [
             "Look at the top six cards of your library",
@@ -2716,6 +2855,81 @@ mod looked_partition_tests {
                 ..
             })] if tag == looked_tag && keep_tagged == selected_tag
         ));
+    }
+
+    #[test]
+    fn optional_source_payment_does_not_replace_plural_looked_card_branches() {
+        let raw = [
+            "Look at the top two cards of your library",
+            "You may sacrifice this enchantment and pay {2}{G}{G}",
+            "If you do, put one of those cards into your hand",
+            "If you don't, put one of those cards on the bottom of your library",
+        ];
+        let lexed = raw
+            .iter()
+            .enumerate()
+            .map(|(idx, line)| lex_line(line, idx).expect("sentence should lex"))
+            .collect::<Vec<_>>();
+        let sentences = lexed
+            .iter()
+            .map(|tokens| SentenceInput::from_lexed(tokens))
+            .collect::<Vec<_>>();
+
+        let effects =
+            parse_look_then_may_action_if_did_or_did_not_move_looked_card(&sentences, 0)
+                .expect("looked-card result parser should not error")
+                .expect("optional action with two looked-card result branches should parse");
+        let [look, optional, did, did_not] = effects.as_slice() else {
+            panic!("expected look/optional/two-branch program: {effects:#?}");
+        };
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::LookAtTopCards {
+                    tag: looked_tag, ..
+                },
+            ..
+        }) = look
+        else {
+            panic!("expected looked-card producer: {look:#?}");
+        };
+        assert!(matches!(
+            optional,
+            EffectAst::May { .. } | EffectAst::MayByPlayer { .. }
+        ));
+
+        let branch_target = |effect: &EffectAst, expected| {
+            let EffectAst::IfResult {
+                predicate,
+                effects: branch,
+            } = effect
+            else {
+                panic!("expected one move result branch: {effect:#?}");
+            };
+            assert_eq!(*predicate, expected);
+            let [EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::MoveToZone { target, .. },
+                ..
+            })] = branch.as_slice()
+            else {
+                panic!("expected one move in result branch: {branch:#?}");
+            };
+            let TargetAst::WithCount(inner, count) = target else {
+                panic!("expected one-card selection: {target:#?}");
+            };
+            assert!(count.is_single());
+            let TargetAst::Tagged(tag, _) = inner.as_ref() else {
+                panic!("expected looked-card tag: {inner:#?}");
+            };
+            tag.clone()
+        };
+        assert_eq!(
+            branch_target(did, IfResultPredicate::Did),
+            looked_tag.clone()
+        );
+        assert_eq!(
+            branch_target(did_not, IfResultPredicate::DidNot),
+            looked_tag.clone()
+        );
     }
 
     #[test]

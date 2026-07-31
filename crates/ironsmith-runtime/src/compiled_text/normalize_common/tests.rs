@@ -23,6 +23,18 @@ fn plural_object_filters_pluralize_bare_ability_nouns() {
 }
 
 #[test]
+fn plural_object_filters_preserve_combat_relation_objects() {
+    assert_eq!(
+        pluralize_noun_phrase("other creature you control that's attacking that player"),
+        "other creatures you control that are attacking that player"
+    );
+    assert_eq!(
+        pluralize_noun_phrase("creature you control attacking the defending player"),
+        "creatures you control attacking the defending player"
+    );
+}
+
+#[test]
 fn unscoped_where_x_count_preserves_battlefield_zone() {
     let global_clerics = ObjectFilter::default()
         .with_subtype(Subtype::Cleric)
@@ -3309,7 +3321,7 @@ fn plain_type_setting_animation_omits_addition_surface() {
     let (target_text, plural_target) = describe_apply_continuous_target(&effect);
     let rendered = describe_apply_continuous_animation_effect(&effect, &target_text, plural_target)
         .expect("type-setting animation should render structurally");
-    assert!(rendered.contains("soldier creature"), "{rendered}");
+    assert!(rendered.contains("Soldier creature"), "{rendered}");
     assert!(
         rendered.contains("base power and toughness 5/3"),
         "{rendered}"
@@ -3451,6 +3463,12 @@ fn quoted_token_abilities_use_token_self_reference_for_activation_costs() {
             "When this token dies, create a 2/2 red Dragon creature token with flying and \"{R}: This token gets +1/+0 until end of turn.\""
         ),
         "\"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\""
+    );
+    assert_eq!(
+        normalize_token_quoted_ability_surfaces(
+            "Create a 1/1 colorless Snake artifact creature token. It has \"Whenever this token deals damage to a player, that player gets a poison counter.\""
+        ),
+        "Create a 1/1 colorless Snake artifact creature token. It has \"Whenever this creature deals damage to a player, that player gets a poison counter.\""
     );
 }
 

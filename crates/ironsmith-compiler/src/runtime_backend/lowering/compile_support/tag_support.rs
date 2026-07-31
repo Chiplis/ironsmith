@@ -554,8 +554,7 @@ pub(crate) fn effect_references_tag(effect: &EffectAst, tag: &str) -> bool {
     if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
         action:
             SubjectVerbActionAst::GainControl {
-                controller_reference:
-                    Some(ObjectRef::Tagged(controller_reference_tag)),
+                controller_reference: Some(ObjectRef::Tagged(controller_reference_tag)),
                 ..
             },
         ..
@@ -783,9 +782,10 @@ pub(crate) fn predicate_references_tag(predicate: &PredicateAst, tag: &str) -> b
 pub(crate) fn choose_spec_references_tag(spec: &ChooseSpec, tag: &str) -> bool {
     match spec {
         ChooseSpec::Tagged(t) => t.as_str() == tag,
-        ChooseSpec::Target(inner) | ChooseSpec::WithCount(inner, _) => {
-            choose_spec_references_tag(inner, tag)
-        }
+        ChooseSpec::SurfaceHinted { spec: inner, .. }
+        | ChooseSpec::Target(inner)
+        | ChooseSpec::WithCount(inner, _)
+        | ChooseSpec::WithCountValue(inner, _, _) => choose_spec_references_tag(inner, tag),
         ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter
             .tagged_constraints
             .iter()
@@ -1686,7 +1686,9 @@ pub(crate) fn restriction_references_tag(
         return blockers_reference || attacker_reference;
     }
 
-    if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. } = restriction {
+    if let Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+    | Restriction::AttackPlayer { attackers, .. } = restriction
+    {
         return attackers
             .tagged_constraints
             .iter()

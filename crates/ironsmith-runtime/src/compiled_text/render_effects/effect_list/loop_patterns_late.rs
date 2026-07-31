@@ -632,7 +632,8 @@
                     || (schedule.target_tag.as_ref().is_some_and(|tag| {
                         tag.as_str().contains("targeted")
                     }) && (trigger_text.contains("creature dies")
-                        || trigger_text.contains("creature is put into a graveyard"))))
+                        || trigger_text.contains("creature is put into a graveyard")
+                        || trigger_text.contains("deals combat damage to"))))
             {
                 let rendered = describe_effect(filtered[idx + 1]);
                 if !rendered.is_empty() {
@@ -1124,7 +1125,7 @@
             continue;
         }
         if idx + 1 < filtered.len()
-            && let Some(with_id) = filtered[idx].downcast_ref::<crate::effects::WithIdEffect>()
+            && let Some(with_id) = wrapped_with_id(filtered[idx])
         {
             let mut branch_parts = Vec::new();
             let mut saw_happened_branch = false;

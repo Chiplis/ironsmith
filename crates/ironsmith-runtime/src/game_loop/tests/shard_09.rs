@@ -1322,7 +1322,9 @@ pub(super) fn clown_car_etb_applies_odd_even_result_branches_per_die_for_x_rolls
         .iter()
         .filter(|&&id| {
             game.object(id).is_some_and(|obj| {
-                obj.name == "Clown"
+                obj.kind == ObjectKind::Token
+                    && obj.subtypes.contains(&Subtype::Clown)
+                    && obj.subtypes.contains(&Subtype::Robot)
                     && game.controller_of(obj) == alice
                     && obj.card_types.contains(&CardType::Artifact)
                     && obj.card_types.contains(&CardType::Creature)
@@ -2177,7 +2179,11 @@ pub(super) fn mindleech_mass_casts_spell_from_damaged_players_hand_without_payin
     assert_eq!(stack_entry.controller, alice);
     assert_eq!(
         stack_entry.casting_method,
-        crate::alternative_cast::CastingMethod::Normal
+        crate::alternative_cast::CastingMethod::PlayFrom {
+            source: mindleech_id,
+            zone: Zone::Hand,
+            use_alternative: None,
+        }
     );
     let stack_spell = game
         .object(stack_entry.object_id)

@@ -57,13 +57,9 @@ impl DecisionSpec for XValueSpec {
         _source: Option<ObjectId>,
         _game: &GameState,
     ) -> DecisionContext {
-        DecisionContext::Number(NumberContext::new(
-            player,
-            Some(self.source),
-            0,
-            self.max_x,
-            format!("Choose value for X (0-{})", self.max_x),
-        ))
+        let mut context = NumberContext::x_value(player, self.source, self.max_x);
+        context.description = self.description();
+        DecisionContext::Number(context)
     }
 }
 

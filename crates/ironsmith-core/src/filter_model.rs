@@ -1386,6 +1386,9 @@ pub struct ObjectFilter {
     pub surveilled_this_turn: bool,
     pub discarded_or_cycled_this_turn_by: Option<PlayerFilter>,
     pub was_dealt_damage_this_turn: bool,
+    /// Active voice: the object itself DEALT damage this turn
+    /// ("target creature that dealt damage this turn").
+    pub dealt_damage_this_turn: bool,
     pub dealt_damage_by_source_this_turn: Option<crate::DamagedBySource>,
     pub dealt_damage_to_player_this_turn: Option<PlayerFilter>,
     pub drawn_this_turn: bool,
@@ -2663,6 +2666,9 @@ impl ObjectFilter {
         if let Some(description) = describe_you_own_or_control_union(self) {
             return description;
         }
+        if let Some(description) = describe_possessive_commander_subject(self) {
+            return description;
+        }
         if any_of_keyword_clause.is_none() && !self.any_of.is_empty() {
             let explicit_branch_articles = self.has_explicit_union_branch_articles();
             let branch_descriptions = self
@@ -3431,9 +3437,15 @@ impl ObjectFilter {
             post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
         if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
+            let mut partner_description = combat_partner.description();
+            if combat_partner.card_types.as_slice() == [CardType::Creature]
+                && !combat_partner.subtypes.is_empty()
+            {
+                partner_description = partner_description.replacen(" creature", "", 1);
+            }
             post_noun_qualifiers.push(format!(
                 "that blocked or was blocked by {} this turn",
-                ensure_indefinite_article(combat_partner.description())
+                ensure_indefinite_article(partner_description)
             ));
         }
         if self.tapped && self.untapped {
@@ -3633,6 +3645,14 @@ impl ObjectFilter {
                 parts.push("outlaw".to_string());
                 remaining.retain(|subtype| !outlaw_pack.contains(subtype));
             }
+            // A subtype that the same filter also excludes is already spelled out by
+            // the "non-<subtype>" prefix, so repeating it as the noun doubles the
+            // word ("non-human Human creature"). Only drop it when a card type is
+            // still around to supply the noun, since a subtype-only filter leans on
+            // the subtype word itself.
+            if !self.excluded_subtypes.is_empty() && !subtype_implies_type {
+                remaining.retain(|subtype| !self.excluded_subtypes.contains(subtype));
+            }
             parts.extend(remaining.iter().map(std::string::ToString::to_string));
             parts
         } else {
@@ -3819,7 +3839,18 @@ impl ObjectFilter {
         }
 
         if !post_noun_qualifiers.is_empty() {
-            parts.extend(post_noun_qualifiers);
+            // Independent reference-resolution paths can retain aliases for
+            // the same tagged producer (for example, both a sacrifice result
+            // tag and its cost tag). Keep every typed constraint in the AST,
+            // but do not repeat an identical English qualifier when those
+            // aliases describe the same relation.
+            let mut rendered_qualifiers = Vec::with_capacity(post_noun_qualifiers.len());
+            for qualifier in post_noun_qualifiers {
+                if !rendered_qualifiers.contains(&qualifier) {
+                    rendered_qualifiers.push(qualifier);
+                }
+            }
+            parts.extend(rendered_qualifiers);
         }
         if self.distinct_names {
             parts.push("with different names".to_string());
@@ -4000,9 +4031,28 @@ impl ObjectFilter {
         for marker in &self.ability_markers {
             parts.push(format!("with {}", marker.to_ascii_lowercase()));
         }
-        for ability in &self.excluded_static_abilities {
-            if let Some(label) = describe_filter_static_ability(*ability) {
-                parts.push(format!("without {}", label));
+        if self.excluded_static_abilities.len() > 1 {
+            // Oracle writes a multi-keyword exclusion as one serial clause
+            // ("that doesn't have first strike, double strike, vigilance, or
+            // haste"), never as repeated "without" parts.
+            let labels = self
+                .excluded_static_abilities
+                .iter()
+                .filter_map(|ability| describe_filter_static_ability(*ability))
+                .collect::<Vec<_>>();
+            if let [leading @ .., last] = labels.as_slice()
+                && !leading.is_empty()
+            {
+                parts.push(format!(
+                    "that doesn't have {}, or {last}",
+                    leading.join(", ")
+                ));
+            }
+        } else {
+            for ability in &self.excluded_static_abilities {
+                if let Some(label) = describe_filter_static_ability(*ability) {
+                    parts.push(format!("without {}", label));
+                }
             }
         }
         for marker in &self.excluded_ability_markers {
@@ -4151,6 +4201,9 @@ impl ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if self.dealt_damage_this_turn {
+            parts.push("that dealt damage this turn".to_string());
         }
         if let Some(damager) = &self.dealt_damage_by_source_this_turn {
             let source = match damager {
@@ -4477,6 +4530,54 @@ pub fn describe_owner_scoped_zone_union(filter: &ObjectFilter) -> Option<String>
 /// `(permanent owned by you) OR (permanent controlled by you)` is the typed
 /// form of Oracle's "a permanent you own or control". The two branches must
 /// otherwise be identical so genuinely distinct selectors remain expanded.
+/// Oracle uses the possessive for the bare commander subject — "Whenever **your
+/// commander** deals combat damage to a player" — and reserves the indefinite
+/// "a commander you own" for the cross-zone value reference, e.g. Cloudkill's
+/// "the greatest mana value of a commander you own on the battlefield or in the
+/// command zone". Those value references are zone unions whose arms do not carry
+/// `owner`, so requiring an explicit `owner: You` on a bare, otherwise-unqualified
+/// commander filter separates the two without a scorer rewrite (a REWRITES pair
+/// collapsing the two spellings damaged Cloudkill and Majestic Genesis, whose
+/// oracle really does say "a commander you own").
+fn describe_possessive_commander_subject(filter: &ObjectFilter) -> Option<String> {
+    if !filter.is_commander
+        || filter.owner != Some(PlayerFilter::You)
+        || !matches!(filter.controller, None | Some(PlayerFilter::You))
+        || !matches!(filter.zone, None | Some(Zone::Battlefield))
+        || !filter.any_of.is_empty()
+    {
+        return None;
+    }
+    // Anything the possessive cannot express keeps the spelled-out form.
+    if !filter.card_types.is_empty()
+        || !filter.all_card_types.is_empty()
+        || !filter.subtypes.is_empty()
+        || !filter.all_subtypes.is_empty()
+        || !filter.supertypes.is_empty()
+        || !filter.excluded_card_types.is_empty()
+        || !filter.excluded_subtypes.is_empty()
+        || !filter.tagged_constraints.is_empty()
+        || filter.name.is_some()
+        || filter.specific.is_some()
+        || filter.token
+        || filter.nontoken
+        || filter.other
+        || filter.power.is_some()
+        || filter.toughness.is_some()
+        || filter.mana_value.is_some()
+        || filter.with_counter.is_some()
+        || filter.without_counter.is_some()
+        || filter.colors.is_some()
+        || filter.attacking
+        || filter.blocking
+        || filter.tapped
+        || filter.untapped
+    {
+        return None;
+    }
+    Some("your commander".to_string())
+}
+
 fn describe_you_own_or_control_union(filter: &ObjectFilter) -> Option<String> {
     if filter.union_connective() != ObjectFilterUnionConnective::Or {
         return None;
@@ -4745,15 +4846,11 @@ pub fn describe_branch_scoped_card_type_union(filter: &ObjectFilter) -> Option<S
             break;
         }
     }
-    if description.starts_with("a ")
-        && replacement
-            .chars()
-            .next()
-            .is_some_and(|first| matches!(first.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u'))
-    {
-        description.replace_range(..2, "an ");
-    }
-    Some(description)
+    // Re-evaluate the article against the complete rendered phrase. Shared
+    // adjectives can precede the replacement noun ("a tapped artifact",
+    // "a red instant"), so looking only at the first character of the
+    // replacement incorrectly produced "an tapped" and "an red".
+    Some(correct_leading_indefinite_article(description))
 }
 
 fn branch_scoped_union_arm_is_characteristic_selector(filter: &ObjectFilter) -> bool {
@@ -5910,7 +6007,7 @@ mod tests {
 
         assert_eq!(
             filter.description(),
-            "red instant and sorcery spell you control"
+            "a red instant and sorcery spell you control"
         );
     }
 
@@ -6309,8 +6406,8 @@ mod tests {
         surfaced_filter.set_explicit_card_type_noun(Some(CardType::Land));
 
         assert_eq!(semantic_filter, surfaced_filter);
-        assert_eq!(semantic_filter.description(), "a Urza's you control");
-        assert_eq!(surfaced_filter.description(), "a Urza's land you control");
+        assert_eq!(semantic_filter.description(), "an Urza's you control");
+        assert_eq!(surfaced_filter.description(), "an Urza's land you control");
     }
 
     #[test]

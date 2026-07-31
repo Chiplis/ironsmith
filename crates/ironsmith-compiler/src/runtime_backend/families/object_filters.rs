@@ -12,8 +12,9 @@ use super::grammar::filters::{
     parse_extremum_object_filter_lexed, parse_extremum_object_filter_words,
     parse_filter_distinct_names_tokens, parse_filter_lexed_envelope,
     parse_filter_tail_decoration_split_words, parse_filter_tail_decoration_tokens,
-    parse_filter_word_envelope, parse_simple_object_filter_lexed,
-    preserve_branch_scoped_card_type_union, preserve_filter_counter_constraint_surface_tokens,
+    parse_filter_word_envelope, parse_repeated_selector_domain_union_lexed,
+    parse_simple_object_filter_lexed, preserve_branch_scoped_card_type_union,
+    preserve_filter_counter_constraint_surface_tokens,
     preserve_filter_counter_constraint_surface_words,
 };
 use super::grammar::primitives::split_lexed_slices_on_or;
@@ -21,8 +22,8 @@ use super::lexer::{
     OwnedLexToken, TokenWordView, parser_token_word_refs, render_token_slice, token_slice_at_is,
 };
 use super::util::{
-    apply_filter_keyword_constraint, non_article_word_refs, parse_filter_keyword_constraint_words,
-    parse_card_type, parse_subtype_flexible, parse_supertype_word,
+    apply_filter_keyword_constraint, non_article_word_refs, parse_card_type,
+    parse_filter_keyword_constraint_words, parse_subtype_flexible, parse_supertype_word,
 };
 
 #[cfg(test)]
@@ -80,6 +81,9 @@ fn apply_sacrificed_card_type_relation(
 }
 
 fn deduplicate_tagged_constraints(mut filter: ObjectFilter) -> ObjectFilter {
+    for branch in &mut filter.any_of {
+        *branch = deduplicate_tagged_constraints(std::mem::take(branch));
+    }
     let mut unique = Vec::with_capacity(filter.tagged_constraints.len());
     for constraint in filter.tagged_constraints.drain(..) {
         if !unique.contains(&constraint) {
@@ -196,6 +200,30 @@ fn excluded_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
     }
 }
 
+fn positive_cast_origin_zone(tokens: &[OwnedLexToken]) -> Option<crate::Zone> {
+    let words = parser_token_word_refs(tokens);
+    let from = words
+        .windows(2)
+        .rposition(|window| window == ["cast", "from"])
+        .map(|index| index + 2)?;
+    let origin_words = words.get(from..)?;
+
+    match origin_words.last().copied()? {
+        "hand" => Some(crate::Zone::Hand),
+        "graveyard" | "graveyards" => Some(crate::Zone::Graveyard),
+        "library" | "libraries" => Some(crate::Zone::Library),
+        "exile" => Some(crate::Zone::Exile),
+        "battlefield" => Some(crate::Zone::Battlefield),
+        "stack" => Some(crate::Zone::Stack),
+        "ante" => Some(crate::Zone::Ante),
+        "game" if origin_words.ends_with(&["outside", "the", "game"]) => {
+            Some(crate::Zone::OutsideGame)
+        }
+        "zone" if origin_words.ends_with(&["command", "zone"]) => Some(crate::Zone::Command),
+        _ => None,
+    }
+}
+
 fn object_filter_word_is_any(word: &str, candidates: &[&str]) -> bool {
     candidates.iter().any(|candidate| word == *candidate)
 }
@@ -217,17 +245,14 @@ fn preserve_union_surface(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
     let words = parser_token_word_refs(tokens);
     let is_selector_member = |word: &str| {
         parse_card_type(word).is_some_and(|card_type| {
-            filter.card_types.contains(&card_type)
-                || filter.all_card_types.contains(&card_type)
+            filter.card_types.contains(&card_type) || filter.all_card_types.contains(&card_type)
         }) || parse_subtype_flexible(word).is_some_and(|subtype| {
             filter.subtypes.contains(&subtype) || filter.all_subtypes.contains(&subtype)
         }) || parse_supertype_word(word)
             .is_some_and(|supertype| filter.supertypes.contains(&supertype))
     };
     let has_plain_and = words.windows(3).any(|window| {
-        window[1] == "and"
-            && is_selector_member(window[0])
-            && is_selector_member(window[2])
+        window[1] == "and" && is_selector_member(window[0]) && is_selector_member(window[2])
     });
     let has_disjunction = tokens
         .iter()
@@ -511,14 +536,39 @@ pub(crate) fn has_shared_terminal_object_noun(tokens: &[OwnedLexToken]) -> bool 
     let Some(head) = parse_simple_object_filter_lexed(&tokens[..=noun_idx], false) else {
         return false;
     };
-    let characteristic_count = head.card_types.len()
-        + head.all_card_types.len()
-        + head.subtypes.len()
-        + head.all_subtypes.len()
-        + head.supertypes.len();
+    // A branch-local exclusion such as `non-Aura` is represented by the
+    // simple grammar as selector-only `any_of` arms. Those arms still share
+    // the one terminal `card` noun and its trailing domain; treating them as
+    // independently scoped domains strands the graveyard and mana-value
+    // qualifiers on only the final arm.
+    let selector_only_card_type_union = !head.any_of.is_empty()
+        && head.any_of.iter().all(|branch| {
+            if branch.card_types.len() != 1 || !branch.all_card_types.is_empty() {
+                return false;
+            }
+            let mut remainder = branch.clone();
+            remainder.card_types.clear();
+            remainder.excluded_card_types.clear();
+            remainder.excluded_subtypes.clear();
+            remainder.excluded_supertypes.clear();
+            remainder.excluded_colors = ColorSet::new();
+            remainder == ObjectFilter::default()
+        });
+    let characteristic_count = if selector_only_card_type_union {
+        head.any_of
+            .iter()
+            .map(|branch| branch.card_types.len())
+            .sum()
+    } else {
+        head.card_types.len()
+            + head.all_card_types.len()
+            + head.subtypes.len()
+            + head.all_subtypes.len()
+            + head.supertypes.len()
+    };
     let shared_spell_noun = tokens[noun_idx].is_word("spell") || tokens[noun_idx].is_word("spells");
     characteristic_count >= 2
-        && head.any_of.is_empty()
+        && (head.any_of.is_empty() || selector_only_card_type_union)
         && head.excluded_card_types.is_empty()
         && head.excluded_subtypes.is_empty()
         && head.excluded_supertypes.is_empty()
@@ -536,23 +586,30 @@ fn has_requantified_comma_collection(tokens: &[OwnedLexToken]) -> bool {
             >= 2
 }
 
-fn has_shared_terminal_spell_noun(tokens: &[OwnedLexToken]) -> bool {
-    has_shared_terminal_object_noun(tokens)
-        && tokens
-            .iter()
-            .rev()
-            .find(|token| {
-                token.is_word("card")
-                    || token.is_word("cards")
-                    || token.is_word("spell")
-                    || token.is_word("spells")
-                    || token.is_word("permanent")
-                    || token.is_word("permanents")
-            })
-            .is_some_and(|noun| noun.is_word("spell") || noun.is_word("spells"))
+fn preserve_explicit_spell_domain(filter: &mut ObjectFilter, tokens: &[OwnedLexToken]) {
+    let words = TokenWordView::new(tokens).to_word_refs();
+    let has_domain_noun = words.iter().enumerate().any(|(index, word)| {
+        matches!(*word, "spell" | "spells")
+            && !index
+                .checked_sub(1)
+                .and_then(|previous| words.get(previous))
+                .is_some_and(|previous| matches!(*previous, "this" | "that" | "the" | "triggering"))
+    });
+    if has_domain_noun {
+        filter.zone = Some(crate::Zone::Stack);
+        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+        filter.has_mana_cost = true;
+    }
 }
 
 pub(crate) fn parse_object_filter(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
+    parse_object_filter_inner(tokens, other).map(deduplicate_tagged_constraints)
+}
+
+fn parse_object_filter_inner(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
@@ -567,7 +624,13 @@ pub(crate) fn parse_object_filter(
     if let Some(filter) = parse_explicit_card_filter_disjunction(tokens, other)? {
         return Ok(filter);
     }
-    if (!has_shared_terminal_object_noun(tokens) || has_requantified_comma_collection(tokens))
+    let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
+    if has_shared_terminal_noun
+        && let Some(filter) = parse_repeated_selector_domain_union_lexed(tokens, other)
+    {
+        return Ok(filter);
+    }
+    if (!has_shared_terminal_noun || has_requantified_comma_collection(tokens))
         && let Some(filter) = parse_branch_scoped_object_filter_union_lexed(tokens, other)
     {
         return Ok(filter);
@@ -602,20 +665,24 @@ pub(crate) fn parse_object_filter(
         filter
     };
     filter = envelope.decorations.apply_distinct_names_only(filter);
-    if has_shared_terminal_spell_noun(tokens) {
-        filter.zone = Some(crate::Zone::Stack);
-        filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
-        filter.has_mana_cost = true;
-    }
+    preserve_explicit_spell_domain(&mut filter, tokens);
     if let Some(zone) = excluded_cast_origin_zone(tokens) {
         filter.excluded_cast_origin_zone = Some(zone);
+    }
+    if filter.has_mana_cost
+        && filter.cast_by.is_some()
+        && let Some(zone) = positive_cast_origin_zone(tokens)
+    {
+        // A filter such as "spells you cast from exile" describes the
+        // spell's cast origin, not its current stack location. Cast-event
+        // matching and grant rendering both consume this zone as provenance.
+        filter.zone = Some(zone);
     }
     preserve_union_surface(&mut filter, tokens);
     preserve_controller_qualifier_order(&mut filter, tokens);
     preserve_filter_counter_constraint_surface_tokens(&mut filter, tokens);
     normalize_generic_card_ability_tail(tokens, &mut filter);
-    let filter =
-        deduplicate_tagged_constraints(apply_sacrificed_card_type_relation(filter, tokens));
+    let filter = apply_sacrificed_card_type_relation(filter, tokens);
     Ok(apply_sacrificed_as_it_entered_relation(
         apply_original_printing_set(filter, original_printing_set),
         sacrificed_as_it_entered,
@@ -684,6 +751,13 @@ pub(crate) fn parse_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    parse_object_filter_lexed_inner(tokens, other).map(deduplicate_tagged_constraints)
+}
+
+fn parse_object_filter_lexed_inner(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Result<ObjectFilter, CardTextError> {
     if let Some(base_tokens) = split_trailing_where_x_filter_clause(tokens) {
         return parse_object_filter_lexed(base_tokens, other);
     }
@@ -699,6 +773,11 @@ pub(crate) fn parse_object_filter_lexed(
         return Ok(filter);
     }
     let has_shared_terminal_noun = has_shared_terminal_object_noun(tokens);
+    if has_shared_terminal_noun
+        && let Some(filter) = parse_repeated_selector_domain_union_lexed(tokens, other)
+    {
+        return Ok(filter);
+    }
     if (!has_shared_terminal_noun || has_requantified_comma_collection(tokens))
         && let Some(filter) =
             super::grammar::filters::parse_branch_scoped_object_filter_union_lexed(tokens, other)
@@ -750,6 +829,7 @@ pub(crate) fn parse_object_filter_lexed(
         preserve_union_surface(&mut filter, &envelope.core_tokens);
         preserve_controller_qualifier_order(&mut filter, &envelope.core_tokens);
         preserve_filter_counter_constraint_surface_tokens(&mut filter, &envelope.core_tokens);
+        preserve_explicit_spell_domain(&mut filter, &envelope.core_tokens);
         return Ok(apply_original_printing_set(
             envelope.decorations.apply(filter),
             original_printing_set,
@@ -953,6 +1033,7 @@ pub(crate) fn merge_spell_filters(base: &mut ObjectFilter, extra: ObjectFilter) 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::TagKey;
     use crate::runtime_backend::util::tokenize_line;
 
     #[test]
@@ -1281,7 +1362,9 @@ mod tests {
             "an `and` in a later qualifier must not join adjacent card types: {compound_type:#?}"
         );
         assert!(
-            !compound_type.description().starts_with("artifact and creature"),
+            !compound_type
+                .description()
+                .starts_with("artifact and creature"),
             "{}",
             compound_type.description()
         );
@@ -1423,6 +1506,115 @@ mod tests {
                         ironsmith_core::ValueSurfaceHint::MasculineSourcePossessive
                     )
         ));
+    }
+
+    #[test]
+    fn shared_terminal_card_noun_scopes_graveyard_over_and_or_type_arms() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "artifact and/or creature card in your graveyard",
+            0,
+        )
+        .expect("shared-domain filter should lex");
+        assert!(
+            has_shared_terminal_object_noun(&tokens),
+            "the one terminal card noun must scope both selector arms"
+        );
+
+        let filter = parse_object_filter(&tokens, false).expect("shared card domain should parse");
+
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert_eq!(
+            filter.card_types,
+            [CardType::Artifact, CardType::Creature],
+            "{filter:#?}"
+        );
+        assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+        assert_eq!(filter.zone, Some(Zone::Graveyard), "{filter:#?}");
+        assert_eq!(
+            filter.union_connective(),
+            ObjectFilterUnionConnective::AndOr
+        );
+        assert_eq!(
+            filter.description(),
+            "artifact and/or creature card in your graveyard"
+        );
+    }
+
+    #[test]
+    fn independently_nouned_and_or_arms_keep_their_own_domains() {
+        let tokens = crate::runtime_backend::front_end::lexer::lex_line(
+            "artifacts you control and/or creature cards in your graveyard",
+            0,
+        )
+        .expect("independently scoped filter should lex");
+        assert!(
+            !has_shared_terminal_object_noun(&tokens),
+            "independently nouned domains must not inherit a shared suffix"
+        );
+
+        let filter =
+            parse_object_filter(&tokens, false).expect("independently scoped domains should parse");
+
+        assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [CardType::Artifact]
+                && branch.controller == Some(PlayerFilter::You)
+                && branch.zone == Some(Zone::Battlefield)
+                && branch.owner.is_none()
+        }));
+        assert!(filter.any_of.iter().any(|branch| {
+            branch.card_types == [CardType::Creature]
+                && branch.owner == Some(PlayerFilter::You)
+                && branch.zone == Some(Zone::Graveyard)
+                && branch.controller.is_none()
+        }));
+    }
+
+    #[test]
+    fn shared_terminal_card_noun_keeps_branch_exclusion_and_common_graveyard_domain() {
+        for (text, expected_types, has_mana_value) in [
+            (
+                "artifact or non-Aura enchantment card from your graveyard",
+                vec![CardType::Artifact, CardType::Enchantment],
+                false,
+            ),
+            (
+                "artifact, creature, or non-Aura enchantment card with mana value 3 or less from your graveyard",
+                vec![
+                    CardType::Artifact,
+                    CardType::Creature,
+                    CardType::Enchantment,
+                ],
+                true,
+            ),
+        ] {
+            let tokens = tokenize_line(text, 0);
+            assert!(
+                has_shared_terminal_object_noun(&tokens),
+                "the terminal card noun must scope every union arm: {text}"
+            );
+            let filter =
+                parse_object_filter_lexed(&tokens, false).expect("object filter should parse");
+
+            assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+            assert_eq!(filter.zone, Some(Zone::Graveyard), "{filter:#?}");
+            assert_eq!(filter.mana_value.is_some(), has_mana_value, "{filter:#?}");
+            assert!(filter.card_types.is_empty(), "{filter:#?}");
+            assert!(filter.excluded_subtypes.is_empty(), "{filter:#?}");
+            assert_eq!(filter.any_of.len(), expected_types.len(), "{filter:#?}");
+            for card_type in expected_types {
+                let branch = filter
+                    .any_of
+                    .iter()
+                    .find(|branch| branch.card_types == [card_type])
+                    .unwrap_or_else(|| panic!("missing {card_type:?} arm: {filter:#?}"));
+                if card_type == CardType::Enchantment {
+                    assert_eq!(branch.excluded_subtypes, [Subtype::Aura], "{filter:#?}");
+                } else {
+                    assert!(branch.excluded_subtypes.is_empty(), "{filter:#?}");
+                }
+            }
+        }
     }
 
     #[test]
@@ -1579,10 +1771,7 @@ mod tests {
 
     #[test]
     fn parse_object_filter_preserves_excluded_cast_origin_zone() {
-        let tokens = tokenize_line(
-            "spell that wasn't cast from its owner's hand",
-            0,
-        );
+        let tokens = tokenize_line("spell that wasn't cast from its owner's hand", 0);
 
         let filter = parse_object_filter(&tokens, false)
             .expect("negative spell cast-origin filter should parse");
@@ -1602,6 +1791,18 @@ mod tests {
             filter.description(),
             "spell that wasn't cast from its owner's hand"
         );
+    }
+
+    #[test]
+    fn parse_object_filter_preserves_positive_cast_origin_zone() {
+        let tokens = tokenize_line("spells you cast from exile", 0);
+
+        let filter =
+            parse_object_filter(&tokens, false).expect("positive cast-origin filter should parse");
+
+        assert_eq!(filter.zone, Some(Zone::Exile), "{filter:#?}");
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You), "{filter:#?}");
+        assert!(filter.has_mana_cost, "{filter:#?}");
     }
 
     #[test]
@@ -1631,7 +1832,7 @@ mod tests {
         ));
         assert_eq!(
             filter.description(),
-            "instant or sorcery spell you control with mana value X"
+            "an instant or sorcery spell you control with mana value X"
         );
     }
 
@@ -1866,6 +2067,26 @@ mod tests {
             filter.excluded_subtypes,
             vec![Subtype::Werewolf, Subtype::Wolf]
         );
+    }
+
+    #[test]
+    fn sacrificed_permanent_card_type_relation_is_deduplicated() {
+        let tokens = tokenize_line(
+            "a permanent that shares a card type with the sacrificed permanent",
+            0,
+        );
+
+        let filter = parse_object_filter(&tokens, false).expect("object filter should parse");
+        let matching = filter
+            .tagged_constraints
+            .iter()
+            .filter(|constraint| {
+                constraint.tag == TagKey::from("sacrificed_0")
+                    && constraint.relation == TaggedOpbjectRelation::SharesCardType
+            })
+            .count();
+
+        assert_eq!(matching, 1, "{filter:#?}");
     }
 
     #[test]

@@ -2605,11 +2605,15 @@ fn pluralize_independent_and_or_arms(phrase: &str) -> Option<String> {
     // incorrectly turn the modifiers into "instants and/or sorcery cards".
     // When no arm, or multiple arms, contain an explicit shared noun, each
     // arm has its own noun and must be pluralized independently.
-    let explicit_shared_noun_arms = parts
+    let arms_with_shared_noun = parts
         .iter()
-        .filter(|arm| and_or_arm_has_shared_terminal_noun(arm))
-        .count();
-    if explicit_shared_noun_arms == 1 {
+        .map(|arm| and_or_arm_has_shared_terminal_noun(arm))
+        .collect::<Vec<_>>();
+    let explicit_shared_noun_arms = arms_with_shared_noun.iter().filter(|has| **has).count();
+    // A trailing noun can only be shared by earlier arms when it closes the
+    // LAST arm ("instant and/or sorcery card"). A noun word inside an earlier
+    // arm is that arm's own noun ("spell and/or ability").
+    if explicit_shared_noun_arms == 1 && arms_with_shared_noun.last() == Some(&true) {
         return None;
     }
 
@@ -2646,11 +2650,57 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
     ] {
         if let Some((head, selectors)) = base.split_once(relation) {
             let selectors = strip_indefinite_article(selectors.trim());
+            // A participial combat relation is a predicate over the noun on
+            // the left, not another noun phrase.  Recursing into its object
+            // would pluralize "that player" into "that players".
+            let selectors =
+                if selectors.starts_with("attacking ") || selectors.starts_with("blocking ") {
+                    selectors.to_string()
+                } else {
+                    pluralize_noun_phrase(selectors)
+                };
             return format!(
                 "{}{}{}{}",
                 pluralize_noun_phrase(head.trim()),
                 plural_relation,
-                pluralize_noun_phrase(selectors),
+                selectors,
+                trailing
+            );
+        }
+    }
+    // Here "attacking" / "blocking" can either introduce a relation
+    // ("creature attacking you") or be a prenominal adjective
+    // ("nontoken attacking creature"). In the latter shape the noun to
+    // pluralize is on the right; treating the adjective as a relation yields
+    // malformed surfaces such as "nontokens attacking creature".
+    for adjective in ["attacking", "blocking"] {
+        let marker = format!(" {adjective} ");
+        if let Some((modifiers, noun)) = base.split_once(&marker)
+            && [
+                "creature",
+                "creature card",
+                "creature token",
+                "artifact creature",
+                "artifact creature token",
+            ]
+            .iter()
+            .any(|head| noun == *head || noun.starts_with(&format!("{head} ")))
+        {
+            return format!(
+                "{} {adjective} {}{}",
+                modifiers.trim(),
+                pluralize_noun_phrase(noun),
+                trailing
+            );
+        }
+    }
+    for relation in [" attacking ", " blocking "] {
+        if let Some((head, object)) = base.split_once(relation) {
+            return format!(
+                "{}{}{}{}",
+                pluralize_noun_phrase(head.trim()),
+                relation,
+                object.trim(),
                 trailing
             );
         }
@@ -2853,7 +2903,9 @@ pub(crate) fn pluralize_noun_phrase(phrase: &str) -> String {
             trailing
         );
     }
-    if base.ends_with('s') {
+    if base.eq_ignore_ascii_case("fungus") {
+        format!("{}{}", pluralize_word(base), trailing)
+    } else if base.ends_with('s') {
         format!("{base}{trailing}")
     } else {
         format!("{}{}", pluralize_word(base), trailing)
@@ -3086,7 +3138,7 @@ pub(super) fn describe_for_players_choose_then_destroy_chosen_collection(
 /// Recognize the executable producer/consumer pair even when lowering adds
 /// render-neutral wrappers around either effect. This entry point is shared
 /// by ordinary effect-list rendering and branch-local conditional rendering.
-pub(super) fn describe_for_players_choose_then_destroy_chosen_collection_pair(
+pub(in crate::compiled_text) fn describe_for_players_choose_then_destroy_chosen_collection_pair(
     producer: &Effect,
     consumer: &Effect,
 ) -> Option<String> {
@@ -5499,6 +5551,18 @@ pub(crate) fn describe_milled_graveyard_count_filter(filter: &ObjectFilter) -> O
 }
 
 pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
+    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+        eprintln!(
+            "for-each-filter: excluded={:?} types={:?} tags={:?}",
+            filter.excluded_card_types,
+            filter.card_types,
+            filter
+                .tagged_constraints
+                .iter()
+                .map(|c| c.tag.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
     if filter.tagged_constraints.len() == 1
         && filter.tagged_constraints[0].relation
             == crate::filter::TaggedOpbjectRelation::IsTaggedObject
@@ -5554,10 +5618,21 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
                 Some("sacrificed")
             )
     });
+    let has_sacrifice_cost_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str().starts_with("sacrifice_cost_")
+    });
     if let Some(rest) = base.strip_prefix("another ") {
         base = format!("other {rest}");
     }
+    // A restrictive qualifier needs the noun it restricts: "permanents you
+    // control with oil counters on them" cannot shed its head and still read
+    // as English ("with oil counters you control on them").
     if let Some(rest) = base.strip_prefix("permanent ")
+        && !rest.starts_with("with ")
+        && !rest.starts_with("without ")
+        && !rest.starts_with("that ")
+        && !rest.starts_with("that's ")
         && matches!(filter.zone, None | Some(Zone::Battlefield))
         && !filter.chosen_creature_type
         && !filter.chosen_card_type
@@ -5585,15 +5660,23 @@ pub(crate) fn describe_for_each_filter(filter: &ObjectFilter) -> String {
         }
         base = format!("{base} {action} this way");
     }
-    if has_sacrificed_tag && !base.to_ascii_lowercase().starts_with("the sacrificed ") {
+    if has_sacrificed_tag
+        && !has_sacrifice_cost_tag
+        && !base.to_ascii_lowercase().starts_with("the sacrificed ")
+    {
         base = format!("the sacrificed {}", base.trim_start_matches("the ").trim());
     }
 
     if let Some(controller) = &filter.controller {
-        let controller_suffix = if matches!(controller, PlayerFilter::You) {
-            "you control".to_string()
-        } else {
-            format!("{} controls", describe_player_filter(controller))
+        let controller_suffix = match controller {
+            PlayerFilter::You => "you control".to_string(),
+            PlayerFilter::Active => "they control".to_string(),
+            // A count/iteration filter ranges over the whole opposing
+            // collection, rather than selecting one opponent. Oracle surfaces
+            // therefore use the plural possessive ("for each creature your
+            // opponents control"), while target filters remain singular.
+            PlayerFilter::Opponent => "your opponents control".to_string(),
+            _ => format!("{} controls", describe_player_filter(controller)),
         };
         if filter.has_controller_after_qualifiers_surface() {
             return format!("{base} {controller_suffix}");

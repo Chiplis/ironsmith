@@ -134,8 +134,7 @@ fn natures_blessing_reuses_its_creature_target_across_the_outer_choice() {
             .card_types(vec![CardType::Creature])
             .power_toughness(PowerToughness::fixed(2, 2))
             .build();
-    let target =
-        game.create_object_from_definition(&target_definition, alice, Zone::Battlefield);
+    let target = game.create_object_from_definition(&target_definition, alice, Zone::Battlefield);
 
     let mut accept = AcceptAlternativeDecisionMaker;
     let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut accept)
@@ -144,14 +143,18 @@ fn natures_blessing_reuses_its_creature_target_across_the_outer_choice() {
     crate::effects::execute_effect(&mut game, choice_effect, &mut ctx)
         .expect("accepting the alternative should grant the selected keyword to the target");
 
-    assert!(game.object_has_static_ability_id(
-        target,
-        crate::static_abilities::StaticAbilityId::Trample,
-    ));
-    assert!(!game.object_has_static_ability_id(
-        source,
-        crate::static_abilities::StaticAbilityId::Trample,
-    ));
+    assert!(
+        game.object_has_static_ability_id(
+            target,
+            crate::static_abilities::StaticAbilityId::Trample,
+        )
+    );
+    assert!(
+        !game.object_has_static_ability_id(
+            source,
+            crate::static_abilities::StaticAbilityId::Trample,
+        )
+    );
     assert_eq!(
         game.counter_count(target, crate::object::CounterType::PlusOnePlusOne),
         0,

@@ -126,9 +126,7 @@ fn describe_phase_step_value_comparison(
     operator: crate::effect::ValueComparisonOperator,
     right: &Value,
 ) -> Option<String> {
-    use crate::effect::ValueComparisonOperator::{
-        Equal, GreaterThanOrEqual, LessThanOrEqual,
-    };
+    use crate::effect::ValueComparisonOperator::{Equal, GreaterThanOrEqual, LessThanOrEqual};
 
     if let (Value::CardsInLibrary(player), Equal, Value::Fixed(0)) = (left, operator, right) {
         return Some(format!(
@@ -137,11 +135,8 @@ fn describe_phase_step_value_comparison(
         ));
     }
 
-    if let (
-        Value::CardsInGraveyard(player),
-        Equal | LessThanOrEqual,
-        Value::Fixed(0),
-    ) = (left, operator, right)
+    if let (Value::CardsInGraveyard(player), Equal | LessThanOrEqual, Value::Fixed(0)) =
+        (left, operator, right)
     {
         return Some(format!(
             "there are no cards in {} graveyard",
@@ -2062,6 +2057,21 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
                 None
             };
             let filter = display_filter.as_ref().unwrap_or(filter);
+            // A bare color set is an adjective predicate in oracle ("If that
+            // permanent is green"), not a classified noun ("it is a green
+            // permanent") — the same rule the last-known-information arm
+            // below applies to its past-tense form. An attachment tag names
+            // its own subject ("equipped creature is green") through the
+            // dedicated attached-object describer further down.
+            if !matches!(tag.as_str(), "equipped" | "enchanted")
+                && let Some(colors) = bare_color_adjective_words(filter)
+            {
+                let subject = filter
+                    .demonstrative_antecedent_surface()
+                    .map(|surface| surface.phrase().to_string())
+                    .unwrap_or_else(|| "it".to_string());
+                return format!("{subject} is {colors}");
+            }
             let mut same_name_comparison_set = filter.clone();
             let before = same_name_comparison_set.tagged_constraints.len();
             same_name_comparison_set
@@ -3123,6 +3133,9 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             {
                 let mut described_filter = filter.clone();
                 described_filter.zone = None;
+                if let Some(name) = described_filter.name.as_mut() {
+                    *name = title_case_card_name_fragment(name);
+                }
                 let object_text = described_filter.description();
                 let object_text = if object_text.starts_with("a ")
                     || object_text.starts_with("an ")
@@ -3810,6 +3823,29 @@ pub(crate) fn describe_condition(condition: &Condition) -> String {
             format!("{} or {}", describe_condition(left), describe_condition(right))
         }
     }
+}
+
+/// The color words of a filter that constrains nothing but color, ignoring the
+/// presentation-only demonstrative surface and the default battlefield zone.
+/// Such a filter is an adjective in oracle wording ("is green"), never a
+/// classified noun ("is a green permanent").
+fn bare_color_adjective_words(filter: &ObjectFilter) -> Option<String> {
+    let colors = filter.colors?;
+    let mut bare = filter.clone();
+    bare.colors = None;
+    bare.set_demonstrative_antecedent_surface(None);
+    if matches!(bare.zone, Some(Zone::Battlefield)) {
+        bare.zone = None;
+    }
+    if bare != ObjectFilter::default() && bare != ObjectFilter::permanent() {
+        return None;
+    }
+    let color_words = crate::color::Color::ALL
+        .into_iter()
+        .filter(|color| colors.contains(*color))
+        .map(|color| color.name().to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    (!color_words.is_empty()).then(|| color_words.join(" or "))
 }
 
 fn describe_last_known_tagged_object_condition(tag: &TagKey, filter: &ObjectFilter) -> String {

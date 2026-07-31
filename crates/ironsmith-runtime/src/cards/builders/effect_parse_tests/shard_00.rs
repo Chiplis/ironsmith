@@ -1045,13 +1045,10 @@ fn parse_gruesome_menagerie_from_text() {
     );
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
-    let rendered_lower = rendered.to_ascii_lowercase();
-    assert!(
-        rendered_lower.contains("choose a creature card with mana value 1 in a graveyard")
-            && rendered_lower.contains("choose a creature card with mana value 2 in a graveyard")
-            && rendered_lower.contains("choose a creature card with mana value 3 in a graveyard")
-            && rendered_lower.contains("return it from graveyard to the battlefield"),
-        "expected canonical compiled text for the three choices and shared return, got {rendered}"
+    assert_eq!(
+        rendered,
+        "Choose a creature card with mana value 1 in your graveyard, then do the same for creature cards with mana value 2 and 3. Return those cards to the battlefield.",
+        "the authored compact choice surface should survive lowering"
     );
 }
 
@@ -1244,8 +1241,8 @@ fn parse_named_source_power_exchange_from_text() {
     assert_eq!(exchange.duration, crate::effect::Until::Forever);
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Exchange your life total with Evra's power."),
-        "named life/stat exchange should use 'with' and omit a forever suffix, got {rendered}"
+        rendered.contains("Exchange your life total with this creature's power."),
+        "life/stat exchange should use the canonical source surface and omit a forever suffix, got {rendered}"
     );
 }
 
@@ -1389,7 +1386,7 @@ fn parse_exchange_power_with_target_power_until_end_of_combat_from_text() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "Exchange this creature's power and the power of target creature it's blocking until end of combat."
+            "Exchange this creature's power and the power of target blocking creature until end of combat."
         ),
         "stat/stat exchange should retain 'and' plus a spaced finite duration, got {rendered}"
     );
@@ -2562,7 +2559,7 @@ fn parse_played_by_your_opponents_enter_tapped_preserves_controller_filter() {
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert_eq!(
-        rendered, "Creatures played by your opponents enter tapped",
+        rendered, "Creatures played by your opponents enter tapped.",
         "expected rendered line to preserve the typed played-by-opponents surface"
     );
 }
@@ -2726,7 +2723,7 @@ fn parse_get_energy_equal_to_tagged_spell_mana_value() {
         .expect("expected EnergyCountersEffect");
 
     match &energy.count {
-        Value::ManaValueOf(spec) => match spec.as_ref() {
+        Value::ManaValueOf(spec) => match spec.base() {
             ChooseSpec::Tagged(tag) => assert_eq!(tag.as_str(), IT_TAG),
             other => panic!("expected tagged mana-value reference, got {other:?}"),
         },
@@ -3042,18 +3039,21 @@ fn parse_add_that_much_colorless_uses_previous_effect_count() {
         .expect("that-much mana spell should parse");
 
     let effects = def.spell_effect.as_ref().expect("expected spell effects");
-    let add_scaled = effects
-        .iter()
-        .find_map(|effect| effect.downcast_ref::<AddScaledManaEffect>())
-        .expect("expected AddScaledManaEffect");
-    assert_eq!(add_scaled.mana, vec![ManaSymbol::Colorless]);
+    let mut scaled_mana = Vec::new();
+    visit_nested_effects::<AddScaledManaEffect>(effects, |effect| {
+        scaled_mana.push((effect.mana.clone(), effect.amount.clone()));
+    });
+    let [(mana, amount)] = scaled_mana.as_slice() else {
+        panic!("expected one nested AddScaledManaEffect, got {scaled_mana:#?}");
+    };
+    assert_eq!(mana.as_slice(), &[ManaSymbol::Colorless]);
     assert!(
         matches!(
-            add_scaled.amount,
+            amount,
             Value::EffectValue(_) | Value::EffectValueOffset(_, _) | Value::EventValue(_)
         ),
         "expected dynamic backreference amount, got {:?}",
-        add_scaled.amount
+        amount
     );
 }
 
@@ -3298,7 +3298,13 @@ fn parse_add_any_combination_with_named_self_where_tail_keeps_source_power() {
         .iter()
         .find_map(|effect| effect.downcast_ref::<AddManaOfAnyColorEffect>())
         .expect("expected AddManaOfAnyColorEffect");
-    assert_eq!(add_any.amount.unhinted(), &Value::SourcePower);
+    let Value::PowerOf(source) = add_any.amount.unhinted() else {
+        panic!("expected source-power amount, got {:?}", add_any.amount);
+    };
+    assert!(
+        matches!(source.base(), ChooseSpec::Source),
+        "expected the named self reference to resolve to source, got {source:?}"
+    );
     assert!(add_any.amount.has_surface_hint(ValueSurfaceHint::WhereXIs));
     let colors = add_any
         .available_colors
@@ -3306,11 +3312,20 @@ fn parse_add_any_combination_with_named_self_where_tail_keeps_source_power() {
         .expect("expected restricted colors");
     assert!(colors.contains(&crate::color::Color::Blue));
     assert!(colors.contains(&crate::color::Color::Red));
-    assert_eq!(mana_ability.timing, ActivationTiming::OncePerTurn);
+    // Mana-ability restrictions are kept together in `activation_condition`
+    // because the mana special-action path evaluates that condition directly.
+    // Keeping both clauses there preserves the conjunction without asking the
+    // single-valued `timing` field to represent two independent restrictions.
+    assert_eq!(mana_ability.timing, ActivationTiming::AnyTime);
     assert_eq!(
         mana_ability.activation_condition,
-        Some(ConditionExpr::ActivationTiming(
-            ActivationTiming::DuringYourTurn
+        Some(ConditionExpr::And(
+            Box::new(ConditionExpr::ActivationTiming(
+                ActivationTiming::DuringYourTurn
+            )),
+            Box::new(ConditionExpr::ActivationTiming(
+                ActivationTiming::OncePerTurn
+            )),
         ))
     );
 }
@@ -3569,7 +3584,7 @@ fn parse_spell_tax_except_during_controller_turn_preserves_semantics_and_surface
     let rendered = unprocessed_compiled_lines(&def).join("\n");
     assert_eq!(
         rendered,
-        "Each spell costs {3} more to cast except during its controller's turn"
+        "Each spell costs {3} more to cast except during its controller's turn."
     );
     let debug = format!("{:#?}", def.abilities);
     assert!(
@@ -3586,7 +3601,7 @@ fn parse_destroy_target_blocked_creature_keeps_targeting_legality() {
         .expect("blocked-creature removal should parse");
 
     let rendered = unprocessed_compiled_lines(&def).join("\n");
-    assert_eq!(rendered, "Destroy target blocked creature");
+    assert_eq!(rendered, "Destroy target blocked creature.");
     let debug = format!("{:#?}", def.spell_effect);
     assert!(
         debug.contains("blocked: true") && !debug.contains("TargetIsBlocked"),

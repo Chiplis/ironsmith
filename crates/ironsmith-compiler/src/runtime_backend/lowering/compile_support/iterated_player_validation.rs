@@ -481,7 +481,8 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         | PhaseIn(filter)
         | AttackOrBlock(filter)
         | AttackOrBlockAlone(filter) => object_filter_mentions_iterated_player(filter),
-        AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+        AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+        | AttackPlayer { attackers, player } => {
             object_filter_mentions_iterated_player(attackers) || player.mentions_iterated_player()
         }
         BlockSpecificAttacker { blockers, attacker }
@@ -493,7 +494,7 @@ fn restriction_mentions_iterated_player(restriction: &Restriction) -> bool {
         BeTargetedPlayerFrom(player, source) => {
             player.mentions_iterated_player() || object_filter_mentions_iterated_player(source)
         }
-        PreventDamage | AttackYouUnlessControllerPaysPerAttacker(_) => false,
+        PreventDamage | AttackYouUnlessControllerPaysPerAttacker(..) => false,
     }
 }
 

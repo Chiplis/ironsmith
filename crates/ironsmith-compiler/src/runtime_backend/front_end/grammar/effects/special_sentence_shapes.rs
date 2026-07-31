@@ -522,6 +522,20 @@ mod tests {
     }
 
     #[test]
+    fn parses_punctuated_keyword_bundle_shape_without_truncating_the_trailing_list() {
+        let tokens = lex_line(
+            "until end of turn, each other creature you control gets +1/+1 if it has flying, +1/+1 if it has first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, vigilance, and partner",
+            0,
+        )
+        .unwrap();
+        let shape = parse_keyword_bundle_pump_shape(&tokens).unwrap().unwrap();
+
+        assert_eq!(shape.abilities.len(), 14);
+        assert_eq!(shape.abilities.first(), Some(&StaticAbilityId::Flying));
+        assert_eq!(shape.abilities.last(), Some(&StaticAbilityId::Partner));
+    }
+
+    #[test]
     fn parses_sacrifice_then_draw_shape() {
         let tokens = lex_line(
             "sacrifice any number of artifacts enchantments and tokens then draw that many cards",

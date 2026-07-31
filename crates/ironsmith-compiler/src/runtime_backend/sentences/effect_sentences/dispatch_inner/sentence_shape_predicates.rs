@@ -861,7 +861,7 @@ fn set_first_return_set_reference_surface(effects: &mut [EffectAst], surface: &s
 }
 
 fn parse_bounded_x_mana_payment_sentence(tokens: &[OwnedLexToken]) -> Option<Vec<EffectAst>> {
-    let may_shape = effect_grammar::clause_dispatch_shapes::parse_leading_may_clause_shape(tokens)?;
+    let may_shape = effect_grammar::clause_dispatch_shapes::parse_leading_may_shape(tokens)?;
     let payment_shape = effect_grammar::misc_action_shapes::parse_bounded_x_payment_tokens(
         may_shape.effect_tokens,
     )?;
@@ -1109,6 +1109,16 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
 
+    // A keyword-bundle pump contains an authored `and so on for ...` list,
+    // not a conjunction of executable actions. Route that complete typed
+    // shape before the broad leading-duration chain predicate can split it
+    // into only the first two conditional pump clauses.
+    if let Some(effects) =
+        super::subject_verb_special_recognizers::parse_keyword_bundle_pump_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+
     // A genuine top-level conjunction with a leading duration needs chain
     // carry before broad gain/subject recognizers see an isolated arm. The
     // grammar predicate rejects quoted/list conjunctions and `then` chains.
@@ -1179,6 +1189,15 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     // important for split actors such as "that player or that permanent's
     // controller may ...", whose second branch is otherwise discarded.
     if super::parse_leading_player_may_lexed(tokens).is_some() {
+        // A tagged play/cast permission may itself contain a second authored
+        // "you may" in its mana-spending rider. Preserve that complete typed
+        // permission before generic chain splitting treats the rider as an
+        // unrelated `spend` action.
+        if let Some(effect) =
+            crate::runtime_backend::permission_helpers::parse_cast_or_play_tagged_clause(tokens)?
+        {
+            return Ok(vec![effect]);
+        }
         return super::parse_effect_chain_lexed(tokens);
     }
 
@@ -1692,6 +1711,13 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
     let quoted_ability_shape = sentence_shapes::parse_quoted_ability_sentence_tokens(tokens);
+    let quoted_animation_grant = tokens
+        .iter()
+        .filter(|token| token.kind == crate::runtime_backend::lexer::TokenKind::Quote)
+        .count()
+        >= 2
+        && tokens.iter().any(|token| token.is_word("becomes"))
+        && tokens.iter().any(|token| token.is_word("gains"));
     if quoted_ability_shape.is_some()
         && let Some(effects) =
             super::fanout_family::parse_shared_color_target_fanout_sentence(tokens)?
@@ -1708,7 +1734,7 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     // ability's inner verbs make the broad gain parser consume the unsplit
     // condition and body; the conditional route below parses the body with
     // this same gain parser after removing the predicate.
-    if quoted_ability_shape.is_some()
+    if (quoted_ability_shape.is_some() || quoted_animation_grant)
         && !matches!(
             sentence_shapes::parse_leading_if_sentence_tokens(tokens),
             Some(sentence_shapes::LeadingIfSentenceShape { replacement: false })
@@ -1825,6 +1851,19 @@ fn parse_effect_sentence_lexed_inner_unstacked(
         return Ok(effects);
     }
 
+    if effect_grammar::sentence_predicate_shapes::parse_where_x_sentence_tokens(tokens)
+        .is_some_and(|shape| shape.comma_tail_has_effect_clause)
+    {
+        // A semicolon/comma after the where-X binding begins another effect
+        // clause. Route the grammar-confirmed layout before broad gain and
+        // subject/verb probes can absorb the trailing clause's subject into
+        // the first `gets` modifier and report a malformed binding.
+        crate::parse_trace::event("effect-route: where-x binding with trailing effect clause");
+        let mut effects = parse_effect_sentence_with_where_x_lexed(tokens)?;
+        apply_trailing_counter_constraint_to_destroy_all(&mut effects, tokens);
+        return Ok(effects);
+    }
+
     // A three-arm continuous clause has one grammatical subject even though
     // its comma before `becomes` also looks like an ordinary effect-chain
     // boundary. Preserve the grammar-confirmed coordinated model before the
@@ -1833,6 +1872,33 @@ fn parse_effect_sentence_lexed_inner_unstacked(
     if let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
         && is_loss_become_base_pt_coordinated_chain(&effects)
     {
+        return Ok(effects);
+    }
+
+    // Same-object exile/return programs own their complete `, then` clause.
+    // In particular, a timing suffix on the exile action scopes both actions:
+    // "exile it at end of combat, then return it ..." is one delayed program.
+    // Route that typed shape before the general comma-then splitter turns it
+    // into two immediate zone changes and loses the timing wrapper.
+    if let Some(effects) = parse_exile_then_return_same_object_sentence(tokens)? {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Exile subject=explicit recognizer=exile-return-same-object",
+        );
+        return Ok(effects);
+    }
+
+    // The comma-then boundary in the each-player exile-top/cast program is
+    // internal to one collection-producing effect.  Its typed recognizer
+    // accumulates every iterated player's exiled card under one tag before
+    // granting the trailing cast permissions.  Generic chain splitting would
+    // instead lower the leading library object as one unowned card and lose
+    // both the player loop and the collection relationship.
+    if let Some(effects) =
+        parse_generic_each_player_exile_top_then_cast_any_number_subject_verb(tokens)?
+    {
+        crate::parse_trace::event(
+            "effect-route: subject-verb verb=Exile subject=each-player recognizer=exile-top-cast",
+        );
         return Ok(effects);
     }
 
@@ -1854,6 +1920,24 @@ fn parse_effect_sentence_lexed_inner_unstacked(
             return Ok(effects);
         }
         return super::parse_effect_chain_lexed(tokens);
+    }
+
+    // `Put ... or remove ... counter` is a single typed counter operation,
+    // not the generic action-choice form represented by `UnlessAction`.
+    // Let the counter verb handler confirm the complete shape before the
+    // broad top-level `or` splitter examines the sentence.
+    if tokens.first().is_some_and(|token| token.is_word("put"))
+        && let Ok(effect) =
+            super::verb_dispatch::parse_effect_with_verb(super::Verb::Put, None, &tokens[1..])
+        && matches!(
+            &effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::PutOrRemoveCounters { .. },
+                ..
+            })
+        )
+    {
+        return Ok(vec![effect]);
     }
 
     // An explicit top-level action choice must be split before the broad
@@ -2227,12 +2311,11 @@ fn parse_effect_sentence_with_where_x_lexed(
     }
 
     let mut prelude_effects = Vec::new();
-    // Preserve the established source-relative interpretation for a where-X
-    // binding that is followed by another effect clause. The follow-up is
-    // dispatched independently; it must not cause the primary clause's
-    // contextual `its` value to be promoted to a new target choice.
+    // Only the action before the where-X binding determines what a possessive
+    // reference denotes. A later effect clause is dispatched independently
+    // and cannot turn "target creature ... where X is its power" back into a
+    // source-relative value.
     let typed_where_references_target = where_shape.stripped_references_target
-        && !where_shape.comma_tail_has_effect_clause
         && !sentence_shapes::starts_with_source_deals_x_tokens(&stripped);
     // Prefer the complete number-of family before the generic typed value
     // shape. The latter can correctly find the trailing object scope while
@@ -2379,6 +2462,22 @@ fn parse_effect_sentence_with_where_x_lexed(
 #[cfg(test)]
 mod spent_mana_repeat_tests {
     use super::*;
+
+    #[test]
+    fn keyword_bundle_list_preempts_leading_duration_chain_splitting() {
+        let tokens = crate::runtime_backend::lex_line(
+            "until end of turn, each other creature you control gets +1/+1 if it has flying, +1/+1 if it has first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, vigilance, and partner.",
+            0,
+        )
+        .expect("keyword-bundle sentence should lex");
+        let effects =
+            parse_effect_sentence_lexed(&tokens).expect("keyword-bundle sentence should parse");
+
+        assert_eq!(effects.len(), 14, "{effects:#?}");
+        let debug = format!("{effects:#?}");
+        assert!(debug.contains("Flying"), "{debug}");
+        assert!(debug.contains("Partner"), "{debug}");
+    }
 
     #[test]
     fn for_each_mana_from_source_repeats_the_typed_effect() {

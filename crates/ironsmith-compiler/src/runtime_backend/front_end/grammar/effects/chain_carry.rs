@@ -198,6 +198,27 @@ pub(crate) fn coordinated_tap_then_next_untap(tokens: &[OwnedLexToken]) -> bool 
 /// the lowered effects. A `then` chain is sequential even when another
 /// conjunction also appears in the sentence.
 pub(crate) fn coordinated_effect_chain_leading_duration(tokens: &[OwnedLexToken]) -> Option<bool> {
+    // A gain/get compound has one grammatical subject and is owned by the
+    // typed gain-ability parser. Treating its `and gets` tail as an
+    // independent action loses that subject after a leading duration (for
+    // example, "Until end of turn, creatures you control gain trample and
+    // get ...").
+    if super::gain_ability_shapes::parse_gain_then_get_shape(tokens).is_some() {
+        return None;
+    }
+
+    // "and so on for" introduces the remainder of a keyword list, not a
+    // second executable action. The keyword-bundle parser expands that list
+    // into one conditional effect per ability; wrapping those effects as an
+    // authored conjunction would misclassify the list surface as chain carry.
+    if primitives::find_prefix(tokens, || {
+        primitives::phrase(&["and", "so", "on", "for"])
+    })
+    .is_some()
+    {
+        return None;
+    }
+
     let mut inside_quotes = false;
     for token in tokens {
         if token.kind == TokenKind::Quote {
@@ -872,6 +893,17 @@ mod tests {
             coordinated_effect_chain_leading_duration(&tokens),
             Some(true)
         );
+    }
+
+    #[test]
+    fn leading_duration_gain_then_get_is_one_shared_subject_clause() {
+        let tokens = lex_line(
+            "Until end of turn, creatures you control gain trample and get +1/+1 for each basic land type among lands you control.",
+            0,
+        )
+        .unwrap();
+
+        assert_eq!(coordinated_effect_chain_leading_duration(&tokens), None);
     }
 
     #[test]

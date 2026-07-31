@@ -26,7 +26,7 @@ fn past_controller_followups_keep_the_authored_conditional_for_return_and_destro
             "{name} should retain the authored past-controller conditional; got {lines:#?}"
         );
 
-        let debug = format!("{:#?}", definition.abilities);
+        let debug = format!("{definition:#?}");
         assert!(
             debug.contains("PlayerTaggedObjectMatches")
                 && debug.contains("mode: LastKnown")

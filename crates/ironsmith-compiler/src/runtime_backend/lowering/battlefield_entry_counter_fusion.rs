@@ -45,6 +45,15 @@ impl CounterFollowup {
             | Self::Conditional { amount, .. } => amount,
         }
     }
+
+    fn with_tag(mut self, replacement: TagKey) -> Self {
+        match &mut self {
+            Self::Direct { tag, .. }
+            | Self::ObjectConditional { tag, .. }
+            | Self::Conditional { tag, .. } => *tag = replacement,
+        }
+        self
+    }
 }
 
 fn tagged_put_counters(
@@ -210,6 +219,93 @@ fn entry_producer_tag(effect: &Effect) -> Option<TagKey> {
     None
 }
 
+fn filter_selects_tag(filter: &ObjectFilter, tag: &TagKey) -> bool {
+    let directly_selects_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.tag == *tag
+            && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+    });
+    directly_selects_tag
+        || (!filter.any_of.is_empty()
+            && filter
+                .any_of
+                .iter()
+                .all(|branch| filter_selects_tag(branch, tag)))
+}
+
+fn entry_producer_body_consumes_tag(effect: &Effect, tag: &TagKey) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return entry_producer_body_consumes_tag(&tagged.effect, tag);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return entry_producer_body_consumes_tag(&with_id.effect, tag);
+    }
+    if let Some(return_effect) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        return matches!(return_effect.target.base(), ChooseSpec::Tagged(target) if target == tag);
+    }
+    if let Some(return_all) = effect.downcast_ref::<crate::effects::ReturnAllToBattlefieldEffect>()
+    {
+        return filter_selects_tag(&return_all.filter, tag);
+    }
+    effect
+        .downcast_ref::<crate::effects::MoveToZoneEffect>()
+        .is_some_and(|move_effect| {
+            move_effect.zone == Zone::Battlefield
+                && matches!(move_effect.target.base(), ChooseSpec::Tagged(target) if target == tag)
+        })
+}
+
+/// Prove that an entry producer's output tag is an alias for objects selected
+/// from an earlier tag. Delayed-return cards commonly keep the original exile
+/// tag in their authored "each of them enters" follow-up while the return
+/// itself receives a fresh result tag. Retagging that follow-up to the return
+/// result is safe only when the producer structurally consumes the earlier set.
+fn producer_output_consumes_tag(
+    effect: &Effect,
+    output_tag: &TagKey,
+    consumed_tag: &TagKey,
+) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        if &tagged.tag == output_tag
+            && entry_producer_body_consumes_tag(&tagged.effect, consumed_tag)
+        {
+            return true;
+        }
+        return producer_output_consumes_tag(&tagged.effect, output_tag, consumed_tag);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return producer_output_consumes_tag(&with_id.effect, output_tag, consumed_tag);
+    }
+    if let Some(schedule) = effect.downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>() {
+        return schedule
+            .effects
+            .iter()
+            .any(|nested| producer_output_consumes_tag(nested, output_tag, consumed_tag));
+    }
+    entry_producer_tag(effect).as_ref() == Some(output_tag)
+        && entry_producer_body_consumes_tag(effect, consumed_tag)
+}
+
+fn normalize_followup_tags(
+    producer: &Effect,
+    producer_tag: &TagKey,
+    followups: Vec<CounterFollowup>,
+) -> Option<Vec<CounterFollowup>> {
+    followups
+        .into_iter()
+        .map(|followup| {
+            if followup.tag() == producer_tag {
+                Some(followup)
+            } else if producer_output_consumes_tag(producer, producer_tag, followup.tag()) {
+                Some(followup.with_tag(producer_tag.clone()))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 fn producer_is_delayed(effect: &Effect) -> bool {
     effect
         .downcast_ref::<crate::effects::ScheduleDelayedTriggerEffect>()
@@ -367,6 +463,28 @@ fn attach_counter_to_producer(
     None
 }
 
+/// Whether the entry producer brings back exactly one object. "Each of them
+/// enters with a counter on it" is a set surface; a single returned card takes
+/// the counter inline in its own sentence ("return … to the battlefield with a
+/// finality counter on it"), which is how oracle writes it.
+fn producer_selects_single_object(effect: &Effect) -> bool {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return producer_selects_single_object(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return producer_selects_single_object(&with_id.effect);
+    }
+    if let Some(return_effect) =
+        effect.downcast_ref::<crate::effects::ReturnFromGraveyardToBattlefieldEffect>()
+    {
+        return return_effect.target.count().is_single();
+    }
+    if let Some(move_effect) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
+        return move_effect.target.count().is_single();
+    }
+    false
+}
+
 fn build_counter_spec(
     producer: &Effect,
     followup: CounterFollowup,
@@ -393,6 +511,7 @@ fn build_counter_spec(
         } => {
             let surface = if amount
                 .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
+                && !producer_selects_single_object(producer)
             {
                 BattlefieldEntryCounterSurface::EachOfThemEnters
             } else {
@@ -411,12 +530,15 @@ fn build_counter_spec(
             filter,
             ..
         } => {
-            let surface = if amount
+            // The result wrapper is the typed surface for "if [it/a creature]
+            // enters this way". Sentence-boundary metadata is broader and must
+            // not replace that authored conditional with "each of them enters".
+            let surface = if result_wrapper {
+                BattlefieldEntryCounterSurface::IfObjectEntersThisWay
+            } else if amount
                 .has_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence)
             {
                 BattlefieldEntryCounterSurface::EachOfThemEnters
-            } else if result_wrapper {
-                BattlefieldEntryCounterSurface::IfObjectEntersThisWay
             } else if producer_is_delayed(producer) {
                 BattlefieldEntryCounterSurface::IfItEntersAsObject
             } else {
@@ -510,10 +632,75 @@ fn rewrite_nested_effect(effect: &Effect) -> Effect {
     effect.clone()
 }
 
+/// The source's own put-counters follow-up, in either the bare or the
+/// tag/id-wrapped spelling.
+fn source_put_counters(
+    effect: &Effect,
+) -> Option<(crate::object::CounterType, crate::effect::Value)> {
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        return source_put_counters(&tagged.effect);
+    }
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return source_put_counters(&with_id.effect);
+    }
+    let put = effect.downcast_ref::<crate::effects::PutCountersEffect>()?;
+    if put.distributed || put.target_count.is_some() {
+        return None;
+    }
+    if !matches!(put.target.base(), ChooseSpec::Source) {
+        return None;
+    }
+    Some((put.counter_type, put.amount.clone()))
+}
+
+/// Fuse "Exile this with three time counters on it" — one authored zone change
+/// whose counters are part of the move. Parsing splits it into an exile plus a
+/// put-counters on the source, but a zone change mints a new object, so the
+/// follow-up landed on the object that just left and the counters were silently
+/// dropped (a suspended card that never gets its time counters never returns).
+/// Battlefield moves keep the existing tag-matched fusion below.
+fn fuse_source_zone_move_entry_counters(effects: &mut Vec<Effect>) {
+    let mut index = 0usize;
+    while index + 1 < effects.len() {
+        let Some(move_effect) = effects[index].downcast_ref::<crate::effects::MoveToZoneEffect>()
+        else {
+            index += 1;
+            continue;
+        };
+        if move_effect.zone == Zone::Battlefield
+            || !move_effect.enters_with_counters.is_empty()
+            || !matches!(move_effect.target.base(), ChooseSpec::Source)
+        {
+            index += 1;
+            continue;
+        }
+        let Some((counter_type, amount)) = source_put_counters(&effects[index + 1]) else {
+            index += 1;
+            continue;
+        };
+        let mut fused = move_effect.clone();
+        fused
+            .enters_with_counters
+            .push(BattlefieldEntryCounterSpec::new(
+                counter_type,
+                amount
+                    .without_surface_hint(
+                        ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence,
+                    )
+                    .without_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupThen),
+                BattlefieldEntryCounterSurface::Inline,
+            ));
+        effects[index] = Effect::new(fused);
+        effects.remove(index + 1);
+    }
+}
+
 fn fuse_effect_list(effects: &mut Vec<Effect>) {
     for effect in effects.iter_mut() {
         *effect = rewrite_nested_effect(effect);
     }
+
+    fuse_source_zone_move_entry_counters(effects);
 
     let mut index = 0usize;
     while index + 1 < effects.len() {
@@ -531,13 +718,11 @@ fn fuse_effect_list(effects: &mut Vec<Effect>) {
                 index += 1;
                 continue;
             };
-        if followups
-            .iter()
-            .any(|followup| followup.tag() != &producer_tag)
-        {
+        let Some(followups) = normalize_followup_tags(&effects[index], &producer_tag, followups)
+        else {
             index += 1;
             continue;
-        }
+        };
 
         let mut rewritten = effects[index].clone();
         let mut attached_all = true;
@@ -580,10 +765,16 @@ fn fuse_across_segment_boundaries(segments: &mut Vec<crate::resolution::Resoluti
             index += 1;
             continue;
         };
-        let Some(followups) = coordinated_counter_followups(followup_effect) else {
-            index += 1;
-            continue;
-        };
+        let producer_id = producer_effect_id(&producer);
+        let (followups, result_wrapper) =
+            if let Some(followup) = result_counter_followup(followup_effect, producer_id) {
+                (vec![followup], true)
+            } else if let Some(followups) = coordinated_counter_followups(followup_effect) {
+                (followups, false)
+            } else {
+                index += 1;
+                continue;
+            };
         if followups.iter().any(|followup| {
             !followup
                 .amount()
@@ -596,18 +787,15 @@ fn fuse_across_segment_boundaries(segments: &mut Vec<crate::resolution::Resoluti
             index += 1;
             continue;
         };
-        if followups
-            .iter()
-            .any(|followup| followup.tag() != &producer_tag)
-        {
+        let Some(followups) = normalize_followup_tags(&producer, &producer_tag, followups) else {
             index += 1;
             continue;
-        }
+        };
 
         let mut rewritten = producer;
         let mut attached_all = true;
         for followup in followups {
-            let spec = build_counter_spec(&rewritten, followup, false);
+            let spec = build_counter_spec(&rewritten, followup, result_wrapper);
             let Some(attached) = attach_counter_to_producer(&rewritten, &producer_tag, &spec)
             else {
                 attached_all = false;

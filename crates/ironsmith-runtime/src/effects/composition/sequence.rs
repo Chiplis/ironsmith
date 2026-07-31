@@ -1,6 +1,6 @@
 //! Sequence effect implementation.
 //!
-//! Runs a list of effects in order and aggregates their outcomes.
+//! Runs a list of effects in order and exposes the terminal outcome.
 
 use crate::effect::{Effect, EffectOutcome};
 use crate::effects::{CostExecutableEffect, CostValidationError, EffectExecutor};
@@ -146,20 +146,24 @@ impl EffectExecutor for SequenceEffect {
 
             outcomes.push(outcome);
             if ctx.decision_maker.awaiting_choice() {
-                let aggregate = EffectOutcome::aggregate(outcomes);
+                let terminal = outcomes
+                    .last()
+                    .expect("the pending outcome was just appended");
                 return Ok(EffectOutcome::with_details(
-                    aggregate.status,
-                    aggregate.value,
+                    terminal.status,
+                    terminal.value.clone(),
                     events,
                     execution_facts,
                 ));
             }
         }
 
-        let aggregate = EffectOutcome::aggregate(outcomes);
+        let terminal = outcomes
+            .last()
+            .expect("a non-empty sequence has a terminal outcome");
         Ok(EffectOutcome::with_details(
-            aggregate.status,
-            aggregate.value,
+            terminal.status,
+            terminal.value.clone(),
             events,
             execution_facts,
         ))
@@ -289,7 +293,7 @@ mod tests {
     }
 
     #[test]
-    fn sequence_uses_conservative_summary_for_multiple_meaningful_results() {
+    fn sequence_exposes_terminal_summary_for_multiple_meaningful_results() {
         let mut game = crate::tests::test_helpers::setup_two_player_game();
         let alice = crate::ids::PlayerId::from_index(0);
         let source = game.new_object_id();
@@ -300,6 +304,14 @@ mod tests {
             .expect("sequence should execute");
 
         assert_eq!(result.status, crate::effect::OutcomeStatus::Succeeded);
+        assert_eq!(result.value, crate::effect::OutcomeValue::Count(2));
+        assert_eq!(
+            result
+                .events_of_type::<crate::events::LifeGainEvent>()
+                .count(),
+            2,
+            "terminal summary selection must retain events from earlier steps"
+        );
     }
 
     #[test]

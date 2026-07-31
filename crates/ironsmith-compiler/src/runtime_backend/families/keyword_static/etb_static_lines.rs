@@ -52,7 +52,11 @@ enum EntersWithCounterPlusTail {
 }
 
 fn starts_with_etb_source_reference(tokens: &[OwnedLexToken]) -> bool {
-    let words = crate::runtime_backend::lexer::token_word_refs(tokens);
+    // Named-source normalization can encode a multiword `this <type>`
+    // reference in one alias token. Use the parser word view so semantic
+    // source recognition sees the same words as the ETB capture grammar.
+    let words =
+        crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
     matches!(words.as_slice(), ["it"] | ["its"])
         || crate::runtime_backend::util::this_source_surface_for_words(&words).is_some()
         || crate::runtime_backend::util::source_reference_surface_for_words(&words).is_some()
@@ -1650,6 +1654,16 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     let multiplier = captured.multiplier;
     let mut filter_tokens = captured.filter_tokens;
     let filter_words = crate::runtime_backend::token_word_refs(filter_tokens);
+    if matches!(
+        filter_words.as_slice(),
+        ["color" | "colors", "that" | "the", _, "was" | "were"]
+    ) {
+        // This is a characteristic aggregate over a remembered object, not
+        // the cardinality of an object filter. Let the typed where-X grammar
+        // lower it to `ColorsAmong(tagged-object)` instead of counting a
+        // battlefield creature parsed from the middle of the phrase.
+        return None;
+    }
     if let Some(as_cast_index) = filter_words
         .windows(5)
         .position(|words| words == ["as", "you", "cast", "this", "spell"])
@@ -1731,16 +1745,10 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
     if let Some(filter) = parse_shared_domain_relative_selector_filter(filter_tokens) {
         return Some(scale_where_x_number_value(Value::Count(filter), multiplier));
     }
-    let mut for_each_words = vec!["for", "each"];
-    for_each_words.extend(filter_words.iter().copied());
-    if let Some((value, used)) =
-        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
-            &for_each_words,
-        )
-        && used == for_each_words.len()
-    {
-        return Some(scale_where_x_number_value(value, multiplier));
-    }
+    // Preserve semantic participant references before the broad for-each
+    // count parser gets a chance to accept only the leading object noun. In
+    // particular, `creatures those players control` is a count over the
+    // spell's selected player set, not every creature on the battlefield.
     if let Some(kind) = etb_grammar::parse_where_x_special_number_filter_tokens(filter_tokens) {
         let value = match kind {
             etb_grammar::WhereXSpecialNumberFilterKind::CreaturesDiedThisTurn => {
@@ -1755,6 +1763,16 @@ pub(crate) fn parse_where_x_is_number_of_filter_value(tokens: &[OwnedLexToken]) 
                 Value::Count(filter)
             }
         };
+        return Some(scale_where_x_number_value(value, multiplier));
+    }
+    let mut for_each_words = vec!["for", "each"];
+    for_each_words.extend(filter_words.iter().copied());
+    if let Some((value, used)) =
+        crate::runtime_backend::front_end::grammar::shared_util::count_shapes::parse_for_each_count_value_words(
+            &for_each_words,
+        )
+        && used == for_each_words.len()
+    {
         return Some(scale_where_x_number_value(value, multiplier));
     }
     let filter = parse_object_filter_lexed(filter_tokens, false).ok()?;
@@ -2343,6 +2361,19 @@ mod etb_enters_tapped_with_counters_tests {
         assert_eq!(
             LexedClause::new(captured.subject_tokens).word_refs(),
             ["this", "creature"]
+        );
+        assert!(
+            !etb_starts_with_trigger_intro_after_label(&tokens),
+            "plain self-ETB line must not be classified as a labeled trigger"
+        );
+        assert!(
+            crate::runtime_backend::grammar::static_line_support::parse_leading_if_clause(&tokens)
+                .is_none(),
+            "plain self-ETB line must not be classified as a leading condition"
+        );
+        assert!(
+            starts_with_etb_source_reference(captured.subject_tokens),
+            "captured self-ETB subject must remain a source reference"
         );
 
         let abilities = parse_enters_with_counters_line(&tokens)
@@ -3850,6 +3881,36 @@ mod party_value_tests {
         assert_eq!(filter.subtypes, [Subtype::Adventure]);
         assert!(filter.type_or_subtype_union);
         assert!(filter.any_of.is_empty(), "{filter:#?}");
+    }
+
+    #[test]
+    fn where_x_creatures_those_players_control_keeps_the_target_player_set() {
+        let parsed = parse_where_x_is_number_of_filter_value(&lex(
+            "where X is the total number of creatures those players control",
+        ))
+        .expect("target-player creature count should parse");
+        let Value::Count(filter) = parsed else {
+            panic!("expected a typed object count, got {parsed:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::target_player()));
+    }
+
+    #[test]
+    fn where_x_creatures_you_control_does_not_acquire_a_target_set() {
+        let parsed = parse_where_x_is_number_of_filter_value(&lex(
+            "where X is the total number of creatures you control",
+        ))
+        .expect("controller-relative creature count should parse");
+        let Value::Count(filter) = parsed else {
+            panic!("expected a typed object count, got {parsed:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Battlefield));
+        assert_eq!(filter.card_types, [CardType::Creature]);
+        assert_eq!(filter.controller, Some(PlayerFilter::You));
     }
 }
 

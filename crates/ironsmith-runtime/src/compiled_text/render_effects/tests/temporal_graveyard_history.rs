@@ -65,6 +65,6 @@ fn graveyard_history_surface_without_semantic_predicate_does_not_render() {
 
     assert_eq!(
         describe_effect(&Effect::move_to_zone(target, Zone::Exile, false)),
-        "Exile target creature from a graveyard"
+        "Exile target creature card from a graveyard"
     );
 }

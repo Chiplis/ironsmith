@@ -205,10 +205,8 @@ pub(crate) fn parse_copy_spell_clause(
             effects: vec![effect],
         }));
     }
-    if super::super::grammar::effects::clause_dispatch_shapes::parse_leading_may_clause_shape(
-        tokens,
-    )
-    .is_some()
+    if super::super::grammar::effects::clause_dispatch_shapes::parse_leading_may_shape(tokens)
+        .is_some()
     {
         return Ok(None);
     }
@@ -475,8 +473,7 @@ pub(crate) fn parse_copy_spell_clause(
     }
 
     let target_shape = clause_shapes::parse_copy_target_shape_tokens(copy_target_clause.tokens());
-    let target_reference_pronoun =
-        matches!(target_shape, clause_shapes::CopyTargetShape::TaggedIt);
+    let target_reference_pronoun = matches!(target_shape, clause_shapes::CopyTargetShape::TaggedIt);
     let target = if let Some(target) = target_from_shape(target_shape) {
         target
     } else if let clause_shapes::CopyTargetShape::Explicit(target_tokens) = target_shape {
@@ -563,7 +560,10 @@ mod copy_all_tests {
             panic!("expected a coordinated copy pair, got {parsed:#?}");
         };
         assert_eq!(effects.len(), 2, "{effects:#?}");
-        for effect in effects {
+        for (effect, expected_kind) in effects.into_iter().zip([
+            crate::filter::StackObjectKind::Spell,
+            crate::filter::StackObjectKind::Ability,
+        ]) {
             let EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
                     SubjectVerbActionAst::CopySpell {
@@ -579,6 +579,7 @@ mod copy_all_tests {
             assert!(all_matches, "set quantifier must survive parsing");
             assert_eq!(filter.zone, Some(Zone::Stack), "{filter:#?}");
             assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+            assert_eq!(filter.stack_kind, Some(expected_kind), "{filter:#?}");
         }
     }
 
@@ -727,22 +728,55 @@ pub(crate) fn parse_counter_target_phrase(
     }
 
     let mut target = parse_target_phrase(tokens)?;
-    preserve_spell_kind_on_copy_target(&mut target);
+    preserve_stack_kind_on_copy_target(&mut target);
     Ok(target)
 }
 
-fn preserve_spell_kind_on_copy_target(target: &mut TargetAst) {
+fn preserve_stack_kind_on_copy_target(target: &mut TargetAst) {
+    fn broad_stack_kind(filter: &ObjectFilter) -> Option<crate::filter::StackObjectKind> {
+        use crate::filter::StackObjectKind;
+
+        let mut has_spell = false;
+        let mut has_ability = false;
+        let mut record = |kind| match kind {
+            StackObjectKind::Spell => has_spell = true,
+            StackObjectKind::Ability
+            | StackObjectKind::ActivatedAbility
+            | StackObjectKind::TriggeredAbility => has_ability = true,
+            StackObjectKind::SpellOrAbility => {
+                has_spell = true;
+                has_ability = true;
+            }
+        };
+        if let Some(kind) = filter.stack_kind {
+            record(kind);
+        }
+        for branch in &filter.any_of {
+            if let Some(kind) = broad_stack_kind(branch) {
+                record(kind);
+            }
+        }
+        match (has_spell, has_ability) {
+            (true, true) => Some(StackObjectKind::SpellOrAbility),
+            (true, false) => Some(StackObjectKind::Spell),
+            (false, true) => Some(StackObjectKind::Ability),
+            (false, false) => None,
+        }
+    }
+
     match target {
         TargetAst::Object(filter, ..) => {
-            // Ability targets are routed above. A remaining typed object in a
-            // copy-spell instruction is necessarily a spell on the stack,
-            // even when the general object-filter grammar represented its
-            // card-type union without a stack-kind marker.
+            // Coordinated activated/triggered ability domains are represented
+            // as typed union branches by the general object-filter grammar.
+            // Preserve that broad ability kind on the parent copy target;
+            // only an otherwise untyped object defaults to a spell.
+            let stack_kind =
+                broad_stack_kind(filter).unwrap_or(crate::filter::StackObjectKind::Spell);
             filter.zone = Some(Zone::Stack);
-            filter.stack_kind = Some(crate::filter::StackObjectKind::Spell);
+            filter.stack_kind = Some(stack_kind);
         }
         TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
-            preserve_spell_kind_on_copy_target(inner);
+            preserve_stack_kind_on_copy_target(inner);
         }
         _ => {}
     }

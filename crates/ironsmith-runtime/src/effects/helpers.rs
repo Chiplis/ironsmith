@@ -48,8 +48,23 @@ pub(crate) fn view_hidden_candidate_objects(
     public: bool,
 ) {
     let description = description.into();
+    let already_publicly_revealed = if public {
+        ctx.get_tagged_all(crate::effects::PUBLIC_REVEALED_TAG)
+            .map(|snapshots| {
+                snapshots
+                    .iter()
+                    .map(|snapshot| snapshot.object_id)
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default()
+    } else {
+        HashSet::new()
+    };
     let mut grouped: HashMap<(PlayerId, Zone), Vec<ObjectId>> = HashMap::new();
     for &id in candidates {
+        if already_publicly_revealed.contains(&id) {
+            continue;
+        }
         let Some(object) = game.object(id) else {
             continue;
         };
@@ -79,6 +94,14 @@ pub(crate) fn view_hidden_candidate_objects(
                 .with_public(true);
                 ctx.decision_maker
                     .view_cards(game, public_viewer, &cards, &view_ctx);
+            }
+            for card_id in cards {
+                if let Some(object) = game.object(card_id) {
+                    ctx.tag_object(
+                        crate::effects::PUBLIC_REVEALED_TAG,
+                        ObjectSnapshot::from_object(object, game),
+                    );
+                }
             }
         } else {
             for entitled_viewer in game.private_information_viewers_for(viewer, zone) {
@@ -614,7 +637,9 @@ pub fn resolve_value(
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
                 let count = snapshots
                     .iter()
-                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter(|snapshot| {
+                        value_tagged_snapshot_matches_filter(game, filter, &filter_ctx, snapshot)
+                    })
                     .count();
                 if count == 0
                     && let Some(count) = source_exiled_link_count(game, filter, ctx, &filter_ctx)
@@ -672,7 +697,9 @@ pub fn resolve_value(
             if let Some(snapshots) = value_tagged_snapshots_for_filter(filter, ctx) {
                 let count = snapshots
                     .iter()
-                    .filter(|snapshot| filter.matches_snapshot(snapshot, &filter_ctx, game))
+                    .filter(|snapshot| {
+                        value_tagged_snapshot_matches_filter(game, filter, &filter_ctx, snapshot)
+                    })
                     .count() as i32;
                 if count == 0
                     && let Some(count) = source_exiled_link_count(game, filter, ctx, &filter_ctx)
@@ -2570,6 +2597,42 @@ fn value_tagged_snapshots_for_filter<'a>(
         }
     }
     Some(snapshots)
+}
+
+/// Match a tagged LKI snapshot while honoring an explicitly required current
+/// zone.
+///
+/// Zone-changing tagged effects intentionally preserve the pre-move snapshot
+/// so later clauses can still inspect characteristics such as token status and
+/// controller. When a value asks for objects in the destination zone, validate
+/// that the stable object is currently there and project only its zone onto the
+/// LKI snapshot before applying the rest of the filter.
+fn value_tagged_snapshot_matches_filter(
+    game: &GameState,
+    filter: &crate::filter::ObjectFilter,
+    filter_ctx: &crate::filter::FilterContext,
+    snapshot: &ObjectSnapshot,
+) -> bool {
+    if filter.matches_snapshot(snapshot, filter_ctx, game) {
+        return true;
+    }
+
+    let Some(required_zone) = filter.zone else {
+        return false;
+    };
+    let Some(current_id) = resolve_tagged_object_id(game, snapshot) else {
+        return false;
+    };
+    let Some(current) = game.object(current_id) else {
+        return false;
+    };
+    if current.zone != required_zone || snapshot.zone == required_zone {
+        return false;
+    }
+
+    let mut projected = snapshot.clone();
+    projected.zone = required_zone;
+    filter.matches_snapshot(&projected, filter_ctx, game)
 }
 
 /// Returns the sorted effective power values represented by a filter.
@@ -5380,6 +5443,51 @@ mod tests {
             resolve_value(&game, &Value::Count(filter), &ctx).unwrap(),
             2,
             "pure tagged filters should count their tagged objects, even off the battlefield"
+        );
+    }
+
+    #[test]
+    fn tagged_count_uses_current_zone_and_preserves_pre_move_characteristics() {
+        use crate::filter::TaggedOpbjectRelation;
+        use crate::snapshot::ObjectSnapshot;
+
+        let mut game = new_test_game();
+        let alice = game.players[0].id;
+        let source_id = game.new_object_id();
+        let card = CardBuilder::new(crate::ids::CardId::from_raw(5010), "Card Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let token = CardBuilder::new(crate::ids::CardId::from_raw(5011), "Token Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .token()
+            .build();
+        let card_id = game.create_object_from_card(&card, alice, Zone::Battlefield);
+        let token_id = game.create_object_from_card(&token, alice, Zone::Battlefield);
+        let snapshots = [card_id, token_id]
+            .map(|id| ObjectSnapshot::from_object(game.object(id).unwrap(), &game))
+            .to_vec();
+
+        for id in [card_id, token_id] {
+            game.move_object_by_effect(id, Zone::Exile)
+                .expect("tagged object should move to exile");
+        }
+
+        let mut ctx = ExecutionContext::new_default(source_id, alice);
+        ctx.set_tagged_objects("exiled_this_way", snapshots);
+        let filter = ObjectFilter::creature()
+            .nontoken()
+            .in_zone(Zone::Exile)
+            .match_tagged(
+                crate::tag::TagKey::from("exiled_this_way"),
+                TaggedOpbjectRelation::IsTaggedObject,
+            );
+
+        assert_eq!(
+            resolve_value(&game, &Value::Count(filter), &ctx).unwrap(),
+            1,
+            "the count should verify the current exile zone while retaining LKI token status"
         );
     }
 

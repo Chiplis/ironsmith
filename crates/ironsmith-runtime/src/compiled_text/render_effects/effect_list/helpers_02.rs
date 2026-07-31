@@ -316,7 +316,7 @@ pub(crate) fn describe_consult_reveal_put_battlefield_then_shuffle_effects(
     let shuffle_verb = player_verb(&player, "shuffle", "shuffles");
     let pronoun = if player == "you" { "you" } else { "they" };
     let library_owner = if player == "you" { "your" } else { "their" };
-    let selection = describe_search_selection_with_cards(&consult.filter.description());
+    let selection = describe_single_search_filter_in_zone(&consult.filter, Zone::Library);
 
     Some(format!(
         "{player} {reveal_verb} cards from the top of {library_owner} library until {pronoun} reveal {selection}, {put_verb} that card onto the battlefield, then {shuffle_verb}"
@@ -1299,6 +1299,78 @@ pub(crate) fn render_each_player_exile_top_then_cast_any_number(
         "Exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs"
             .to_string(),
     )
+}
+
+/// The collective free-cast permission on its own, for the very common authoring
+/// where oracle puts the exile and the permission in SEPARATE sentences:
+///
+/// `Exile the top four cards of your library. You may cast any number of spells
+///  with mana value 5 or less from among them without paying their mana costs.`
+///
+/// `render_exile_top_then_cast_any_number_with_mana_value_cap` only matches the
+/// one-sentence "exile ..., then you may cast ..." form, because it needs both
+/// effects in a single slice — across two resolution segments that pair never
+/// forms, and the permission segment fell through to the generic `MayEffect`
+/// wrapper, which prefixed "You may " onto a clause that already carried its own
+/// permission ("You may For each nonland card ... you may cast it ...").
+pub(crate) fn render_may_cast_any_number_from_among_exiled(
+    may: &crate::effects::MayEffect,
+) -> Option<String> {
+    if !matches!(may.decider, None | Some(PlayerFilter::You)) {
+        return None;
+    }
+    let [for_each_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let for_each = for_each_effect.downcast_ref::<crate::effects::ForEachObject>()?;
+    if for_each.filter.zone != Some(Zone::Exile)
+        || !for_each
+            .filter
+            .excluded_card_types
+            .contains(&crate::types::CardType::Land)
+    {
+        return None;
+    }
+    // The "them" antecedent is the set some earlier sentence exiled, which is
+    // exactly what a sentence-helper exiled tag records.
+    if !for_each.filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+            && crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "exiled")
+    }) {
+        return None;
+    }
+
+    let [inner_may_effect] = for_each.effects.as_slice() else {
+        return None;
+    };
+    let inner_may = inner_may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    let [cast_effect] = inner_may.effects.as_slice() else {
+        return None;
+    };
+    let cast = cast_effect.downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if cast.tag.as_str() != "__it__"
+        || cast.player != PlayerFilter::You
+        || cast.allow_land
+        || cast.as_copy
+        || !cast.without_paying_mana_cost
+        || cast.cost_reduction.is_some()
+    {
+        return None;
+    }
+
+    let cap = match &for_each.filter.mana_value {
+        None => String::new(),
+        Some(crate::filter::Comparison::LessThanOrEqual(value)) => {
+            format!(" with mana value {value} or less")
+        }
+        Some(crate::filter::Comparison::LessThanOrEqualExpr(value)) => {
+            format!(" with mana value {} or less", describe_value(value))
+        }
+        _ => return None,
+    };
+    Some(format!(
+        "You may cast any number of spells{cap} from among them without paying their mana costs"
+    ))
 }
 
 pub(crate) fn render_exile_top_then_cast_any_number_with_mana_value_cap(

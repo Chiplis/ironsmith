@@ -1,15 +1,24 @@
 use super::render_effects::{
     damage_with_source_view, describe_annihilator_keyword,
     describe_choose_color_reveal_hand_discard_that_color,
-    describe_choose_name_target_mills_conditional_draw, describe_declined_may_mill_then_damage,
+    describe_choose_name_target_mills_conditional_draw,
+    describe_damaged_player_gain_control_then_rewards, describe_declined_may_mill_then_damage,
+    describe_distinct_player_choice_with_linked_action,
+    describe_explicit_target_then_coin_flip,
     describe_exile_then_free_cast_while_exiled_structural,
-    describe_look_hand_choose_then_discard_or_exile, describe_repeated_die_parity_result_program,
+    describe_for_players_choose_then_destroy_chosen_collection_pair,
+    describe_look_hand_choose_then_discard_or_exile,
+    describe_optional_sticker_aura_return_attach_sequence,
+    describe_repeated_die_parity_result_program,
     describe_reveal_hand_choose_discard_then_adventure_move,
     describe_reveal_hand_choose_graveyard_exile_bundle,
     describe_reveal_hand_choose_graveyard_or_hand_exile,
     describe_reveal_top_to_hand_then_lose_mana_value_effects,
+    describe_roll_choose_destroy_create_structural,
     describe_roll_result_damage_then_random_source_attachment_program,
     describe_same_name_reference_search_bundle,
+    describe_search_face_down_exile_shuffle_split_bargain_cast_else_hand,
+    describe_secret_choice_match_sequence,
     describe_separated_countered_spell_exile_with_counters_gain_suspend,
     describe_sequenced_d20_numeric_result_table_program,
     describe_single_hand_reveal_same_name_search, describe_single_hand_reveal_setup,
@@ -28,13 +37,17 @@ impl RawRenderedLine {
 }
 
 pub(super) fn ast_compiled_lines(def: &CardDefinition) -> Vec<RawRenderedLine> {
-    stacker::maybe_grow(1024 * 1024, 8 * 1024 * 1024, || compiled_lines_inner(def))
-        .into_iter()
-        .map(|line| rewrite_self_exile_cost_source(def, &line))
-        .map(|line| rewrite_named_source_counter_reference(def, &line))
-        .map(|line| rewrite_source_owner_reference(def, &line))
-        .map(RawRenderedLine)
-        .collect()
+    // Correlated search/result programs can consume more than a default
+    // test-thread stack before a one-megabyte red zone is reached.
+    stacker::maybe_grow(4 * 1024 * 1024, 16 * 1024 * 1024, || {
+        compiled_lines_inner(def)
+    })
+    .into_iter()
+    .map(|line| rewrite_self_exile_cost_source(def, &line))
+    .map(|line| rewrite_named_source_counter_reference(def, &line))
+    .map(|line| rewrite_source_owner_reference(def, &line))
+    .map(RawRenderedLine)
+    .collect()
 }
 
 fn rewrite_source_owner_reference(def: &CardDefinition, line: &str) -> String {
@@ -60,10 +73,16 @@ fn rewrite_self_exile_cost_source(def: &CardDefinition, line: &str) -> String {
         return line.to_string();
     }
     let source_phrase = format!("Exile this {}", primary_type.name().to_ascii_lowercase());
-    if !line.contains(&source_phrase) || !line.contains(':') {
+    let Some((cost_surface, ability_surface)) = line.split_once(':') else {
+        return line.to_string();
+    };
+    if !cost_surface.contains(&source_phrase) {
         return line.to_string();
     }
-    line.replace(&source_phrase, &format!("Exile {}", def.card.name))
+    format!(
+        "{}:{ability_surface}",
+        cost_surface.replace(&source_phrase, &format!("Exile {}", def.card.name))
+    )
 }
 
 fn rewrite_named_source_counter_reference(def: &CardDefinition, line: &str) -> String {
@@ -830,6 +849,24 @@ fn modeled_object_static_grant(
     ))
 }
 
+/// Read an unquantified object grant through either runtime grant payload.
+/// Parser families use `GrantObjectAbilityForFilter` for executable object
+/// grants and `GrantAbility` for modeled static rules, but adjacent authored
+/// grants can legitimately contain one of each.
+fn modeled_unquantified_object_static_grant(
+    ability: &Ability,
+) -> Option<(
+    &ObjectFilter,
+    Option<&Condition>,
+    crate::static_abilities::StaticAbility,
+)> {
+    if let Some(grant) = modeled_object_static_grant(ability) {
+        return Some(grant);
+    }
+    let (filter, condition, quantifier, granted) = modeled_filter_static_grant(ability)?;
+    quantifier.is_none().then_some((filter, condition, granted))
+}
+
 fn modeled_filter_static_grant(
     ability: &Ability,
 ) -> Option<(
@@ -959,6 +996,14 @@ enum AttachedGrantSurface {
     Quoted(String),
 }
 
+fn capitalize_quoted_grant_instruction(text: &str) -> String {
+    if let Some((cost, instruction)) = text.split_once(": ") {
+        format!("{cost}: {}", capitalize_first(instruction))
+    } else {
+        capitalize_first(text)
+    }
+}
+
 fn modeled_attached_grant_surface(ability: &Ability) -> Option<(String, AttachedGrantSurface)> {
     if ability.functional_zones.as_slice() != [Zone::Battlefield] {
         return None;
@@ -1031,7 +1076,7 @@ fn modeled_attached_grant_surface(ability: &Ability) -> Option<(String, Attached
             if tail.is_empty() {
                 return None;
             }
-            AttachedGrantSurface::Quoted(capitalize_first(tail))
+            AttachedGrantSurface::Quoted(capitalize_quoted_grant_instruction(tail))
         }
     };
     Some((normalized_subject, surface))
@@ -1271,7 +1316,7 @@ fn describe_structural_keyword_maximum_blocker_bundle(
     abilities: &[Ability],
 ) -> Option<(String, usize)> {
     let first = abilities.first()?;
-    let (filter, condition, first_granted) = modeled_object_static_grant(first)?;
+    let (filter, condition, first_granted) = modeled_unquantified_object_static_grant(first)?;
     if !first_granted.is_keyword() {
         return None;
     }
@@ -1286,7 +1331,8 @@ fn describe_structural_keyword_maximum_blocker_bundle(
     let mut keywords = Vec::new();
     let mut consumed = 0usize;
     for ability in abilities {
-        let (next_filter, next_condition, granted) = modeled_object_static_grant(ability)?;
+        let (next_filter, next_condition, granted) =
+            modeled_unquantified_object_static_grant(ability)?;
         if next_filter != filter || next_condition != condition {
             return None;
         }
@@ -1319,10 +1365,10 @@ fn describe_structural_keyword_maximum_blocker_bundle(
             "creatures"
         };
         return Some((
-            format!(
+            capitalize_first(&format!(
                 "{subject} {has_verb} {} and can't be blocked by more than {maximum} {creature}",
                 render_keyword_list(&keywords, false)
-            ),
+            )),
             consumed,
         ));
     }
@@ -1357,6 +1403,12 @@ fn describe_structural_conditional_source_keyword_grant(
         Condition::TurnHistory(
             ironsmith_core::TurnHistoryCondition::PlayerVisitedAttractionThisTurn(_)
         )
+    ) || matches!(
+        condition,
+        Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::CountersAmong(_, _),
+            ..
+        }
     );
     let condition = describe_condition(condition);
     let condition = condition
@@ -2171,34 +2223,136 @@ fn cross_segment_result_effect(effect: &Effect) -> Option<CrossSegmentResultEffe
         .map(CrossSegmentResultEffect::If)
 }
 
-fn describe_cross_segment_look_optional_payment_disposition_window(
+/// Rejoin an optional source transformation with the graveyard return that
+/// follows it when authored sentence preservation placed the two instructions
+/// in adjacent resolution segments. The established flat specialist validates
+/// every sticker, Aura, choice-tag, return, and attachment relationship.
+fn describe_cross_segment_optional_sticker_aura_return_attach_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
 ) -> Option<(String, usize)> {
-    let [
-        look_segment,
-        payment_segment,
-        accepted_segment,
-        declined_segment,
-    ] = segments.get(start..start + 4)?
-    else {
+    let [transform_segment, return_segment] = segments.get(start..start + 2)? else {
         return None;
     };
-    if [
-        look_segment,
-        payment_segment,
-        accepted_segment,
-        declined_segment,
-    ]
-    .iter()
-    .any(|segment| !segment.self_replacements.is_empty())
+    if !transform_segment.self_replacements.is_empty()
+        || !return_segment.self_replacements.is_empty()
     {
         return None;
     }
 
-    let [look_effect] = look_segment.default_effects.as_slice() else {
+    let [tag_triggering, may_transform] = transform_segment.default_effects.as_slice() else {
         return None;
     };
+    tag_triggering.downcast_ref::<crate::effects::TagTriggeringObjectEffect>()?;
+    may_transform.downcast_ref::<crate::effects::MayEffect>()?;
+
+    let [return_sequence] = return_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let return_sequence = return_sequence.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if !matches!(
+        return_sequence.surface,
+        ironsmith_core::SequenceSurface::Coordinated
+    ) {
+        return None;
+    }
+
+    let mut effects = vec![tag_triggering, may_transform];
+    effects.extend(return_sequence.effects.iter());
+    let rendered = describe_optional_sticker_aura_return_attach_sequence(&effects)?;
+    Some((rendered, 2))
+}
+
+/// Rejoin an authored player choice and its immediately linked action when
+/// lowering preserves their sentence boundary as adjacent resolution
+/// segments. The structural helper still verifies that the action's actor is
+/// the exact player tag produced by the choice.
+fn describe_cross_segment_distinct_player_choice_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [choice_segment, action_segment] = segments.get(start..start + 2)? else {
+        return None;
+    };
+    if !choice_segment.self_replacements.is_empty() || !action_segment.self_replacements.is_empty()
+    {
+        return None;
+    }
+    let [choice] = choice_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [action] = action_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let effects = [choice.clone(), action.clone()];
+    describe_distinct_player_choice_with_linked_action(&effects).map(|rendered| (rendered, 2))
+}
+
+fn describe_cross_segment_look_optional_payment_disposition_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let first_segment = segments.get(start)?;
+    if !first_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let (look_effect, payment_effect, accepted_effect, declined_effect, consumed) = if let [
+        look_effect,
+        payment_effect,
+        accepted_effect,
+        declined_effect,
+    ] =
+        first_segment.default_effects.as_slice()
+    {
+        (
+            look_effect,
+            payment_effect,
+            accepted_effect,
+            declined_effect,
+            1,
+        )
+    } else {
+        let [
+            look_segment,
+            payment_segment,
+            accepted_segment,
+            declined_segment,
+        ] = segments.get(start..start + 4)?
+        else {
+            return None;
+        };
+        if [
+            look_segment,
+            payment_segment,
+            accepted_segment,
+            declined_segment,
+        ]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+        {
+            return None;
+        }
+        let [look_effect] = look_segment.default_effects.as_slice() else {
+            return None;
+        };
+        let [payment_effect] = payment_segment.default_effects.as_slice() else {
+            return None;
+        };
+        let [accepted_effect] = accepted_segment.default_effects.as_slice() else {
+            return None;
+        };
+        let [declined_effect] = declined_segment.default_effects.as_slice() else {
+            return None;
+        };
+        (
+            look_effect,
+            payment_effect,
+            accepted_effect,
+            declined_effect,
+            4,
+        )
+    };
+
     let look = unwrap_basic_render_wrapper(look_effect)
         .downcast_ref::<crate::effects::LookAtTopCardsEffect>()?;
     if look.player != PlayerFilter::You
@@ -2208,9 +2362,6 @@ fn describe_cross_segment_look_optional_payment_disposition_window(
         return None;
     }
 
-    let [payment_effect] = payment_segment.default_effects.as_slice() else {
-        return None;
-    };
     let payment_with_id = payment_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let may = payment_with_id
         .effect
@@ -2225,13 +2376,7 @@ fn describe_cross_segment_look_optional_payment_disposition_window(
         unwrap_basic_render_wrapper(effect).downcast_ref::<crate::effects::IfEffect>()
     }
 
-    let [accepted_effect] = accepted_segment.default_effects.as_slice() else {
-        return None;
-    };
     let accepted = result_if(accepted_effect)?;
-    let [declined_effect] = declined_segment.default_effects.as_slice() else {
-        return None;
-    };
     let declined = result_if(declined_effect)?;
     if accepted.condition != payment_with_id.id
         || declined.condition != payment_with_id.id
@@ -2284,7 +2429,7 @@ fn describe_cross_segment_look_optional_payment_disposition_window(
         format!(
             "{look_text}. {payment_text}. If you do, put one of those cards into your hand. If you don't, put one of those cards on the bottom of your library"
         ),
-        4,
+        consumed,
     ))
 }
 
@@ -2347,6 +2492,29 @@ fn describe_cross_segment_discard_hand_add_mana_draw_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
 ) -> Option<(String, usize)> {
+    // Sentence preservation can keep the authored mana-and-draw clause as a
+    // two-child sequence in the segment after the discard. Flatten only that
+    // proven shape: continuing the generic three-effect scan would otherwise
+    // pull the following vote into this window without ever exposing the
+    // sequence's children to the typed renderer.
+    if let [discard_segment, mana_draw_segment] = segments.get(start..start + 2)?
+        && discard_segment.self_replacements.is_empty()
+        && mana_draw_segment.self_replacements.is_empty()
+        && let [discard_effect] = discard_segment.default_effects.as_slice()
+        && let [sequence_effect] = mana_draw_segment.default_effects.as_slice()
+        && let Some(sequence) = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && let [mana_effect, draw_effect] = sequence.effects.as_slice()
+    {
+        let effects = [discard_effect, mana_effect, draw_effect];
+        if let Some(rendered) =
+            crate::compiled_text::render_effects::describe_discard_hand_add_mana_draw_sequence(
+                &effects,
+            )
+        {
+            return Some((rendered, 2));
+        }
+    }
+
     let mut effects = Vec::with_capacity(3);
     let mut end = start;
     while effects.len() < 3 {
@@ -2368,6 +2536,84 @@ fn describe_cross_segment_discard_hand_add_mana_draw_window(
             &effects,
         )?;
     Some((rendered, end - start))
+}
+
+fn describe_cross_segment_roll_choose_destroy_create_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let [roll_segment, destroy_segment, create_segment] = segments.get(start..start + 3)? else {
+        return None;
+    };
+    if [roll_segment, destroy_segment, create_segment]
+        .iter()
+        .any(|segment| !segment.self_replacements.is_empty())
+    {
+        return None;
+    }
+    let [roll_effect] = roll_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [destroy_effect] = destroy_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let [create_effect] = create_segment.default_effects.as_slice() else {
+        return None;
+    };
+    let create_effect = create_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .and_then(|sequence| {
+            let [only] = sequence.effects.as_slice() else {
+                return None;
+            };
+            Some(only)
+        })
+        .unwrap_or(create_effect);
+    let effects = [
+        roll_effect.clone(),
+        destroy_effect.clone(),
+        create_effect.clone(),
+    ];
+    describe_roll_choose_destroy_create_structural(&effects).map(|rendered| (rendered, 3))
+}
+
+fn describe_cross_segment_secret_choice_match_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let choice_segment = segments.get(start)?;
+    if !choice_segment.self_replacements.is_empty() {
+        return None;
+    }
+    let (choice_effect, conditional_effect, consumed) =
+        if let [choice_effect, conditional_effect] = choice_segment.default_effects.as_slice() {
+            (choice_effect, conditional_effect, 1)
+        } else {
+            let conditional_segment = segments.get(start + 1)?;
+            if !conditional_segment.self_replacements.is_empty() {
+                return None;
+            }
+            let [choice_effect] = choice_segment.default_effects.as_slice() else {
+                return None;
+            };
+            let [conditional_effect] = conditional_segment.default_effects.as_slice() else {
+                return None;
+            };
+            (choice_effect, conditional_effect, 2)
+        };
+    let effects = [choice_effect.clone(), conditional_effect.clone()];
+    describe_secret_choice_match_sequence(&effects).map(|rendered| (rendered, consumed))
+}
+
+fn unwrap_singleton_sentence_boundary(effect: &Effect) -> Option<&Effect> {
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen {
+        return None;
+    }
+    let [effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    Some(effect)
 }
 
 fn describe_cross_segment_player_damage_then_discard_window(
@@ -2591,66 +2837,110 @@ fn describe_cross_segment_choose_name_mill_conditional_window(
     };
     if [producer_segment, gate_segment, fallback_segment]
         .iter()
-        .any(|segment| !segment.self_replacements.is_empty())
+        .any(|segment| !segment.self_replacements.is_empty() || segment.starts_new_source_line)
     {
         return None;
     }
 
-    let [choose_effect, target_effect, producer_effect] =
-        producer_segment.default_effects.as_slice()
-    else {
+    let [producer_effect] = producer_segment.default_effects.as_slice() else {
         return None;
     };
-    let producer_with_id = producer_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
-    let tagged_mill = producer_with_id
-        .effect
-        .downcast_ref::<crate::effects::TaggedEffect>()?;
-    tagged_mill
-        .effect
-        .downcast_ref::<crate::effects::MillEffect>()?;
-
     let [gate_effect] = gate_segment.default_effects.as_slice() else {
         return None;
     };
-    let gate_with_id = gate_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
-    let gate = gate_with_id
-        .effect
-        .downcast_ref::<crate::effects::IfEffect>()?;
-    let EffectPredicate::PriorEffectResult(surface) = &gate.predicate else {
-        return None;
-    };
-    if gate.condition != producer_with_id.id
-        || !gate.else_.is_empty()
-        || surface.action != crate::effect::PriorEffectAction::Milled
-        || surface.actor != crate::effect::PriorEffectResultActor::Passive
-        || surface.quantifier != crate::effect::PriorEffectResultQuantifier::One
-    {
-        return None;
-    }
-
     let [fallback_effect] = fallback_segment.default_effects.as_slice() else {
         return None;
     };
-    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
-    if fallback.condition != gate_with_id.id
-        || fallback.predicate != EffectPredicate::DidNotHappen
-        || !fallback.else_.is_empty()
-    {
-        return None;
-    }
 
-    let conditional = Effect::conditional(
-        Condition::TaggedObjectMatches(tagged_mill.tag.clone(), surface.filter.clone()),
-        gate.then.clone(),
-        fallback.then.clone(),
-    );
+    // Sentence-preserving lowering now assigns the ID to the whole authored
+    // choose/target/mill sequence. Pass the three typed segment effects to the
+    // flat specialist instead of rebuilding the older shape in which only the
+    // mill carried the ID. That specialist validates both IDs, the chosen-name
+    // tag, the target player, and both draw branches.
     let normalized = [
-        choose_effect.clone(),
-        target_effect.clone(),
-        (*producer_with_id.effect).clone(),
-        conditional,
+        producer_effect.clone(),
+        gate_effect.clone(),
+        fallback_effect.clone(),
     ];
     describe_choose_name_target_mills_conditional_draw(&normalized).map(|rendered| (rendered, 3))
+}
+
+#[cfg(test)]
+mod choose_name_mill_conditional_window_tests {
+    use super::*;
+
+    fn predict_segments(
+        fallback_condition: crate::effect::EffectId,
+    ) -> Vec<crate::resolution::ResolutionSegment> {
+        let chosen_name = TagKey::from("__chosen_name__");
+        let producer = Effect::with_id(
+            0,
+            Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+                Effect::choose_card_name(PlayerFilter::You, None, chosen_name.clone()),
+                Effect::new(crate::effects::TargetOnlyEffect::new(
+                    ChooseSpec::target_player(),
+                )),
+                Effect::mill_player(Value::Fixed(1), PlayerFilter::target_player()).tag("milled_0"),
+            ])),
+        );
+
+        let mut matching_card = ObjectFilter::default();
+        matching_card.set_explicit_card_noun(true);
+        matching_card
+            .tagged_constraints
+            .push(crate::filter::TaggedObjectConstraint {
+                tag: chosen_name,
+                relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+            });
+        let matched = Effect::with_id(
+            1,
+            Effect::if_then(
+                crate::effect::EffectId(0),
+                EffectPredicate::PriorEffectResult(crate::effect::PriorEffectResultSurface::new(
+                    crate::effect::PriorEffectAction::Milled,
+                    matching_card,
+                    crate::effect::PriorEffectResultActor::Passive,
+                    crate::effect::PriorEffectResultQuantifier::One,
+                )),
+                vec![Effect::draw(Value::Fixed(2))],
+            ),
+        );
+        let fallback = Effect::if_then(
+            fallback_condition,
+            EffectPredicate::DidNotHappen,
+            vec![Effect::draw(Value::Fixed(1))],
+        );
+
+        vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![producer]),
+            crate::resolution::ResolutionSegment::from_effects(vec![matched]),
+            crate::resolution::ResolutionSegment::from_effects(vec![fallback]),
+        ]
+    }
+
+    #[test]
+    fn whole_sequence_producer_rejoins_its_result_and_otherwise_segments() {
+        let segments = predict_segments(crate::effect::EffectId(1));
+
+        assert_eq!(
+            describe_cross_segment_choose_name_mill_conditional_window(&segments, 0),
+            Some((
+                "Choose a card name, then target player mills a card. If a card with the chosen name was milled this way, draw two cards. Otherwise, draw a card"
+                    .to_string(),
+                3,
+            ))
+        );
+    }
+
+    #[test]
+    fn otherwise_segment_must_reference_the_matched_result_id() {
+        let segments = predict_segments(crate::effect::EffectId(7));
+
+        assert_eq!(
+            describe_cross_segment_choose_name_mill_conditional_window(&segments, 0),
+            None
+        );
+    }
 }
 
 fn describe_same_target_continuous_outcome_branches(
@@ -2813,9 +3103,27 @@ fn describe_cross_segment_result_window(
         return None;
     }
     let antecedent_effects = &antecedent_segment.default_effects;
-    let antecedent = antecedent_effects
+    let (antecedent, sentence_leading_then) = if let Some(with_id) = antecedent_effects
         .last()?
-        .downcast_ref::<crate::effects::WithIdEffect>()?;
+        .downcast_ref::<crate::effects::WithIdEffect>(
+    ) {
+        (with_id, false)
+    } else {
+        let [boundary_effect] = antecedent_effects.as_slice() else {
+            return None;
+        };
+        let sequence = boundary_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+        if sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen {
+            return None;
+        }
+        let [with_id_effect] = sequence.effects.as_slice() else {
+            return None;
+        };
+        (
+            with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?,
+            true,
+        )
+    };
 
     let mut end = start + 1;
     let mut saw_result = false;
@@ -2863,11 +3171,71 @@ fn describe_cross_segment_result_window(
         return None;
     }
 
-    let combined = segments[start..end]
+    let mut combined = segments[start..end]
         .iter()
         .flat_map(|segment| segment.default_effects.iter().cloned())
         .collect::<Vec<_>>();
-    Some((describe_effect_list(&combined), end - start))
+    if sentence_leading_then {
+        combined[0] = Effect::new(antecedent.clone());
+    }
+    let rendered = describe_effect_list(&combined);
+    let rendered = if sentence_leading_then {
+        format!("Then {}", lowercase_first(&rendered))
+    } else {
+        rendered
+    };
+    Some((rendered, end - start))
+}
+
+#[cfg(test)]
+mod sentence_leading_result_window_tests {
+    use super::*;
+
+    fn optional_energy_segments(
+        result_condition: crate::effect::EffectId,
+    ) -> Vec<crate::resolution::ResolutionSegment> {
+        let payment = Effect::with_id(
+            0,
+            Effect::may_single(Effect::new(crate::effects::PayAnyEnergyEffect::new(
+                ChooseSpec::Player(PlayerFilter::You),
+                1,
+            ))),
+        );
+        let leading_then =
+            Effect::new(crate::effects::SequenceEffect::sentence_leading_then(vec![
+                payment,
+            ]));
+        let result = Effect::if_then(
+            result_condition,
+            EffectPredicate::Happened,
+            vec![Effect::draw(Value::Fixed(1))],
+        );
+
+        vec![
+            crate::resolution::ResolutionSegment::from_effects(vec![leading_then]),
+            crate::resolution::ResolutionSegment::from_effects(vec![result]),
+        ]
+    }
+
+    #[test]
+    fn sentence_leading_optional_payment_rejoins_linked_result() {
+        let segments = optional_energy_segments(crate::effect::EffectId(0));
+
+        assert_eq!(
+            describe_cross_segment_result_window(&segments, 0),
+            Some((
+                "Then you may pay one or more {E}. If you do, you draw a card".to_string(),
+                2,
+            ))
+        );
+    }
+
+    #[test]
+    fn sentence_leading_optional_payment_rejects_mismatched_result_id() {
+        let segments = optional_energy_segments(crate::effect::EffectId(4));
+
+        assert_eq!(describe_cross_segment_result_window(&segments, 0), None);
+    }
 }
 
 /// Rejoin linked graveyard choices and their optional return when sentence
@@ -2881,13 +3249,25 @@ fn describe_cross_segment_linked_graveyard_choices_then_may_return_window(
     let mut effects = Vec::with_capacity(3);
     let mut consumed = 0usize;
     for segment in segments.iter().skip(start).take(3) {
-        if !segment.self_replacements.is_empty()
-            || segment.default_effects.is_empty()
-            || effects.len() + segment.default_effects.len() > 3
-        {
+        if !segment.self_replacements.is_empty() || segment.default_effects.is_empty() {
             return None;
         }
-        effects.extend(segment.default_effects.iter());
+        for effect in &segment.default_effects {
+            let unwrapped = structural_unwrap_render_wrappers(effect);
+            if let Some(sequence) = unwrapped.downcast_ref::<crate::effects::SequenceEffect>() {
+                if sequence.surface != ironsmith_core::SequenceSurface::CommaThen
+                    || effects.len() + sequence.effects.len() > 3
+                {
+                    return None;
+                }
+                effects.extend(sequence.effects.iter());
+            } else {
+                if effects.len() == 3 {
+                    return None;
+                }
+                effects.push(effect);
+            }
+        }
         consumed += 1;
         if effects.len() == 3 {
             break;
@@ -4326,22 +4706,9 @@ fn describe_cross_segment_reveal_hand_choose_graveyard_exile_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
 ) -> Option<(String, usize)> {
-    let [look_segment, choose_segment, exile_segment] = segments.get(start..start + 3)? else {
-        return None;
-    };
-    if [look_segment, choose_segment, exile_segment]
-        .iter()
-        .any(|segment| !segment.self_replacements.is_empty())
-    {
-        return None;
-    }
-    let [look] = look_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let [hand_choose, graveyard_choose] = choose_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let [exile] = exile_segment.default_effects.as_slice() else {
+    let window = segments.get(start..start + 3)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    let [look, hand_choose, graveyard_choose, exile] = flattened.as_slice() else {
         return None;
     };
     describe_reveal_hand_choose_graveyard_exile_bundle(&[
@@ -4350,6 +4717,37 @@ fn describe_cross_segment_reveal_hand_choose_graveyard_exile_window(
         graveyard_choose,
         exile,
     ])
+    .map(|rendered| (rendered, 3))
+}
+
+fn describe_cross_segment_search_face_down_bargain_cast_else_hand_window(
+    segments: &[crate::resolution::ResolutionSegment],
+    start: usize,
+) -> Option<(String, usize)> {
+    let window = segments.get(start..start + 3)?;
+    let flattened = flattened_cross_segment_effects(window)?;
+    let [
+        choose_effect,
+        exile_effect,
+        shuffle_effect,
+        bargain_gate_effect,
+        fallback_gate_effect,
+    ] = flattened.as_slice()
+    else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
+    let exile = exile_effect.downcast_ref::<crate::effects::ExileEffect>()?;
+    let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
+    let bargain_gate = bargain_gate_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let fallback_gate = fallback_gate_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    describe_search_face_down_exile_shuffle_split_bargain_cast_else_hand(
+        choose,
+        exile,
+        shuffle,
+        bargain_gate,
+        fallback_gate,
+    )
     .map(|rendered| (rendered, 3))
 }
 
@@ -4377,6 +4775,30 @@ fn flattened_cross_segment_effects(
         }
     }
     Some(flattened)
+}
+
+fn describe_damaged_player_gain_control_then_rewards_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.len() != 2 {
+        return None;
+    }
+    let flattened = flattened_cross_segment_effects(&program.segments)?;
+    let [control_effect, reward_effect] = flattened.as_slice() else {
+        return None;
+    };
+    describe_damaged_player_gain_control_then_rewards(control_effect, reward_effect)
+}
+
+fn describe_explicit_target_then_coin_flip_program(
+    program: &crate::resolution::ResolutionProgram,
+) -> Option<String> {
+    if program.segments.len() != 3 {
+        return None;
+    }
+    let flattened = flattened_cross_segment_effects(&program.segments)?;
+    let (rendered, consumed) = describe_explicit_target_then_coin_flip(&flattened)?;
+    (consumed == flattened.len()).then_some(rendered)
 }
 
 /// Rejoin a target-plus-fanout collection and a later action over the exact
@@ -4718,8 +5140,9 @@ fn describe_cross_segment_search_move_shuffle_window(
         && search_segment.self_replacements.is_empty()
         && followup_segment.self_replacements.is_empty()
         && let Some(choose) = cross_segment_search_choose(search_segment)
-        && let [reveal_effect, move_effect, shuffle_effect] =
-            followup_segment.default_effects.as_slice()
+        && let Some(followup_effects) =
+            flattened_cross_segment_effects(std::slice::from_ref(followup_segment))
+        && let [reveal_effect, move_effect, shuffle_effect] = followup_effects.as_slice()
         && let Some(reveal) = reveal_effect.downcast_ref::<crate::effects::RevealTaggedEffect>()
         && let Some(move_to_zone) = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
         && let Some(shuffle) = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()
@@ -5171,6 +5594,15 @@ fn describe_cross_segment_chain_copy_window(
     let [enabling_effect] = enabling_segment.default_effects.as_slice() else {
         return None;
     };
+    let enabling_effect = enabling_effect
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .and_then(|sequence| {
+            let [only] = sequence.effects.as_slice() else {
+                return None;
+            };
+            Some(only)
+        })
+        .unwrap_or(enabling_effect);
     let enabling_with_id = enabling_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     enabling_with_id
         .effect
@@ -5322,8 +5754,17 @@ fn describe_cross_segment_shuffle_exile_top_cast_window(
     {
         return None;
     }
-    let [shuffle_effect, exile_effect] = producer_segment.default_effects.as_slice() else {
-        return None;
+    let (shuffle_effect, exile_effect) = match producer_segment.default_effects.as_slice() {
+        [shuffle_effect, exile_effect] => (shuffle_effect, exile_effect),
+        [sequence_effect] => {
+            let sequence = structural_unwrap_render_wrappers(sequence_effect)
+                .downcast_ref::<crate::effects::SequenceEffect>()?;
+            let [shuffle_effect, exile_effect] = sequence.effects.as_slice() else {
+                return None;
+            };
+            (shuffle_effect, exile_effect)
+        }
+        _ => return None,
     };
     let [permission_effect] = permission_segment.default_effects.as_slice() else {
         return None;
@@ -5474,21 +5915,53 @@ fn describe_cross_segment_shuffle_exile_top_free_play_window(
     segments: &[crate::resolution::ResolutionSegment],
     start: usize,
 ) -> Option<(String, usize)> {
-    let [producer_segment, permission_segment] = segments.get(start..start + 2)? else {
-        return None;
-    };
-    if !producer_segment.self_replacements.is_empty()
-        || !permission_segment.self_replacements.is_empty()
-    {
+    let producer_segment = segments.get(start)?;
+    if !producer_segment.self_replacements.is_empty() {
         return None;
     }
-    let [shuffle_effect, exile_effect] = producer_segment.default_effects.as_slice() else {
-        return None;
-    };
-    let [grant_play_effect, grant_free_cast_effect] = permission_segment.default_effects.as_slice()
-    else {
-        return None;
-    };
+    let (shuffle_effect, exile_effect, grant_play_effect, grant_free_cast_effect, consumed) =
+        match producer_segment.default_effects.as_slice() {
+            [shuffle_effect, exile_effect, grant_play_effect, grant_free_cast_effect] => (
+                shuffle_effect,
+                exile_effect,
+                grant_play_effect,
+                grant_free_cast_effect,
+                1,
+            ),
+            producer_effects => {
+                let permission_segment = segments.get(start + 1)?;
+                if !permission_segment.self_replacements.is_empty() {
+                    return None;
+                }
+                let (shuffle_effect, exile_effect) = match producer_effects {
+                    [shuffle_effect, exile_effect] => (shuffle_effect, exile_effect),
+                    [sequence_effect] => {
+                        let sequence = structural_unwrap_render_wrappers(sequence_effect)
+                            .downcast_ref::<crate::effects::SequenceEffect>()?;
+                        if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
+                            return None;
+                        }
+                        let [shuffle_effect, exile_effect] = sequence.effects.as_slice() else {
+                            return None;
+                        };
+                        (shuffle_effect, exile_effect)
+                    }
+                    _ => return None,
+                };
+                let [grant_play_effect, grant_free_cast_effect] =
+                    permission_segment.default_effects.as_slice()
+                else {
+                    return None;
+                };
+                (
+                    shuffle_effect,
+                    exile_effect,
+                    grant_play_effect,
+                    grant_free_cast_effect,
+                    2,
+                )
+            }
+        };
     let shuffle = shuffle_effect.downcast_ref::<crate::effects::ShuffleLibraryEffect>()?;
     if shuffle.player != PlayerFilter::You || shuffle.target_spec.is_some() {
         return None;
@@ -5503,8 +5976,65 @@ fn describe_cross_segment_shuffle_exile_top_free_play_window(
     let tail = tail.replacen(" of your library.", ".", 1);
     Some((
         format!("Shuffle your library, then {}", lowercase_first(&tail)),
-        2,
+        consumed,
     ))
+}
+
+#[cfg(test)]
+mod shuffle_exile_top_free_play_rendering_tests {
+    use super::*;
+
+    fn segments(
+        moved_tag: &TagKey,
+        grant_tag: &TagKey,
+    ) -> Vec<crate::resolution::ResolutionSegment> {
+        let shuffle = Effect::new(crate::effects::ShuffleLibraryEffect::you());
+        let exile = Effect::new(
+            crate::effects::ExileTopOfLibraryEffect::new(Value::Fixed(1), PlayerFilter::You)
+                .tag_moved(moved_tag.clone()),
+        );
+        let grant_play = Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+            grant_tag.clone(),
+            PlayerFilter::You,
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn,
+            true,
+            false,
+        ));
+        let grant_free = Effect::new(
+            crate::effects::GrantTaggedSpellFreeCastUntilEndOfTurnEffect::new(
+                grant_tag.clone(),
+                PlayerFilter::You,
+            ),
+        );
+        vec![crate::resolution::ResolutionSegment {
+            default_effects: vec![shuffle, exile, grant_play, grant_free],
+            self_replacements: Vec::new(),
+            starts_new_source_line: false,
+        }]
+    }
+
+    #[test]
+    fn typed_adjacent_shuffle_exile_free_play_requires_the_shared_moved_tag() {
+        let moved_tag = TagKey::from("exiled_top");
+        let matching = segments(&moved_tag, &moved_tag);
+        assert_eq!(
+            describe_cross_segment_shuffle_exile_top_free_play_window(&matching, 0),
+            Some((
+                "Shuffle your library, then exile the top card. Until end of turn, you may play that card without paying its mana cost".to_string(),
+                1,
+            ))
+        );
+
+        let unrelated_tag = TagKey::from("unrelated");
+        assert_eq!(
+            describe_cross_segment_shuffle_exile_top_free_play_window(
+                &segments(&moved_tag, &unrelated_tag),
+                0,
+            ),
+            None,
+            "a free-play grant for an unrelated object must not fold into the exile clause"
+        );
+    }
 }
 
 fn describe_cross_segment_shuffle_reveal_top_free_play_window(
@@ -5733,7 +6263,7 @@ fn describe_cross_segment_quantified_choice_collection_window(
         )
     };
 
-    if let Some(effects) = collect_default_effects(3)
+    if let Some(mut effects) = collect_default_effects(3)
         && effects
             .first()
             .and_then(|effect| {
@@ -5741,12 +6271,41 @@ fn describe_cross_segment_quantified_choice_collection_window(
                     .downcast_ref::<crate::effects::ForPlayersEffect>()
             })
             .is_some()
-        && let Some(rendered) = describe_structural_multisentence_effect_list(&effects)
     {
-        return Some((rendered, 3));
+        if let Some(last) = effects.last_mut()
+            && let Some(inner) = unwrap_singleton_sentence_boundary(last)
+        {
+            *last = inner.clone();
+        }
+        if let Some(rendered) = describe_structural_multisentence_effect_list(&effects) {
+            return Some((rendered, 3));
+        }
     }
 
     let effects = collect_default_effects(2)?;
+    // A direct choice joined to the participant choices with authored
+    // ", then" remains one two-child sequence in the first segment. Expose
+    // exactly those two children to the existing shared-tag renderer while
+    // keeping the following destroy instruction as the second segment.
+    if let [sequence_effect, destroy_effect] = effects.as_slice()
+        && let Some(sequence) = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+        && let [direct_effect, participant_effect] = sequence.effects.as_slice()
+    {
+        let flattened = [
+            direct_effect.clone(),
+            participant_effect.clone(),
+            destroy_effect.clone(),
+        ];
+        if let Some(rendered) = describe_direct_then_players_choose_destroy_complement(&flattened) {
+            return Some((rendered, 2));
+        }
+    }
+    if let Some(rendered) =
+        describe_for_players_choose_then_destroy_chosen_collection_pair(&effects[0], &effects[1])
+    {
+        return Some((rendered, 2));
+    }
     if let Some(for_players) = structural_unwrap_render_wrappers(&effects[0])
         .downcast_ref::<crate::effects::ForPlayersEffect>()
         && let Some(destroy) =
@@ -6750,6 +7309,12 @@ pub(super) fn describe_resolution_program(
     if let Some(rendered) = describe_target_player_life_loss_then_gain_and_create_program(program) {
         return rendered;
     }
+    if let Some(rendered) = describe_damaged_player_gain_control_then_rewards_program(program) {
+        return rendered;
+    }
+    if let Some(rendered) = describe_explicit_target_then_coin_flip_program(program) {
+        return rendered;
+    }
     if let Some(rendered) = describe_participant_choice_complement_phase_out_program(program) {
         return rendered;
     }
@@ -6804,6 +7369,23 @@ pub(super) fn describe_resolution_program(
     for (segment_index, segment) in program.segments.iter().enumerate() {
         if skipped_segments > 0 {
             skipped_segments -= 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_distinct_player_choice_window(&program.segments, segment_index)
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_optional_sticker_aura_return_attach_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
             continue;
         }
         if let Some((rendered, consumed)) =
@@ -7074,6 +7656,21 @@ pub(super) fn describe_resolution_program(
             &program.segments,
             segment_index,
         ) {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) = describe_cross_segment_roll_choose_destroy_create_window(
+            &program.segments,
+            segment_index,
+        ) {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
+            describe_cross_segment_secret_choice_match_window(&program.segments, segment_index)
+        {
             rendered_segments.push(rendered);
             skipped_segments = consumed - 1;
             continue;
@@ -7398,6 +7995,16 @@ pub(super) fn describe_resolution_program(
             continue;
         }
         if let Some((rendered, consumed)) =
+            describe_cross_segment_search_face_down_bargain_cast_else_hand_window(
+                &program.segments,
+                segment_index,
+            )
+        {
+            rendered_segments.push(rendered);
+            skipped_segments = consumed - 1;
+            continue;
+        }
+        if let Some((rendered, consumed)) =
             describe_cross_segment_reveal_hand_choose_graveyard_exile_window(
                 &program.segments,
                 segment_index,
@@ -7587,8 +8194,9 @@ pub(super) fn describe_resolution_program(
                 rendered_segments.push(rendered);
                 continue;
             }
-            if let Some(rendered) =
-                describe_reveal_hand_choose_discard_then_random_effects(&segment.default_effects)
+            if let Some(flattened) = flattened_cross_segment_effects(std::slice::from_ref(segment))
+                && let Some(rendered) =
+                    describe_reveal_hand_choose_discard_then_random_effects(&flattened)
             {
                 rendered_segments.push(rendered);
                 continue;
@@ -7620,7 +8228,13 @@ pub(super) fn describe_resolution_program(
     }
     rendered_segments
         .into_iter()
-        .map(|segment| segment.trim().trim_start_matches(". ").to_string())
+        .map(|segment| {
+            segment
+                .trim()
+                .trim_start_matches(". ")
+                .trim_end_matches('.')
+                .to_string()
+        })
         .filter(|segment| !segment.is_empty())
         .collect::<Vec<_>>()
         .join(". ")
@@ -8053,6 +8667,83 @@ fn shared_self_replacement_action_target(effects: &[Effect]) -> Option<&ChooseSp
         .then_some(first)
 }
 
+fn has_matching_implicit_target_declaration(effects: &[Effect], target: &ChooseSpec) -> bool {
+    fn matches_effect(effect: &Effect, target: &ChooseSpec) -> bool {
+        let effect = unwrap_basic_render_wrapper(effect);
+        if let Some(target_only) = effect.downcast_ref::<crate::effects::TargetOnlyEffect>() {
+            return !target_only.explicit_declaration
+                && target_specs_select_same_objects(&target_only.target, target);
+        }
+        if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            return sequence
+                .effects
+                .iter()
+                .any(|nested| matches_effect(nested, target));
+        }
+        if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
+            return unless_pays
+                .effects
+                .iter()
+                .any(|nested| matches_effect(nested, target));
+        }
+        false
+    }
+
+    effects.iter().any(|effect| matches_effect(effect, target))
+}
+
+fn source_match_is_only_ability_markers(filter: &ObjectFilter) -> bool {
+    if filter.ability_markers.is_empty() {
+        return false;
+    }
+    let mut residual = filter.clone();
+    residual.ability_markers.clear();
+    residual == ObjectFilter::default()
+}
+
+/// Prove that `tag` was produced by applying a tagged wrapper to an action
+/// selecting exactly `target`. This is intentionally narrower than a general
+/// result-tag lookup: self-replacement pronouns are only safe when the
+/// condition's observed object and both branch actions share one target.
+fn default_effect_tags_exact_target(
+    effect: &Effect,
+    tag: &TagKey,
+    target: &ChooseSpec,
+) -> bool {
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return default_effect_tags_exact_target(&with_id.effect, tag, target);
+    }
+    if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+        if &tagged.tag == tag
+            && shared_self_replacement_action_target(std::slice::from_ref(tagged.effect.as_ref()))
+                .is_some_and(|tagged_target| {
+                    target_specs_select_same_objects(tagged_target, target)
+                })
+        {
+            return true;
+        }
+        return default_effect_tags_exact_target(&tagged.effect, tag, target);
+    }
+    if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+        if &tag_all.tag == tag
+            && shared_self_replacement_action_target(std::slice::from_ref(tag_all.effect.as_ref()))
+                .is_some_and(|tagged_target| {
+                    target_specs_select_same_objects(tagged_target, target)
+                })
+        {
+            return true;
+        }
+        return default_effect_tags_exact_target(&tag_all.effect, tag, target);
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>() {
+        return sequence
+            .effects
+            .iter()
+            .any(|nested| default_effect_tags_exact_target(nested, tag, target));
+    }
+    false
+}
+
 fn self_replacement_target_referent(target: &ChooseSpec) -> Option<&'static str> {
     match target.base() {
         ChooseSpec::AnyTarget | ChooseSpec::AnyOtherTarget => Some("that permanent or player"),
@@ -8144,6 +8835,7 @@ fn describe_shared_target_self_replacement(
     replacement_effects: &[Effect],
     default_text: &str,
     replacement_text: &str,
+    condition: &Condition,
     condition_text: &str,
     leading_instead_surface: bool,
 ) -> Option<String> {
@@ -8158,6 +8850,22 @@ fn describe_shared_target_self_replacement(
         return None;
     }
 
+    let condition_text =
+        if has_matching_implicit_target_declaration(replacement_effects, replacement_target)
+            && let Condition::SourceMatches(filter) = condition
+            && source_match_is_only_ability_markers(filter)
+        {
+            super::normalize_common::describe_condition(&Condition::TargetMatches(filter.clone()))
+        } else if let Condition::TaggedObjectMatches(tag, filter) = condition
+            && source_match_is_only_ability_markers(filter)
+            && default_effects
+                .iter()
+                .any(|effect| default_effect_tags_exact_target(effect, tag, default_target))
+        {
+            super::normalize_common::describe_condition(&Condition::TargetMatches(filter.clone()))
+        } else {
+            condition_text.to_string()
+        };
     let target_surface = super::normalize_common::describe_choose_spec(replacement_target);
     let mut replacement = super::normalize_common::lowercase_first(replacement_text)
         .trim_end_matches('.')
@@ -8167,10 +8875,13 @@ fn describe_shared_target_self_replacement(
         .map(|(start, _)| start)
         .collect::<Vec<_>>();
     let target_start = *target_starts.first()?;
+    let repeated_target = target_starts.len() > 1;
+    let moves_target_to_card_zone =
+        first_self_replacement_action_moves_target_to_card_zone(replacement_effects);
     let referent = self_replacement_target_referent(default_target)?;
     let before_target = &replacement[..target_start];
     let first_referent = if before_target.ends_with(" on ")
-        || condition_refers_to_self_replacement_target(condition_text, referent)
+        || condition_refers_to_self_replacement_target(&condition_text, referent)
     {
         "it"
     } else {
@@ -8182,12 +8893,11 @@ fn describe_shared_target_self_replacement(
             first_referent,
         );
     } else {
-        let later_referent =
-            if first_self_replacement_action_moves_target_to_card_zone(replacement_effects) {
-                "that card"
-            } else {
-                "it"
-            };
+        let later_referent = if moves_target_to_card_zone {
+            "that card"
+        } else {
+            "it"
+        };
         let mut compact = String::with_capacity(replacement.len());
         let mut cursor = 0usize;
         for (index, start) in target_starts.into_iter().enumerate() {
@@ -8205,9 +8915,9 @@ fn describe_shared_target_self_replacement(
 
     Some(format_self_replacement_fallback(
         default_text,
-        condition_text,
+        &condition_text,
         &replacement,
-        leading_instead_surface,
+        leading_instead_surface || (repeated_target && moves_target_to_card_zone),
     ))
 }
 
@@ -8329,17 +9039,6 @@ fn describe_trailing_same_source_damage_self_replacement(
     let [replacement_effect] = branch.replacement_effects.as_slice() else {
         return None;
     };
-    let default_damage_tag = &default_effect
-        .downcast_ref::<crate::effects::TaggedEffect>()?
-        .tag;
-    let Condition::TaggedObjectMatches(condition_tag, _) = &branch.condition else {
-        return None;
-    };
-    if condition_tag != default_damage_tag
-        || !effect_has_result_tag(replacement_effect, default_damage_tag)
-    {
-        return None;
-    }
     let (default_source, default_damage) = damage_with_source_view(default_effect)?;
     let (replacement_source, replacement_damage) = damage_with_source_view(replacement_effect)?;
     let sources_match = match (default_source, replacement_source) {
@@ -8809,6 +9508,7 @@ fn describe_single_self_replacement_segment(
             &branch.replacement_effects,
             &default_text,
             &replacement_text,
+            &branch.condition,
             &condition_text,
             branch.leading_instead_surface,
         )
@@ -10027,6 +10727,7 @@ fn describe_resolution_program_preserving_source_lines(
     source_lines
         .into_iter()
         .filter(|line| !line.trim().is_empty())
+        .map(|line| capitalize_first(&line))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -10376,7 +11077,7 @@ fn typed_spree_source_lines(
 }
 
 fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) -> String {
-    if !(def.card.is_instant() || def.card.is_sorcery()) || def.card.name.contains(" // ") {
+    if !(def.card.is_instant() || def.card.is_sorcery()) {
         return rendered.to_string();
     }
     let mut rewritten = String::with_capacity(rendered.len());
@@ -10410,30 +11111,38 @@ fn rewrite_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) 
 }
 
 fn rewrite_unquoted_spell_resolution_damage_source(def: &CardDefinition, rendered: &str) -> String {
+    // Regression fixtures may compile the first face's oracle text under a
+    // combined split-card name. The resolving spell is that face, not the
+    // combined card, so use the front-face name as the authored source.
+    let source_name = def
+        .card
+        .name
+        .split_once(" // ")
+        .map_or(def.card.name.as_str(), |(front, _)| front);
     let rendered = if let Some(rest) = rendered.strip_prefix("This creature deals ") {
-        format!("{} deals {rest}", def.card.name)
+        format!("{source_name} deals {rest}")
     } else {
         rendered.to_string()
     };
-    let rendered = rewrite_damage_phrases_for_permanent_abilities(&rendered, &def.card.name, false)
+    let rendered = rewrite_damage_phrases_for_permanent_abilities(&rendered, source_name, false)
         .replace("This creature deals ", "It deals ")
         .replace("this creature deals ", "it deals ")
-        .replace("This spell deals ", &format!("{} deals ", def.card.name))
-        .replace("this spell deals ", &format!("{} deals ", def.card.name))
-        .replace("This source deal ", &format!("{} deal ", def.card.name))
-        .replace("this source deal ", &format!("{} deal ", def.card.name))
-        .replace("Exile this source", &format!("Exile {}", def.card.name));
+        .replace("This spell deals ", &format!("{source_name} deals "))
+        .replace("this spell deals ", &format!("{source_name} deals "))
+        .replace("This source deal ", &format!("{source_name} deal "))
+        .replace("this source deal ", &format!("{source_name} deal "))
+        .replace("Exile this source", &format!("Exile {source_name}"));
     let rendered = if let Some(rest) = rendered.strip_prefix("Deal ") {
-        format!("{} deals {rest}", def.card.name)
+        format!("{source_name} deals {rest}")
     } else {
         rendered
     };
     let rendered = rendered
-        .replace(" — Deal ", &format!(" — {} deals ", def.card.name))
-        .replace(" — It deals ", &format!(" — {} deals ", def.card.name))
-        .replace(", deal ", &format!(", {} deals ", def.card.name));
-    let rendered = rewrite_standalone_spell_self_exile(&rendered, &def.card.name);
-    rewrite_inline_spell_self_exile(&rendered, &def.card.name)
+        .replace(" — Deal ", &format!(" — {source_name} deals "))
+        .replace(" — It deals ", &format!(" — {source_name} deals "))
+        .replace(", deal ", &format!(", {source_name} deals "));
+    let rendered = rewrite_standalone_spell_self_exile(&rendered, source_name);
+    rewrite_inline_spell_self_exile(&rendered, source_name)
 }
 
 fn rewrite_standalone_spell_self_exile(rendered: &str, card_name: &str) -> String {
@@ -10519,7 +11228,7 @@ fn substitute_pregame_card_self_reference(line: &str, subject: &str, card_name: 
 pub(super) fn substitute_legendary_source_reference(
     line: &str,
     card: &crate::card::Card,
-    _subject: &str,
+    subject: &str,
     oracle_short_name: Option<&str>,
 ) -> String {
     let line = collapse_duplicate_source_type_subject(line);
@@ -10539,7 +11248,74 @@ pub(super) fn substitute_legendary_source_reference(
     // oracle shortens itself ("Loran of the Third Path" -> "Loran") renders that
     // way, while one that doesn't ("Kodama of the Center Tree") stays full.
     let comma_short = card.name.split(',').next().unwrap_or(&card.name).trim();
-    let self_name = oracle_short_name.map(str::trim).unwrap_or(comma_short);
+    let self_name = oracle_short_name
+        .map(str::trim)
+        .filter(|candidate| {
+            !candidate.is_empty()
+                && card.name.strip_prefix(candidate).is_some_and(|tail| {
+                    tail.is_empty()
+                        || tail.starts_with(',')
+                        || tail.starts_with(' ')
+                        || tail.starts_with('-')
+                })
+        })
+        .unwrap_or(comma_short);
+
+    let source_subject = if subject.is_empty() {
+        subject_for_card(card)
+    } else {
+        subject
+    };
+
+    // A captured short-name surface belongs to the source card, not only to
+    // the trigger that happened to expose it. Static characteristic abilities
+    // can already render the canonical card name directly, so normalize their
+    // possessive self-reference before the type-relative substitutions below.
+    // Legendary comma titles use their established pre-comma short name even
+    // when the static payload retained only the typed SourceNameSubject hint;
+    // a non-comma legendary name still needs an explicit captured ShortName
+    // surface. Nonlegendary named characteristic subjects remain named.
+    let has_oracle_short_surface = oracle_short_name.is_some() || card.name.contains(',');
+    let canonical_possessive = format!("{}'s", card.name);
+    let line = if let Some(rest) = line.strip_prefix(&canonical_possessive)
+        && (rest.starts_with(" power") || rest.starts_with(" toughness"))
+    {
+        if card.supertypes.contains(&Supertype::Legendary)
+            && has_oracle_short_surface
+            && self_name != card.name
+        {
+            format!("{self_name}'s{rest}")
+        } else {
+            line.to_string()
+        }
+    } else {
+        line.to_string()
+    };
+
+    // A named-source characteristic subject is lowered through the same typed
+    // object path as an ordinary filter. That path can retain both the card
+    // name and its source noun, yielding surfaces such as
+    // "Card Name creature's power". Collapse the redundant noun before the
+    // normal legendary substitution. Ordinary permanents use the type-relative
+    // self reference; legendary permanents use their valid oracle short name.
+    let source_noun = source_subject
+        .strip_prefix("this ")
+        .or_else(|| source_subject.strip_prefix("This "));
+    let line = if let Some(source_noun) = source_noun {
+        let malformed_prefix = format!("{} {source_noun}'s", card.name);
+        if let Some(rest) = line.strip_prefix(&malformed_prefix) {
+            let replacement = if card.supertypes.contains(&Supertype::Legendary) {
+                self_name
+            } else {
+                source_subject
+            };
+            format!("{replacement}'s{rest}")
+        } else {
+            line.to_string()
+        }
+    } else {
+        line.to_string()
+    };
 
     let lower = line.to_ascii_lowercase();
     let conditional_static_self_surface = ((lower.starts_with("as long as ")
@@ -10579,7 +11355,7 @@ pub(super) fn substitute_legendary_source_reference(
         || lower.contains(": this planeswalker deals ");
     if card.supertypes.contains(&Supertype::Legendary) && lower.starts_with("soulshift ") {
         if !self_name.is_empty() {
-            return format!("{self_name} has {}", lowercase_first(line));
+            return format!("{self_name} has {}", lowercase_first(&line));
         }
     }
     if !card.supertypes.contains(&Supertype::Legendary) || !uses_named_source_surface {
@@ -12952,6 +13728,7 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
             // restrictions and Equipment's "can be attached only to"
             // restriction. Card type/subtype distinguishes their authored
             // rules surface without changing the executable legality filter.
+            let attachment_target = with_indefinite_article(&attachment_target);
             out.push(format!(
                 "This Equipment can be attached only to {attachment_target}"
             ));
@@ -13240,18 +14017,18 @@ fn compiled_lines_inner(def: &CardDefinition) -> Vec<String> {
                 ability_idx += consumed;
                 continue;
             }
-            if let Some(text) =
-                describe_structural_conditional_source_keyword_grant(ability, subject)
-            {
-                output.push(format!("Static ability {}: {text}", ability_idx + 1));
-                ability_idx += 1;
-                continue;
-            }
             if let Some((text, consumed)) =
                 describe_labeled_static_bundle(&def.abilities[ability_idx..], subject)
             {
                 output.push(format!("Static ability {}: {text}", ability_idx + 1));
                 ability_idx += consumed;
+                continue;
+            }
+            if let Some(text) =
+                describe_structural_conditional_source_keyword_grant(ability, subject)
+            {
+                output.push(format!("Static ability {}: {text}", ability_idx + 1));
+                ability_idx += 1;
                 continue;
             }
             if let Some((text, consumed)) = describe_structural_anthem_remove_all_abilities_bundle(
@@ -13953,6 +14730,29 @@ fn describe_source_line_grant_all_other_loss_group(abilities: &[Ability]) -> Opt
     }
 }
 
+/// A two-member source-line marker records one authored grant/loss clause, but
+/// the executable abilities are stored in layer order, with ability removal
+/// before ability granting. Restore the clause's canonical grant-first surface
+/// before the order-sensitive helper renders `all other abilities`.
+fn describe_source_line_grant_then_all_other_loss_group(abilities: &[Ability]) -> Option<String> {
+    let [first, second] = abilities else {
+        return None;
+    };
+    let removal_is_first = matches!(
+        &first.kind,
+        AbilityKind::Static(static_ability)
+            if matches!(
+                &static_ability.compiled_model()?.payload,
+                ironsmith_core::StaticAbilityPayload::RemoveAllAbilities(_)
+            )
+    );
+    if removal_is_first {
+        describe_source_line_grant_all_other_loss_group(&[second.clone(), first.clone()])
+    } else {
+        describe_source_line_grant_all_other_loss_group(abilities)
+    }
+}
+
 enum TypeAdditionGrantSurface {
     Quoted(String),
     Equip(String),
@@ -14102,7 +14902,7 @@ fn describe_source_line_static_group(abilities: &[Ability], member_count: usize)
         .or_else(|| describe_source_line_static_ability_loss_group(members))
         .or_else(|| describe_source_line_cast_activation_restriction_group(members))
         .or_else(|| describe_source_line_base_pt_grant_loss_group(members))
-        .or_else(|| describe_source_line_grant_all_other_loss_group(members))
+        .or_else(|| describe_source_line_grant_then_all_other_loss_group(members))
         .or_else(|| describe_source_line_type_addition_grant_group(members))
 }
 
@@ -16404,11 +17204,35 @@ mod self_replacement_rendering_tests {
         .card_types(vec![CardType::Enchantment])
         .parse_text(oracle)
         .expect("same-target sequential zone replacement should compile");
+        let activated = definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("Meticulous Excavation should have an activated ability");
+        let segment = &activated.effects.segments[0];
 
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
             vec![oracle.to_string()]
         );
+
+        let mut mismatched_tag = segment.clone();
+        let filter = match &mismatched_tag.self_replacements[0].condition {
+            Condition::TaggedObjectMatches(_, filter) => filter.clone(),
+            condition => panic!("expected a tagged-object condition, found {condition:?}"),
+        };
+        mismatched_tag.self_replacements[0].condition =
+            Condition::TaggedObjectMatches(TagKey::from("unrelated"), filter);
+        let mismatched_text = describe_single_self_replacement_segment(&mismatched_tag)
+            .expect("the conservative fallback should still render");
+        assert!(
+            !mismatched_text.contains("If it has unearth"),
+            "an unrelated result tag must not be rewritten as the action target: {mismatched_text}"
+        );
+        assert!(mismatched_text.contains("unrelated"), "{mismatched_text}");
     }
 
     #[test]
@@ -16470,7 +17294,7 @@ mod self_replacement_rendering_tests {
             (
                 "Deal 2 damage to target creature",
                 "that creature is an artifact creature",
-                "it's an artifact creature",
+                "that creature is an artifact creature",
             ),
             (
                 "Deal 2 damage to target creature",
@@ -16931,6 +17755,50 @@ mod keyword_condition_ladder_tests {
         filter.controller = Some(PlayerFilter::You);
         filter.subtypes.push(subtype);
         count_condition(filter, format!("you control {article}"))
+    }
+
+    #[test]
+    fn counters_among_source_keyword_condition_keeps_leading_surface() {
+        use crate::static_abilities::StaticAbilityId::{Hexproof, Shroud};
+
+        let mut sagas = ObjectFilter::default().in_zone(Zone::Battlefield);
+        sagas.controller = Some(PlayerFilter::You);
+        sagas.subtypes.push(Subtype::Saga);
+        let counters_among = Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::CountersAmong(
+                sagas,
+                crate::object::CounterType::Lore,
+            ),
+            comparison: Comparison::GreaterThanOrEqual(4),
+            display: Some(
+                "there are four or more lore counters among sagas you control".to_string(),
+            ),
+        };
+        let grant = modeled_keyword_grant(Hexproof, "hexproof", counters_among);
+        assert_eq!(
+            describe_structural_conditional_source_keyword_grant(&grant, "this creature"),
+            Some(
+                "As long as there are four or more lore counters among sagas you control, this creature has hexproof"
+                    .to_string()
+            ),
+        );
+
+        let threshold = Condition::CountComparison {
+            count: ironsmith_core::AnthemCountExpression::MatchingFilter(
+                ObjectFilter::default().in_zone(Zone::Graveyard),
+            ),
+            comparison: Comparison::GreaterThanOrEqual(7),
+            display: Some("there are seven or more cards in your graveyard".to_string()),
+        };
+        let trailing = modeled_keyword_grant(Shroud, "shroud", threshold);
+        assert_eq!(
+            describe_structural_conditional_source_keyword_grant(&trailing, "this creature"),
+            Some(
+                "this creature has shroud as long as there are seven or more cards in your graveyard"
+                    .to_string()
+            ),
+            "ordinary threshold-style count conditions keep their authored trailing surface",
+        );
     }
 
     #[test]

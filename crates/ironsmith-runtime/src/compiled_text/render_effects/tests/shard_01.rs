@@ -1749,6 +1749,20 @@ pub(super) fn describe_effect_list_compacts_linked_graveyard_choices_then_may_re
         describe_effect_list(&effects),
         "Choose a creature card in an opponent's graveyard, then that player chooses a creature card in your graveyard. You may return those cards to the battlefield under their owners' control"
     );
+
+    let program = crate::resolution::ResolutionProgram::new(vec![
+        crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
+            crate::effects::SequenceEffect::comma_then(vec![
+                effects[0].clone(),
+                effects[1].clone(),
+            ]),
+        )]),
+        crate::resolution::ResolutionSegment::from_effects(vec![effects[2].clone()]),
+    ]);
+    assert_eq!(
+        describe_resolution_program(&program),
+        "Choose a creature card in an opponent's graveyard, then that player chooses a creature card in your graveyard. You may return those cards to the battlefield under their owners' control"
+    );
 }
 
 #[test]
@@ -2759,9 +2773,10 @@ pub(super) fn describe_exiled_target_same_name_extraction_accepts_exact_controll
         )),
         Effect::new(draw),
     ];
-    let expected = "Exile target creature or planeswalker. Search its controller's graveyard, hand, and library for any number of cards with the same name as that permanent and exile them. That player shuffles, then draws a card for each card exiled from their hand this way.";
+    let expected_list = "Exile target creature or planeswalker. Search its controller's graveyard, hand, and library for any number of cards with the same name as that permanent and exile them. That player shuffles, then draws a card for each card exiled from their hand this way.";
+    let expected_program = "Exile target creature or planeswalker. Search its controller's graveyard, hand, and library for any number of cards with the same name as that permanent and exile them. That player shuffles, then draws a card for each card exiled from their hand this way";
 
-    assert_eq!(describe_effect_list(&effects), expected);
+    assert_eq!(describe_effect_list(&effects), expected_list);
     let program = crate::resolution::ResolutionProgram::new(vec![
         crate::resolution::ResolutionSegment::from_effects(vec![effects[0].clone()]),
         crate::resolution::ResolutionSegment::from_effects(vec![Effect::new(
@@ -2771,7 +2786,7 @@ pub(super) fn describe_exiled_target_same_name_extraction_accepts_exact_controll
     ]);
     assert_eq!(
         super::super::ast_render::describe_resolution_program(&program),
-        expected
+        expected_program
     );
 }
 
@@ -4023,12 +4038,13 @@ pub(super) fn describe_effect_list_keeps_target_modifications_and_exile_permissi
             false,
         )),
     ];
-    let expected = "Target creature gets +3/+1 and gains haste until end of turn. Exile the top card of your library. You may play it until your next end step";
+    let expected_list = "Target creature gets +3/+1 and gains haste until end of turn. Exile the top card of your library. Until your next end step, you may play that card";
+    let expected_clause = "target creature gets +3/+1 and gains haste until end of turn. Exile the top card of your library. Until your next end step, you may play that card";
 
-    assert_eq!(describe_effect_list(&effects), expected);
+    assert_eq!(describe_effect_list(&effects), expected_list);
     assert_eq!(
         describe_effect_clause_list(&effects).as_deref(),
-        Some(expected)
+        Some(expected_clause)
     );
 }
 

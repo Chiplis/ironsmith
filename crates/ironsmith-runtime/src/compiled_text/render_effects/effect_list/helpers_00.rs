@@ -136,10 +136,21 @@ pub(crate) fn describe_optional_sticker_aura_return_attach_sequence(
         return None;
     };
     let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-    if may.decider != Some(PlayerFilter::You) || may.effects.len() != 2 {
+    if may.decider != Some(PlayerFilter::You) {
         return None;
     }
-    let put_sticker = unwrap_basic_tag_wrappers(&may.effects[0])
+    let may_effects = if let [effect] = may.effects.as_slice()
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && matches!(sequence.surface, ironsmith_core::SequenceSurface::CommaThen)
+    {
+        sequence.effects.as_slice()
+    } else {
+        may.effects.as_slice()
+    };
+    let [put_sticker_effect, aura_effect] = may_effects else {
+        return None;
+    };
+    let put_sticker = unwrap_basic_tag_wrappers(put_sticker_effect)
         .downcast_ref::<crate::effects::PutStickerEffect>()?;
     if !matches!(
         put_sticker.action,
@@ -147,7 +158,7 @@ pub(crate) fn describe_optional_sticker_aura_return_attach_sequence(
     ) {
         return None;
     }
-    let aura_text = describe_effect(&may.effects[1]);
+    let aura_text = describe_effect(aura_effect);
     if !aura_text
         .to_ascii_lowercase()
         .contains("becomes an aura with enchant")
@@ -1216,6 +1227,10 @@ pub(crate) fn describe_target_player_cast_and_creatures_attack_restrictions(
     }
     let mut creature_filter = attack_filter.clone();
     creature_filter.controller = None;
+    // These record only the authored plural/type noun surface. The
+    // restriction's executable shape is still the unqualified creature set.
+    creature_filter.set_plural_object_noun_surface(false);
+    creature_filter.set_explicit_card_type_noun(None);
     if creature_filter != ObjectFilter::creature() {
         return None;
     }
@@ -2030,7 +2045,7 @@ pub(crate) fn describe_clash_win_optional_top_replacement(effects: &[&Effect]) -
     let [clash_effect, conditional_effect] = effects else {
         return None;
     };
-    let clash_with_id = clash_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let clash_with_id = wrapped_with_id(clash_effect)?;
     if clash_with_id
         .effect
         .downcast_ref::<crate::effects::ClashEffect>()
@@ -2079,6 +2094,7 @@ pub(crate) fn describe_energy_then_pay_any_then_destroy(effects: &[&Effect]) -> 
     if energy.player != PlayerFilter::You {
         return None;
     }
+    let may_effect = unwrap_singleton_sequence_member(may_effect);
     let may = unwrap_wrapped_effect(may_effect).downcast_ref::<crate::effects::MayEffect>()?;
     if !matches!(may.decider, None | Some(PlayerFilter::You)) || may.effects.len() != 1 {
         return None;
@@ -2114,6 +2130,7 @@ pub(crate) fn describe_energy_then_pay_any_then_create_paid_x_token(
     if energy.player != PlayerFilter::You {
         return None;
     }
+    let may_effect = unwrap_singleton_sequence_member(may_effect);
     let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let may = may_with_id
         .effect
@@ -2170,6 +2187,7 @@ pub(crate) fn describe_energy_then_pay_any_then_put_paid_counters(
     if energy.player != PlayerFilter::You {
         return None;
     }
+    let may_effect = unwrap_singleton_sequence_member(may_effect);
     let may_with_id = may_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let may = may_with_id
         .effect
@@ -5516,6 +5534,19 @@ pub(in crate::compiled_text) fn describe_counters_then_goad_countered_result(
 pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_result(
     effect: &Effect,
 ) -> Option<String> {
+    fn wrapper_contains_tag(effect: &Effect, expected: &TagKey) -> bool {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return wrapper_contains_tag(&with_id.effect, expected);
+        }
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return tagged.tag == *expected || wrapper_contains_tag(&tagged.effect, expected);
+        }
+        if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
+            return tag_all.tag == *expected || wrapper_contains_tag(&tag_all.effect, expected);
+        }
+        false
+    }
+
     let for_players =
         unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::ForPlayersEffect>()?;
     if for_players.filter != PlayerFilter::Any
@@ -5524,11 +5555,19 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
     {
         return None;
     }
-    let [exile_effect, sacrifice_effect, return_effect] = for_players.effects.as_slice() else {
+    let per_player_effects = if let [effect] = for_players.effects.as_slice()
+        && let Some(sequence) =
+            unwrap_tag_wrappers(effect).downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+    {
+        sequence.effects.as_slice()
+    } else {
+        for_players.effects.as_slice()
+    };
+    let [exile_effect, sacrifice_effect, return_effect] = per_player_effects else {
         return None;
     };
 
-    let exile_tag = wrapped_effect_tag(exile_effect)?;
     let exile = unwrap_tag_wrappers(exile_effect).downcast_ref::<crate::effects::ExileEffect>()?;
     let (ChooseSpec::All(exile_filter) | ChooseSpec::Object(exile_filter)) = exile.spec.base()
     else {
@@ -5558,12 +5597,12 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
                     ChooseSpec::All(return_filter) | ChooseSpec::Object(return_filter) => {
                         return_filter.zone == Some(Zone::Exile)
                             && return_filter.tagged_constraints.iter().any(|constraint| {
-                                constraint.tag == *exile_tag
-                                    && constraint.relation
-                                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                constraint.relation
+                                    == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                                    && wrapper_contains_tag(exile_effect, &constraint.tag)
                             })
                     }
-                    ChooseSpec::Tagged(tag) => tag == exile_tag,
+                    ChooseSpec::Tagged(tag) => wrapper_contains_tag(exile_effect, tag),
                     _ => false,
                 }
             }
@@ -5574,7 +5613,7 @@ pub(in crate::compiled_text) fn describe_each_player_exile_sacrifice_return_resu
                 && put_onto_battlefield.controller == PlayerFilter::IteratedPlayer
                 && matches!(
                     put_onto_battlefield.target.base(),
-                    ChooseSpec::Tagged(tag) if tag == exile_tag
+                    ChooseSpec::Tagged(tag) if wrapper_contains_tag(exile_effect, tag)
                 )
         } else {
             false

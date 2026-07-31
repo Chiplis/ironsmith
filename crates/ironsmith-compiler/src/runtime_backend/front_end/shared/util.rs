@@ -579,10 +579,10 @@ pub(crate) fn replace_unbound_x_with_value(
             }
             Ok(Value::Scaled(Box::new(replacement.clone()), multiplier))
         }
-        Value::SurfaceHinted { value, hints } => Ok(Value::SurfaceHinted {
-            value: Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
-            hints,
-        }),
+        Value::SurfaceHinted { value, hints } => {
+            let replaced = replace_unbound_x_with_value(*value, replacement, clause)?;
+            Ok(replaced.with_surface_hints(hints))
+        }
         Value::Scaled(value, multiplier) => Ok(Value::Scaled(
             Box::new(replace_unbound_x_with_value(*value, replacement, clause)?),
             multiplier,
@@ -873,6 +873,18 @@ pub(crate) fn parse_filter_keyword_constraint_words(
     reference_shapes::parse_filter_keyword_constraint_words(words)
 }
 
+pub(crate) use reference_shapes::FilterKeywordListConnective;
+
+pub(crate) fn parse_filter_keyword_constraint_list_words(
+    words: &[&str],
+) -> Option<(
+    Vec<FilterKeywordConstraint>,
+    FilterKeywordListConnective,
+    usize,
+)> {
+    reference_shapes::parse_filter_keyword_constraint_list_words(words)
+}
+
 pub(crate) fn apply_filter_keyword_constraint(
     filter: &mut ObjectFilter,
     constraint: FilterKeywordConstraint,
@@ -1104,6 +1116,33 @@ pub(crate) fn parse_choice_count_before_target_prefix(
 mod tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn replacing_surface_hinted_x_flattens_replacement_hints() {
+        let value = Value::X
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence);
+        let replacement =
+            Value::Fixed(3).with_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs);
+
+        let replaced =
+            replace_unbound_x_with_value(value, &replacement, "focused hint merge").unwrap();
+
+        assert!(matches!(replaced.unhinted(), Value::Fixed(3)));
+        assert!(replaced.has_surface_hint(ironsmith_core::ValueSurfaceHint::WhereXIs));
+        assert!(
+            replaced.has_surface_hint(
+                ironsmith_core::ValueSurfaceHint::CounterFollowupSeparateSentence
+            )
+        );
+        assert!(
+            matches!(
+                replaced,
+                Value::SurfaceHinted { ref value, .. }
+                    if !matches!(value.as_ref(), Value::SurfaceHinted { .. })
+            ),
+            "merged hints must use a single surface wrapper: {replaced:#?}"
+        );
+    }
 
     #[test]
     fn parse_subject_recognizes_a_player_of_your_choice() {
@@ -1423,14 +1462,24 @@ mod tests {
         let TargetAst::Object(filter, _, _) = inner.as_ref() else {
             panic!("expected object target, got {inner:?}");
         };
-        assert!(filter.untapped, "expected untapped filter, got {filter:?}");
         assert!(
             filter.controller.is_some(),
             "expected controller filter, got {filter:?}"
         );
-        assert!(filter.card_types.contains(&CardType::Artifact));
-        assert!(filter.card_types.contains(&CardType::Creature));
-        assert!(filter.card_types.contains(&CardType::Land));
+        assert_eq!(filter.any_of.len(), 3, "{filter:?}");
+        assert!(
+            filter.any_of.iter().all(|branch| branch.untapped),
+            "the shared untapped qualifier belongs on every union branch: {filter:?}"
+        );
+        assert!(
+            [CardType::Artifact, CardType::Creature, CardType::Land]
+                .into_iter()
+                .all(|card_type| filter
+                    .any_of
+                    .iter()
+                    .any(|branch| branch.card_types == [card_type])),
+            "the three authored type branches should remain distinct: {filter:?}"
+        );
     }
 
     #[test]
@@ -1465,7 +1514,15 @@ mod tests {
                 .unwrap()
                 .expect("eternalize with a compound activation cost should parse");
         assert_eq!(eternalize_with_additional_cost.costs().len(), 2);
-        assert!(format!("{eternalize_with_additional_cost:#?}").contains("DiscardEffect"));
+        assert!(eternalize_with_additional_cost.costs().iter().any(|cost| {
+            matches!(
+                cost,
+                crate::costs::Cost::Discard {
+                    count: 1,
+                    card_types
+                } if card_types.is_empty()
+            )
+        }));
 
         let epic = lex_line("Epic", 0).unwrap();
         assert!(parse_epic_line_lexed(&epic));

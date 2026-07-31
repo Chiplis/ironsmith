@@ -1399,6 +1399,7 @@ impl EffectAst {
         player: PlayerAst,
         allow_land: bool,
         allow_any_color_for_cast: impl Into<ironsmith_core::value_model::ManaSpendMode>,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     ) -> Self {
         let allow_any_color_for_cast = allow_any_color_for_cast.into();
         Self::subject_verb(
@@ -1409,6 +1410,7 @@ impl EffectAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                surface,
             },
         )
     }
@@ -1760,6 +1762,10 @@ impl EffectAst {
             && let SubjectVerbActionAst::MoveToZone {
                 target_plural_surface,
                 ..
+            }
+            | SubjectVerbActionAst::Exile {
+                target_plural_surface,
+                ..
             } = &mut subject_verb.action
         {
             *target_plural_surface = true;
@@ -2003,6 +2009,10 @@ impl EffectAst {
         };
         match &mut subject_verb.action {
             SubjectVerbActionAst::Pump {
+                set_quantifier_surface,
+                ..
+            }
+            | SubjectVerbActionAst::PumpAll {
                 set_quantifier_surface,
                 ..
             }
@@ -2681,6 +2691,7 @@ impl EffectAst {
         library_position_from_top: Option<Value>,
         result_reference_surface: crate::effect::SearchResultReferenceSurface,
         tapped: bool,
+        enters_under_your_control: bool,
     ) -> Self {
         Self::subject_verb(
             SubjectVerbRoleAst::Actor,
@@ -2698,6 +2709,7 @@ impl EffectAst {
                 library_position_from_top,
                 result_reference_surface,
                 tapped,
+                enters_under_your_control,
             },
         )
     }
@@ -4462,6 +4474,7 @@ impl EffectAst {
                 target,
                 face_down,
                 source_top_only: false,
+                target_plural_surface: false,
             },
         )
     }

@@ -49,7 +49,11 @@ impl EffectExecutor for TargetOnlyEffect {
     }
 
     fn target_reuse_policy(&self) -> TargetReusePolicy {
-        TargetReusePolicy::AlwaysDeclareNew
+        if self.explicit_declaration {
+            TargetReusePolicy::AlwaysDeclareNew
+        } else {
+            TargetReusePolicy::SyntheticPrelude
+        }
     }
 
     fn target_description(&self) -> &'static str {

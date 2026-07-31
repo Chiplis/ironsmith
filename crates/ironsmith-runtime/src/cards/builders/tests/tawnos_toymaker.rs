@@ -63,6 +63,6 @@ fn tawnos_toymaker_keeps_the_typed_copy_exception() {
 
     assert_eq!(
         canonical_compiled_lines(&definition).join("\n"),
-        "Whenever you cast a Beast or Bird creature spell, you may copy that spell, except the copy is an artifact in addition to its other types."
+        "Whenever you cast a Beast or Bird creature spell, you may copy it, except the copy is an artifact in addition to its other types."
     );
 }

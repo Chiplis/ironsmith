@@ -294,6 +294,19 @@ pub(super) fn preserve_and_reason(
     {
         return Some(AndPreservation::TokenRules);
     }
+    // A token-copy exception owns all of its characteristic modifiers.
+    // Splitting `... except it has haste and loses soulbond` at the final
+    // conjunction sends `loses soulbond` through ordinary ability-removal
+    // parsing, where it must be rejected because marker removal is not
+    // executable. Keep this narrow copy-only modifier inside the create
+    // clause so copy lowering can set its typed `loses_soulbond` flag.
+    if is_token_creation_context_tokens(current)
+        && primitives::contains_word(current, "copy")
+        && primitives::contains_word(current, "except")
+        && starts_any(remaining, &[&["lose", "soulbond"], &["loses", "soulbond"]])
+    {
+        return Some(AndPreservation::TokenRules);
+    }
     if starts_any(
         current,
         &[

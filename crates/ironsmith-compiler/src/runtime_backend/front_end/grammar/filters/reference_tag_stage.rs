@@ -359,43 +359,47 @@ fn has_plural_object_noun_surface(tokens: &[OwnedLexToken]) -> bool {
 /// noun so a singular destination such as "a permanent attached to creatures
 /// you control" is not widened by a plural noun in its relative clause.
 pub(crate) fn has_plural_object_head_surface(tokens: &[OwnedLexToken]) -> bool {
-    tokens.iter().filter_map(OwnedLexToken::as_word).find_map(|word| {
-        if matches!(
-            word,
-            "artifacts"
-                | "auras"
-                | "battles"
-                | "cards"
-                | "creatures"
-                | "enchantments"
-                | "lands"
-                | "objects"
-                | "permanents"
-                | "planeswalkers"
-                | "spells"
-                | "tokens"
-        ) {
-            Some(true)
-        } else if matches!(
-            word,
-            "artifact"
-                | "aura"
-                | "battle"
-                | "card"
-                | "creature"
-                | "enchantment"
-                | "land"
-                | "object"
-                | "permanent"
-                | "planeswalker"
-                | "spell"
-                | "token"
-        ) {
-            Some(false)
-        } else {
-            None
-        }
-    }) == Some(true)
+    tokens
+        .iter()
+        .filter_map(OwnedLexToken::as_word)
+        .find_map(|word| {
+            if matches!(
+                word,
+                "artifacts"
+                    | "auras"
+                    | "battles"
+                    | "cards"
+                    | "creatures"
+                    | "enchantments"
+                    | "lands"
+                    | "objects"
+                    | "permanents"
+                    | "planeswalkers"
+                    | "spells"
+                    | "tokens"
+            ) {
+                Some(true)
+            } else if matches!(
+                word,
+                "artifact"
+                    | "aura"
+                    | "battle"
+                    | "card"
+                    | "creature"
+                    | "enchantment"
+                    | "land"
+                    | "object"
+                    | "permanent"
+                    | "planeswalker"
+                    | "spell"
+                    | "token"
+            ) {
+                Some(false)
+            } else {
+                None
+            }
+        })
+        == Some(true)
 }
 
 fn source_reference_tail_prefix(
@@ -951,6 +955,24 @@ pub(crate) fn parse_object_filter_with_grammar_entrypoint_lexed(
     );
     super::simple::preserve_branch_scoped_card_type_union(&mut filter, tokens, other);
     apply_chosen_type_domain(&mut filter, tokens);
+    fn remove_explicitly_excluded_positive_subtypes(filter: &mut ObjectFilter) {
+        filter
+            .subtypes
+            .retain(|subtype| !filter.excluded_subtypes.contains(subtype));
+        filter
+            .all_subtypes
+            .retain(|subtype| !filter.excluded_subtypes.contains(subtype));
+        for branch in &mut filter.any_of {
+            remove_explicitly_excluded_positive_subtypes(branch);
+        }
+    }
+
+    // Several permissive recovery passes run after the primary atom parser.
+    // Preserve the explicit `non-*` meaning as the final invariant even when
+    // one of those passes sees the suffix word without its lexical `non`
+    // prefix and tentatively restores it as a positive subtype.
+    remove_explicitly_excluded_positive_subtypes(&mut filter);
+
     Ok(filter)
 }
 
@@ -978,6 +1000,9 @@ pub(super) fn parse_object_filter(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Result<ObjectFilter, CardTextError> {
+    if let Some(filter) = super::parse_repeated_selector_domain_union_lexed(tokens, other) {
+        return Ok(filter);
+    }
     parse_object_filter_inner(tokens, other, true)
 }
 
@@ -1586,6 +1611,7 @@ pub(super) fn parse_object_filter_inner(
     // creature that was dealt damage this turn". This is a runtime legality
     // constraint, not disposable surface text.
     try_apply_was_dealt_damage_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
+    try_apply_dealt_damage_this_turn_clause(&mut filter, &mut all_words, &mut segment_tokens);
 
     // A prior player-or-planeswalker target can be referenced through either
     // the chosen player or the chosen planeswalker's controller. Remove that
@@ -1918,10 +1944,45 @@ pub(super) fn parse_object_filter_inner(
             has_idx += 1 + consumed;
             continue;
         }
-        if let Some((constraint, consumed)) =
-            parse_filter_keyword_constraint_words(&all_words[has_idx + 1..])
+        if let Some((constraints, connective, consumed)) =
+            parse_filter_keyword_constraint_list_words(&all_words[has_idx + 1..])
         {
-            apply_filter_keyword_constraint(&mut filter, constraint, false);
+            // "that doesn't have <keywords>" — the negation word precedes the
+            // has/have word and inverts every list item (has NONE of them).
+            let negated = (has_idx > 0
+                && matches!(
+                    all_words[has_idx - 1],
+                    "doesn't" | "doesnt" | "don't" | "dont"
+                ))
+                || (has_idx > 1
+                    && all_words[has_idx - 1] == "not"
+                    && matches!(all_words[has_idx - 2], "does" | "do"));
+            if negated {
+                for constraint in constraints {
+                    apply_filter_keyword_constraint(&mut filter, constraint, true);
+                }
+            } else if constraints.len() > 1
+                && filter.any_of.is_empty()
+                && !matches!(connective, FilterKeywordListConnective::And)
+            {
+                // A disjunctive list ("first strike, double strike, and/or
+                // haste") matches objects with AT LEAST ONE listed keyword.
+                filter.any_of = constraints
+                    .into_iter()
+                    .map(|constraint| {
+                        let mut branch = ObjectFilter::default();
+                        apply_filter_keyword_constraint(&mut branch, constraint, false);
+                        branch
+                    })
+                    .collect();
+                if matches!(connective, FilterKeywordListConnective::AndOr) {
+                    filter.set_union_connective(ObjectFilterUnionConnective::AndOr);
+                }
+            } else {
+                for constraint in constraints {
+                    apply_filter_keyword_constraint(&mut filter, constraint, false);
+                }
+            }
             has_idx += 1 + consumed;
             continue;
         }
@@ -2509,23 +2570,37 @@ pub(super) fn parse_object_filter_inner(
             continue;
         }
 
+        let mut parsed_explicit_exclusion = false;
         if let Some(card_type) = parse_non_type(word) {
-            filter.excluded_card_types.push(card_type);
+            push_unique(&mut filter.excluded_card_types, card_type);
+            parsed_explicit_exclusion = true;
         }
 
-        if let Some(supertype) = parse_non_supertype(word)
-            && !slice_has(&filter.excluded_supertypes, &supertype)
-        {
-            filter.excluded_supertypes.push(supertype);
+        if let Some(supertype) = parse_non_supertype(word) {
+            if !slice_has(&filter.excluded_supertypes, &supertype) {
+                filter.excluded_supertypes.push(supertype);
+            }
+            parsed_explicit_exclusion = true;
         }
 
         if let Some(color) = parse_non_color(word) {
             filter.excluded_colors = filter.excluded_colors.union(color);
+            parsed_explicit_exclusion = true;
         }
-        if let Some(subtype) = parse_non_subtype(word)
-            && !slice_has(&filter.excluded_subtypes, &subtype)
-        {
-            filter.excluded_subtypes.push(subtype);
+        if let Some(subtype) = parse_non_subtype(word) {
+            if !slice_has(&filter.excluded_subtypes, &subtype) {
+                filter.excluded_subtypes.push(subtype);
+            }
+            parsed_explicit_exclusion = true;
+        }
+
+        // Flexible positive characteristic parsers deliberately accept some
+        // prefixed surfaces. Once this word has been recognized as an
+        // explicit `non-*` exclusion, do not feed the same word through those
+        // positive parsers as well: `non-Equipment` must not require and
+        // exclude Equipment simultaneously.
+        if parsed_explicit_exclusion {
+            continue;
         }
 
         if let Some(color) = parse_color(word) {
@@ -2588,10 +2663,43 @@ pub(super) fn parse_object_filter_inner(
         segment_words_lists.push(segment_words.clone());
         let segment_word_refs = segment_words.iter().map(String::as_str).collect::<Vec<_>>();
         let segment_comparison_rhs_ranges = filter_comparison_rhs_ranges(&segment_word_refs)?;
+        // Everything after "named" is a card name, already claimed as one by
+        // the name clause. Its words are not characteristics: "named Cleric of
+        // the Forward Order" must not also constrain the filter to Clerics.
+        let name_clause_start = segment_word_refs
+            .iter()
+            .position(|word| *word == "named")
+            .unwrap_or(segment_word_refs.len());
         let mut types = Vec::new();
         let mut subtypes = Vec::new();
         for (word_idx, word) in segment_words.iter().enumerate() {
+            if word_idx >= name_clause_start {
+                break;
+            }
             if word_is_in_ranges(word_idx, &segment_comparison_rhs_ranges) {
+                continue;
+            }
+            // The primary characteristic pass has already recorded explicit
+            // `non-*` atoms as exclusions. Suffix recovery must not feed the
+            // same atom through the permissive positive parsers and recreate
+            // an impossible "has and does not have" filter.
+            if parse_non_type(word).is_some()
+                || parse_non_supertype(word).is_some()
+                || parse_non_color(word).is_some()
+                || parse_non_subtype(word).is_some()
+            {
+                continue;
+            }
+            // The lexer splits "non-Wall" into ["non", "wall"]; the earlier
+            // characteristic pass recorded the exclusion against ITS index
+            // space, which this per-segment scan does not share. Skip any
+            // atom directly preceded by a negation word so the excluded
+            // characteristic is not re-added positively.
+            if word_idx > 0
+                && (segment_word_refs[word_idx - 1] == NON_WORD
+                    || parse_word_choice(segment_word_refs[word_idx - 1], TEXT_NEGATION_WORDS)
+                        .is_some())
+            {
                 continue;
             }
             if let Some(card_type) = parse_card_type(word) {
@@ -2677,7 +2785,8 @@ pub(super) fn parse_object_filter_inner(
                 }
             }
         }
-    } else if let Some(types) = segment_types.into_iter().next() {
+    } else {
+        let types = segment_types.into_iter().next().unwrap_or_default();
         let subtypes = segment_subtypes.into_iter().next().unwrap_or_default();
         let normalized_segment_words = non_article_parser_word_refs(&segment_tokens);
         // Only a connector between characteristic atoms makes those atoms an
@@ -4126,7 +4235,7 @@ mod shared_characteristic_relation_tests {
         assert!(filter.foretold);
         assert_eq!(filter.owner, Some(PlayerFilter::You));
         assert_eq!(filter.zone, Some(Zone::Exile));
-        assert_eq!(filter.description(), "foretold card you own in exile");
+        assert_eq!(filter.description(), "a foretold card you own in exile");
     }
 
     #[test]
@@ -4204,6 +4313,34 @@ mod shared_characteristic_relation_tests {
     }
 
     #[test]
+    fn explicit_non_subtype_with_numeric_suffix_is_never_readded_as_positive() {
+        for (text, card_type, excluded_subtype) in [
+            (
+                "non-Equipment artifact you control with mana value 4 or greater",
+                CardType::Artifact,
+                Subtype::Equipment,
+            ),
+            (
+                "non-Aura enchantment you control with mana value 4 or greater",
+                CardType::Enchantment,
+                Subtype::Aura,
+            ),
+        ] {
+            let filter = parse_filter(text);
+
+            assert_eq!(filter.card_types, vec![card_type], "{filter:#?}");
+            assert_eq!(
+                filter.excluded_subtypes,
+                vec![excluded_subtype],
+                "{filter:#?}"
+            );
+            assert!(!filter.subtypes.contains(&excluded_subtype), "{filter:#?}");
+            assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+            assert!(filter.mana_value.is_some(), "{filter:#?}");
+        }
+    }
+
+    #[test]
     fn historical_block_relation_keeps_partner_characteristics_nested() {
         let filter =
             parse_filter("creature that blocked or was blocked by a Zombie you control this turn");
@@ -4221,7 +4358,7 @@ mod shared_characteristic_relation_tests {
         assert_eq!(partner.zone, Some(Zone::Battlefield));
         assert_eq!(
             filter.description(),
-            "a creature that blocked or was blocked by a Zombie you control this turn"
+            "creature that blocked or was blocked by a Zombie you control this turn"
         );
     }
 

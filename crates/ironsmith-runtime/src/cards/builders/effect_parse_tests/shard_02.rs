@@ -93,8 +93,8 @@ fn parse_soulbond_shared_copy_clause_can_lose_soulbond() {
         .expect("soulbond shared copy clause should parse");
     assert!(
         format!("{def:?}").contains("SoulbondPairEffect")
-            && format!("{def:?}").contains("RemoveAbilityForFilter")
-            && format!("{def:?}").contains("display: \\\"Soulbond\\\""),
+            && format!("{def:?}").contains("CreateTokenCopyEffect")
+            && format!("{def:?}").contains("loses_soulbond: true"),
         "expected token-copy haste and soulbond removal semantics, got: {def:?}"
     );
 }
@@ -675,17 +675,23 @@ fn parse_mill_then_put_from_among_into_hand() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_mill_with_trailing_clause_fails_instead_of_silently_partial_parsing() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Midnight Tilling Variant")
+fn parse_mill_with_trailing_from_among_clause_keeps_milled_collection() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Midnight Tilling Variant")
         .parse_text(
             "Mill four cards, then you may return a permanent card from among them to your hand.",
         )
-        .expect_err("mill with trailing from-among clause should fail until supported");
+        .expect("mill with a from-among follow-up should parse as one linked program");
 
-    let message = format!("{err:?}");
+    let debug = format!("{:#?}", def.spell_effect);
     assert!(
-        message.contains("unsupported trailing mill clause"),
-        "expected strict trailing-clause mill parse error, got {message}"
+        debug.contains("MillEffect")
+            && debug.contains("ChooseObjectsEffect")
+            && debug.contains("zone: Some(")
+            && debug.contains("Graveyard")
+            && debug.contains("IsTaggedObject")
+            && debug.contains("MoveToZoneEffect")
+            && debug.contains("zone: Hand"),
+        "expected the return choice to remain restricted to the cards milled this way, got {debug}"
     );
 }
 
@@ -2462,9 +2468,11 @@ fn parse_spin_into_myth_fateseal_appends_fateseal_effect() {
         "expected fateseal-2 tail, got {debug}"
     );
     assert!(
-        effects
-            .iter()
-            .any(|effect| effect.downcast_ref::<FatesealEffect>().is_some()),
+        {
+            let mut found = false;
+            visit_nested_effects::<FatesealEffect>(effects, |_| found = true);
+            found
+        },
         "expected concrete FatesealEffect lowering, got {debug}"
     );
     assert!(
@@ -2593,7 +2601,7 @@ fn parse_amass_clause_parses_structurally() {
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert_eq!(
         rendered,
-        "Amass zombies 2, then the Army you amassed deals damage equal to its power to each non-Army creature"
+        "Amass zombies 2, then the Army you amassed deals damage equal to its power to each non-Army creature."
     );
 }
 
@@ -2709,7 +2717,7 @@ fn parse_dredge_the_mire_each_opponent_chooses_from_graveyard() {
     assert!(
         debug.contains("MoveToZoneEffect")
             && debug.contains("target: Tagged(")
-            && debug.contains("__it__")
+            && debug.contains("participant_choice")
             && debug.contains("zone: Battlefield")
             && debug.contains("battlefield_controller: You"),
         "expected chosen cards to be moved onto your battlefield, got {debug}"

@@ -2,6 +2,45 @@ use super::*;
 use crate::runtime_backend::util::tokenize_line;
 
 #[test]
+fn named_source_or_another_dies_stays_two_matcher_branches() {
+    let tokens = tokenize_line("Blood Artist or another creature dies", 0);
+    let parsed =
+        crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
+            "Blood Artist",
+            &[CardType::Creature],
+            &[Subtype::Vampire],
+            || {
+                crate::runtime_backend::families::activation_and_restrictions::parse_trigger_clause_lexed(
+                    &tokens,
+                )
+            },
+        )
+        .expect("named source-or-another dies trigger should parse");
+
+    let crate::runtime_backend::ast::TriggerSpec::Either(source, other) = parsed else {
+        panic!("expected distinct source and another-object branches");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::Dies(source_filter) = *source else {
+        panic!("expected source dies branch");
+    };
+    let crate::runtime_backend::ast::TriggerSpec::Dies(other_filter) = *other else {
+        panic!("expected another-creature dies branch");
+    };
+
+    assert!(source_filter.source, "{source_filter:#?}");
+    assert_eq!(
+        source_filter.source_surface,
+        Some(crate::target::SourceReferenceSurface::FullName(
+            "Blood Artist".to_string()
+        )),
+        "{source_filter:#?}"
+    );
+    assert!(!other_filter.source, "{other_filter:#?}");
+    assert!(other_filter.other, "{other_filter:#?}");
+    assert_eq!(other_filter.card_types, [CardType::Creature]);
+}
+
+#[test]
 fn parses_generic_sticker_trigger_with_source_recipient() {
     let tokens = tokenize_line("you put a sticker on this enchantment", 0);
     let parsed =
@@ -332,10 +371,7 @@ fn parses_counter_spans_and_recipient() {
 
 #[test]
 fn parses_numbered_counter_placement_as_an_ordinal_trigger() {
-    let tokens = tokenize_line(
-        "the fourth plan counter is put on this enchantment",
-        0,
-    );
+    let tokens = tokenize_line("the fourth plan counter is put on this enchantment", 0);
     let parsed =
         crate::runtime_backend::front_end::shared::util::with_card_source_reference_context(
             "Plan Probe",

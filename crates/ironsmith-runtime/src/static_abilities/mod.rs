@@ -2289,6 +2289,11 @@ impl StaticAbility {
     pub fn cant_attack_you_unless_controller_pays_per_attacker(amount: u32) -> Self {
         Self::new(CantAttackYouUnlessControllerPaysPerAttacker::new(amount))
     }
+    pub fn cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(
+        amount: u32,
+    ) -> Self {
+        Self::new(CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker::new(amount))
+    }
 
     pub fn cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control()
     -> Self {

@@ -14,7 +14,8 @@ use super::super::util::{
     is_demonstrative_object_head, is_non_outlaw_word, is_outlaw_word, is_permanent_type,
     is_source_reference_words, non_article_token_word_refs, non_article_word_refs,
     parse_alternative_cast_words, parse_card_type, parse_color,
-    parse_filter_keyword_constraint_words, parse_greater_than_or_equal_quantity_prefix,
+    parse_filter_keyword_constraint_list_words, parse_filter_keyword_constraint_words,
+    parse_greater_than_or_equal_quantity_prefix, FilterKeywordListConnective,
     parse_less_than_or_equal_quantity_prefix, parse_mana_symbol_word_flexible, parse_non_color,
     parse_non_subtype, parse_non_supertype, parse_non_type, parse_number, parse_number_word_u32,
     parse_quantity_comparison_prefix, parse_subtype_flexible, parse_subtype_word,
@@ -49,7 +50,7 @@ mod decorations;
 mod domain_unions;
 pub(crate) use domain_unions::{
     parse_branch_scoped_object_filter_union_lexed, parse_domain_union_object_filter_lexed,
-    parse_elided_shared_domain_union,
+    parse_elided_shared_domain_union, parse_repeated_selector_domain_union_lexed,
 };
 mod extremum;
 mod meld_and_special_subjects;

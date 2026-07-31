@@ -138,15 +138,21 @@ pub(crate) fn parse_destroy_or_exile_all_split_sentence(
 pub(crate) fn parse_exile_then_return_same_object_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
-    fn target_references_it_tag(target: &TargetAst) -> bool {
+    fn target_references_tag(target: &TargetAst, expected: &str) -> bool {
         match target {
-            TargetAst::Tagged(tag, _) => tag.as_str() == IT_TAG,
+            TargetAst::Tagged(tag, _) => tag.as_str() == expected,
             TargetAst::Object(filter, _, _) => filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
+                constraint.tag.as_str() == expected
                     && matches!(constraint.relation, TaggedOpbjectRelation::IsTaggedObject)
             }),
             _ => false,
         }
+    }
+    fn target_references_it_tag(target: &TargetAst) -> bool {
+        target_references_tag(target, IT_TAG)
+    }
+    fn target_references_source_exiled_tag(target: &TargetAst) -> bool {
+        target_references_tag(target, crate::tag::SOURCE_EXILED_TAG)
     }
 
     let Some(shape) = replacement_grammar::parse_exile_return_same_shape(tokens) else {
@@ -171,6 +177,23 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
         )
     }) {
         return Ok(None);
+    }
+    let source_exiled_tag = TagKey::from(crate::tag::SOURCE_EXILED_TAG);
+    for effect in &mut first_effects {
+        if matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { .. },
+                ..
+            })
+        ) {
+            let exile = effect.clone();
+            *effect = EffectAst::TagAffected {
+                effect: Box::new(exile),
+                tag: source_exiled_tag.clone(),
+            };
+            break;
+        }
     }
 
     // Preserve return follow-up clauses (for example "with a +1/+1 counter on it")
@@ -212,8 +235,12 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::ReturnToBattlefield { target, .. },
                 ..
-            }) if target_references_it_tag(target) => {
-                *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+            }) if target_references_it_tag(target)
+                || target_references_source_exiled_tag(target) =>
+            {
+                if target_references_it_tag(target) {
+                    *target = TargetAst::Tagged(source_exiled_tag.clone(), None);
+                }
                 rewrote_return = true;
             }
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -224,19 +251,26 @@ pub(crate) fn parse_exile_then_return_same_object_sentence(
                         ..
                     },
                 ..
-            }) if target_references_it_tag(target) => {
+            }) if target_references_it_tag(target)
+                || target_references_source_exiled_tag(target) =>
+            {
                 // Returns with battlefield-entry modifiers such as "face
                 // down" use the generic move-to-zone AST rather than the
                 // simpler ReturnToBattlefield variant. They still need the
                 // exact exile-result tag so the blink sequence is retained.
-                *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+                if target_references_it_tag(target) {
+                    *target = TargetAst::Tagged(source_exiled_tag.clone(), None);
+                }
                 rewrote_return = true;
             }
             EffectAst::SubjectVerb(subject_verb) => match &mut subject_verb.action {
                 SubjectVerbActionAst::ReturnToHand { target, .. }
-                    if target_references_it_tag(target) =>
+                    if target_references_it_tag(target)
+                        || target_references_source_exiled_tag(target) =>
                 {
-                    *target = TargetAst::Tagged(TagKey::from(IT_TAG), None);
+                    if target_references_it_tag(target) {
+                        *target = TargetAst::Tagged(source_exiled_tag.clone(), None);
+                    }
                     rewrote_return = true;
                 }
                 _ => {}

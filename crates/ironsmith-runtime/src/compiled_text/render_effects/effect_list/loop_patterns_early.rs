@@ -231,6 +231,14 @@
 
 
         if let Some((rendered, consumed)) =
+            describe_revealed_top_choose_one_graveyard(&filtered[idx..])
+        {
+            parts.push(rendered);
+            idx += consumed;
+            continue;
+        }
+
+        if let Some((rendered, consumed)) =
             render_look_reveal_choice_to_hand_rest_graveyard(&filtered[idx..])
         {
             parts.push(rendered);

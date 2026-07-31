@@ -37,7 +37,20 @@ mod tests {
     fn test_vampire_nighthawk() {
         let def = vampire_nighthawk();
         assert_eq!(def.name(), "Vampire Nighthawk");
-        assert_eq!(def.abilities.len(), 3);
+        assert_eq!(
+            def.abilities
+                .iter()
+                .filter(|ability| {
+                    !matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == StaticAbilityId::SourceLineKeywordGroup
+                    )
+                })
+                .count(),
+            3
+        );
         assert_eq!(def.card.power_toughness, Some(PowerToughness::fixed(2, 3)));
 
         for expected in [

@@ -977,7 +977,10 @@ pub(crate) fn describe_ability(
 }
 
 pub(super) fn normalize_granted_triggered_ability_surface(surface: String) -> String {
-    let Some((head, tail)) = surface.split_once(": ") else {
+    let Some((head, tail)) = surface
+        .split_once(": ")
+        .or_else(|| surface.split_once(", "))
+    else {
         return surface;
     };
     let lower_head = head.to_ascii_lowercase();
@@ -1047,11 +1050,17 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
         return line.to_string();
     }
     let capitalized = capitalize_first(subject);
-    let normalized = line
-        .replace("this source", subject)
-        .replace("This source", &capitalized)
-        .replace("this permanent", subject)
-        .replace("This permanent", &capitalized);
+    let normalized = replace_ability_source_reference_outside_quotes(line, "this source", subject);
+    let normalized =
+        replace_ability_source_reference_outside_quotes(&normalized, "This source", &capitalized);
+    let normalized =
+        replace_ability_source_reference_outside_quotes(&normalized, "this permanent", subject);
+    let normalized = replace_ability_source_reference_outside_quotes(
+        &normalized,
+        "This permanent",
+        &capitalized,
+    );
+    let normalized = normalize_source_owned_quoted_ability_references(&normalized, subject);
     let normalized = if let Some(source_type) = subject.strip_prefix("this ") {
         let typed_object = with_indefinite_article(source_type);
         normalized
@@ -1073,6 +1082,101 @@ pub(crate) fn normalize_ability_self_reference_surface(line: &str, subject: &str
         &named_self_exile,
         "Exile this creature and target creature without flying that's attacking you",
     )
+}
+
+/// Source-reference normalization belongs to the ability that owns `line`.
+/// Do not blindly rewrite inside quotes: a later pass retypes a quoted
+/// ability only when its receiving object is proven to be this source.
+fn replace_ability_source_reference_outside_quotes(input: &str, from: &str, to: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut in_quote = false;
+    let mut index = 0;
+    while index < input.len() {
+        let ch = input[index..]
+            .chars()
+            .next()
+            .expect("index should be on a char boundary");
+        if ch == '"' {
+            in_quote = !in_quote;
+            output.push(ch);
+            index += ch.len_utf8();
+        } else if !in_quote && input[index..].starts_with(from) {
+            output.push_str(to);
+            index += from.len();
+        } else {
+            output.push(ch);
+            index += ch.len_utf8();
+        }
+    }
+    output
+}
+
+fn quote_is_granted_to_subject(prefix: &str, subject: &str) -> bool {
+    let prefix = prefix.to_ascii_lowercase();
+    let subject = subject.to_ascii_lowercase();
+    [" gains ", " gain ", " has ", " have "]
+        .iter()
+        .filter_map(|verb| prefix.rfind(verb))
+        .max()
+        .is_some_and(|index| prefix[..index].trim_end().ends_with(&subject))
+}
+
+fn normalize_source_owned_quoted_ability_references(input: &str, subject: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut remainder = input;
+    let capitalized = capitalize_first(subject);
+
+    while let Some(open) = remainder.find('"') {
+        let before_quote = &remainder[..open];
+        output.push_str(before_quote);
+        let quote_is_source_owned = quote_is_granted_to_subject(&output, subject);
+        output.push('"');
+        let after_open = &remainder[open + 1..];
+        let Some(close) = after_open.find('"') else {
+            output.push_str(after_open);
+            return output;
+        };
+        let quoted = &after_open[..close];
+        if quote_is_source_owned {
+            output.push_str(
+                &quoted
+                    .replace("this source", subject)
+                    .replace("This source", &capitalized)
+                    .replace("this permanent", subject)
+                    .replace("This permanent", &capitalized),
+            );
+        } else {
+            output.push_str(quoted);
+        }
+        output.push('"');
+        remainder = &after_open[close + 1..];
+    }
+    output.push_str(remainder);
+    output
+}
+
+#[cfg(test)]
+#[test]
+fn outer_source_normalization_preserves_nested_granted_ability_identity() {
+    assert_eq!(
+        normalize_ability_self_reference_surface(
+            "This permanent copies a spell and gains \"At the beginning of the end step, sacrifice this permanent.\"",
+            "this creature",
+        ),
+        "This creature copies a spell and gains \"At the beginning of the end step, sacrifice this permanent.\"",
+    );
+}
+
+#[cfg(test)]
+#[test]
+fn source_owned_granted_trigger_uses_the_vehicle_subject() {
+    assert_eq!(
+        normalize_ability_self_reference_surface(
+            "Whenever this permanent becomes crewed for the first time each turn, until end of turn, this permanent gains \"Whenever this permanent deals combat damage to a player, draw two cards.\"",
+            "this Vehicle",
+        ),
+        "Whenever this Vehicle becomes crewed for the first time each turn, until end of turn, this Vehicle gains \"Whenever this Vehicle deals combat damage to a player, draw two cards.\"",
+    );
 }
 
 pub(super) fn normalize_graveyard_source_return_surface(line: &str, ability: &Ability) -> String {

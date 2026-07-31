@@ -1,7 +1,7 @@
 use crate::ability::AbilityKind;
 use crate::cards::builders::{
     CardDefinitionBuilder, CarryContext, ChooseOneModeAst, EffectAst, PlayerAst, PredicateAst,
-    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst,
+    SubjectVerbActionAst, SubjectVerbEffectAst, SubjectVerbSubjectAst, TargetAst,
 };
 use crate::effect::Value;
 use crate::ids::CardId;
@@ -180,11 +180,8 @@ fn triggered_optional_chain_resurfaces_nested_comma_then_after_trigger_parsing()
 
 #[test]
 fn conditional_instead_chain_keeps_every_replacement_action() {
-    let branch_tokens = lex_line(
-        "exile it, then return that card to its owner's hand.",
-        0,
-    )
-    .expect("replacement action chain should lex");
+    let branch_tokens = lex_line("exile it, then return that card to its owner's hand.", 0)
+        .expect("replacement action chain should lex");
     let branch_effects =
         parse_effect_chain_lexed(&branch_tokens).expect("replacement action chain should parse");
     assert!(
@@ -244,7 +241,7 @@ fn activated_conditional_instead_chain_lowers_every_replacement_action() {
             && debug.contains("MoveToZoneEffect")
             && debug.contains("zone: Exile")
             && debug.contains("ReturnToHandEffect")
-            && debug.contains("condition: TargetMatches")
+            && debug.contains("condition: TaggedObjectMatches")
             && !debug.contains("condition: SourceMatches"),
         "lowering must retain both actions from the replacement branch: {debug}"
     );
@@ -283,8 +280,7 @@ fn draw_then_optional_free_cast_keeps_both_actions() {
         0,
     )
     .expect("draw/free-cast chain should lex");
-    let effects =
-        parse_effect_sentence_lexed(&tokens).expect("draw/free-cast chain should parse");
+    let effects = parse_effect_sentence_lexed(&tokens).expect("draw/free-cast chain should parse");
     let debug = format!("{effects:#?}");
 
     assert!(debug.contains("Draw"), "{debug}");
@@ -400,8 +396,7 @@ fn comma_then_choose_player_keeps_both_ordered_actions() {
         0,
     )
     .expect("return/choice chain should lex");
-    let effects =
-        parse_effect_sentence_lexed(&tokens).expect("return/choice chain should parse");
+    let effects = parse_effect_sentence_lexed(&tokens).expect("return/choice chain should parse");
     let debug = format!("{effects:#?}");
     assert!(
         debug.contains("Return") && debug.contains("ChoosePlayer"),
@@ -419,12 +414,7 @@ fn unique_nested_program_keeps_its_authored_comma_then_surface() {
             effects: vec![EffectAst::SolveCase, EffectAst::SolveCase],
         }],
     );
-    let [
-        EffectAst::May {
-            effects: nested,
-        },
-    ] = effects.as_slice()
-    else {
+    let [EffectAst::May { effects: nested }] = effects.as_slice() else {
         panic!("expected one optional nested program, got {effects:#?}");
     };
     assert!(
@@ -844,6 +834,7 @@ fn ulalek_then_body_stays_an_ordinary_coordinated_specialist() {
     };
     let [
         EffectAst::Coordinated {
+            effects: coordinated,
             result_conjunction: false,
             ..
         },
@@ -853,6 +844,35 @@ fn ulalek_then_body_stays_an_ordinary_coordinated_specialist() {
             "expected Ulalek's specialist 'then' body to remain ordinary: {conditional_effects:#?}"
         );
     };
+    let [
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Object(spells, ..),
+                    ..
+                },
+            ..
+        }),
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::CopySpell {
+                    target: TargetAst::Object(abilities, ..),
+                    ..
+                },
+            ..
+        }),
+    ] = coordinated.as_slice()
+    else {
+        panic!("expected two typed copy-all actions: {coordinated:#?}");
+    };
+    assert_eq!(
+        spells.stack_kind,
+        Some(crate::filter::StackObjectKind::Spell)
+    );
+    assert_eq!(
+        abilities.stack_kind,
+        Some(crate::filter::StackObjectKind::Ability)
+    );
 }
 
 #[test]
@@ -1181,6 +1201,9 @@ fn implicit_draw_then_discard_keeps_discard_on_ability_controller() {
         .expect("draw-discard fixture should lex");
     let effects = parse_effect_chain_lexed(&tokens).expect("draw-discard fixture should parse");
 
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then draw/discard sequence, got {effects:#?}");
+    };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::Draw { .. },
@@ -1190,9 +1213,9 @@ fn implicit_draw_then_discard_keeps_discard_on_ability_controller() {
             subject,
             action: SubjectVerbActionAst::Discard { .. },
         }),
-    ] = effects.as_slice()
+    ] = sequence.as_slice()
     else {
-        panic!("expected adjacent draw and discard effects, got {effects:#?}");
+        panic!("expected adjacent draw and discard effects, got {sequence:#?}");
     };
     assert_eq!(subject.player, PlayerAst::You);
 }
@@ -1500,6 +1523,9 @@ fn coordinated_tap_set_stays_one_antecedent_for_then_them() {
     .expect("coordinated tap chain should lex");
 
     let effects = parse_effect_chain_lexed(&tokens).expect("coordinated tap chain should parse");
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then tap/control sequence, got {effects:#?}");
+    };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::TapAll { filter },
@@ -1509,9 +1535,9 @@ fn coordinated_tap_set_stays_one_antecedent_for_then_them() {
             action: SubjectVerbActionAst::GainControl { .. },
             ..
         }),
-    ] = effects.as_slice()
+    ] = sequence.as_slice()
     else {
-        panic!("expected tap-union then gain-control effects, got {effects:#?}");
+        panic!("expected tap-union then gain-control effects, got {sequence:#?}");
     };
     assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
     assert!(filter.any_of[0].source, "{filter:#?}");
@@ -1531,7 +1557,10 @@ fn coordinated_tap_named_source_set_stays_one_antecedent() {
     let effects =
         with_source_reference_context("Rohgahh of Kher Keep", || parse_effect_chain_lexed(&tokens))
             .expect("coordinated named-source tap chain should parse");
-    assert_eq!(effects.len(), 2, "{effects:#?}");
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then tap/control sequence, got {effects:#?}");
+    };
+    assert_eq!(sequence.len(), 2, "{sequence:#?}");
 }
 
 #[test]
@@ -1551,7 +1580,10 @@ fn conditional_named_source_tap_set_stays_one_antecedent() {
             [EffectAst::IfResult {
                 predicate: crate::cards::builders::IfResultPredicate::DidNot,
                 effects,
-            }] if effects.len() == 2
+            }] if matches!(
+                effects.as_slice(),
+                [EffectAst::CommaThen { effects }] if effects.len() == 2
+            )
         ),
         "{effects:#?}"
     );
@@ -1563,6 +1595,9 @@ fn discard_up_to_two_then_draw_binds_the_actual_discard_outcome() {
         .expect("discard/draw chain should lex");
 
     let effects = parse_effect_chain_lexed(&tokens).expect("discard/draw chain should parse");
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then discard/draw sequence, got {effects:#?}");
+    };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action:
@@ -1577,9 +1612,9 @@ fn discard_up_to_two_then_draw_binds_the_actual_discard_outcome() {
             action: SubjectVerbActionAst::Draw { count: draw_count },
             ..
         }),
-    ] = effects.as_slice()
+    ] = sequence.as_slice()
     else {
-        panic!("expected adjacent discard and draw effects, got {effects:#?}");
+        panic!("expected adjacent discard and draw effects, got {sequence:#?}");
     };
 
     assert_eq!(discard_count, &Value::Fixed(2));
@@ -1723,6 +1758,9 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
     .expect("life-stat chain should lex");
 
     let effects = parse_effect_chain_lexed(&tokens).expect("life-stat chain should parse");
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then life-stat sequence, got {effects:#?}");
+    };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::GainLife { amount: _ },
@@ -1739,9 +1777,9 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
                 },
             ..
         }),
-    ] = effects.as_slice()
+    ] = sequence.as_slice()
     else {
-        panic!("expected gain-toughness, lose-power, then put-into-hand, got {effects:#?}");
+        panic!("expected gain-toughness, lose-power, then put-into-hand, got {sequence:#?}");
     };
 
     let EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -1749,7 +1787,7 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
             amount: gain_amount,
         },
         ..
-    }) = &effects[0]
+    }) = &sequence[0]
     else {
         unreachable!();
     };
@@ -1758,7 +1796,7 @@ fn gain_toughness_lose_power_then_put_keeps_all_three_actions() {
             amount: lose_amount,
         },
         ..
-    }) = &effects[1]
+    }) = &sequence[1]
     else {
         unreachable!();
     };
@@ -2113,6 +2151,10 @@ fn source_linked_exile_reveal_keeps_nonpermanents_face_up_and_moves_only_permane
     let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
         panic!("expected per-player source-linked sequence, got {effects:#?}");
     };
+    let nested = match nested.as_slice() {
+        [EffectAst::CommaThen { effects }] => effects.as_slice(),
+        effects => effects,
+    };
     let [
         EffectAst::SubjectVerb(SubjectVerbEffectAst {
             action: SubjectVerbActionAst::TurnFaceUp { target },
@@ -2122,7 +2164,7 @@ fn source_linked_exile_reveal_keeps_nonpermanents_face_up_and_moves_only_permane
             action: SubjectVerbActionAst::ReturnAllToBattlefield { filter, .. },
             ..
         }),
-    ] = nested.as_slice()
+    ] = nested
     else {
         panic!("expected reveal then permanent-return effects, got {nested:#?}");
     };
@@ -2252,25 +2294,44 @@ fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
     let effects =
         parse_effect_chain_lexed(&tokens).expect("looked-cards split clause should parse");
 
-    match effects.as_slice() {
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then looked-card sequence, got {effects:#?}");
+    };
+    match sequence.as_slice() {
         [
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::LookAtTopCards { .. },
                 ..
             }),
-            EffectAst::SnapshotLastObjectTag { .. },
             EffectAst::ChooseTaggedObjectsInZone {
                 player,
                 count,
+                tag: hand_tag,
                 zone: Zone::Library,
                 ..
             },
-            EffectAst::MoveTaggedGroupToZone {
-                zone: Zone::Hand, ..
-            },
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action:
-                    SubjectVerbActionAst::PutTaggedRemainderInZone {
+                    SubjectVerbActionAst::TagMatchingObjects {
+                        filter,
+                        tag: remainder_tag,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        target: crate::cards::builders::TargetAst::Tagged(moved_hand_tag, _),
+                        zone: Zone::Hand,
+                        ..
+                    },
+                ..
+            }),
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::MoveToZone {
+                        target: crate::cards::builders::TargetAst::Tagged(moved_remainder_tag, _),
                         zone: Zone::Graveyard,
                         ..
                     },
@@ -2279,6 +2340,18 @@ fn top_cards_then_put_counted_into_hand_rest_graveyard_chain_parses() {
         ] => {
             assert_eq!(*player, PlayerAst::You);
             assert_eq!(*count, crate::effect::ChoiceCount::exactly(1));
+            assert_eq!(moved_hand_tag, hand_tag);
+            assert_eq!(moved_remainder_tag, remainder_tag);
+            assert!(
+                filter.tagged_constraints.iter().any(|constraint| {
+                    &constraint.tag == hand_tag
+                        && matches!(
+                            constraint.relation,
+                            crate::filter::TaggedOpbjectRelation::IsNotTaggedObject
+                        )
+                }),
+                "the remainder must exclude the chosen hand card: {filter:#?}"
+            );
         }
         other => panic!("expected composed looked-cards split effects, got {other:?}"),
     }
@@ -2300,8 +2373,11 @@ fn exile_then_shuffle_graveyard_chain_keeps_both_effects() {
             && debug.contains("ShuffleGraveyardIntoLibrary"),
         "expected exile-all face-down and graveyard shuffle effects, got {debug}"
     );
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then exile/shuffle sequence, got {effects:#?}");
+    };
     assert!(
-        effects.iter().any(|effect| matches!(
+        sequence.iter().any(|effect| matches!(
             effect,
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::ExileAll {
@@ -2314,7 +2390,7 @@ fn exile_then_shuffle_graveyard_chain_keeps_both_effects() {
         "expected a face-down exile-all effect in the parsed chain: {debug}"
     );
     assert!(
-        effects.iter().any(|effect| {
+        sequence.iter().any(|effect| {
             matches!(
                 effect,
                 EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -2650,7 +2726,10 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
     .expect("Descent into Madness body should lex");
     let effects = parse_effect_sentence_lexed(&tokens)
         .expect("Descent into Madness body should parse through sentence dispatch");
-    let [_, EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
+    let [EffectAst::CommaThen { effects: sequence }] = effects.as_slice() else {
+        panic!("expected a typed comma-then Descent sequence, got {effects:#?}");
+    };
+    let [_, EffectAst::ForEachPlayer { effects: nested }] = sequence.as_slice() else {
         panic!("expected counter placement followed by player fanout, got {effects:#?}");
     };
     let [
@@ -2673,7 +2752,9 @@ fn descent_into_madness_exact_body_does_not_collapse_the_zone_arms() {
     assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
     assert!(matches!(
         count_value.unhinted(),
-        Value::CountersOnSource(crate::object::CounterType::Named(name)) if *name == "despair"
+        Value::CountersOnSource(crate::object::CounterType::Named(name))
+            | Value::CountersOn(_, Some(crate::object::CounterType::Named(name)))
+            if *name == "despair"
     ));
     assert!(
         !filter.any_of.iter().any(|arm| {

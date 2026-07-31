@@ -98,7 +98,15 @@ fn neyam_preserves_causative_actor_chooser_result_identity_and_exact_text() {
         .downcast_ref::<IfEffect>()
         .expect("the second sentence should depend on the return happening");
     assert_eq!(branch.condition, with_id.id);
-    let [choose_effect, move_effect] = branch.then.as_slice() else {
+    let branch_effects = match branch.then.as_slice() {
+        [sequence] => sequence
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .map_or(branch.then.as_slice(), |sequence| {
+                sequence.effects.as_slice()
+            }),
+        effects => effects,
+    };
+    let [choose_effect, move_effect] = branch_effects else {
         panic!("the successful branch should choose, then move, one card: {branch:#?}");
     };
     let choose = choose_effect
@@ -130,7 +138,7 @@ fn neyam_preserves_causative_actor_chooser_result_identity_and_exact_text() {
         may.effects.iter().any(|effect| {
             effect
                 .downcast_ref::<TaggedEffect>()
-                .is_some_and(|tagged| &tagged.tag == returned_tag)
+                .is_some_and(|tagged| tagged.tag.as_str() == returned_tag.as_str())
         }),
         "the later chooser alias must point at the return's actual result tag"
     );

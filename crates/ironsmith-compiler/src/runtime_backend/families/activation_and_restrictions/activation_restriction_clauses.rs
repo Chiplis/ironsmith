@@ -918,6 +918,15 @@ pub(crate) fn parse_negated_object_restriction_clause(
         };
         (filter, None, None)
     };
+    // Several restriction-subject paths recognize controller-relative
+    // phrases before the ordinary object-filter parser runs. Preserve the
+    // authored head noun's number after those paths converge so
+    // "creatures that player controls" cannot render as "a creature".
+    if crate::runtime_backend::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
+        &subject_tokens,
+    ) {
+        filter.set_plural_object_noun_surface(true);
+    }
     if restriction_grammar::parse_dealt_damage_this_way_words(&words).is_some()
         && !filter
             .tagged_constraints
@@ -1008,6 +1017,9 @@ pub(crate) fn parse_negated_object_restriction_clause(
     use restriction_grammar::NegatedObjectTailShape;
     let tail_shape = restriction_grammar::parse_negated_object_tail_words(&remainder_words);
     let restriction = match tail_shape {
+        Some(NegatedObjectTailShape::AttackYou) => {
+            Restriction::attack_player(filter, PlayerFilter::You)
+        }
         Some(NegatedObjectTailShape::AttackYouOrPlaneswalkers) => {
             Restriction::attack_player_or_planeswalkers_controlled_by(filter, PlayerFilter::You)
         }
@@ -1277,9 +1289,14 @@ pub(crate) fn parse_subject_object_filter(
         return Ok(Some(filter));
     }
 
-    if let Ok(filter) = parse_object_filter(tokens, false)
+    if let Ok(mut filter) = parse_object_filter(tokens, false)
         && filter != ObjectFilter::default()
     {
+        if crate::runtime_backend::grammar::filters::reference_tag_stage::has_plural_object_head_surface(
+            tokens,
+        ) {
+            filter.set_plural_object_noun_surface(true);
+        }
         return Ok(Some(filter));
     }
 
@@ -1355,6 +1372,20 @@ mod blocker_union_tests {
     }
 
     #[test]
+    fn plural_restriction_subject_preserves_its_head_noun_number() {
+        let tokens = lex_line("creatures that player controls can't attack this turn.", 0)
+            .expect("plural attack restriction should lex");
+        let parsed = parse_negated_object_restriction_clause(&tokens)
+            .expect("plural attack restriction should parse")
+            .expect("expected a typed restriction");
+        let crate::effect::Restriction::Attack(filter) = parsed.restriction else {
+            panic!("expected an attack restriction");
+        };
+
+        assert!(filter.has_plural_object_noun_surface(), "{filter:#?}");
+    }
+
+    #[test]
     fn effect_restrictions_inherit_it_and_they_subjects() {
         for (text, expected_subtype) in [
             (
@@ -1374,7 +1405,10 @@ mod blocker_union_tests {
             let crate::effect::Restriction::Block(blockers) = &restrictions[0].restriction else {
                 panic!("expected block restriction for {text}: {restrictions:#?}");
             };
-            let crate::effect::Restriction::AttackPlayerOrPlaneswalkersControlledBy {
+            // Bare "can't attack you" is the player-only restriction; the
+            // planeswalker-covering variant requires the authored
+            // "or planeswalkers you control" tail.
+            let crate::effect::Restriction::AttackPlayer {
                 attackers,
                 player: PlayerFilter::You,
             } = &restrictions[1].restriction

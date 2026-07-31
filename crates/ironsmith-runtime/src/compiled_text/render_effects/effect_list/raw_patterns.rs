@@ -492,10 +492,15 @@
     if let Some(compact) = describe_each_opponent_exile_top_then_cast_until_eot_any_color(effects) {
         return compact;
     }
-    if let Some(compact) = describe_id_backed_prior_action_count_consumer(effects) {
+    // A discard followed by a draw from that discard's exact result ID is an
+    // authored amount-preserving sequence ("discard ..., then draw that
+    // many"). Keep that narrower surface ahead of the generic prior-action
+    // renderer, which would otherwise expand the draw as "a card for each
+    // card discarded this way".
+    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
         return compact;
     }
-    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
+    if let Some(compact) = describe_id_backed_prior_action_count_consumer(effects) {
         return compact;
     }
     if let Some(compact) = describe_structural_multisentence_effect_list(effects) {

@@ -930,7 +930,7 @@ mod tests {
                 "or",
                 "enchantment",
                 "you",
-                "don't",
+                "dont",
                 "control"
             ]
         );

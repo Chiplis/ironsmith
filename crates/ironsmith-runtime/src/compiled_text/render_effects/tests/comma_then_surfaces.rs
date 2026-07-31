@@ -137,3 +137,103 @@ fn typed_comma_then_compacts_prior_destroy_count_into_dynamic_token_pt() {
         "Destroy all creatures, then create an X/X colorless Phyrexian Horror artifact creature token, where X is the number of creatures destroyed this way"
     );
 }
+
+fn looked_card_permission_sequence(permission_tag: TagKey) -> Effect {
+    let looked = TagKey::from("__sentence_helper_looked_exiled_l0_s0_e0");
+    Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        Effect::new(crate::effects::LookAtTopCardsEffect::new(
+            PlayerFilter::DamagedPlayer,
+            Value::Fixed(1),
+            looked.clone(),
+        )),
+        Effect::new(
+            crate::effects::ExileEffect::with_spec(ChooseSpec::Tagged(looked)).with_face_down(true),
+        ),
+        Effect::new(crate::effects::GrantPlayTaggedEffect::new(
+            permission_tag,
+            PlayerFilter::You,
+            crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled,
+            true,
+            ironsmith_core::value_model::ManaSpendMode::AnyColor,
+        )),
+    ]))
+}
+
+#[test]
+fn comma_then_look_exile_permission_uses_the_shared_tag_as_a_singular_pronoun() {
+    let sequence =
+        looked_card_permission_sequence(TagKey::from("__sentence_helper_looked_exiled_l0_s0_e0"));
+
+    assert_eq!(
+        describe_effect(&sequence),
+        "Look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell"
+    );
+}
+
+#[test]
+fn comma_then_look_exile_permission_does_not_fold_an_unrelated_grant() {
+    let sequence = looked_card_permission_sequence(TagKey::from("unrelated_permission"));
+    let rendered = describe_effect(&sequence);
+
+    assert!(
+        !rendered.contains("For as long as it remains exiled, you may play it"),
+        "an unrelated grant must not acquire the looked card's singular antecedent: {rendered}"
+    );
+}
+
+fn graveyard_pile_effects(exile_tag: TagKey) -> Vec<Effect> {
+    let chosen = TagKey::from("divvy_chosen");
+    let graveyard_creatures = ObjectFilter::creature()
+        .in_zone(Zone::Graveyard)
+        .owned_by(PlayerFilter::You);
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            graveyard_creatures.clone(),
+            ChoiceCount::any_number(),
+            PlayerFilter::Opponent,
+            chosen.clone(),
+        )
+        .in_zone(Zone::Graveyard),
+    );
+    let exile = Effect::new(crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(exile_tag),
+        Zone::Exile,
+        true,
+    ));
+    let return_other = Effect::new(
+        crate::effects::ReturnAllToBattlefieldEffect::new(
+            graveyard_creatures.not_tagged(chosen),
+            false,
+        )
+        .under_you_control(),
+    )
+    .tag("returned_0");
+
+    vec![choose, exile, return_other]
+}
+
+#[test]
+fn graveyard_divvy_clause_routes_the_flat_typed_bundle_before_fallback() {
+    let effects = graveyard_pile_effects(TagKey::from("divvy_chosen"));
+
+    assert_eq!(
+        describe_effect_clause_list(&effects).as_deref(),
+        Some(
+            "Separate all creature cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield."
+        )
+    );
+}
+
+#[test]
+fn graveyard_divvy_clause_does_not_fold_an_unrelated_exile() {
+    let effects = graveyard_pile_effects(TagKey::from("unrelated_pile"));
+    let rendered = describe_effect_clause_list(&effects);
+
+    assert_ne!(
+        rendered.as_deref(),
+        Some(
+            "Separate all creature cards in your graveyard into two piles. Exile the pile of an opponent's choice and return the other to the battlefield."
+        ),
+        "the exile must consume the pile selected by the opponent"
+    );
+}

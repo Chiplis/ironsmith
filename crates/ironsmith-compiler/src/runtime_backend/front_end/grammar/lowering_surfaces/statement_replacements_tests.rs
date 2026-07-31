@@ -21,7 +21,7 @@ fn parses_complete_replacement_facts() {
             StatementReplacementSurfaceKind::KickedMultiZoneToBattlefield,
         ),
         (
-            "Clash with an opponent. If you win, put it on top of its owner's library instead.",
+            "Clash with an opponent, then return target creature to its owner's hand. If you win, you may put that creature on top of its owner's library instead.",
             StatementReplacementSurfaceKind::ClashWinTopOfLibrary,
         ),
         (

@@ -5,7 +5,7 @@ use winnow::token::{any, rest};
 
 use crate::target::PlayerFilter;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, render_token_slice};
+use super::super::super::lexer::{LexStream, OwnedLexToken, TokenWordView, render_token_slice};
 use super::super::primitives;
 use super::{
     PlayerAchievementAst, PlayerAchievementConditionAst, PlayerStatusAst, StatusConditionStateAst,
@@ -158,8 +158,14 @@ fn parse_subject_status_without_copula(
 }
 
 fn parse_status_subject(tokens: &[OwnedLexToken]) -> Option<StatusConditionSubjectAst> {
+    let tokens = trim_clause(tokens);
+    let words = TokenWordView::new(tokens).word_refs();
+    if crate::runtime_backend::front_end::shared::util::is_source_reference_words(&words) {
+        return Some(StatusConditionSubjectAst::Source);
+    }
+
     primitives::parse_all(
-        trim_clause(tokens),
+        tokens,
         alt((
             alt((
                 primitives::any_phrase(&[
@@ -409,6 +415,23 @@ mod tests {
             parse_player_achievement(&opening),
             None,
             "opening an Attraction is not the same history event as visiting one"
+        );
+    }
+
+    #[test]
+    fn named_source_is_a_status_condition_subject() {
+        let tokens = lex("Probe is equipped.");
+        let parsed = crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Probe",
+            || parse_subject_status(&tokens),
+        );
+
+        assert_eq!(
+            parsed,
+            Some(SubjectStatusConditionAst {
+                subject: StatusConditionSubjectAst::Source,
+                state: StatusConditionStateAst::Equipped,
+            })
         );
     }
 }

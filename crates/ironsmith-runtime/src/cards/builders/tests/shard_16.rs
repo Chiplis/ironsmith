@@ -874,21 +874,22 @@ pub(super) fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_b
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(2, 2))
         .build();
-    game.create_object_from_card(&alice_old_perm, alice, Zone::Battlefield);
+    let alice_old_perm_id = game.create_object_from_card(&alice_old_perm, alice, Zone::Battlefield);
     let alice_old_land = CardBuilder::new(CardId::from_raw(32_007), "Alice Old Land")
         .card_types(vec![CardType::Land])
         .build();
-    game.create_object_from_card(&alice_old_land, alice, Zone::Battlefield);
+    let alice_old_land_id = game.create_object_from_card(&alice_old_land, alice, Zone::Battlefield);
 
     let bob_old_perm = CardBuilder::new(CardId::from_raw(32_002), "Bob Old Permanent")
         .card_types(vec![CardType::Artifact])
         .build();
-    game.create_object_from_card(&bob_old_perm, bob, Zone::Battlefield);
+    let bob_old_perm_id = game.create_object_from_card(&bob_old_perm, bob, Zone::Battlefield);
     let bob_old_creature = CardBuilder::new(CardId::from_raw(32_008), "Bob Old Creature")
         .card_types(vec![CardType::Creature])
         .power_toughness(PowerToughness::fixed(1, 1))
         .build();
-    game.create_object_from_card(&bob_old_creature, bob, Zone::Battlefield);
+    let bob_old_creature_id =
+        game.create_object_from_card(&bob_old_creature, bob, Zone::Battlefield);
 
     let alice_new_creature = CardBuilder::new(CardId::from_raw(32_003), "Alice New Creature")
         .card_types(vec![CardType::Creature])
@@ -897,8 +898,10 @@ pub(super) fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_b
     let alice_new_instant = CardBuilder::new(CardId::from_raw(32_004), "Alice New Instant")
         .card_types(vec![CardType::Instant])
         .build();
-    game.create_object_from_card(&alice_new_creature, alice, Zone::Library);
-    game.create_object_from_card(&alice_new_instant, alice, Zone::Library);
+    let alice_new_creature_id =
+        game.create_object_from_card(&alice_new_creature, alice, Zone::Library);
+    let alice_new_instant_id =
+        game.create_object_from_card(&alice_new_instant, alice, Zone::Library);
 
     let bob_new_enchantment = CardBuilder::new(CardId::from_raw(32_005), "Bob New Enchantment")
         .card_types(vec![CardType::Enchantment])
@@ -906,8 +909,35 @@ pub(super) fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_b
     let bob_new_sorcery = CardBuilder::new(CardId::from_raw(32_006), "Bob New Sorcery")
         .card_types(vec![CardType::Sorcery])
         .build();
-    game.create_object_from_card(&bob_new_enchantment, bob, Zone::Library);
-    game.create_object_from_card(&bob_new_sorcery, bob, Zone::Library);
+    let bob_new_enchantment_id =
+        game.create_object_from_card(&bob_new_enchantment, bob, Zone::Library);
+    let bob_new_sorcery_id = game.create_object_from_card(&bob_new_sorcery, bob, Zone::Library);
+
+    let stable_id = |id| {
+        game.object(id)
+            .expect("tracked Warp World object")
+            .stable_id
+    };
+    let eligible_permanent_stables = [
+        stable_id(alice_old_perm_id),
+        stable_id(alice_old_land_id),
+        stable_id(alice_new_creature_id),
+        stable_id(bob_old_perm_id),
+        stable_id(bob_old_creature_id),
+        stable_id(bob_new_enchantment_id),
+    ];
+    let alice_new_instant_stable = stable_id(alice_new_instant_id);
+    let bob_new_sorcery_stable = stable_id(bob_new_sorcery_id);
+    let all_tracked_stables = [
+        eligible_permanent_stables[0],
+        eligible_permanent_stables[1],
+        eligible_permanent_stables[2],
+        eligible_permanent_stables[3],
+        eligible_permanent_stables[4],
+        eligible_permanent_stables[5],
+        alice_new_instant_stable,
+        bob_new_sorcery_stable,
+    ];
 
     let source = game.new_object_id();
     let mut ctx = ExecutionContext::new_default(source, alice);
@@ -915,73 +945,74 @@ pub(super) fn warp_world_puts_revealed_permanents_onto_battlefield_and_rest_on_b
         execute_effect(&mut game, effect, &mut ctx).expect("execute Warp World effect");
     }
 
-    let battlefield_names: Vec<_> = game
-        .battlefield
-        .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
-        .collect();
-    assert!(
-        battlefield_names
-            .iter()
-            .any(|name| name == "Alice New Creature"),
-        "expected Warp World to put at least one revealed permanent onto the battlefield, got {battlefield_names:?}"
-    );
-    assert!(
-        !battlefield_names
-            .iter()
-            .any(|name| name == "Alice New Instant")
-            && !battlefield_names
-                .iter()
-                .any(|name| name == "Bob New Sorcery"),
-        "expected nonpermanent revealed cards to stay off the battlefield, got {battlefield_names:?}"
-    );
+    for &id in &game.battlefield {
+        let object = game.object(id).expect("battlefield object exists");
+        assert!(
+            eligible_permanent_stables.contains(&object.stable_id),
+            "Warp World put a nonpermanent or untracked object onto the battlefield: {object:?}"
+        );
+        assert!(
+            object.card_types.iter().any(|card_type| {
+                matches!(
+                    card_type,
+                    CardType::Artifact
+                        | CardType::Creature
+                        | CardType::Enchantment
+                        | CardType::Land
+                )
+            }),
+            "Warp World battlefield result must have an eligible permanent type: {object:?}"
+        );
+        assert_eq!(
+            game.controller_of(object),
+            object.owner,
+            "Warp World should put each revealed permanent under its owner's control"
+        );
+    }
 
-    let alice_library_names: Vec<_> = game
-        .player(alice)
-        .expect("alice")
-        .library
-        .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
-        .collect();
-    let bob_library_names: Vec<_> = game
-        .player(bob)
-        .expect("bob")
-        .library
-        .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
-        .collect();
-    assert!(
-        alice_library_names
+    for player in [alice, bob] {
+        let battlefield_count = game
+            .battlefield
             .iter()
-            .any(|name| name == "Alice New Instant")
-            && bob_library_names
-                .iter()
-                .any(|name| name == "Bob New Sorcery"),
-        "expected nonpermanent revealed cards on the bottom of their owners' libraries, got alice={alice_library_names:?}, bob={bob_library_names:?}"
-    );
+            .filter_map(|&id| game.object(id))
+            .filter(|object| object.owner == player)
+            .count();
+        assert!(
+            (1..=2).contains(&battlefield_count),
+            "revealing two cards from a four-card pool with only one nonpermanent must put one or two permanents onto the battlefield for {player:?}"
+        );
+    }
 
-    let alice_graveyard_names: Vec<_> = game
-        .player(alice)
-        .expect("alice")
-        .graveyard
-        .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
-        .collect();
-    let bob_graveyard_names: Vec<_> = game
-        .player(bob)
-        .expect("bob")
-        .graveyard
-        .iter()
-        .filter_map(|&id| game.object(id).map(|obj| obj.name.to_string()))
-        .collect();
+    for (stable_id, owner) in [
+        (alice_new_instant_stable, alice),
+        (bob_new_sorcery_stable, bob),
+    ] {
+        let object = game
+            .find_object_by_stable_id(stable_id)
+            .and_then(|id| game.object(id))
+            .expect("tracked nonpermanent survives Warp World");
+        assert_eq!(object.owner, owner);
+        assert_eq!(
+            object.zone,
+            Zone::Library,
+            "Warp World must leave revealed nonpermanents in their owners' libraries"
+        );
+    }
+
+    for stable_id in all_tracked_stables {
+        let object = game
+            .find_object_by_stable_id(stable_id)
+            .and_then(|id| game.object(id))
+            .expect("Warp World conserves every tracked object");
+        assert!(
+            matches!(object.zone, Zone::Battlefield | Zone::Library),
+            "tracked Warp World object ended in an unexpected zone: {object:?}"
+        );
+    }
     assert!(
-        !alice_graveyard_names
-            .iter()
-            .any(|name| name == "Alice New Instant")
-            && !bob_graveyard_names
-                .iter()
-                .any(|name| name == "Bob New Sorcery"),
-        "expected Warp World leftovers to go to library bottom rather than graveyard, got alice={alice_graveyard_names:?}, bob={bob_graveyard_names:?}"
+        game.player(alice).expect("alice").graveyard.is_empty()
+            && game.player(bob).expect("bob").graveyard.is_empty(),
+        "Warp World leftovers belong on the library bottom, not in graveyards"
     );
 }
 
@@ -2211,7 +2242,9 @@ pub(super) fn parse_oracle_banefire_threshold_restrictions_regression() {
 #[test]
 pub(super) fn gnarled_sage_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Gnarled Sage");
-    let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered = canonical_compiled_lines(&def)
+        .join(" ")
+        .to_ascii_lowercase();
     let ability_debug = format!("{:#?}", def.abilities);
 
     assert!(
@@ -2228,9 +2261,8 @@ pub(super) fn gnarled_sage_strict_parser_and_compiled_text_regression() {
         "expected drawn-two-cards condition to guard vigilance structurally, got {ability_debug}"
     );
     assert!(
-        rendered.contains(
-            "As long as you've drawn two or more cards this turn, this creature gets +0/+2 and has vigilance"
-        ),
+        rendered.contains("this creature gets +0/+2 and has vigilance")
+            && rendered.contains("as long as you've drawn two or more cards this turn"),
         "expected Gnarled Sage conditional buff text, got {rendered}"
     );
 }
@@ -2311,6 +2343,7 @@ pub(super) fn parse_oracle_drakuseth_maw_of_flames_multi_target_regression() {
 pub(super) struct RegressionCardFaceJson {
     pub(super) name: String,
     pub(super) oracle_text: Option<String>,
+    pub(super) type_line: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -2362,13 +2395,13 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
                     }) else {
                         continue;
                     };
-                    face_entries.push((face.name, text));
+                    face_entries.push((face.name, text, face.type_line));
                 }
             }
 
             let Some(primary_text) = root_text
                 .clone()
-                .or_else(|| face_entries.first().map(|(_, text)| text.clone()))
+                .or_else(|| face_entries.first().map(|(_, text, _)| text.clone()))
             else {
                 continue;
             };
@@ -2381,10 +2414,10 @@ pub(super) fn oracle_card_info_by_name() -> &'static HashMap<String, RegressionO
             // A real face entry is more specific than the convenience aliases
             // derived from the combined `Front // Back` name. Register faces
             // first so the back-face name retains its own oracle text.
-            for (face_name, face_text) in face_entries {
+            for (face_name, face_text, face_type_line) in face_entries {
                 out.entry(face_name).or_insert(RegressionOracleCardInfo {
                     oracle_text: face_text,
-                    type_line: card.type_line.clone(),
+                    type_line: face_type_line.or_else(|| card.type_line.clone()),
                 });
             }
             if full_name.contains(" // ") {

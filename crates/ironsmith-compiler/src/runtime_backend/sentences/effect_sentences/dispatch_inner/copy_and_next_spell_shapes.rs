@@ -428,6 +428,43 @@ pub(crate) fn parse_sentence_delayed_trigger_this_turn(
             },
         ]));
     }
+    if let Some(combat_shape) =
+        delayed_shapes::parse_delayed_target_deals_combat_damage_shape(trigger_core_tokens)
+        && let Ok(filter) = parse_object_filter(combat_shape.subject_tokens, false)
+        && let Ok(recipient) = parse_object_filter(combat_shape.recipient_tokens, false)
+    {
+        let tag = helper_tag_for_tokens(tokens, "targeted");
+        let watched_filter = filter
+            .clone()
+            .match_tagged(tag.clone(), TaggedOpbjectRelation::IsTaggedObject);
+        let delayed_effects = parse_effect_chain(&shape.effect_tokens)?;
+        if delayed_effects.is_empty() {
+            return Err(CardTextError::ParseError(format!(
+                "missing delayed target combat-damage effect clause (clause: '{}')",
+                clause_display.trim()
+            )));
+        }
+        return Ok(Some(vec![
+            EffectAst::ChooseObjects {
+                filter,
+                count: ChoiceCount::exactly(1),
+                count_value: None,
+                // `target` identifies the chosen object, not its controller.
+                player: PlayerAst::Implicit,
+                tag,
+            },
+            EffectAst::DelayedTriggerThisTurn {
+                trigger: TriggerSpec::DealsCombatDamageTo {
+                    source: watched_filter,
+                    target: recipient,
+                },
+                effects: delayed_effects,
+                one_shot: false,
+                until_end_of_combat: false,
+                attach_to_previous_ability: false,
+            },
+        ]));
+    }
     let trigger = if let Some(trigger) =
         next_cast_instant_sorcery_or_loyalty_trigger_from_core(trigger_core_tokens)
     {

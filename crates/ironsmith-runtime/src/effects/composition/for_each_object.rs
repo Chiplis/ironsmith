@@ -97,7 +97,14 @@ impl EffectExecutor for ForEachObject {
         // Execute the effects once for each matching object and expose that object via
         // ctx.iterated_object for inner effects using ChooseSpec::Iterated.
         let it_tag = TagKey::from("__it__");
-        if let [move_effect, shuffle_effect] = self.effects.as_slice()
+        let batched_effects = if let [effect] = self.effects.as_slice()
+            && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        {
+            sequence.effects.as_slice()
+        } else {
+            self.effects.as_slice()
+        };
+        if let [move_effect, shuffle_effect] = batched_effects
             && let Some(move_to_zone) =
                 move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
             && matches!(move_to_zone.target.base(), ChooseSpec::Iterated)
@@ -404,6 +411,42 @@ mod tests {
         let c2_obj = game.object(c2).expect("c2 should exist");
         assert_eq!(c1_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
         assert_eq!(c2_obj.counters.get(&CounterType::PlusOnePlusOne), Some(&1));
+    }
+
+    #[test]
+    fn sequence_wrapped_move_then_shuffle_batches_each_owner_once() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        create_creature(&mut game, "Bear 1", alice);
+        create_creature(&mut game, "Bear 2", alice);
+        create_creature(&mut game, "Bear 3", alice);
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        let sequence = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+            Effect::move_to_zone(ChooseSpec::Iterated, Zone::Library, true),
+            Effect::shuffle_library_player(PlayerFilter::OwnerOf(ObjectRef::tagged("__it__"))),
+        ]));
+        let effect = ForEachObject::new(ObjectFilter::creature().you_control(), vec![sequence]);
+
+        let outcome = effect
+            .execute(&mut game, &mut ctx)
+            .expect("the move-and-shuffle loop resolves");
+
+        assert_eq!(
+            game.zone_ids(Zone::Library).count(),
+            3,
+            "all iterated creatures move before the library is shuffled"
+        );
+        assert_eq!(
+            outcome
+                .events
+                .iter()
+                .filter(|event| event.downcast::<ShuffleLibraryEvent>().is_some())
+                .count(),
+            1,
+            "one owner must not shuffle once per iterated object"
+        );
     }
 
     #[test]

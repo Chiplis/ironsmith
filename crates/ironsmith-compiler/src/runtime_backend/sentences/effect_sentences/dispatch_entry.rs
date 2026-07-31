@@ -6,7 +6,8 @@ use super::super::activation_and_restrictions::{
     parse_mana_usage_restriction_sentence_lexed, parse_single_word_keyword_action,
 };
 use super::super::effect_ast_traversal::{
-    for_each_nested_effects, for_each_nested_effects_mut, try_for_each_nested_effects_mut,
+    TerminalResultProducer, for_each_nested_effects, for_each_nested_effects_mut,
+    terminal_result_producer, try_for_each_nested_effects_mut,
 };
 use super::super::grammar::effects as effect_grammar;
 use super::super::grammar::primitives::{self as grammar};
@@ -512,6 +513,40 @@ fn normalize_parser_tokens(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
         }
     }
     normalized
+}
+
+fn trim_effect_sentence_edge_punctuation(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    // A terminal quoted grant ends in `."`, so the ordinary punctuation
+    // trimmer would remove both the closing quote and its period while leaving
+    // the opening quote embedded in the sentence. Keep balanced quote pairs
+    // intact so the grant parser can retain authored quoted-ability semantics.
+    let quote_count = tokens
+        .iter()
+        .filter(|token| token.kind == TokenKind::Quote)
+        .count();
+    if quote_count < 2 || quote_count % 2 != 0 {
+        return trim_edge_punctuation(tokens);
+    }
+
+    let mut start = 0usize;
+    let mut end = tokens.len();
+    while start < end
+        && matches!(
+            tokens[start].kind,
+            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+        )
+    {
+        start += 1;
+    }
+    while end > start
+        && matches!(
+            tokens[end - 1].kind,
+            TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+        )
+    {
+        end -= 1;
+    }
+    tokens[start..end].to_vec()
 }
 
 #[derive(Debug, Clone)]
@@ -1953,7 +1988,18 @@ fn parse_effect_sentences_from_sentence_inputs(
             }
         }
 
-        if let Some(mut matched) = try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)? {
+        // Strip a token blueprint's quoted rule before broad sequence
+        // recognition. A nested activated rule has its own colon and verbs;
+        // allowing the outer sequence registry to inspect those tokens can
+        // claim or reject the create sentence before the dedicated create
+        // parser gets the rule-free token definition. The untouched `sentence`
+        // is retained below so the quoted rule can be attached afterward.
+        let embedded_rule_free_sentence = strip_embedded_token_rules_text(sentence);
+        let stripped_embedded_rule = embedded_rule_free_sentence.as_slice() != sentence;
+        if !stripped_embedded_rule
+            && let Some(mut matched) =
+                try_parse_subject_verb_sequence_rule(&sentences, sentence_idx)?
+        {
             let sequence_where_x = (0..matched.consumed_sentences).find_map(|offset| {
                 sentences
                     .get(sentence_idx + offset)
@@ -2022,8 +2068,8 @@ fn parse_effect_sentences_from_sentence_inputs(
             continue;
         }
 
-        let mut sentence_tokens = strip_embedded_token_rules_text(sentence);
-        sentence_tokens = trim_edge_punctuation(&sentence_tokens);
+        let mut sentence_tokens = embedded_rule_free_sentence;
+        sentence_tokens = trim_effect_sentence_edge_punctuation(&sentence_tokens);
         if sentence_tokens.is_empty()
             || crate::runtime_backend::token_word_refs(&sentence_tokens).is_empty()
         {
@@ -3002,6 +3048,37 @@ fn effect_ast_can_produce_mana(effect: &EffectAst) -> bool {
 fn parse_effect_sentences_lexed_inner(
     tokens: &[OwnedLexToken],
 ) -> Result<Vec<EffectAst>, CardTextError> {
+    let sentence_parts = split_lexed_sentences(tokens);
+    // The keyword-bundle pump is one semantic sentence even though its
+    // `+1/+1 if ...` arms and `and so on for ...` tail contain many commas.
+    // Trigger CST probing enters through this multi-sentence entrypoint; if
+    // the whole typed shape is not claimed here, a later comma can appear to
+    // be a valid trigger/effect boundary and discard most of the bundle.
+    if sentence_parts.len() == 1
+        && let Some(effects) =
+            super::subject_verb_special_recognizers::parse_keyword_bundle_pump_sentence(tokens)?
+    {
+        return Ok(effects);
+    }
+    // A turn-scoped play permission contains an authored `play ... and cast
+    // ...` conjunction which must be consumed as one typed effect. When an
+    // independent sentence follows it, the generic multi-sentence chain
+    // planner can otherwise revisit the first sentence as an action chain and
+    // split it into the unsupported fragment `play lands`. Claim the complete
+    // first sentence before parsing the remaining independent statements.
+    if sentence_parts.len() > 1
+        && let Some(first) = sentence_parts.first()
+        && let Some(permission) = super::parse_play_permission_subject_verb(first)?
+    {
+        let mut effects = vec![permission];
+        for sentence in sentence_parts.iter().skip(1) {
+            if !sentence.is_empty() {
+                effects.extend(parse_effect_sentences_lexed_inner(sentence)?);
+            }
+        }
+        return Ok(effects);
+    }
+
     // Counter-linked land subtype text is an effect continuation even though
     // its surface starts like a static ability.  The clause dispatcher owns
     // the typed AddSubtypes/ForAsLongAs lowering; route it before sentence
@@ -3042,15 +3119,18 @@ fn parse_effect_sentences_lexed_inner(
     // chain parser before the duration-gain fast path below. That fast path is
     // intentionally tolerant of surrounding text and can otherwise retain
     // only a later `it gains ...` arm while dropping an earlier action.
-    if effect_grammar::chain_carry::coordinated_effect_chain_leading_duration(tokens) == Some(true)
+    if sentence_parts.len() == 1
+        && effect_grammar::chain_carry::coordinated_effect_chain_leading_duration(tokens)
+            == Some(true)
     {
         return parse_effect_sentence_lexed(tokens);
     }
 
     let sentence_words =
         crate::runtime_backend::grammar::primitives::TokenWordView::new(tokens).to_word_refs();
-    if effect_grammar::gain_ability_shapes::parse_leading_gain_duration_shape(&sentence_words)
-        .is_some()
+    if sentence_parts.len() == 1
+        && effect_grammar::gain_ability_shapes::parse_leading_gain_duration_shape(&sentence_words)
+            .is_some()
         && let Some(effects) = super::gain_ability::parse_gain_ability_sentence(tokens)?
     {
         // Activated-line preprocessing can remove quote delimiters around a
@@ -3522,9 +3602,14 @@ fn apply_cant_be_regenerated_to_effect(effect: &mut EffectAst) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::cards::builders::{EffectAst, PlayerAst, SubjectVerbActionAst, find_verb};
+    use crate::cards::builders::{
+        EffectAst, IfResultPredicate, PlayerAst, SubjectVerbActionAst, find_verb,
+    };
     use crate::effect::{Value, ValueComparisonOperator};
     use crate::filter::TaggedOpbjectRelation;
+    use crate::runtime_backend::model::effect_ast_traversal::{
+        TerminalResultProducer, terminal_result_producer,
+    };
     use crate::target::PlayerFilter;
 
     use super::super::super::grammar::structure::split_lexed_sentences;
@@ -3623,6 +3708,94 @@ mod tests {
             ),
             "{coordinated:#?}"
         );
+    }
+
+    #[test]
+    fn graveyard_play_permission_stays_whole_before_independent_replacement_sentence() {
+        let tokens = lex_line(
+            "Until end of turn, you may play lands and cast spells from your graveyard. \
+             If a card would be put into your graveyard from anywhere this turn, exile that card instead.",
+            0,
+        )
+        .expect("permission and replacement sentences should lex");
+
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("permission conjunction must not split into `play lands`");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 2, "{debug}");
+        assert!(debug.contains("PlayFromGraveyardUntilEot"), "{debug}");
+        assert!(debug.contains("ExileInsteadOfGraveyardThisTurn"), "{debug}");
+    }
+
+    #[test]
+    fn leading_duration_fast_paths_do_not_consume_a_following_sentence() {
+        let tokens = lex_line(
+            "Until your next turn, your life total can't change and you gain protection from everything. \
+             All permanents you control phase out.",
+            0,
+        )
+        .expect("duration and phase-out sentences should lex");
+
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("both independent sentences should parse");
+        let debug = format!("{effects:#?}");
+
+        assert!(effects.len() >= 2, "{debug}");
+        assert!(debug.contains("ChangeLifeTotal"), "{debug}");
+        assert!(debug.contains("BeTargetedPlayer"), "{debug}");
+        assert!(debug.contains("PreventAllDamageToTarget"), "{debug}");
+        assert!(debug.contains("PhaseOutAll"), "{debug}");
+    }
+
+    #[test]
+    fn keyword_bundle_pump_survives_the_multi_sentence_entrypoint() {
+        let tokens = lex_line(
+            "Until end of turn, each other creature you control gets +1/+1 if it has flying, +1/+1 if it has first strike, and so on for double strike, deathtouch, haste, hexproof, indestructible, lifelink, menace, protection, reach, trample, vigilance, and partner.",
+            0,
+        )
+        .expect("keyword-bundle trigger body should lex");
+
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("complete keyword bundle should parse before comma probing");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 14, "{debug}");
+        assert!(debug.contains("Flying"), "{debug}");
+        assert!(debug.contains("Partner"), "{debug}");
+        assert!(
+            effects.iter().all(|effect| matches!(
+                effect,
+                EffectAst::SubjectVerb(subject)
+                    if matches!(
+                        &subject.action,
+                        SubjectVerbActionAst::PumpAll {
+                            set_quantifier_surface:
+                                Some(ironsmith_core::SetQuantifierSurface::Each),
+                            ..
+                        }
+                    )
+            )),
+            "{debug}"
+        );
+        assert!(!debug.contains("IteratedPlayer"), "{debug}");
+    }
+
+    #[test]
+    fn ordinary_leading_duration_pump_does_not_acquire_keyword_bundle_arms() {
+        let tokens = lex_line(
+            "Until end of turn, each other creature you control gets +1/+1.",
+            0,
+        )
+        .expect("ordinary leading-duration pump should lex");
+
+        let effects = super::parse_effect_sentences_lexed(&tokens)
+            .expect("ordinary leading-duration pump should retain its normal route");
+        let debug = format!("{effects:#?}");
+
+        assert_eq!(effects.len(), 1, "{debug}");
+        assert!(!debug.contains("Flying"), "{debug}");
+        assert!(!debug.contains("Partner"), "{debug}");
     }
 
     #[test]
@@ -4689,6 +4862,31 @@ mod tests {
     }
 
     #[test]
+    fn hoarders_greed_types_if_you_win_from_a_wrapped_terminal_clash() {
+        let tokens = lex_line(
+            "You lose 2 life and draw two cards, then clash with an opponent. If you win, repeat this process.",
+            0,
+        )
+        .expect("Hoarder's Greed should lex");
+
+        let parsed = super::parse_effect_sentences_lexed(&tokens)
+            .expect("Hoarder's Greed should parse as a typed clash loop");
+        let [antecedent, EffectAst::IfResult { predicate, .. }] = parsed.as_slice() else {
+            panic!("expected a wrapped antecedent and result follow-up: {parsed:#?}");
+        };
+        assert_eq!(
+            terminal_result_producer(antecedent),
+            Some(TerminalResultProducer::Clash),
+            "the authored sequence should expose its terminal clash producer"
+        );
+        assert_eq!(
+            predicate,
+            &IfResultPredicate::WonClash,
+            "`if you win` must retain clash-value semantics through the wrapper"
+        );
+    }
+
+    #[test]
     fn optional_quoted_source_restriction_keeps_vigilance_result_semantics() {
         let tokens = lex_line(
             "You may have this creature gain \"this can't attack\" until end of combat. If you do, attacking doesn't cause creatures you control to tap this combat if this is untapped.",
@@ -5135,13 +5333,15 @@ mod tests {
         assert!(modes.iter().all(|mode| {
             matches!(
                 mode.effects.as_slice(),
-                [EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
-                    action: SubjectVerbActionAst::DestroyAll {
-                        no_regeneration: true,
+                [EffectAst::SubjectVerb(
+                    crate::cards::builders::SubjectVerbEffectAst {
+                        action: SubjectVerbActionAst::DestroyAll {
+                            no_regeneration: true,
+                            ..
+                        },
                         ..
-                    },
-                    ..
-                })]
+                    }
+                )]
             )
         }));
     }
@@ -6920,8 +7120,21 @@ pub(crate) fn try_apply_token_granted_ability_followup(
         }) => {
             let combine_separate_sentence =
                 !definition.has_intrinsic_abilities() && granted_abilities.is_empty();
+            // The creation sentence carried the token's keywords inline ("… Bat
+            // creature token with flying.") and grouped nothing itself, so this
+            // followup is an ADDITIONAL sentence for the ability it introduces —
+            // not the place those keywords belong. `SeparateSentence` claims the
+            // trailing sentence owns every grouped ability, which dragged the
+            // keywords back out into their own "It has flying." sentence.
+            // A standalone tail leaves `grouped_presentation()` empty, so the
+            // keywords keep their " with " clause.
+            let keywords_authored_inline = ability_presentation.is_none()
+                && definition.has_intrinsic_abilities()
+                && granted_abilities.is_empty();
             granted_abilities.extend(abilities.iter().cloned());
-            *ability_presentation = Some(if combine_separate_sentence {
+            *ability_presentation = Some(if keywords_authored_inline {
+                ironsmith_core::TokenAbilityPresentation::with_added_standalone_tail(None)
+            } else if combine_separate_sentence {
                 presentation.combined_separate_sentence()
             } else {
                 presentation

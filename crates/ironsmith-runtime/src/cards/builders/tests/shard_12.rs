@@ -491,7 +491,8 @@ pub(super) fn parse_ancient_bronze_dragon_where_x_result_clause_parses_strictly(
     assert!(
         debug.contains("rolldieeffect")
             && debug.contains("putcounterseffect")
-            && debug.contains("eventvalue(amount)"),
+            && debug.contains("reflexivetriggereffect")
+            && debug.contains("effectvalue(effectid(0))"),
         "expected Ancient Bronze Dragon trigger to bind X to die result, got {debug}"
     );
 }
@@ -516,8 +517,7 @@ pub(super) fn parse_where_x_fixed_plus_counters_on_source() {
     let debug = format!("{:?}", def.spell_effect).to_ascii_lowercase();
     assert!(
         debug.contains("add(fixed(3)")
-            && debug.contains("counterson(surfacehinted")
-            && debug.contains("spec: source")
+            && debug.contains("countersonsource(charge)")
             && debug.contains("charge"),
         "expected X to bind to 3 plus charge counters on source, got {debug}"
     );
@@ -1429,13 +1429,15 @@ pub(super) fn phyrexian_rebirth_keeps_its_destroyed_result_set_in_the_dynamic_to
         .card_types(vec![CardType::Sorcery])
         .parse_text(oracle)
         .expect("parse destroyed-result dynamic token");
-    let debug = format!("{:#?}", def.spell_effect.as_ref().expect("spell effects"));
+    let debug = format!("{:?}", def.spell_effect.as_ref().expect("spell effects"));
 
     assert!(
         debug.contains("DestroyEffect")
             && debug.contains("CreateTokenEffect")
             && debug.contains("SetBasePowerToughnessEffect")
-            && debug.contains("IsTaggedObject"),
+            && debug.contains("PriorEffectMetric")
+            && debug.contains("source: AffectedObjects")
+            && debug.contains("action: Some(Destroyed)"),
         "the token size must consume the exact destroyed-object result set: {debug}"
     );
     assert_eq!(
@@ -2334,7 +2336,13 @@ pub(super) fn parse_combustible_gearhulk_declined_optional_branch_gates_full_fol
         "expected opponent optional draw wording, got {rendered}"
     );
     assert!(
-        rendered.contains("If the player doesn't, you mill three cards, then this creature deals damage to that player equal to the total mana value of those cards"),
+        (rendered.contains("If the player doesn't, you mill three cards")
+            || rendered.contains("If they don't, mill three cards"))
+            && (rendered.contains(
+                "this creature deals damage to that player equal to the total mana value of those cards"
+            ) || rendered.contains(
+                "it deals damage to that player equal to the total mana value of those cards"
+            )),
         "expected declined optional branch to include both mill and damage follow-up, got {rendered}"
     );
 

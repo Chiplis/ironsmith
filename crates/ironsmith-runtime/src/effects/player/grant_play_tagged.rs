@@ -283,15 +283,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
             };
             if constraints != PlayFromConstraints::default() {
                 if self.duration == GrantPlayTaggedDuration::ForAsLongAsExiled {
-                    game.effect_store
-                        .grant_registry
-                        .grant_play_from_to_card(
-                            object_id,
-                            object_zone,
-                            player_id,
-                            constraints,
-                            source,
-                        );
+                    game.effect_store.grant_registry.grant_play_from_to_card(
+                        object_id,
+                        object_zone,
+                        player_id,
+                        constraints,
+                        source,
+                    );
                 } else {
                     game.effect_store
                         .grant_registry
@@ -314,13 +312,13 @@ impl EffectExecutor for GrantPlayTaggedEffect {
                 );
             } else if self.during_turns_counter_put_on_source.is_some() {
                 game.effect_store.grant_registry.grant_to_stable_card(
-                        object_id,
-                        object_stable_id,
-                        object_zone,
-                        player_id,
-                        Grantable::PlayFrom,
-                        source,
-                    );
+                    object_id,
+                    object_stable_id,
+                    object_zone,
+                    player_id,
+                    Grantable::PlayFrom,
+                    source,
+                );
             } else {
                 game.effect_store.grant_registry.grant_to_card(
                     object_id,
@@ -636,10 +634,7 @@ mod tests {
         let bob_exiled = game.create_object_from_card(&bob_card, bob, Zone::Exile);
         let cara_exiled = game.create_object_from_card(&cara_card, cara, Zone::Exile);
         let snapshots = vec![
-            ObjectSnapshot::from_object(
-                game.object(bob_exiled).expect("Bob's exiled card"),
-                &game,
-            ),
+            ObjectSnapshot::from_object(game.object(bob_exiled).expect("Bob's exiled card"), &game),
             ObjectSnapshot::from_object(
                 game.object(cara_exiled).expect("Cara's exiled card"),
                 &game,
@@ -666,9 +661,12 @@ mod tests {
         .expect("correlated play permissions should resolve");
 
         let can_play = |card, player| {
-            game.effect_store
-                .grant_registry
-                .card_can_play_from_zone(&game, card, Zone::Exile, player)
+            game.effect_store.grant_registry.card_can_play_from_zone(
+                &game,
+                card,
+                Zone::Exile,
+                player,
+            )
         };
         assert!(can_play(bob_exiled, bob));
         assert!(can_play(cara_exiled, cara));
@@ -685,12 +683,7 @@ mod tests {
             assert!(
                 game.effect_store
                     .grant_registry
-                    .land_play_from_permissions_enters_tapped(
-                        &game,
-                        card,
-                        Zone::Exile,
-                        owner,
-                    )
+                    .land_play_from_permissions_enters_tapped(&game, card, Zone::Exile, owner,)
             );
         }
     }

@@ -1520,6 +1520,7 @@ pub(crate) fn parse_cant_effect_sentence_with_grammar_entrypoint_lexed(
             EffectAst::subject_verb_cant_starting_with_duration_surface(
                 crate::effect::Restriction::attack_you_unless_controller_pays_per_attacker(
                     fact.amount,
+                    fact.covers_planeswalkers,
                 ),
                 duration,
                 crate::effect::RestrictionStart::Immediate,
@@ -1619,6 +1620,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 None,
                 Some(Value::Fixed(1)),
                 crate::effect::SearchResultReferenceSurface::ThatCard,
+                false,
                 false,
             )],
         }]));
@@ -1849,6 +1851,13 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
         trailing_discard_before_shuffle,
     );
     let destination = effect_routing.destination;
+    // A search that reaches another player's library hands the card to you only
+    // when the put clause says so; otherwise the move preserves its controller.
+    let searched_controller = if effect_routing.enters_under_your_control {
+        ReturnControllerAst::You
+    } else {
+        ReturnControllerAst::Preserve
+    };
     let reveal = effect_routing.reveal;
     let face_down_exile = effect_routing.face_down_exile;
     let original_shuffle = effect_routing.shuffle;
@@ -1939,7 +1948,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
                 TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
                 destination,
                 matches!(destination, Zone::Library),
-                ReturnControllerAst::Preserve,
+                searched_controller,
                 battlefield_tapped,
                 None,
             )],
@@ -1980,7 +1989,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             TargetAst::Tagged(searched_tag, span_from_tokens(tokens)),
             destination,
             matches!(destination, Zone::Library),
-            ReturnControllerAst::Preserve,
+            searched_controller,
             destination == Zone::Battlefield && effect_routing.has_tapped_modifier,
             None,
         ));
@@ -2194,6 +2203,7 @@ pub(crate) fn parse_search_library_sentence_with_grammar_entrypoint_lexed(
             library_position_from_top,
             effect_routing.result_reference_surface,
             battlefield_tapped,
+            effect_routing.enters_under_your_control,
         )]
     };
 

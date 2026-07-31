@@ -48,6 +48,7 @@ pub(crate) enum TargetRestrictionEnvelope {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NegatedObjectTailShape {
+    AttackYou,
     AttackYouOrPlaneswalkers,
     BeBlockedExceptBy { payload_words: usize },
     BeBlockedBy { payload_words: usize },
@@ -225,7 +226,11 @@ pub(crate) fn parse_target_restriction_envelope_tokens(
 }
 
 pub(crate) fn parse_negated_object_tail_words(words: &[&str]) -> Option<NegatedObjectTailShape> {
-    if exact(
+    if exact(words, &["attack", "you"]) {
+        // "can't attack you" leaves the player's planeswalkers attackable —
+        // a distinct, narrower restriction than the Ghostly Prison shape.
+        Some(NegatedObjectTailShape::AttackYou)
+    } else if exact(
         words,
         &["attack", "you", "or", "planeswalkers", "you", "control"],
     ) {

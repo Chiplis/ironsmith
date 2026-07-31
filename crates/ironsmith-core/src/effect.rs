@@ -344,6 +344,10 @@ pub struct GrantPlayTaggedSurface {
     pub leading_duration: bool,
     pub object: Option<GrantPlayTaggedObjectSurface>,
     pub mana_reference: Option<GrantPlayTaggedManaReferenceSurface>,
+    /// Authored source noun in "for as long as you control this ...".
+    /// Runtime duration semantics remain carried by
+    /// `GrantPlayTaggedDuration::ForAsLongAsYouControlSource`.
+    pub control_source: Option<SourceReferenceSurface>,
     /// Authored source noun in "until you exile another card with this ...".
     /// The event-bounded lifetime itself is carried by
     /// `GrantPlayTaggedDuration::UntilSourceExilesAnother`.
@@ -363,6 +367,11 @@ impl GrantPlayTaggedSurface {
 
     pub fn with_mana_reference(mut self, reference: GrantPlayTaggedManaReferenceSurface) -> Self {
         self.mana_reference = Some(reference);
+        self
+    }
+
+    pub fn with_control_source(mut self, source: SourceReferenceSurface) -> Self {
+        self.control_source = Some(source);
         self
     }
 
@@ -467,6 +476,10 @@ pub enum DelayedTriggerSpec {
         target: ObjectFilter,
     },
     DealsCombatDamageToPlayer {
+        source: ObjectFilter,
+        player: PlayerFilter,
+    },
+    DealsCombatDamageToPlayerOneOrMore {
         source: ObjectFilter,
         player: PlayerFilter,
     },
@@ -1641,7 +1654,7 @@ pub struct SearchLibrarySlot {
     pub optional: bool,
 }
 
-/// Oracle-facing noun used to refer back to the single card found by a
+/// Oracle-facing wording used to refer back to the single card found by a
 /// library search. This is presentation-only metadata; the searched object is
 /// still identified by the effect itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1649,6 +1662,7 @@ pub enum SearchResultReferenceSurface {
     #[default]
     ThatCard,
     TheCard,
+    It,
 }
 
 impl SearchResultReferenceSurface {
@@ -1656,6 +1670,7 @@ impl SearchResultReferenceSurface {
         match self {
             Self::ThatCard => "that card",
             Self::TheCard => "the card",
+            Self::It => "it",
         }
     }
 }
@@ -2903,6 +2918,10 @@ pub struct ChooseObjectsEffect {
     pub is_search: bool,
     pub reveal: bool,
     pub search_mode: SearchSelectionMode,
+    /// Authored singular reference used by the action that consumes a search
+    /// result. `None` preserves the generic "it" surface for hand-built
+    /// choose/move sequences.
+    pub search_result_reference_surface: Option<SearchResultReferenceSurface>,
     pub top_only: bool,
     pub bottom_only: bool,
     pub replace_tagged_objects: bool,
@@ -2928,6 +2947,7 @@ impl ChooseObjectsEffect {
             is_search: false,
             reveal: false,
             search_mode: SearchSelectionMode::Exact,
+            search_result_reference_surface: None,
             top_only: false,
             bottom_only: false,
             replace_tagged_objects: false,
@@ -2987,6 +3007,14 @@ impl ChooseObjectsEffect {
     pub fn as_all_matching_search(mut self) -> Self {
         self.is_search = true;
         self.search_mode = SearchSelectionMode::AllMatching;
+        self
+    }
+
+    pub fn with_search_result_reference_surface(
+        mut self,
+        surface: SearchResultReferenceSurface,
+    ) -> Self {
+        self.search_result_reference_surface = Some(surface);
         self
     }
 
@@ -4559,6 +4587,16 @@ impl CopySpellEffect {
         count: impl Into<Value>,
         copier: PlayerFilter,
     ) -> Self {
+        // A bare stack-object filter in a copy instruction is the target of
+        // that instruction. Identity references (source/tagged/iterated) and
+        // set-valued `All` specs remain non-targeting, as required by copy
+        // triggers and bulk-copy effects.
+        let target = if matches!(target.base(), ChooseSpec::Object(filter) if filter.stack_kind.is_some())
+        {
+            ChooseSpec::target(target)
+        } else {
+            target
+        };
         let target_reference_kind = Self::target_stack_kind(&target);
         Self {
             target,

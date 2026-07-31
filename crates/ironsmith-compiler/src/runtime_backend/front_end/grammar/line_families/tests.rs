@@ -1,5 +1,19 @@
 use super::*;
-use crate::runtime_backend::lexer::lex_line;
+use crate::runtime_backend::lexer::{lex_line, render_token_slice};
+
+#[test]
+fn visible_line_boundary_ignores_nested_ability_punctuation() {
+    let tokens = lex_line(
+        "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\" (To bolster 1, choose a creature.)",
+        0,
+    )
+    .expect("lex quoted grant with reminder");
+
+    assert_eq!(
+        render_token_slice(parse_visible_line_tokens(&tokens)),
+        "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\""
+    );
+}
 
 #[test]
 fn parses_keyword_station_partner_and_kicker_shapes() {

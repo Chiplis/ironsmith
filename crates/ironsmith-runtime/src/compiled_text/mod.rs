@@ -473,7 +473,9 @@ fn normalize_scored_compiled_line(line: String) -> String {
     // Effect-list renderers intentionally lowercase clauses when composing
     // them into a larger sentence. At the card-line boundary, restore normal
     // sentence capitalization before applying the surface normalizers.
-    let line = normalize_duplicate_optional_subject(&capitalize_sentence_boundaries(&line));
+    let line = normalize_duplicate_optional_subject(&capitalize_first(
+        &capitalize_sentence_boundaries(&line),
+    ));
     // The Wish family's search-outside-the-game program only reaches its
     // final three-sentence surface after the earlier merge passes; fold it
     // to the authored reveal-and-put sentence here.
@@ -717,7 +719,9 @@ fn substitute_kicked_draw_source_reference(line: &str, def: &CardDefinition) -> 
 }
 
 fn normalize_unprocessed_compiled_line(line: String) -> String {
-    let line = normalize_duplicate_optional_subject(&capitalize_sentence_boundaries(&line));
+    let line = normalize_duplicate_optional_subject(&capitalize_first(
+        &capitalize_sentence_boundaries(&line),
+    ));
     let lower = line.to_ascii_lowercase();
     if lower.contains("whenever a land you control enters")
         && lower.contains("if it's a mountain, this creature deals")
@@ -824,6 +828,31 @@ fn remove_redundant_period_after_terminal_quote(line: &str) -> String {
 
 fn finalize_ast_surface_line(line: String) -> String {
     let mut line = line;
+    // A merge pass can append a rider after a line that already ends with a
+    // sentence-final period, doubling it ("can't be regenerated.. You lose").
+    if !line.contains("...") {
+        while line.contains("..") {
+            line = line.replace("..", ".");
+        }
+    }
+    // "up to X target creatures, where X is that many" is oracle's inline
+    // "up to that many target creatures". Only rewrite when the where-clause
+    // is the sole X consumer left in the sentence.
+    if let Some(where_idx) = line.find(", where X is that many")
+        && let Some(x_idx) = line[..where_idx].rfind("up to X ")
+    {
+        let mut fixed = String::with_capacity(line.len());
+        fixed.push_str(&line[..x_idx]);
+        fixed.push_str("up to that many ");
+        fixed.push_str(&line[x_idx + "up to X ".len()..where_idx]);
+        fixed.push_str(&line[where_idx + ", where X is that many".len()..]);
+        let stray_x = fixed
+            .split(|ch: char| !ch.is_ascii_alphanumeric())
+            .any(|word| word == "X");
+        if !stray_x {
+            line = fixed;
+        }
+    }
     let lower = line.to_ascii_lowercase();
     if let Some(normalized) = normalize_gain_control_untap_pump_haste_surface(&line) {
         return normalized;
@@ -1261,6 +1290,7 @@ fn finalize_ast_surface_line(line: String) -> String {
     line = normalize_temporary_trample_pump_surface(&line);
     line = normalize_chosen_player_adds_mana_surface(&line);
     line = normalize_role_token_attached_surface(&line);
+    line = normalize_create_role_then_attach_surface(&line);
     line = normalize_return_with_counter_surface(&line);
     line = normalize_simple_token_keyword_surface(&line);
     line = normalize_chosen_creature_type_surface(&line);
@@ -1564,6 +1594,20 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
         Some((head, condition, "if"))
     }
 
+    fn heads_share_subject(left: &str, right: &str) -> bool {
+        match (
+            split_subject_predicate_clause(left),
+            split_subject_predicate_clause(right),
+        ) {
+            (Some((left_subject, _, _)), Some((right_subject, _, _))) => {
+                left_subject.eq_ignore_ascii_case(right_subject)
+            }
+            // If a specialized surface cannot be decomposed, retain the
+            // established tail-sharing behavior.
+            _ => true,
+        }
+    }
+
     let mut merged: Vec<String> = Vec::with_capacity(lines.len());
     let mut idx = 0usize;
     while idx < lines.len() {
@@ -1579,6 +1623,11 @@ fn merge_shared_as_long_as_tail_lines(lines: Vec<String>) -> Vec<String> {
             && left_marker == right_marker
             && !left_head.contains(" and ")
             && !right_head.contains(" and ")
+            // Different object populations can overlap, so a trailing
+            // condition cannot safely be moved over their conjunction. Safe
+            // disjoint unions (for example, the source plus "other Knights")
+            // are handled earlier by the typed subject-union merger.
+            && heads_share_subject(left_head, right_head)
         {
             let mut right = right_head.to_string();
             let mut chars = right_head.chars();
@@ -1620,10 +1669,15 @@ fn merge_specific_adjacent_surface_lines(lines: Vec<String>) -> Vec<String> {
                 idx += 2;
                 continue;
             }
-            if left_lower
-                == "when this creature enters, you may put a +1/+1 counter on this creature"
-                && right_lower
-                    == "this creature can't block as long as it has a +1/+1 counter on it"
+            // The unleash scaffold: an optional entry counter plus the
+            // can't-block rider it gates. Both lines vary in how they name the
+            // source (repeated noun, pronoun, or the doubled "this creature
+            // creature" the restriction subject can produce), so match the
+            // invariant parts of the pair rather than two exact strings.
+            if left_lower.starts_with("when this ")
+                && left_lower.contains("enters, you may put a +1/+1 counter on")
+                && right_lower.contains("can't block as long as it has a +1/+1 counter on it")
+                && right_lower.starts_with("this ")
             {
                 merged.push("Unleash".to_string());
                 idx += 2;
@@ -2059,6 +2113,24 @@ fn normalize_role_token_attached_surface(line: &str) -> String {
     format!(
         "{}. Create a {role} Role token attached to it{suffix}",
         &line[..marker_start]
+    )
+}
+
+fn normalize_create_role_then_attach_surface(line: &str) -> String {
+    // "Create a Monster Role token. Attach it to target creature you
+    // control." is oracle's one-sentence "Create a Monster Role token
+    // attached to target creature you control."
+    let marker = " Role token. Attach it to ";
+    let Some(idx) = line.find(marker) else {
+        return line.to_string();
+    };
+    let head = &line[..idx];
+    if !head.contains("reate a ") || head.contains('.') {
+        return line.to_string();
+    }
+    format!(
+        "{head} Role token attached to {}",
+        &line[idx + marker.len()..]
     )
 }
 
@@ -2719,7 +2791,7 @@ mod tests {
         let rendered = compiled_text_lines(&definition).join("\n");
         assert_eq!(
             rendered,
-            "Counter target instant spell or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast it without paying its mana cost. Shuffle their library."
+            "Counter target instant spell or sorcery spell. Its controller reveals cards from the top of their library until they reveal an instant or sorcery card. That player may cast it without paying its mana cost. Then shuffle their library."
         );
         assert!(!rendered.contains("that object's controller"));
         assert!(!rendered.contains("target player shuffles"));

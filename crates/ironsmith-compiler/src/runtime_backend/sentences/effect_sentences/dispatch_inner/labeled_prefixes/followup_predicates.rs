@@ -77,7 +77,7 @@ fn token_copy_reference_surface_at(
 pub(crate) fn token_copy_leading_reference_surface(
     tokens: &[OwnedLexToken],
 ) -> Option<crate::effect::TokenCopyReferenceSurface> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     token_copy_reference_surface_at(&words, 0)
 }
 
@@ -85,7 +85,7 @@ pub(crate) fn token_copy_action_reference_surface(
     tokens: &[OwnedLexToken],
     action: &str,
 ) -> Option<crate::effect::TokenCopyReferenceSurface> {
-    let words = crate::runtime_backend::token_word_refs(tokens);
+    let words = crate::runtime_backend::lexer::parser_token_word_refs(tokens);
     let action_idx = words.iter().rposition(|word| *word == action)?;
     token_copy_reference_surface_at(&words, action_idx + 1)
 }

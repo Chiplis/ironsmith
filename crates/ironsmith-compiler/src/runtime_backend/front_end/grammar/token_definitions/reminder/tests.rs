@@ -104,6 +104,41 @@ fn merges_quoted_rule_facts_without_relexing_a_definition_name() {
 }
 
 #[test]
+fn merging_quoted_equipment_grant_preserves_existing_equip_line() {
+    let mut definition =
+        crate::runtime_backend::front_end::grammar::token_definitions::parse_token_definition_shape_text(
+            "colorless Equipment artifact token named Rock with \"Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'\" and equip {1}.",
+        )
+        .expect("complete Equipment token definition");
+    let quoted = lex_line(
+        "Equipped creature has '{1}, {T}, Sacrifice Rock: This creature deals 2 damage to any target'",
+        0,
+    )
+    .expect("quoted Equipment grant should lex");
+    let facts = parse_token_reminder_facts_tokens(&quoted);
+
+    super::super::reminder_merge::merge_token_reminder_definition(&mut definition, &facts);
+
+    let TokenDefinitionSpec::Artifact(artifact) = definition else {
+        panic!("expected artifact token definition");
+    };
+    let rules = artifact
+        .equipment_rules
+        .expect("Equipment token should retain typed rules");
+    assert_eq!(rules.lines.len(), 2, "{rules:#?}");
+    assert!(rules.lines.iter().any(|line| matches!(
+        line,
+        crate::runtime_backend::token_definition::EquipmentRuleLineShape::GrantedDamage { .. }
+    )));
+    assert!(rules.lines.iter().any(|line| matches!(
+        line,
+        crate::runtime_backend::token_definition::EquipmentRuleLineShape::Equip(
+            crate::runtime_backend::token_definition::TokenEquipShape { amount: 1 }
+        )
+    )));
+}
+
+#[test]
 fn classifies_capitalized_quoted_ability_and_typed_lifecycle_reminders() {
     let mana = lex_line("It has \"{T}: Add {G}.\"", 0).unwrap();
     assert_eq!(
@@ -139,11 +174,7 @@ fn classifies_capitalized_quoted_ability_and_typed_lifecycle_reminders() {
 
 #[test]
 fn quoted_inner_gain_does_not_replace_the_outer_have_verb() {
-    let have = lex_line(
-        "They have \"When this token dies, you gain 1 life.\"",
-        0,
-    )
-    .unwrap();
+    let have = lex_line("They have \"When this token dies, you gain 1 life.\"", 0).unwrap();
     let gain = lex_line("They gain haste.", 0).unwrap();
 
     assert!(!token_ability_sentence_uses_gain_verb(&have));

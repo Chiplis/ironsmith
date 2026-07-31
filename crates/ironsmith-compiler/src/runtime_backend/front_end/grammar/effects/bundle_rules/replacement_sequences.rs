@@ -253,9 +253,7 @@ pub(crate) fn parse_spell_cast_this_way_tax_tokens(
     })
 }
 
-fn each_player_hand_exile_play_permission<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<PlayerFilter> {
+fn each_player_hand_exile_play_permission<'a>(input: &mut LexStream<'a>) -> WResult<PlayerFilter> {
     let players = alt((
         primitives::phrase(&["each", "opponent"]).value(PlayerFilter::Opponent),
         primitives::phrase(&["each", "player"]).value(PlayerFilter::Any),
@@ -269,11 +267,8 @@ fn each_player_hand_exile_play_permission<'a>(
     Ok(players)
 }
 
-fn each_land_played_this_way_enters_tapped<'a>(
-    input: &mut LexStream<'a>,
-) -> WResult<()> {
-    primitives::phrase(&["each", "land", "played", "this", "way", "enters"])
-        .parse_next(input)?;
+fn each_land_played_this_way_enters_tapped<'a>(input: &mut LexStream<'a>) -> WResult<()> {
+    primitives::phrase(&["each", "land", "played", "this", "way", "enters"]).parse_next(input)?;
     opt(primitives::phrase(&["the", "battlefield"])).parse_next(input)?;
     primitives::kw("tapped").void().parse_next(input)
 }

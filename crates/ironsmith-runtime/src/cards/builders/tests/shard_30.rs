@@ -16,7 +16,7 @@ pub(super) fn dynamic_card_aggregates_keep_their_bound_player_scopes() {
     assert_eq!(
         compiled_card("Consuming Aberration"),
         [
-            "This creature's power and toughness are each equal to the number of cards in your opponents' graveyards.",
+            "Consuming Aberration's power and toughness are each equal to the number of cards in your opponents' graveyards.",
             "Whenever you cast a spell, each opponent reveals cards from the top of their library until they reveal a land card, then puts those cards into their graveyard.",
         ]
         .join("\n")

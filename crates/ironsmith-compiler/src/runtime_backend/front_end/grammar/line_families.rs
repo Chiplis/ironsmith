@@ -69,8 +69,23 @@ pub(crate) fn parse_max_speed_body(tokens: &[OwnedLexToken]) -> Option<MaxSpeedB
 }
 
 pub(crate) fn parse_visible_line_tokens(tokens: &[OwnedLexToken]) -> &[OwnedLexToken] {
-    let mut input = LexStream::new(tokens);
-    visible_keyword_tokens(&mut input).unwrap_or(tokens)
+    let mut inside_double_quotes = false;
+    let mut inside_single_quotes = false;
+
+    for (index, token) in tokens.iter().enumerate() {
+        match token.kind {
+            TokenKind::Quote => inside_double_quotes = !inside_double_quotes,
+            TokenKind::Apostrophe => inside_single_quotes = !inside_single_quotes,
+            TokenKind::LParen | TokenKind::Period
+                if !inside_double_quotes && !inside_single_quotes =>
+            {
+                return &tokens[..index];
+            }
+            _ => {}
+        }
+    }
+
+    tokens
 }
 
 pub(crate) fn parse_max_speed_trigger_split(
@@ -197,21 +212,6 @@ pub(crate) fn parse_remove_counter_prevention_then_trigger(
         prevention,
         trigger_tokens,
     })
-}
-
-fn visible_keyword_tokens<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {
-    repeat_till(
-        0..,
-        any.void(),
-        peek(alt((
-            primitives::token_kind(TokenKind::LParen).void(),
-            primitives::token_kind(TokenKind::Period).void(),
-            eof.void(),
-        ))),
-    )
-    .map(|((), ())| ())
-    .take()
-    .parse_next(input)
 }
 
 fn visible_max_speed_tokens<'a>(input: &mut LexStream<'a>) -> WResult<&'a [OwnedLexToken]> {

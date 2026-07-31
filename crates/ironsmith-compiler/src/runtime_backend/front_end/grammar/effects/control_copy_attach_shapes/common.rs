@@ -151,10 +151,11 @@ pub(crate) fn is_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
 }
 
 pub(crate) fn is_plural_tagged_object_reference(tokens: &[OwnedLexToken]) -> bool {
+    let tokens = trim_lexed_commas(tokens);
     permission_shapes::exact_tokens_any(
-        trim_lexed_commas(tokens),
+        tokens,
         &[&["them"], &["those", "cards"], &["the", "exiled", "cards"]],
-    )
+    ) || primitives::parse_prefix(tokens, primitives::kw("those").void()).is_some()
 }
 
 pub(crate) fn starts_with_all_or_each(tokens: &[OwnedLexToken]) -> bool {

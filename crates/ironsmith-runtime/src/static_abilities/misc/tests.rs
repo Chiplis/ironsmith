@@ -2107,6 +2107,22 @@ fn enters_counters_render_for_each_other_spell_cast_this_turn() {
 }
 
 #[test]
+fn enters_counters_render_singular_revealed_card_for_each_basis() {
+    let mut revealed = ObjectFilter::default();
+    revealed.tagged_constraints.push(TaggedObjectConstraint {
+        tag: TagKey::from("__public_revealed"),
+        relation: TaggedOpbjectRelation::IsTaggedObject,
+    });
+    let count = Value::Count(revealed).with_surface_hint(ValueSurfaceHint::ForEach);
+    let ability = EntersWithCounters::new(CounterType::PlusOnePlusOne, count);
+
+    assert_eq!(
+        ability.display(),
+        "Enters the battlefield with a +1/+1 counter on it for each card revealed this way"
+    );
+}
+
+#[test]
 fn enters_counters_preserve_authored_additional_surface_hint() {
     let count = Value::Fixed(1).with_surface_hint(ValueSurfaceHint::AdditionalEntryCounter);
     let ability = EntersWithCounters::new(CounterType::PlusOnePlusOne, count);

@@ -1797,10 +1797,16 @@ pub(super) fn battle_for_bretagard_chapters_create_and_copy_distinct_named_token
     );
 
     resolve_next_chapter(&mut game, &mut trigger_queue, battle_id, &mut dm);
-    assert_eq!(count_controlled_named_tokens(&game, alice, "Human"), 1);
+    assert_eq!(
+        count_controlled_named_tokens(&game, alice, "Human Warrior"),
+        1
+    );
 
     resolve_next_chapter(&mut game, &mut trigger_queue, battle_id, &mut dm);
-    assert_eq!(count_controlled_named_tokens(&game, alice, "Elf"), 1);
+    assert_eq!(
+        count_controlled_named_tokens(&game, alice, "Elf Warrior"),
+        1
+    );
 
     let treasure = CardDefinitionBuilder::new(CardId::from_raw(72_930), "Treasure")
         .token()
@@ -1818,12 +1824,12 @@ pub(super) fn battle_for_bretagard_chapters_create_and_copy_distinct_named_token
     resolve_next_chapter(&mut game, &mut trigger_queue, battle_id, &mut dm);
 
     assert_eq!(
-        count_controlled_named_tokens(&game, alice, "Human"),
+        count_controlled_named_tokens(&game, alice, "Human Warrior"),
         2,
         "chapter III should copy the Human token chosen from chapter I"
     );
     assert_eq!(
-        count_controlled_named_tokens(&game, alice, "Elf"),
+        count_controlled_named_tokens(&game, alice, "Elf Warrior"),
         2,
         "chapter III should copy the Elf token chosen from chapter II"
     );

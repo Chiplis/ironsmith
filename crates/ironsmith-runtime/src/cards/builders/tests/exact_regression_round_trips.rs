@@ -39,7 +39,7 @@ fn welcome_to_the_fold_reuses_one_target_across_both_toughness_thresholds() {
     assert_eq!(
         canonical_compiled_lines(&definition),
         vec![
-            "Gain control of target creature if its toughness is 2 or less. If this spell's madness cost was paid, instead gain control of that creature if its toughness is X or less",
+            "Gain control of target creature if its toughness is 2 or less. If this spell's madness cost was paid, instead gain control of that creature if its toughness is X or less.",
             "Madness {X}{U}{U}",
         ],
         "{definition:#?}"
@@ -58,12 +58,15 @@ fn overload_reuses_one_target_across_both_mana_value_thresholds() {
         canonical_compiled_lines(&definition),
         vec![
             "Kicker {2}",
-            "Destroy target artifact if its mana value is 2 or less. If this spell was kicked, destroy that artifact if its mana value is 5 or less instead",
+            "Destroy target artifact if its mana value is 2 or less. If this spell was kicked, destroy that artifact if its mana value is 5 or less instead.",
         ],
         "{definition:#?}"
     );
     let debug = format!("{definition:#?}");
-    assert_eq!(debug.matches("TargetOnlyEffect").count(), 1, "{debug}");
+    // Both threshold branches retain their own target-only wrapper, but they
+    // deliberately share the same logical target tag.
+    assert!(debug.contains("destroyed_0"), "{debug}");
+    assert!(!debug.contains("destroyed_1"), "{debug}");
     assert!(debug.contains("SelfReplacementBranch"), "{debug}");
     assert!(debug.contains("ManaValueOf"), "{debug}");
 }
@@ -158,5 +161,113 @@ fn gutter_grime_keeps_one_creator_bound_token_cda() {
     assert!(
         !debug.contains("SetBasePowerToughnessEffect"),
         "the creator-bound CDA must not also lower to an X/X fallback: {debug}"
+    );
+}
+
+// Byte-exact oracle round trips for cards whose former tests pinned internal
+// AST shapes / pre-merge render lines. The round trip is the durable contract:
+// it fixes the decompiled text against real oracle, while the intermediate
+// representation stays free to change.
+#[test]
+fn commander_liara_portyr_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Commander Liara Portyr",
+        "Whenever you attack, spells you cast from exile this turn cost {X} less to cast, where X is the number of players being attacked. Exile the top X cards of your library. Until end of turn, you may cast spells from among those exiled cards.",
+    );
+}
+
+#[test]
+fn communal_brewing_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Communal Brewing",
+        "When this enchantment enters, any number of target opponents each draw a card. Put an ingredient counter on this enchantment, then put an ingredient counter on it for each card drawn this way.\nWhenever you cast a creature spell, that creature enters with X additional +1/+1 counters on it, where X is the number of ingredient counters on this enchantment.",
+    );
+}
+
+#[test]
+fn dina_essence_brewer_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Dina, Essence Brewer",
+        "Whenever you sacrifice a creature, draw a card. This ability triggers only once each turn.\n{2}, {T}, Sacrifice another creature: You gain X life and put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power.",
+    );
+}
+
+#[test]
+fn forge_boss_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Forge Boss",
+        "Whenever you sacrifice one or more other creatures, this creature deals 2 damage to each opponent. This ability triggers only once each turn.",
+    );
+}
+
+#[test]
+fn irresistible_prey_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Irresistible Prey",
+        "Target creature must be blocked this turn if able.\nDraw a card.",
+    );
+}
+
+#[test]
+fn kang_prime_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Kang Prime",
+        "Flying\nWhenever Kang Prime enters or attacks, exile cards from the top of your library until you exile a nonland card. Put two time counters on that card. If it doesn't have suspend, it gains suspend.",
+    );
+}
+
+#[test]
+fn lucid_dreams_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Lucid Dreams",
+        "Draw X cards, where X is the number of card types among cards in your graveyard.",
+    );
+}
+
+#[test]
+fn maskwood_nexus_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Maskwood Nexus",
+        "Creatures you control are every creature type. The same is true for creature spells you control and creature cards you own that aren't on the battlefield.\n{3}, {T}: Create a 2/2 blue Shapeshifter creature token with changeling.",
+    );
+}
+
+#[test]
+fn rakdos_the_muscle_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Rakdos, the Muscle",
+        "Flying, trample\nWhenever you sacrifice another creature, exile cards equal to its mana value from the top of target player's library. You may play those cards until your next end step, and mana of any type can be spent to cast them.\nSacrifice another creature: Rakdos gains indestructible until end of turn. Tap it. Activate only once each turn.",
+    );
+}
+
+#[test]
+fn sigarda_s_splendor_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Sigarda's Splendor",
+        "As this enchantment enters, note your life total.\nAt the beginning of your upkeep, draw a card if your life total is greater than or equal to the last noted life total for this enchantment. Then note your life total.\nWhenever you cast a white spell, you gain 1 life.",
+    );
+}
+
+#[test]
+fn soul_partition_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Soul Partition",
+        "Exile target nonland permanent. For as long as that card remains exiled, its owner may play it. A spell cast by an opponent this way costs {2} more to cast.",
+    );
+}
+
+#[test]
+fn well_of_lost_dreams_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Well of Lost Dreams",
+        "Whenever you gain life, you may pay {X}, where X is less than or equal to the amount of life you gained. If you do, draw X cards.",
+    );
+}
+
+#[test]
+fn wonderscape_sage_round_trips_to_oracle() {
+    assert_exact_round_trip(
+        "Wonderscape Sage",
+        "Flying\n{T}, Return a land you control to its owner's hand: Draw a card. Then discard a card unless that land had a nonbasic land type.",
     );
 }

@@ -3531,8 +3531,14 @@ pub(super) fn rewrite_restriction_support_preserves_text_only_attack_conditions(
         didnt_attack_ability.timing,
         crate::ability::ActivationTiming::OncePerTurn
     );
+    let authored_restrictions = didnt_attack_ability
+        .additional_restrictions
+        .iter()
+        .filter(|restriction| !restriction.starts_with("__ironsmith_"))
+        .cloned()
+        .collect::<Vec<_>>();
     assert_eq!(
-        didnt_attack_ability.additional_restrictions,
+        authored_restrictions,
         vec!["activate only if it didn't attack this turn".to_string()]
     );
     assert!(
@@ -3604,8 +3610,7 @@ pub(super) fn rewrite_zone_counter_helpers_parse_for_each_spells_youve_cast_this
     let debug = format!("{parsed:?}");
 
     assert!(debug.contains("PutCounters"), "{debug}");
-    assert!(debug.contains("TurnHistoryCount"), "{debug}");
-    assert!(debug.contains("SpellsCast"), "{debug}");
+    assert!(debug.contains("SpellsCastThisTurn"), "{debug}");
 }
 
 #[test]

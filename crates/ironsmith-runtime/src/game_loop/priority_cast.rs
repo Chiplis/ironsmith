@@ -1200,8 +1200,10 @@ pub(super) fn apply_splice_response(
 /// staged CR 601 transaction as an ordinary priority cast.
 ///
 /// Returning `Ok(None)` means the decision maker surfaced an interactive
-/// prompt or the completed proposal could not be committed; in both cases the
-/// game is restored to the point immediately before the proposal.
+/// prompt or cancelled the proposal; in either case the game is restored to
+/// the point immediately before the proposal. Internal transaction failures
+/// remain errors so callers cannot mistake an incomplete CR 601 transaction
+/// for a player cancellation.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn cast_spell_from_resolving_effect(
     game: &mut GameState,
@@ -1267,10 +1269,7 @@ pub(crate) fn cast_spell_from_resolving_effect(
         Ok(progress) => progress,
         Err(error) => {
             state.rollback_action(game);
-            if matches!(
-                error,
-                GameLoopError::ActionCancelled(_) | GameLoopError::InvalidState(_)
-            ) {
+            if matches!(error, GameLoopError::ActionCancelled(_)) {
                 return Ok(None);
             }
             return Err(error);
@@ -1295,10 +1294,7 @@ pub(crate) fn cast_spell_from_resolving_effect(
                     Ok(progress) => progress,
                     Err(error) => {
                         state.rollback_action(game);
-                        if matches!(
-                            error,
-                            GameLoopError::ActionCancelled(_) | GameLoopError::InvalidState(_)
-                        ) {
+                        if matches!(error, GameLoopError::ActionCancelled(_)) {
                             return Ok(None);
                         }
                         return Err(error);

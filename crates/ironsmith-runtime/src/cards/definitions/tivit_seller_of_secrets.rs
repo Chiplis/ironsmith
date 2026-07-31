@@ -192,7 +192,20 @@ mod tests {
     fn test_tivit_has_four_abilities() {
         // Flying, ward, the triggered ability, and the separate voting static ability.
         let def = tivit_seller_of_secrets();
-        assert_eq!(def.abilities.len(), 4);
+        assert_eq!(
+            def.abilities
+                .iter()
+                .filter(|ability| {
+                    !matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == crate::static_abilities::StaticAbilityId::SourceLineKeywordGroup
+                    )
+                })
+                .count(),
+            4
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -411,7 +424,20 @@ mod tests {
 
         // Verify the object has the abilities
         let obj = game.object(tivit_id).unwrap();
-        assert_eq!(obj.abilities.len(), 4);
+        assert_eq!(
+            obj.abilities
+                .iter()
+                .filter(|ability| {
+                    !matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id()
+                                == crate::static_abilities::StaticAbilityId::SourceLineKeywordGroup
+                    )
+                })
+                .count(),
+            4
+        );
     }
 
     #[cfg(ironsmith_runtime_parser_tests)]

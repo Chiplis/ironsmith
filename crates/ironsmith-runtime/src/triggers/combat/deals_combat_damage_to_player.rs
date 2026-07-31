@@ -8,6 +8,7 @@ use crate::filter::PlayerFilterExt;
 use crate::target::{ObjectFilter, PlayerFilter};
 use crate::triggers::TriggerEvent;
 use crate::triggers::matcher_trait::{SimultaneousTriggerKey, TriggerContext, TriggerMatcher};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DealsCombatDamageToPlayerTrigger {
@@ -91,8 +92,8 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         if !self.one_or_more {
             return None;
         }
-        let damage = event.downcast::<DamageEvent>()?;
-        Some(SimultaneousTriggerKey::DamageTarget(damage.target))
+        event.downcast::<DamageEvent>()?;
+        Some(SimultaneousTriggerKey::DamageBatch)
     }
 
     fn display(&self) -> String {
@@ -138,6 +139,31 @@ impl TriggerMatcher for DealsCombatDamageToPlayerTrigger {
         };
         let subject = with_indefinite_article(surface_filter.description());
         format!("Whenever {} deals combat damage to {}", subject, player)
+    }
+
+    fn event_value_amount(&self, event: &TriggerEvent, ctx: &TriggerContext) -> Option<i32> {
+        if !self.one_or_more || !self.matches(event, ctx) {
+            return None;
+        }
+        let damage = event.downcast::<DamageEvent>()?;
+        let DamageTarget::Player(current_player) = damage.target else {
+            return None;
+        };
+
+        let mut damaged_players = HashSet::new();
+        damaged_players.insert(current_player);
+        for (source, player) in ctx.game.combat_damage_player_batch_hits() {
+            if !self.player.matches_player(*player, &ctx.filter_ctx) {
+                continue;
+            }
+            let Some(source_obj) = ctx.game.object(*source) else {
+                continue;
+            };
+            if self.filter.matches(source_obj, &ctx.filter_ctx, ctx.game) {
+                damaged_players.insert(*player);
+            }
+        }
+        i32::try_from(damaged_players.len()).ok()
     }
 }
 
@@ -242,6 +268,42 @@ mod tests {
             crate::provenance::ProvNodeId::default(),
         );
         assert!(!trigger.matches(&second_event, &ctx));
+    }
+
+    #[test]
+    fn test_one_or_more_groups_the_damage_batch_and_counts_distinct_damaged_players() {
+        let mut game = GameState::new(
+            vec![
+                "Alice".to_string(),
+                "Bob".to_string(),
+                "Charlie".to_string(),
+            ],
+            20,
+        );
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        let charlie = PlayerId::from_index(2);
+        let source_id = ObjectId::from_raw(100);
+        let attacker_one = create_creature(&mut game, "A", alice);
+        let attacker_two = create_creature(&mut game, "B", alice);
+        let trigger = DealsCombatDamageToPlayerTrigger::one_or_more(
+            ObjectFilter::creature(),
+            PlayerFilter::Opponent,
+        );
+
+        game.record_combat_damage_player_batch_hit(attacker_one, bob);
+        let ctx = TriggerContext::for_source(source_id, alice, &game);
+        let event = TriggerEvent::new_with_provenance(
+            combat_damage(attacker_two, charlie),
+            crate::provenance::ProvNodeId::default(),
+        );
+
+        assert!(trigger.matches(&event, &ctx));
+        assert_eq!(
+            trigger.simultaneous_trigger_key(&event),
+            Some(SimultaneousTriggerKey::DamageBatch)
+        );
+        assert_eq!(trigger.event_value_amount(&event, &ctx), Some(2));
     }
 
     #[test]

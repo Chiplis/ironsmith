@@ -87,9 +87,10 @@ fn captures_match_count_equal_to_objects_sacrificed_this_way() {
         Some(ironsmith_core::PriorEffectAction::Sacrificed)
     );
     assert!(
-        query.filter.as_ref().is_some_and(|filter| {
-            filter.subtypes.contains(&crate::types::Subtype::Goblin)
-        }),
+        query
+            .filter
+            .as_ref()
+            .is_some_and(|filter| { filter.subtypes.contains(&crate::types::Subtype::Goblin) }),
         "{query:#?}"
     );
     assert!(permission_shapes::exact_tokens(

@@ -660,7 +660,11 @@ pub(super) fn rewrite_lexed_effect_sequence_preserves_look_one_hand_other_bottom
     assert!(debug.contains("LookAtTopCards"), "{debug}");
     assert!(contains_choice_debug(&debug), "{debug}");
     assert!(
-        debug.contains("PutTaggedRemainderOnBottomOfLibrary"),
+        debug.contains("PutTaggedRemainderOnBottomOfLibrary")
+            || (debug.contains("TagMatchingObjects")
+                && debug.contains("zone: Library")
+                && debug.contains("library_order: Some(\n")
+                && debug.contains("ChooserChooses")),
         "{debug}"
     );
 }

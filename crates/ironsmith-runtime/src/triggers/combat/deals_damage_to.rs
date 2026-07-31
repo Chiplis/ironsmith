@@ -168,7 +168,37 @@ fn damage_target_description(filter: &ObjectFilter) -> String {
     match description.as_str() {
         "artifact" | "enchantment" => format!("an {description}"),
         "creature" | "land" | "permanent" | "planeswalker" | "battle" => format!("a {description}"),
-        description => description.to_string(),
+        description => {
+            // A qualified singular noun still takes its indefinite article
+            // ("a non-Wall creature"); phrases that already open with a
+            // determiner or quantifier are left alone.
+            const DETERMINED: &[&str] = &[
+                "a ", "an ", "the ", "each ", "all ", "any ", "target ", "another ", "that ",
+                "this ", "one ", "two ", "three ", "up to ", "x ",
+            ];
+            const SINGULAR_NOUNS: &[&str] = &[
+                " creature",
+                " land",
+                " permanent",
+                " planeswalker",
+                " battle",
+                " artifact",
+                " enchantment",
+            ];
+            let lower = description.to_ascii_lowercase();
+            if !DETERMINED.iter().any(|prefix| lower.starts_with(prefix))
+                && SINGULAR_NOUNS.iter().any(|noun| lower.ends_with(noun))
+            {
+                let article = if lower.starts_with(['a', 'e', 'i', 'o', 'u']) {
+                    "an"
+                } else {
+                    "a"
+                };
+                format!("{article} {description}")
+            } else {
+                description.to_string()
+            }
+        }
     }
 }
 

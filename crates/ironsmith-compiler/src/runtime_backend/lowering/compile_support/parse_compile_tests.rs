@@ -53,6 +53,87 @@ fn find_cant_effect(effects: &[Effect]) -> Option<&crate::effects::CantEffect> {
 }
 
 #[test]
+fn clash_then_return_if_you_win_lowers_to_a_clash_observed_local_rewrite() {
+    let definition = CardDefinitionBuilder::new(CardId::new(), "Clash Return Probe")
+        .card_types(vec![CardType::Instant])
+        .parse_text(
+            "Clash with an opponent, then return target creature to its owner's hand. If you win, you may put that creature on top of its owner's library instead.",
+        )
+        .expect("clash replacement text should compile");
+    let effects = definition
+        .spell_effect
+        .as_ref()
+        .expect("the instant should have a spell effect")
+        .flattened_default_effects();
+    let [clash_with_id, conditional] = effects else {
+        panic!("expected an observed clash and one conditional rewrite: {effects:#?}");
+    };
+
+    let clash_with_id = clash_with_id
+        .as_with_id()
+        .expect("the clash result should have an observation id");
+    assert!(
+        clash_with_id
+            .effect
+            .downcast_ref::<crate::effects::ClashEffect>()
+            .is_some(),
+        "only the clash should be observed: {clash_with_id:#?}"
+    );
+
+    let conditional = conditional
+        .downcast_ref::<crate::effects::IfEffect>()
+        .expect("the win branch should be an effect-result conditional");
+    assert_eq!(conditional.condition, clash_with_id.id);
+    assert_eq!(
+        conditional.predicate,
+        crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+    );
+    let [rewrite] = conditional.then.as_slice() else {
+        panic!("the clash-win branch should contain one rewrite: {conditional:#?}");
+    };
+    let rewrite = rewrite
+        .downcast_ref::<crate::effects::LocalRewriteEffect>()
+        .expect("the library choice should rewrite the return event locally");
+    let tagged_return = rewrite
+        .effect
+        .as_tagged()
+        .expect("the returned creature should retain its result tag");
+    assert!(
+        tagged_return
+            .effect
+            .downcast_ref::<crate::effects::ReturnToHandEffect>()
+            .is_some(),
+        "the local action should remain the original return: {rewrite:#?}"
+    );
+    let [replacement] = rewrite.zone_replacements.as_slice() else {
+        panic!("the local return should have one zone replacement: {rewrite:#?}");
+    };
+    assert_eq!(
+        replacement.target,
+        ChooseSpec::Tagged(tagged_return.tag.clone())
+    );
+    assert_eq!(replacement.from_zone, Some(crate::zone::Zone::Battlefield));
+    assert_eq!(replacement.to_zone, Some(crate::zone::Zone::Hand));
+    assert_eq!(replacement.replacement_zone, crate::zone::Zone::Library);
+    assert!(replacement.optional);
+
+    let [loss_return] = conditional.else_.as_slice() else {
+        panic!("the clash-loss branch should keep the ordinary return: {conditional:#?}");
+    };
+    let loss_return = loss_return
+        .as_tagged()
+        .expect("the clash-loss return should retain the same result tag");
+    assert_eq!(loss_return.tag, tagged_return.tag);
+    assert!(
+        loss_return
+            .effect
+            .downcast_ref::<crate::effects::ReturnToHandEffect>()
+            .is_some(),
+        "losing the clash should perform the ordinary return: {conditional:#?}"
+    );
+}
+
+#[test]
 fn lowering_preserves_past_control_lki_mode_and_authored_noun() {
     let mut filter = ObjectFilter::default();
     filter.set_demonstrative_antecedent_surface(Some(
@@ -649,27 +730,91 @@ fn compile_each_object_power_damage_iterates_sources_and_keeps_prior_target() {
 
     assert!(
         compact.contains("TaggedEffect")
-            && compact.contains("tag:TagKey(\"targeted_0\")")
+            && compact.contains("tag:TagKey(\"targeted_0\",)")
             && compact.contains("TargetOnlyEffect"),
         "the single chosen permanent should remain tagged outside the source loop: {debug}"
     );
     assert!(
         compact.contains("ForEachObject")
-            && compact.contains("GreaterThanOrEqual(4)")
-            && compact.contains("controller:Some(You)"),
+            && compact.contains("GreaterThanOrEqual(4")
+            && compact.contains("controller:Some(You"),
         "the qualifying controlled creatures should be the iterated set: {debug}"
     );
     assert!(
         compact.contains("ExecuteWithSourceEffect{source:Iterated")
-            && compact.contains("PowerOf(Iterated)"),
+            && compact.contains("PowerOf(Iterated"),
         "each iterand should be both the damage source and its own power value: {debug}"
     );
     assert!(
-        compact.contains("target:Object(ObjectFilter")
+        compact.contains("target:SurfaceHinted{spec:Object(ObjectFilter")
             && compact.contains("\"targeted_0\"")
             && !compact.contains("target:Iterated"),
         "damage should stay bound to the one prior target, not the source iterand: {debug}"
     );
+}
+
+#[test]
+fn cross_sentence_conditional_fights_expose_two_stable_target_slots() {
+    for (name, text) in [
+        (
+            "Blizzard Brawl Probe",
+            "Choose target creature you control and target creature you don't control. \
+             If you control three or more snow permanents, the creature you control gets +1/+0 \
+             and gains indestructible until end of turn. Then those creatures fight each other.",
+        ),
+        (
+            "Ancient Animus Probe",
+            "Put a +1/+1 counter on target creature you control if it's legendary. \
+             Then it fights target creature an opponent controls.",
+        ),
+    ] {
+        let definition = CardDefinitionBuilder::new(CardId::new(), name)
+            .card_types(vec![CardType::Instant])
+            .parse_text(text)
+            .expect("conditional fight text should compile");
+        let effects = definition
+            .spell_effect
+            .as_ref()
+            .expect("conditional fight should be a spell effect")
+            .flattened_default_effects();
+        let [first_target, second_target, conditional, fight] = effects else {
+            panic!("expected two targets, conditional action, and fight for {name}: {effects:#?}");
+        };
+
+        let target_tag = |effect: &Effect| {
+            let mut effect = effect;
+            loop {
+                let tagged = effect
+                    .as_tagged()
+                    .expect("each target declaration should be tagged");
+                if tagged
+                    .effect
+                    .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                    .is_some()
+                {
+                    break tagged.tag.clone();
+                }
+                effect = &tagged.effect;
+            }
+        };
+        let first_tag = target_tag(first_target);
+        let second_tag = target_tag(second_target);
+        assert_ne!(first_tag, second_tag, "{name}: {effects:#?}");
+
+        let conditional = conditional
+            .downcast_ref::<crate::effects::ConditionalEffect>()
+            .expect("third effect should be conditional");
+        assert!(conditional.if_false.is_empty(), "{name}: {conditional:#?}");
+        let fight = fight
+            .downcast_ref::<crate::effects::FightEffect>()
+            .expect("fourth effect should be a fight");
+        assert!(
+            matches!(&fight.creature1, ChooseSpec::Tagged(tag) if tag == &first_tag || tag == &second_tag)
+                && matches!(&fight.creature2, ChooseSpec::Tagged(tag) if tag == &first_tag || tag == &second_tag)
+                && fight.creature1 != fight.creature2,
+            "{name}: {fight:#?}"
+        );
+    }
 }
 
 #[test]
@@ -1674,10 +1819,104 @@ fn resolve_target_spec_preserves_source_surface_when_collapsing_to_source() {
 }
 
 #[test]
-fn source_sacrifice_preserves_its_authored_permanent_noun() {
-    let surface = crate::target::SourceReferenceSurface::ThisPermanentType(
-        "this permanent".to_string(),
+fn predicate_tag_detection_descends_through_surface_hinted_characteristic_specs() {
+    let referenced_target = ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+        crate::target::ChooseSpecSurfaceHint::SourceReference(
+            crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+        ),
     );
+    let predicate = PredicateAst::ValueComparison {
+        left: Value::ManaValueOf(Box::new(referenced_target)),
+        operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+        right: Value::Fixed(2),
+    };
+
+    assert!(
+        predicate_references_tag(&predicate, IT_TAG),
+        "surface metadata must not hide the target reference used to hoist a trailing condition"
+    );
+}
+
+fn target_mana_value_threshold_branch(target_span: TextSpan, threshold: i32) -> EffectAst {
+    EffectAst::TrailingIf {
+        predicate: PredicateAst::ValueComparison {
+            left: Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+            right: Value::Fixed(threshold),
+        },
+        effects: vec![EffectAst::subject_verb_destroy(TargetAst::Object(
+            ObjectFilter::artifact(),
+            Some(target_span),
+            None,
+        ))],
+    }
+}
+
+fn threshold_self_replacement(
+    default_target_span: TextSpan,
+    replacement_target_span: TextSpan,
+) -> EffectAst {
+    EffectAst::SelfReplacement {
+        predicate: PredicateAst::ThisSpellWasKicked,
+        if_true: vec![target_mana_value_threshold_branch(
+            replacement_target_span,
+            5,
+        )],
+        if_false: vec![target_mana_value_threshold_branch(default_target_span, 2)],
+        attach_to_previous_ability: false,
+    }
+}
+
+#[test]
+fn self_replacement_reuses_a_copied_target_declaration_across_threshold_branches() {
+    let shared_span = TextSpan {
+        line: 0,
+        start: 8,
+        end: 23,
+    };
+    let lowered = compile_statement_effects_with_imports(
+        &[threshold_self_replacement(shared_span, shared_span)],
+        &ReferenceImports::default(),
+    )
+    .expect("shared-target self-replacement should lower");
+    let debug = format!("{lowered:#?}");
+
+    assert_eq!(debug.matches("TargetOnlyEffect").count(), 1, "{debug}");
+    assert_eq!(debug.matches("ManaValueOf").count(), 2, "{debug}");
+    assert!(!debug.contains("spec: Source"), "{debug}");
+}
+
+#[test]
+fn self_replacement_keeps_separately_authored_equal_target_filters_distinct() {
+    let lowered = compile_statement_effects_with_imports(
+        &[threshold_self_replacement(
+            TextSpan {
+                line: 0,
+                start: 8,
+                end: 23,
+            },
+            TextSpan {
+                line: 1,
+                start: 35,
+                end: 50,
+            },
+        )],
+        &ReferenceImports::default(),
+    )
+    .expect("distinct-target self-replacement should lower");
+    let debug = format!("{lowered:#?}");
+
+    assert_eq!(
+        debug.matches("TargetOnlyEffect").count(),
+        2,
+        "equal target filters from distinct declaration spans must not be merged: {debug}"
+    );
+}
+
+#[test]
+fn source_sacrifice_preserves_its_authored_permanent_noun() {
+    let surface =
+        crate::target::SourceReferenceSurface::ThisPermanentType("this permanent".to_string());
     let sacrifice = EffectAst::subject_verb_sacrifice(
         PlayerAst::You,
         ObjectFilter::source().with_source_surface(surface.clone()),
@@ -2036,6 +2275,34 @@ fn optional_exile_from_another_players_hand_does_not_use_controller_hand_imprint
             .downcast_ref::<crate::effects::ExileEffect>()
             .is_some()),
         "optional branch must exile the chosen card: {may:#?}"
+    );
+}
+
+#[test]
+fn optional_self_prompting_free_cast_does_not_gain_a_second_may_prompt() {
+    let ast = EffectAst::MayByPlayer {
+        player: PlayerAst::You,
+        effects: vec![
+            EffectAst::may_cast_matching_spell_without_paying_mana_cost_from_zone_owner(
+                PlayerAst::You,
+                PlayerAst::That,
+                ObjectFilter::nonland().in_zone(Zone::Hand),
+                Zone::Hand,
+            ),
+        ],
+    };
+
+    let (compiled, _) = compile_effect(&ast, &mut EffectLoweringContext::new())
+        .expect("optional free cast should lower");
+    assert!(
+        matches!(
+            compiled.as_slice(),
+            [effect]
+                if effect
+                    .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+                    .is_some()
+        ),
+        "the cast effect owns the one optional choice and must not be nested in MayEffect: {compiled:#?}"
     );
 }
 

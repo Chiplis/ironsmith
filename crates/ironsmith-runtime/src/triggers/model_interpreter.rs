@@ -782,6 +782,10 @@ impl super::Trigger {
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer { source, player } => {
                 Self::deals_combat_damage_to_player(source, player)
             }
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                source,
+                player,
+            } => Self::deals_combat_damage_to_player_one_or_more(source, player),
             ironsmith_core::DelayedTriggerSpec::IsDealtDamage(target) => {
                 Self::is_dealt_damage(target)
             }

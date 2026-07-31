@@ -513,23 +513,6 @@ fn describe_coordinated_damage(effects: &[Effect]) -> Option<String> {
     }
 
     if let [(_, second_damage)] = views.as_slice()
-        && first_damage.amount.unhinted() == second_damage.amount.unhinted()
-        && first_damage.target.unhinted() != second_damage.target.unhinted()
-    {
-        let first_clause = describe_effect(&effects[0])
-            .trim()
-            .trim_end_matches('.')
-            .to_string();
-        let second_target = describe_damage_target(&second_damage.target);
-        if let Some((first_head, where_x)) = first_clause.rsplit_once(", where X is ") {
-            return Some(format!(
-                "{first_head} and {second_target}, where X is {where_x}"
-            ));
-        }
-        return Some(format!("{first_clause} and {second_target}"));
-    }
-
-    if let [(_, second_damage)] = views.as_slice()
         && let Value::HalfRoundedDown(rounded_inner) = second_damage.amount.unhinted()
         && let Value::Add(left, right) = rounded_inner.unhinted()
     {
@@ -1885,6 +1868,11 @@ fn describe_typed_coordinated_clause_fallback(effects: &[Effect]) -> Option<Stri
             return None;
         }
     }
+    if parts.first().is_some_and(|part| part == "Tap this source")
+        && parts.iter().skip(1).any(|part| part.contains(" from it"))
+    {
+        parts[0] = "Tap it".to_string();
+    }
     if let Some(first) = parts.first_mut() {
         *first = capitalize_first(&normalize_imperative_you_clause(first));
     }
@@ -2139,6 +2127,9 @@ pub(super) fn describe_typed_coordinated_result_branch(effects: &[Effect]) -> Op
     if let Some(compact) = describe_source_sacrifice_then_coordinated_suffix(&sequence.effects) {
         return Some(compact);
     }
+    if let Some(compact) = describe_coordinated_copy_all_stack_sets(&sequence.effects) {
+        return Some(compact);
+    }
     if let [first, second] = sequence.effects.as_slice()
         && let Some(compact) = describe_joint_subject_pair(first, second)
     {
@@ -2350,6 +2341,20 @@ fn describe_comma_then_sequence(sequence: &crate::effects::SequenceEffect) -> Op
     if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
         return None;
     }
+    if let [look_effect, exile_effect, grant_effect] = sequence.effects.as_slice()
+        && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(compact) =
+            describe_look_at_top_exile_face_down_then_play_while_exiled(look, exile, grant)
+    {
+        // A comma-then source can still carry an authored sentence boundary:
+        // the look and exile are the procedure, while the persistent play
+        // permission begins a new sentence. Prove the exact shared tag and
+        // duration before restoring that surface so helper identities never
+        // leak into rules text.
+        return Some(compact);
+    }
     if let Some(compact) = describe_lki_control_choose_attach_sequence(&sequence.effects) {
         return Some(compact);
     }
@@ -2408,6 +2413,13 @@ fn describe_comma_then_sequence(sequence: &crate::effects::SequenceEffect) -> Op
                 lowercase_first(token_text)
             ));
         }
+    }
+    // A comma-then boundary is at least as strong a license for the
+    // ", then" join as a plain coordinated one, so the mill/selection
+    // compactor applies here too ("Mill four cards, then you may return a
+    // permanent card from among them to your hand").
+    if let Some(compact) = describe_coordinated_mill_then_collection_selection(&sequence.effects) {
+        return Some(compact);
     }
     // Give the flat, tag-aware clause compactor a chance to consume the
     // complete authored sequence before splitting off its final action.
@@ -2527,6 +2539,22 @@ pub(super) fn describe_coordinated_sequence(
         return Some(compact);
     }
     if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let Some(compact) =
+            describe_coordinated_mill_then_collection_selection(&sequence.effects)
+    {
+        return Some(compact);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+        && let [look_effect, exile_effect, grant_effect] = sequence.effects.as_slice()
+        && let Some(look) = look_effect.downcast_ref::<crate::effects::LookAtTopCardsEffect>()
+        && let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
+        && let Some(grant) = grant_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()
+        && let Some(compact) =
+            describe_look_at_top_exile_face_down_then_play_while_exiled(look, exile, grant)
+    {
+        return Some(compact);
+    }
+    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
         && let Some(compact) = describe_independent_explicit_may_coordination(&sequence.effects)
     {
         return Some(compact);
@@ -2574,12 +2602,6 @@ pub(super) fn describe_coordinated_sequence(
     {
         return Some(compact);
     }
-    if sequence.surface == ironsmith_core::SequenceSurface::Coordinated
-        && let Some(compact) =
-            describe_coordinated_mill_then_collection_selection(&sequence.effects)
-    {
-        return Some(compact);
-    }
     if let Some(compact) = describe_target_player_source_control_transfer(&sequence.effects) {
         return Some(compact);
     }
@@ -2587,6 +2609,11 @@ pub(super) fn describe_coordinated_sequence(
         return Some(compact);
     }
     if let Some(compact) = describe_declared_target_joint_draw(&sequence.effects) {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        describe_target_player_cast_and_creatures_attack_restrictions(&sequence.effects)
+    {
         return Some(compact);
     }
     if let Some(compact) = describe_coordinated_target_player_cast_and_activation_restrictions(
@@ -3649,7 +3676,7 @@ pub(super) fn describe_declared_target_player_draw_fanout(effects: &[Effect]) ->
 
 /// "You and that player each <verb> ..." for adjacent same-payload effects
 /// whose only difference is the affected player (you + a back-reference).
-fn describe_must_block_then_control_block_assignments(
+pub(in crate::compiled_text) fn describe_must_block_then_control_block_assignments(
     first: &Effect,
     second: &Effect,
 ) -> Option<String> {
@@ -3666,8 +3693,14 @@ fn describe_must_block_then_control_block_assignments(
     if !filter.card_types.contains(&CardType::Creature) {
         return None;
     }
-    let (target, plural_target) = describe_apply_continuous_target(must_block);
+    let (mut target, plural_target) = describe_apply_continuous_target(must_block);
     describe_attack_block_if_able_apply_continuous(must_block, &target)?;
+    // An object filter controlled by `Opponent` ranges across every opponent;
+    // "an opponent" would incorrectly narrow the multiplayer set to one
+    // player once the subject is pluralized.
+    if plural_target && filter.controller == Some(PlayerFilter::Opponent) {
+        target = target.replace("an opponent controls", "your opponents control");
+    }
 
     Some(format!(
         "{} {} this turn if able, and you choose how those creatures block",
@@ -4155,6 +4188,16 @@ pub(crate) fn describe_false_only_conditional(
     )
 }
 
+fn battlefield_move_verb_and_destination(
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> (&'static str, &'static str) {
+    match move_to_zone.verb_surface {
+        ironsmith_core::MoveToZoneVerbSurface::Put => ("put", "onto"),
+        ironsmith_core::MoveToZoneVerbSurface::Canonical
+        | ironsmith_core::MoveToZoneVerbSurface::Return => ("return", "to"),
+    }
+}
+
 pub(crate) fn describe_exile_then_return(
     tagged: &crate::effects::TaggedEffect,
     move_back: &crate::effects::MoveToZoneEffect,
@@ -4174,8 +4217,15 @@ pub(crate) fn describe_exile_then_return(
     if exile_move.zone != Zone::Exile {
         return None;
     }
-    let target = describe_choose_spec(&exile_move.target);
-    let return_object = if choose_spec_allows_multiple(&exile_move.target) {
+    let target_is_source = matches!(exile_move.target.unhinted(), ChooseSpec::Source);
+    let target = if target_is_source {
+        describe_source_motion_reference(&exile_move.target, "this")
+    } else {
+        describe_choose_spec(&exile_move.target)
+    };
+    let return_object = if target_is_source {
+        "it"
+    } else if choose_spec_allows_multiple(&exile_move.target) {
         "those cards"
     } else {
         "that card"
@@ -4187,6 +4237,11 @@ pub(crate) fn describe_exile_then_return(
     };
     let tapped_suffix = if move_back.enters_tapped {
         " tapped"
+    } else {
+        ""
+    };
+    let face_down_suffix = if move_back.enters_face_down {
+        " face down"
     } else {
         ""
     };
@@ -4203,8 +4258,9 @@ pub(crate) fn describe_exile_then_return(
     // A fused entry counter ("with a +1/+1 counter on it") lowers onto the
     // return move; keep its authored surface.
     let counters_suffix = describe_entry_counters_suffix(&move_back.enters_with_counters);
+    let (move_verb, destination) = battlefield_move_verb_and_destination(move_back);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{transformed_suffix}{controller_suffix}{counters_suffix}"
+        "Exile {target}, then {move_verb} {return_object} {destination} the battlefield{tapped_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}{counters_suffix}"
     ))
 }
 
@@ -4240,6 +4296,11 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
     } else {
         ""
     };
+    let face_down_suffix = if move_back.enters_face_down {
+        " face down"
+    } else {
+        ""
+    };
     let transformed_suffix = if move_back.enters_transformed {
         " transformed"
     } else {
@@ -4253,8 +4314,9 @@ pub(super) fn describe_source_exile_then_return(first: &Effect, second: &Effect)
     // A fused entry counter ("with a +1/+1 counter on it") lowers onto the
     // return move; keep its authored surface.
     let counters_suffix = describe_entry_counters_suffix(&move_back.enters_with_counters);
+    let (move_verb, destination) = battlefield_move_verb_and_destination(move_back);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix}{transformed_suffix}{controller_suffix}{counters_suffix}"
+        "Exile {target}, then {move_verb} {return_object} {destination} the battlefield{tapped_suffix}{face_down_suffix}{transformed_suffix}{controller_suffix}{counters_suffix}"
     ))
 }
 
@@ -4263,6 +4325,11 @@ pub(super) fn describe_source_motion_reference(spec: &ChooseSpec, named_fallback
         return named_fallback.to_string();
     };
     match surface {
+        crate::target::SourceReferenceSurface::ThisPermanentType(text)
+            if text.eq_ignore_ascii_case("it") =>
+        {
+            text.clone()
+        }
         crate::target::SourceReferenceSurface::ThisPermanentType(text)
             if matches!(
                 text.to_ascii_lowercase().as_str(),
@@ -4357,8 +4424,16 @@ pub(super) fn describe_exile_then_return_transformed_with_counter(
         crate::effects::BattlefieldController::You => " under your control",
     };
     let counter_text = describe_put_counter_phrase(&put_counter.amount, put_counter.counter_type);
+    // This legacy four-effect shape historically implied `put` when no
+    // explicit verb surface was retained. Preserve that canonical fallback,
+    // while still honoring an explicitly authored `return`.
+    let (move_verb, destination) = match move_back.verb_surface {
+        ironsmith_core::MoveToZoneVerbSurface::Return => ("return", "to"),
+        ironsmith_core::MoveToZoneVerbSurface::Canonical
+        | ironsmith_core::MoveToZoneVerbSurface::Put => ("put", "onto"),
+    };
     Some(format!(
-        "Exile {target}, then put {return_object} onto the battlefield{tapped_suffix} transformed{controller_suffix} with {counter_text} on it"
+        "Exile {target}, then {move_verb} {return_object} {destination} the battlefield{tapped_suffix} transformed{controller_suffix} with {counter_text} on it"
     ))
 }
 
@@ -4416,8 +4491,9 @@ pub(crate) fn describe_exile_return_then_transform(
         crate::effects::BattlefieldController::Owner => owner_control_suffix,
         crate::effects::BattlefieldController::You => " under your control",
     };
+    let (move_verb, destination) = battlefield_move_verb_and_destination(move_back);
     Some(format!(
-        "Exile {target}, then return {return_object} to the battlefield{tapped_suffix} transformed{controller_suffix}"
+        "Exile {target}, then {move_verb} {return_object} {destination} the battlefield{tapped_suffix} transformed{controller_suffix}"
     ))
 }
 
@@ -4503,8 +4579,10 @@ pub(crate) fn describe_return_then_transform(
         crate::effects::BattlefieldController::Owner => owner_control_suffix,
         crate::effects::BattlefieldController::You => " under your control",
     };
+    let (move_verb, destination) = battlefield_move_verb_and_destination(move_back);
     Some(format!(
-        "Return {return_object} to the battlefield{tapped_suffix} transformed{controller_suffix}"
+        "{} {return_object} {destination} the battlefield{tapped_suffix} transformed{controller_suffix}",
+        capitalize_first(move_verb)
     ))
 }
 
@@ -5073,6 +5151,10 @@ pub(super) fn rewrite_cost_bound_x_phrases(
 ) -> String {
     if let Some(x_phrase) = removed_counters_this_way_x_phrase(costs) {
         effects = effects.replace("where X is X", &format!("where X is {x_phrase}"));
+        effects = effects.replace(
+            "where X is the number of counters removed this way",
+            &format!("where X is {x_phrase}"),
+        );
         effects = effects.replace(
             "deals X damage to",
             &format!("deals damage equal to {x_phrase} to"),
@@ -5755,6 +5837,13 @@ pub(crate) fn describe_static_ability_with_subject(
                 .trim_end_matches('.'),
         )
         .replace("if this spell was kicked", "if it was kicked");
+        if let Some(choice) = body.strip_prefix("you choose ") {
+            body = format!("choose {choice}");
+        }
+        // A hand-selection filter may preserve its leading preposition while
+        // the reveal bundle supplies the quantified `of`. Collapse that seam
+        // before adapting the as-enters body's hand-zone wording.
+        body = body.replace("reveal any number of of ", "reveal any number of ");
         if (body.starts_with("you may reveal ")
             || body.starts_with("you reveal ")
             || body.starts_with("reveal "))
@@ -5880,6 +5969,26 @@ pub(crate) fn describe_static_ability_with_subject(
         } else if let Some(subject_kind) = subject.strip_prefix("this ")
             && let Some(tail) = rest.strip_prefix(subject_kind)
             && tail.starts_with(' ')
+        {
+            format!("{capitalized_subject}{tail}")
+        } else if !subject.starts_with("this ")
+            && let Some(tail) = [
+                "artifact",
+                "battle",
+                "card",
+                "creature",
+                "enchantment",
+                "land",
+                "permanent",
+                "planeswalker",
+                "source",
+                "spell",
+            ]
+            .into_iter()
+            .find_map(|generic| {
+                rest.strip_prefix(generic)
+                    .filter(|tail| tail.starts_with(' ') || tail.starts_with("'s"))
+            })
         {
             format!("{capitalized_subject}{tail}")
         } else {
@@ -6658,6 +6767,17 @@ fn describe_optional_source_cant_attack_then_vigilance_rule(
     let mut normalized_attacker = attacker.clone();
     normalized_attacker.source_surface = None;
     normalized_attacker.union_surface = Default::default();
+    normalized_attacker.set_explicit_card_type_noun(None);
+    if normalized_attacker.source
+        && normalized_attacker.zone == Some(Zone::Battlefield)
+        && normalized_attacker.card_types.as_slice() == [CardType::Creature]
+    {
+        // The named-source parser retains the authored permanent domain on a
+        // source identity filter. For this structural recognizer, that
+        // redundant creature/battlefield scope is equivalent to `Source`.
+        normalized_attacker.zone = None;
+        normalized_attacker.card_types.clear();
+    }
     if !may
         .decider
         .as_ref()
@@ -6686,6 +6806,7 @@ fn describe_optional_source_cant_attack_then_vigilance_rule(
     };
     let mut normalized_filter = filter.clone();
     normalized_filter.union_surface = Default::default();
+    normalized_filter.set_explicit_card_type_noun(None);
     let expected_filter = ObjectFilter::creature().controlled_by(PlayerFilter::You);
     let Some(crate::continuous::Modification::AddAbility(ability)) = &vigilance.modification else {
         return None;
@@ -6720,9 +6841,85 @@ mod optional_source_cant_attack_then_vigilance_rule_tests {
 
         assert_eq!(
             crate::compiled_text::compiled_text_lines(&definition),
-            vec![oracle.to_string()]
+            vec![oracle.to_string()],
+            "{definition:#?}"
         );
     }
+}
+
+/// ETB trigger bodies use `it` for ordinary references to the object that
+/// entered. A continuous-effect duration, however, can explicitly refer to
+/// the source rather than the affected object. Preserve that distinction
+/// before the broader resolution-subject rewrite turns `this source` into
+/// `it`, which would otherwise make the duration read as though it were tied
+/// to the most recently mentioned target or exiled card.
+fn preserve_source_bound_reference_phrases(line: String, source_subject: &str) -> String {
+    line.replace("this source remains", &format!("{source_subject} remains"))
+        .replace(
+            "this permanent leaves the battlefield",
+            &format!("{source_subject} leaves the battlefield"),
+        )
+        .replace(
+            "this source leaves the battlefield",
+            &format!("{source_subject} leaves the battlefield"),
+        )
+        .replace(
+            "you control this source",
+            &format!("you control {source_subject}"),
+        )
+        .replace(
+            "this source exiles another card",
+            &format!("{source_subject} exiles another card"),
+        )
+        .replace(
+            "Attach this source to",
+            &format!("Attach {source_subject} to"),
+        )
+        .replace(
+            "attach this source to",
+            &format!("attach {source_subject} to"),
+        )
+}
+
+#[cfg(test)]
+#[test]
+fn source_bound_durations_survive_etb_resolution_pronoun_rewriting() {
+    let animation = preserve_source_bound_reference_phrases(
+        "target artifact becomes an artifact creature for as long as this source remains on the battlefield"
+            .to_string(),
+        "this creature",
+    );
+    assert_eq!(
+        normalize_ability_self_reference_surface(&animation, "it"),
+        "target artifact becomes an artifact creature for as long as this creature remains on the battlefield"
+    );
+
+    let permission = preserve_source_bound_reference_phrases(
+        "you may play that card for as long as you control this source".to_string(),
+        "this creature",
+    );
+    assert_eq!(
+        normalize_ability_self_reference_surface(&permission, "it"),
+        "you may play that card for as long as you control this creature"
+    );
+
+    let linked_exile = preserve_source_bound_reference_phrases(
+        "Exile target creature until this permanent leaves the battlefield".to_string(),
+        "this enchantment",
+    );
+    assert_eq!(
+        normalize_ability_self_reference_surface(&linked_exile, "it"),
+        "Exile target creature until this enchantment leaves the battlefield"
+    );
+
+    let attachment = preserve_source_bound_reference_phrases(
+        "Cloak the top card of your library, then Attach this source to it".to_string(),
+        "this Equipment",
+    );
+    assert_eq!(
+        normalize_ability_self_reference_surface(&attachment, "it"),
+        "Cloak the top card of your library, then Attach this Equipment to it"
+    );
 }
 
 pub(super) fn describe_triggered_resolution_text(
@@ -6851,6 +7048,14 @@ pub(super) fn describe_triggered_resolution_text(
     effects = rewrite_damaged_player_reference_for_damage_trigger(triggered, effects);
     effects = rewrite_triggering_artifact_reference_for_tap_or_ability_trigger(triggered, effects);
     effects = rewrite_source_no_counter_resolution_surface(effects, subject);
+    let source_bound_subject = triggered
+        .trigger
+        .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
+        .filter(|zone_change| zone_change.this_object)
+        .and_then(|zone_change| zone_change.this_object_surface.as_ref())
+        .map(crate::target::SourceReferenceSurface::display_text)
+        .unwrap_or_else(|| subject.to_string());
+    effects = preserve_source_bound_reference_phrases(effects, &source_bound_subject);
     let resolution_subject = triggered
         .trigger
         .downcast_ref::<crate::triggers::zone_changes::ZoneChangeTrigger>()
@@ -6865,7 +7070,50 @@ pub(super) fn describe_triggered_resolution_text(
     effects = rewrite_self_attack_damage_subject(triggered, effects, subject);
     effects = normalize_ability_self_reference_surface(&effects, resolution_subject);
     effects = split_sacrifice_then_lose_life_resolution(effects);
+    if let Some(participant) = relative_power_block_destroy_participant(triggered) {
+        effects = effects
+            .replace("destroy that creature", &format!("destroy {participant}"))
+            .replace("Destroy that creature", &format!("Destroy {participant}"));
+    }
     Some(effects)
+}
+
+/// A relative-power block trigger binds two distinct event participants.
+/// Preserve the destroy filter's exact tagged identity in the surface instead
+/// of collapsing both directions to the ambiguous "that creature."
+fn relative_power_block_destroy_participant(
+    triggered: &crate::ability::TriggeredAbility,
+) -> Option<&'static str> {
+    let (tag, participant) = if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::BecomesBlockedByObjectWithLesserPowerTrigger>()
+        .is_some()
+    {
+        ("blocking", "the blocking creature")
+    } else if triggered
+        .trigger
+        .downcast_ref::<crate::triggers::BlocksObjectWithLesserPowerTrigger>()
+        .is_some()
+    {
+        ("blocked", "the attacking creature")
+    } else {
+        return None;
+    };
+    let destroy = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::DestroyEffect>())?;
+    let filter = match destroy.spec.base() {
+        ChooseSpec::Object(filter) | ChooseSpec::All(filter) => filter,
+        _ => return None,
+    };
+    let [constraint] = filter.tagged_constraints.as_slice() else {
+        return None;
+    };
+    (constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && constraint.tag.as_str() == tag)
+        .then_some(participant)
 }
 
 fn rewrite_exact_attacked_player_references(
@@ -7037,6 +7285,8 @@ fn rewrite_each_upkeep_iterated_player_choice_surface(mut text: String) -> Strin
     for (imperative, finite_subject) in [
         ("Untap ", "That player untaps "),
         ("untap ", "that player untaps "),
+        ("Tap ", "That player taps "),
+        ("tap ", "that player taps "),
     ] {
         rewrite_single_choice(&mut text, imperative, finite_subject, "");
     }
@@ -7064,23 +7314,24 @@ pub(super) fn rewrite_each_upkeep_active_player_reference(
     text = rewrite_each_upkeep_iterated_player_choice_surface(text);
 
     // The damage grammar binds both "that player" and the object pronoun
-    // "them" to the upkeep participant. Once lowered, that participant is
-    // still explicit in the typed damage target even though the pronoun's
-    // surface form is not. In a causative clause whose subject is the source
-    // permanent, render that bound participant as the object pronoun.
-    let damages_upkeep_player =
-        triggered
-            .effects
-            .flattened_default_effects()
-            .iter()
-            .any(|effect| {
-                effect
-                    .downcast_ref::<crate::effects::DealDamageEffect>()
-                    .is_some_and(|damage| {
-                        damage.target == ChooseSpec::Player(PlayerFilter::IteratedPlayer)
-                    })
-            });
-    if damages_upkeep_player {
+    // "them" to the upkeep participant. The typed target alone cannot
+    // distinguish those authored surfaces, so only use the object pronoun
+    // when lowering preserved that explicit presentation hint.
+    let damages_upkeep_player_with_object_pronoun = triggered
+        .effects
+        .flattened_default_effects()
+        .iter()
+        .any(|effect| {
+            effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .is_some_and(|damage| {
+                    damage.target == ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+                        && damage.amount.has_surface_hint(
+                            ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun,
+                        )
+                })
+        });
+    if damages_upkeep_player_with_object_pronoun {
         text = text.replace(" to that player", " to them");
     }
 
@@ -7161,6 +7412,7 @@ pub(super) fn rewrite_each_upkeep_active_player_reference(
     .replace("if that player doesn't", "if they don't")
     .replace("If that player does", "If they do")
     .replace("if that player does", "if they do")
+    .replace(" that player controls", " they control")
 }
 
 /// Replace the generic triggering-object noun with the concrete card type
@@ -8137,8 +8389,11 @@ pub(super) fn describe_triggered_inline_ability(
                 line.push_str(", ");
                 line.push_str(&lowercase_first(only));
             } else {
-                line.push_str(": ");
-                line.push_str(only);
+                // A triggered ability's trigger and instruction are one
+                // sentence in Oracle text. The colon is reserved for costs
+                // and labels, not a generic trigger/effect boundary.
+                line.push_str(", ");
+                line.push_str(&lowercase_first(only));
             }
         } else {
             line.push_str(": ");
@@ -8724,6 +8979,35 @@ pub(super) fn tag_is_exiled_this_way(tag: &TagKey) -> bool {
         || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
 }
 
+/// Return whether a delayed trigger can observe a cast spell, an activated
+/// ability, or both. The copy effect itself stores only a generic triggering
+/// stack-object reference, so its Oracle noun must come from this typed
+/// trigger provenance rather than from the copy effect's fallback surface.
+fn delayed_copy_trigger_stack_object_kinds(trigger: &crate::triggers::Trigger) -> (bool, bool) {
+    if trigger
+        .downcast_ref::<crate::triggers::SpellCastTrigger>()
+        .is_some()
+    {
+        return (true, false);
+    }
+    if trigger
+        .downcast_ref::<crate::triggers::AbilityActivatedTrigger>()
+        .is_some()
+    {
+        return (false, true);
+    }
+    if let Some(or_trigger) = trigger.downcast_ref::<crate::triggers::OrTrigger>() {
+        return or_trigger
+            .triggers
+            .iter()
+            .map(delayed_copy_trigger_stack_object_kinds)
+            .fold((false, false), |(spells, abilities), (spell, ability)| {
+                (spells || spell, abilities || ability)
+            });
+    }
+    (false, false)
+}
+
 pub(super) fn describe_next_spell_delayed_trigger(
     schedule: &crate::effects::ScheduleDelayedTriggerEffect,
     additional: bool,
@@ -8744,7 +9028,8 @@ pub(super) fn describe_next_spell_delayed_trigger(
         .strip_suffix(" this turn")
         .unwrap_or(trigger_action)
         .to_string();
-    let trigger_can_activate_ability = trigger_action.contains("activate ");
+    let (trigger_can_cast_spell, trigger_can_activate_ability) =
+        delayed_copy_trigger_stack_object_kinds(&schedule.trigger);
     let copying_multiple = schedule
         .effects
         .flattened_default_effects()
@@ -8754,12 +9039,17 @@ pub(super) fn describe_next_spell_delayed_trigger(
                 .is_some_and(|copy| copy.count.unhinted() != &Value::Fixed(1))
         });
     let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
+    let copied_object = match (trigger_can_cast_spell, trigger_can_activate_ability) {
+        (true, true) => "spell or ability",
+        (false, true) => "ability",
+        _ => "spell",
+    };
     if let Some(rest) = delayed_text.strip_prefix("copy it") {
-        let copied_object = if trigger_can_activate_ability {
-            "spell or ability"
-        } else {
-            "spell"
-        };
+        delayed_text = format!("copy that {copied_object}{rest}");
+    } else if copied_object != "spell"
+        && !delayed_text.starts_with(&format!("copy that {copied_object}"))
+        && let Some(rest) = delayed_text.strip_prefix("copy that spell")
+    {
         delayed_text = format!("copy that {copied_object}{rest}");
     }
     delayed_text = delayed_text
@@ -8800,8 +9090,12 @@ pub(super) fn describe_next_spell_delayed_trigger(
             );
     }
     if additional {
-        delayed_text =
-            delayed_text.replacen("copy that spell", "copy that spell an additional time", 1);
+        let copied_object_surface = format!("copy that {copied_object}");
+        delayed_text = delayed_text.replacen(
+            &copied_object_surface,
+            &format!("{copied_object_surface} an additional time"),
+            1,
+        );
     }
     Some(format!(
         "When you next {trigger_action} this turn, {delayed_text}"

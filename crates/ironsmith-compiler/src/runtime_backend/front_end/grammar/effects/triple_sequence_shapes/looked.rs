@@ -95,7 +95,12 @@ const FROM_AMONG: &[&[&str]] = &[
     &["from", "among", "the", "milled", "cards"],
     &["from", "among", "them"],
 ];
-const INTO_HAND: &[&[&str]] = &[&["into", "your", "hand"], &["into", "hand"]];
+const INTO_HAND: &[&[&str]] = &[
+    &["into", "your", "hand"],
+    &["into", "hand"],
+    &["to", "your", "hand"],
+    &["to", "hand"],
+];
 const BATTLEFIELD_TAPPED: &[&[&str]] = &[
     &["onto", "the", "battlefield", "tapped"],
     &["onto", "battlefield", "tapped"],
@@ -619,6 +624,18 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn parses_return_from_among_them_to_hand_surface() {
+        let tokens = lex_line("a permanent card from among them to your hand", 0).unwrap();
+        let shape = parse_looked_move_action_shape(&tokens).expect("return-to-hand move shape");
+
+        assert!(matches!(
+            shape.destination,
+            LookedMoveDestinationShape::Hand
+        ));
+        assert_eq!(tokens[shape.filter.start].as_word(), Some("permanent"));
     }
 
     #[test]

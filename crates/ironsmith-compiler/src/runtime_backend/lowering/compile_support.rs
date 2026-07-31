@@ -32,7 +32,8 @@ use crate::zone::Zone;
 
 use super::ast::{EmblemAbilityAst, EmblemDescriptionAst};
 use super::effect_ast_traversal::{
-    assert_effect_ast_variant_coverage, for_each_nested_effects, for_each_nested_effects_mut,
+    TerminalResultProducer, assert_effect_ast_variant_coverage, for_each_nested_effects,
+    for_each_nested_effects_mut, terminal_result_producer,
 };
 use super::effect_pipeline::{
     EffectPreludeTag, PreparedEffectsForLowering, PreparedPredicateForLowering,
@@ -1066,8 +1067,9 @@ pub(crate) fn compile_annotated_effects_with_context(
         ctx.reserve_object_result_tag(None);
         if let Some(id) = current.assigned_effect_id {
             if !effect_list.is_empty() {
-                assign_effect_result_id(
+                control_flow_handlers::assign_effect_result_id_for_ast(
                     &mut effect_list,
+                    &current.effect,
                     id,
                     "missing final effect while assigning event id (annotated effect)",
                 )?;

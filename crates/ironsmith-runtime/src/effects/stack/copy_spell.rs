@@ -188,7 +188,11 @@ impl EffectExecutor for CopySpellEffect {
         // while ordinary target/object specs still resolve to one object.
         // Snapshot the IDs before creating copies so a broad stack filter can
         // never recursively include the copies it just created.
-        let target_ids = resolve_objects_for_effect(game, ctx, &self.target)?;
+        let target_ids = match resolve_objects_for_effect(game, ctx, &self.target) {
+            Ok(targets) => targets,
+            Err(ExecutionError::InvalidTarget) => return Ok(EffectOutcome::target_invalid()),
+            Err(error) => return Err(error),
+        };
         if target_ids.is_empty() {
             return Err(ExecutionError::InvalidTarget);
         }

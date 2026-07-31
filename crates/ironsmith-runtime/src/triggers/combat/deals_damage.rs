@@ -588,6 +588,8 @@ mod tests {
         let red_planeswalker_id =
             game.create_object_from_card(&red_planeswalker, alice, Zone::Battlefield);
         let green_instant_id = game.create_object_from_card(&green_instant, alice, Zone::Stack);
+        game.push_to_stack(crate::game_state::StackEntry::new(red_instant_id, alice));
+        game.push_to_stack(crate::game_state::StackEntry::new(green_instant_id, alice));
 
         let mut instant_or_sorcery = ObjectFilter::default()
             .with_type(CardType::Instant)

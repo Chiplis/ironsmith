@@ -5,7 +5,7 @@ use crate::runtime_backend::front_end::lexer::lex_line;
 fn parses_may_subject_verb_and_pump_subject_shapes() {
     let may = lex_line("You may draw a card.", 0).unwrap();
     assert_eq!(
-        parse_leading_may_clause_shape(&may).unwrap().actor,
+        parse_leading_may_shape(&may).unwrap().actor,
         LeadingMayActorShape::Player(PlayerAst::You)
     );
     let clause = lex_line("Target creature gets +1/+1 until end of turn.", 0).unwrap();

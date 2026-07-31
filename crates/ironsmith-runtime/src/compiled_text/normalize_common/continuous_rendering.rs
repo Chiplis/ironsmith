@@ -8,19 +8,24 @@ pub(crate) fn title_case_card_name_fragment(name: &str) -> String {
     name.split_whitespace()
         .enumerate()
         .map(|(idx, word)| {
-            if idx > 0 && small_words.contains(&word) {
-                word.to_string()
-            } else {
-                let mut chars = word.chars();
-                match chars.next() {
-                    Some(first) => {
-                        let mut out = first.to_ascii_uppercase().to_string();
-                        out.push_str(chars.as_str());
-                        out
+            word.split('-')
+                .enumerate()
+                .map(|(part_idx, part)| {
+                    if (idx > 0 || part_idx > 0) && small_words.contains(&part) {
+                        return part.to_string();
                     }
-                    None => String::new(),
-                }
-            }
+                    let mut chars = part.chars();
+                    match chars.next() {
+                        Some(first) => {
+                            let mut out = first.to_ascii_uppercase().to_string();
+                            out.push_str(chars.as_str());
+                            out
+                        }
+                        None => String::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("-")
         })
         .collect::<Vec<_>>()
         .join(" ")
@@ -564,6 +569,14 @@ fn describe_unhinted_matching_count_pt_for_each(
 mod unhinted_count_pt_for_each_tests {
     use super::*;
 
+    #[test]
+    fn card_name_title_case_preserves_small_hyphen_words() {
+        assert_eq!(
+            title_case_card_name_fragment("eight-and-a-half-tails"),
+            "Eight-and-a-Half-Tails"
+        );
+    }
+
     fn graveyard_permanent_count() -> Value {
         Value::Count(
             ObjectFilter::permanent_card()
@@ -997,7 +1010,10 @@ pub(crate) fn describe_apply_continuous_target(
             plural = true;
         }
         Some(ironsmith_core::SetQuantifierSurface::Those) => {
-            if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
+            if target.to_ascii_lowercase().starts_with("those ") {
+                target = capitalize_first(&target);
+                plural = true;
+            } else if let crate::continuous::EffectTarget::Filter(filter) = &effect.target {
                 target = format!("Those {}", describe_those_continuous_noun(filter));
                 plural = true;
             } else if plural {
@@ -1307,6 +1323,26 @@ pub(crate) fn describe_apply_continuous_clauses(
     describe_apply_continuous_clauses_with_self_subject(effect, plural_target, self_subject)
 }
 
+/// Strip the self-referential subject off a rule-restriction surface so it can be
+/// rendered as a predicate on the object the effect already names. Returns `None`
+/// unless the surface is exactly "<self pronoun> <prohibition>", which is the only
+/// shape where dropping the subject cannot change who the restriction binds.
+fn restriction_predicate_about_self(display: &str) -> Option<String> {
+    let trimmed = display.trim().trim_end_matches(['.', '!', '?']);
+    let rest = ["it ", "they "]
+        .iter()
+        .find_map(|pronoun| trimmed.strip_prefix(*pronoun))?;
+    // Anything beyond a bare prohibition (a nested trigger, a second sentence, an
+    // activated ability) still belongs in quotes as an ability the object gains.
+    if rest.contains(". ") || rest.contains(':') || rest.contains('"') {
+        return None;
+    }
+    ["can't ", "cannot ", "doesn't ", "does not "]
+        .iter()
+        .any(|prohibition| rest.starts_with(*prohibition))
+        .then(|| rest.to_string())
+}
+
 pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
     effect: &crate::effects::ApplyContinuousEffect,
     plural_target: bool,
@@ -1526,9 +1562,10 @@ pub(crate) fn describe_apply_continuous_clauses_with_self_subject(
                     describe_inline_ability_with_self_subject(inline, self_subject)
                 ));
             } else if ability.id() == crate::static_abilities::StaticAbilityId::RuleRestriction {
-                // A modeled rule restriction is a complete nested rules
-                // sentence, rather than an inline keyword phrase. When
-                // another object gains it, retain the quoted ability surface.
+                // An explicit AddAbility restriction is a complete nested rules
+                // sentence. Ordinary inline restrictions use CantEffect instead;
+                // collapsing this branch would erase the fact that the object is
+                // gaining a quoted ability.
                 let mut ability_text = capitalize_first(ability.display().trim());
                 if !ability_text.ends_with('.')
                     && !ability_text.ends_with('!')
@@ -2859,7 +2896,10 @@ pub(crate) fn describe_apply_continuous_effect(
             PlayerFilter::LowestLifeTied => "the player with the lowest life total".to_string(),
             _ => describe_player_filter(player),
         };
-        let mut text = format!("{controller_text} gains control of {target}");
+        let mut text = format!(
+            "{} gains control of {target}",
+            capitalize_first(&controller_text)
+        );
         if matches!(player, PlayerFilter::LowestLifeTied)
             && matches!(effect.until, Until::Forever)
             && matches!(effect.target, crate::continuous::EffectTarget::Source)
@@ -3078,6 +3118,15 @@ pub(crate) fn apply_continuous_text_with_tail(
     };
     if tail == "until end of turn" && quoted_granted_ability {
         return format!("Until end of turn, {}", lowercase_first(&text));
+    }
+    // The clause builder closes a quoted granted ability with the sentence-final
+    // period inside the quote. That is only oracle's shape when the sentence ends
+    // there; once a duration follows ("gains \"{T}: Draw a card\" for as long as
+    // ..."), the period has to come back out, otherwise the text reads as two
+    // sentences and clause-level comparison splits it at the stray period.
+    if text.ends_with(".\"") {
+        text.truncate(text.len() - 2);
+        text.push('"');
     }
     text.push(' ');
     text.push_str(&tail);
@@ -4402,10 +4451,35 @@ pub(crate) fn describe_restriction(restriction: &crate::effect::Restriction) -> 
                 planeswalker_controller
             )
         }
-        crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(generic_mana) => {
+        crate::effect::Restriction::AttackPlayer { attackers, player } => {
+            let attacker_text = if attackers == &crate::target::ObjectFilter::creature() {
+                "creatures".to_string()
+            } else if attackers
+                == &crate::target::ObjectFilter::creature()
+                    .controlled_by(PlayerFilter::IteratedPlayer)
+            {
+                "creatures that player controls".to_string()
+            } else {
+                pluralize_relative_object_phrase(&attackers.description())
+            };
             format!(
-                "Creatures can't attack you or planeswalkers you control unless their controller pays {{{generic_mana}}} for each of those creatures"
+                "{attacker_text} can't attack {}",
+                describe_player_filter(player)
             )
+        }
+        crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
+            generic_mana,
+            covers_planeswalkers,
+        ) => {
+            if *covers_planeswalkers {
+                format!(
+                    "Creatures can't attack you or planeswalkers you control unless their controller pays {{{generic_mana}}} for each of those creatures"
+                )
+            } else {
+                format!(
+                    "Creatures can't attack you unless their controller pays {{{generic_mana}}} for each of those creatures"
+                )
+            }
         }
         crate::effect::Restriction::AttackAlone(filter) => {
             format!("{} can't attack alone", filter.description())

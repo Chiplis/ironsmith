@@ -1287,6 +1287,7 @@
             other => describe_choose_spec(other),
         };
         let plural_subject = target.starts_with("all ") || target.starts_with("those ");
+        let target = capitalize_first(&target);
         if let Some(subtype) = become_basic.fixed_subtype {
             let subtype_text = if plural_subject {
                 pluralize_noun_phrase(&subtype.to_string())
@@ -1749,7 +1750,7 @@
                 return format!("Copy this spell for each {each_filter}");
             }
         }
-        let mut target_text = describe_choose_spec(&copy_spell.target);
+        let mut target_text = describe_stack_object_copy_target(&copy_spell.target);
         target_text = target_text.replace(
             "target instant and sorcery",
             "target instant or sorcery spell",
@@ -2218,7 +2219,7 @@
     {
         return format!(
             "For each color among {}, add one mana of that color{}",
-            describe_for_each_filter(&add_colors_among.filter),
+            pluralize_noun_phrase(&describe_for_each_filter(&add_colors_among.filter)),
             describe_add_mana_destination_suffix(&add_colors_among.player)
         );
     }
@@ -2227,7 +2228,7 @@
     {
         return format!(
             "Add one mana of any color among {}{}",
-            describe_for_each_filter(&add_any_color_among.filter),
+            pluralize_noun_phrase(&describe_for_each_filter(&add_any_color_among.filter)),
             describe_add_mana_destination_suffix(&add_any_color_among.player)
         );
     }
@@ -3057,7 +3058,28 @@
             let subject = if schedule.target_tag.as_ref().is_some_and(|tag| {
                 tag.as_str() == ironsmith_core::ATTACKING_GROUP_TAG
             }) {
-                "either of those creatures"
+                "either of those creatures".to_string()
+            } else if schedule
+                .target_tag
+                .as_ref()
+                .is_some_and(|tag| tag.as_str().contains("targeted"))
+                && !trigger_lower.contains(" deals combat damage to a player")
+                && let Some(filter) = &schedule.target_filter
+            {
+                // A synthetic inline target declaration keeps its authored
+                // subject ("Whenever target creature deals combat damage to
+                // a non-Wall creature..."). A player-recipient watch instead
+                // back-references a target declared by an earlier effect
+                // ("Whenever that creature deals combat damage to a player").
+                let mut base = filter.clone();
+                base.tagged_constraints.retain(|constraint| {
+                    !(constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                        && schedule.target_tag.as_ref().is_some_and(|tag| {
+                            constraint.tag.as_str() == tag.as_str()
+                                || constraint.tag.as_str() == "__it__"
+                        }))
+                });
+                format!("target {}", strip_leading_article(&base.description()))
             } else {
                 schedule
                     .target_filter
@@ -3070,6 +3092,7 @@
                         }
                     })
                     .unwrap_or("that creature")
+                    .to_string()
             };
             let duration = if schedule.until_end_of_combat {
                 " this combat"
@@ -3863,7 +3886,11 @@
         );
     }
     if let Some(exile_top) = effect.downcast_ref::<crate::effects::ExileTopOfLibraryEffect>() {
-        return describe_exile_top_of_library(&exile_top.player, &exile_top.count, false);
+        return describe_exile_top_clause(exile_top, false)
+            .map(|(clause, _)| clause)
+            .unwrap_or_else(|| {
+                describe_exile_top_of_library(&exile_top.player, &exile_top.count, false)
+            });
     }
     if let Some(experience) = effect.downcast_ref::<crate::effects::ExperienceCountersEffect>() {
         let player = describe_player_filter(&experience.player);
@@ -4040,21 +4067,27 @@
             );
         }
         let timing = match grant_play_tagged.duration {
-            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn",
+            crate::effects::GrantPlayTaggedDuration::UntilEndOfTurn => "this turn".to_string(),
             crate::effects::GrantPlayTaggedDuration::UntilYourNextTurnEnd => {
-                "until the end of your next turn"
+                "until the end of your next turn".to_string()
             }
             crate::effects::GrantPlayTaggedDuration::UntilYourNextEndStep => {
-                "until your next end step"
+                "until your next end step".to_string()
             }
             crate::effects::GrantPlayTaggedDuration::UntilSourceExilesAnother => {
-                "until this source exiles another card"
+                "until this source exiles another card".to_string()
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled => {
-                "for as long as it remains exiled"
+                "for as long as it remains exiled".to_string()
             }
             crate::effects::GrantPlayTaggedDuration::ForAsLongAsYouControlSource => {
-                "for as long as you control this source"
+                let source = grant_play_tagged
+                    .surface
+                    .as_ref()
+                    .and_then(|surface| surface.control_source.as_ref())
+                    .map(ironsmith_core::SourceReferenceSurface::display_text)
+                    .unwrap_or_else(|| "this source".to_string());
+                format!("for as long as you control {source}")
             }
         };
         let verb = if grant_play_tagged.allow_land {
@@ -4784,12 +4817,13 @@
             .count
             .has_surface_hint(ValueSurfaceHint::CardsDiscardedThisWay)
         {
-            Some("card discarded this way")
+            describe_create_for_each_count(&repeat.count)
+                .or_else(|| Some("card discarded this way".to_string()))
         } else if repeat
             .count
             .has_surface_hint(ValueSurfaceHint::CardsRevealedThisWay)
         {
-            Some("card revealed this way")
+            Some("card revealed this way".to_string())
         } else {
             None
         };
@@ -4845,6 +4879,10 @@
             if let Some(repeated) = describe_repeated_choose_copy_with_cleanup(repeat) {
                 return format!("{repeated}. Repeat this process once");
             }
+            let repeated = repeated
+                .strip_prefix("you ")
+                .map(normalize_you_verb_phrase)
+                .unwrap_or_else(|| repeated.to_string());
             return format!(
                 "{}. Repeat this process once",
                 capitalize_first(repeated.trim_end_matches('.'))

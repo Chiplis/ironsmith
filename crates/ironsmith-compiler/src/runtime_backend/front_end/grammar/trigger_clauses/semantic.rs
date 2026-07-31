@@ -1919,6 +1919,7 @@ fn try_parse_repeated_intro_attack_union_lexed(tokens: &[OwnedLexToken]) -> Opti
 /// keep their existing routes.
 fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec> {
     const UNION_RIGHT_VERBS: &[&str] = &["sacrifices", "discards", "leaves", "phases"];
+    const UNION_RIGHT_PASSIVE_PREFIX: &[&str] = &["is", "put", "into", "exile"];
     for (idx, token) in tokens.iter().enumerate() {
         if idx == 0 || idx + 1 >= tokens.len() || !token.is_word("or") {
             continue;
@@ -1926,16 +1927,32 @@ fn try_parse_trigger_union_lexed(tokens: &[OwnedLexToken]) -> Option<TriggerSpec
         let left = &tokens[..idx];
         let right = &tokens[idx + 1..];
         let right_words = crate::runtime_backend::token_word_refs(right);
-        if !right_words
-            .first()
-            .is_some_and(|word| UNION_RIGHT_VERBS.contains(word))
+        // Only the exact "is put into exile" passive is unioned here — a
+        // broader "is" gate steals natively paired shapes like
+        // "enters the battlefield or is put into a graveyard".
+        let passive_right = right_words.len() >= UNION_RIGHT_PASSIVE_PREFIX.len()
+            && right_words[..UNION_RIGHT_PASSIVE_PREFIX.len()] == *UNION_RIGHT_PASSIVE_PREFIX;
+        if !passive_right
+            && !right_words
+                .first()
+                .is_some_and(|word| UNION_RIGHT_VERBS.contains(word))
         {
             continue;
         }
         let Ok(left_spec) = parse_trigger_clause_lexed_unstacked(left) else {
             continue;
         };
-        for take in 0..=left.len().min(4) {
+        // A passive right half ("... or is put into exile") shares the whole
+        // subject noun phrase, so try the LONGEST prefix first. An active-verb
+        // right half ("... or discards a permanent card") only needs the bare
+        // subject; longer prefixes there can join two verbs into one lenient
+        // misparse ("sacrifices a discards a permanent card").
+        let takes: Vec<usize> = if passive_right {
+            (0..=left.len().min(4)).rev().collect()
+        } else {
+            (0..=left.len().min(4)).collect()
+        };
+        for take in takes {
             let mut candidate: Vec<OwnedLexToken> = left[..take].to_vec();
             candidate.extend_from_slice(right);
             if let Ok(right_spec) = parse_trigger_clause_lexed_unstacked(&candidate) {
@@ -2057,7 +2074,14 @@ fn parse_trigger_clause_lexed_unstacked(
         }
         if trigger_pattern_accepts(clause_words, SIMPLE_SPELL_ACTIVITY_EXCLUDED_WORD_PATTERN)
             || trigger_pattern_accepts(clause_words, SIMPLE_SPELL_ACTIVITY_EXCLUDED_PHRASE_PATTERN)
+            || clause_words
+                .iter()
+                .any(|word| matches!(*word, "exile" | "graveyard" | "hand"))
         {
+            // Origin-qualified spell activity needs the typed spell-filter
+            // parser below. This older fast path only modeled hand origins
+            // and otherwise collapsed "from exile/graveyard" to an ordinary
+            // stack spell.
             return Ok(None);
         }
 
@@ -5563,6 +5587,20 @@ fn parse_trigger_clause_lexed_unstacked(
                     "unsupported this-prefixed dies trigger subject (clause: '{}')",
                     words.join(" ")
                 )));
+            }
+
+            // Builder-aware preprocessing may restore an authored source name
+            // after the CST boundary has been found. Keep that named source
+            // and the "another" subject as distinct matcher branches: folding
+            // both into one ObjectFilter makes `source` an AND constraint and
+            // silently stops the trigger from seeing every other object.
+            if let Some((source_filter, other_filter)) =
+                parse_source_or_another_trigger_subject_filters(subject_tokens)
+            {
+                return Ok(TriggerSpec::Either(
+                    Box::new(TriggerSpec::Dies(source_filter)),
+                    Box::new(TriggerSpec::Dies(other_filter)),
+                ));
             }
 
             let subject_word_view = ActivationRestrictionCompatWords::new(subject_tokens);

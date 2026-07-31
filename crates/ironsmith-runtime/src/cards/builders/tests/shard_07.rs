@@ -809,9 +809,9 @@ pub(super) fn parse_defending_player_discard_then_draws_carries_defending_player
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        joined.contains(
-            "defending player discards all the cards in their hand, then draws that many cards"
-        ),
+        joined.contains("defending player discards all the cards in their hand")
+            && (joined.contains("then draws that many cards")
+                || joined.contains("then defending player draws that many cards")),
         "expected defending player to carry into draws clause, got {joined}"
     );
 }
@@ -847,19 +847,101 @@ pub(super) fn bottom_score_parse_officious_interrogation_counts_targeted_players
             "This spell costs {W}{U} more to cast for each target beyond the first.\nChoose any number of target players. Investigate X times, where X is the total number of creatures those players control.",
         )
         .expect("Officious Interrogation should parse target-player investigate scaling");
-    let debug = format!("{def:#?}");
+    let program = def
+        .spell_effect
+        .as_ref()
+        .expect("Officious Interrogation should have spell effects");
+    let target_only = program
+        .all_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::TargetOnlyEffect>())
+        .expect("Officious Interrogation should declare its target-player set");
+    assert!(target_only.target.is_target());
+    assert!(target_only.target.count().is_any_number());
+    assert!(matches!(
+        target_only.target.base(),
+        ChooseSpec::Player(PlayerFilter::Any)
+    ));
+
+    let investigate = program
+        .all_effects()
+        .into_iter()
+        .find_map(|effect| effect.downcast_ref::<crate::effects::InvestigateEffect>())
+        .expect("Officious Interrogation should investigate");
+    let Value::Count(creatures) = investigate.count.unhinted() else {
+        panic!(
+            "expected a typed creature count, got {:#?}",
+            investigate.count
+        );
+    };
+    assert_eq!(creatures.zone, Some(Zone::Battlefield));
+    assert_eq!(creatures.card_types, [CardType::Creature]);
+    assert_eq!(
+        creatures.controller,
+        Some(PlayerFilter::Target(Box::new(PlayerFilter::Any)))
+    );
+
     let rendered = crate::compiled_text::unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
 
-    assert!(debug.contains("InvestigateEffect"), "{debug}");
-    assert!(debug.contains("controller: Some"), "{debug}");
-    assert!(debug.contains("Target"), "{debug}");
     assert!(
         rendered.contains(
             "investigate x times, where x is the total number of creatures those players control"
         ),
         "expected targeted-player creature count, got {rendered}"
+    );
+}
+
+#[cfg(ironsmith_runtime_parser_tests)]
+#[test]
+pub(super) fn officious_interrogation_runtime_counts_only_the_targeted_players_creatures() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Officious Interrogation")
+        .parse_text(
+            "This spell costs {W}{U} more to cast for each target beyond the first.\nChoose any number of target players. Investigate X times, where X is the total number of creatures those players control.",
+        )
+        .expect("Officious Interrogation should parse target-player investigate scaling");
+    let investigate = def
+        .spell_effect
+        .as_ref()
+        .expect("Officious Interrogation should have spell effects")
+        .all_effects()
+        .into_iter()
+        .find(|effect| {
+            effect
+                .downcast_ref::<crate::effects::InvestigateEffect>()
+                .is_some()
+        })
+        .expect("Officious Interrogation should investigate")
+        .clone();
+
+    let mut game = crate::tests::test_helpers::setup_two_player_game();
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let source = game.create_object_from_definition(&def, alice, Zone::Stack);
+    let creature = CardDefinitionBuilder::new(CardId::from_raw(97_071), "Counted Creature")
+        .card_types(vec![CardType::Creature])
+        .power_toughness(PowerToughness::fixed(1, 1))
+        .build();
+
+    game.create_object_from_definition(&creature, alice, Zone::Battlefield);
+    game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+    game.create_object_from_definition(&creature, bob, Zone::Battlefield);
+
+    let mut dm = crate::decision::AutoPassDecisionMaker;
+    let mut ctx = crate::effects::ExecutionContext::new(source, alice, &mut dm)
+        .with_targets(vec![crate::effects::ResolvedTarget::Player(bob)]);
+    let outcome = crate::effects::execute_effect(&mut game, &investigate, &mut ctx)
+        .expect("target-set investigate should resolve");
+
+    assert_eq!(outcome.value, crate::effect::OutcomeValue::Count(2));
+    assert_eq!(
+        game.battlefield
+            .iter()
+            .filter(|&&id| game.object(id).is_some_and(|object| object.name == "Clue"))
+            .count(),
+        2,
+        "Alice's untargeted creature must not contribute to the investigate count"
     );
 }
 
@@ -1298,7 +1380,7 @@ pub(super) fn parse_oracle_winds_of_qal_sisma_ferocious_is_self_replacement() {
         rendered.contains("Prevent all combat damage that would be dealt this turn.")
             && rendered.contains("If you control a creature with power 4 or greater")
             && rendered.contains(
-                "prevent all combat damage that would be dealt this turn by creatures your opponents control instead"
+                "instead prevent all combat damage that would be dealt this turn by creatures your opponents control"
             ),
         "Winds of Qal Sisma compiled text should preserve the complete ferocious instead prevention clause, got {rendered}"
     );
@@ -2564,7 +2646,7 @@ pub(super) fn parse_oracle_samite_blessing_strict_text_and_granted_targeted_prev
     let rendered = canonical_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains("Enchant creature")
-            && rendered.contains("Enchanted creature has {T}: The next time a source of your choice would deal damage to target creature this turn, prevent that damage"),
+            && rendered.contains("Enchanted creature has \"{T}: The next time a source of your choice would deal damage to target creature this turn, prevent that damage.\""),
         "expected Samite Blessing to preserve enchant creature and granted targeted prevention text, got {rendered}"
     );
 

@@ -110,13 +110,13 @@ fn eureka_starts_with_controller_and_repeats_until_everyone_declines() {
     let mut game =
         crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
     let source = game.create_object_from_definition(&definition, bob, Zone::Stack);
-    let alice_card =
-        game.create_object_from_definition(&permanent(99_201, "Alice Permanent"), alice, Zone::Hand);
-    let bob_card = game.create_object_from_definition(
-        &permanent(99_202, "Bob Permanent"),
-        bob,
+    let alice_card = game.create_object_from_definition(
+        &permanent(99_201, "Alice Permanent"),
+        alice,
         Zone::Hand,
     );
+    let bob_card =
+        game.create_object_from_definition(&permanent(99_202, "Bob Permanent"), bob, Zone::Hand);
     let bob_spare = game.create_object_from_definition(
         &permanent(99_203, "Bob Spare Permanent"),
         bob,
@@ -164,10 +164,7 @@ fn eureka_starts_with_controller_and_repeats_until_everyone_declines() {
             .expect("the current card object should exist")
             .zone
     };
-    assert_eq!(
-        current_zone(bob_stable),
-        Zone::Battlefield
-    );
+    assert_eq!(current_zone(bob_stable), Zone::Battlefield);
     assert_eq!(
         current_zone(bob_spare_stable),
         Zone::Hand,

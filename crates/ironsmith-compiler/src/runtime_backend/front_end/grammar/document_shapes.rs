@@ -42,6 +42,7 @@ pub(crate) struct NamedOptionChoiceHeader;
 pub(crate) enum NonpermanentStatementSurface {
     Quantified,
     UntilEndOfTurn,
+    ConditionalPriorResult,
     Replacement,
 }
 
@@ -215,6 +216,15 @@ pub(crate) fn parse_nonpermanent_statement_surface(
         Some(NonpermanentStatementSurface::Quantified)
     } else if permission_shapes::find_words(&words, &["until", "end", "of", "turn"]).is_some() {
         Some(NonpermanentStatementSurface::UntilEndOfTurn)
+    } else if matches!(
+        super::semantic_lowering::parse_statement_effect_preference_tokens(tokens),
+        Some(super::semantic_lowering::StatementEffectPreference::ConditionalPriorResult)
+    ) {
+        // A labeled nonpermanent-spell line such as "Spell mastery — If ...,
+        // that creature enters ..." resolves against the preceding spell
+        // instruction. Do not let its independently valid static parse detach
+        // it from that prior result.
+        Some(NonpermanentStatementSurface::ConditionalPriorResult)
     } else if permission_shapes::prefix_words(&words, &["if"])
         && permission_shapes::find_words(&words, &["instead"]).is_some()
     {
@@ -495,6 +505,38 @@ pub(crate) fn parse_named_source_enters_surface(text: &str) -> Option<NamedSourc
     }
     let tail = render_token_slice(tail_tokens).trim_start().to_string();
     (!tail.is_empty()).then_some(NamedSourceEntersSurface { tail })
+}
+
+#[cfg(test)]
+mod nonpermanent_prior_result_tests {
+    use super::*;
+
+    #[test]
+    fn explicit_prior_result_conditionals_are_nonpermanent_statements() {
+        for text in [
+            "If X is 6 or more, those permanents are 4/4 creatures in addition to their other types.",
+            "If there are two or more instant and/or sorcery cards in your graveyard, that creature enters with two additional +1/+1 counters on it.",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_nonpermanent_statement_surface(&tokens),
+                Some(NonpermanentStatementSurface::ConditionalPriorResult),
+                "{text}"
+            );
+        }
+
+        for text in [
+            "If you control a Plains, creatures you control get +1/+1.",
+            "If this creature entered this turn, it has haste.",
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_nonpermanent_statement_surface(&tokens),
+                None,
+                "{text}"
+            );
+        }
+    }
 }
 
 #[cfg(test)]

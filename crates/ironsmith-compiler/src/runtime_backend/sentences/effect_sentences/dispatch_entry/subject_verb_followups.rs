@@ -111,7 +111,7 @@ fn build_grant_all_from_demonstrative_gain(
     let EffectAst::SubjectVerb(SubjectVerbEffectAst { action, .. }) = effect else {
         return Ok(None);
     };
-    let (abilities, duration, condition, set_quantifier_surface) = match action.clone() {
+    let (abilities, duration, condition, parsed_set_quantifier_surface) = match action.clone() {
         SubjectVerbActionAst::GrantAbilitiesToTarget {
             abilities,
             duration,
@@ -128,6 +128,12 @@ fn build_grant_all_from_demonstrative_gain(
         } => (abilities, duration, condition, set_quantifier_surface),
         _ => return Ok(None),
     };
+    let authored_words = LexedClause::new(sentence_tokens).word_refs();
+    let authored_set_quantifier_surface = (authored_words.first() == Some(&"those")
+        || authored_words.starts_with(&["each", "of", "those"])
+        || authored_words.starts_with(&["all", "of", "those"]))
+    .then_some(ironsmith_core::SetQuantifierSurface::Those);
+    let set_quantifier_surface = parsed_set_quantifier_surface.or(authored_set_quantifier_surface);
     let mut rebuilt = if let Some(condition) = condition {
         EffectAst::subject_verb_grant_abilities_all_with_condition(
             filter, abilities, duration, condition,
@@ -1320,13 +1326,7 @@ fn pre_rule_if_you_win_followup(
         followup_shapes::ConditionalFollowupKind::IfYouWinFlip => IfResultPredicate::Did,
         followup_shapes::ConditionalFollowupKind::IfYouWin => {
             let preceded_by_clash = state.effects.last().is_some_and(|effect| {
-                matches!(
-                    effect,
-                    EffectAst::SubjectVerb(SubjectVerbEffectAst {
-                        action: SubjectVerbActionAst::Clash { .. },
-                        ..
-                    })
-                )
+                terminal_result_producer(effect) == Some(TerminalResultProducer::Clash)
             });
             if preceded_by_clash {
                 IfResultPredicate::WonClash
@@ -1540,6 +1540,60 @@ fn take_self_replacement_condition(
     }
 }
 
+fn target_is_explicitly_chosen(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::AnyTarget(span)
+        | TargetAst::AnyOtherTarget(span)
+        | TargetAst::AttackedPlayerOrPlaneswalker(span)
+        | TargetAst::Spell(span) => span.is_some(),
+        TargetAst::Player(_, span)
+        | TargetAst::PlayerOrPlaneswalker(_, span)
+        | TargetAst::ObjectOrPlayer(_, _, span) => span.is_some(),
+        TargetAst::Object(_, target_span, _) => target_span.is_some(),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_is_explicitly_chosen(inner)
+        }
+        TargetAst::Source(_) | TargetAst::Tagged(_, _) => false,
+    }
+}
+
+fn rebind_source_match_to_target(predicate: PredicateAst) -> PredicateAst {
+    match predicate {
+        PredicateAst::SourceMatches(filter) => PredicateAst::TargetMatches(filter),
+        PredicateAst::Not(inner) => {
+            PredicateAst::Not(Box::new(rebind_source_match_to_target(*inner)))
+        }
+        PredicateAst::And(left, right) => PredicateAst::And(
+            Box::new(rebind_source_match_to_target(*left)),
+            Box::new(rebind_source_match_to_target(*right)),
+        ),
+        PredicateAst::Or(left, right) => PredicateAst::Or(
+            Box::new(rebind_source_match_to_target(*left)),
+            Box::new(rebind_source_match_to_target(*right)),
+        ),
+        other => other,
+    }
+}
+
+/// The standalone condition parser conservatively treats a bare `it has
+/// <keyword>` clause as a source predicate. In an `instead` follow-up after an
+/// explicit target, however, that pronoun repeats the targeted object from the
+/// default action. Preserve that local antecedent before lowering turns the
+/// replacement into a runtime self-replacement branch.
+fn bind_self_replacement_condition_to_previous_target(
+    predicate: PredicateAst,
+    sentence_tokens: &[OwnedLexToken],
+    previous_target: Option<&TargetAst>,
+) -> PredicateAst {
+    let words = LexedClause::new(sentence_tokens).word_refs();
+    if !words.starts_with(&["if", "it"])
+        || !previous_target.is_some_and(target_is_explicitly_chosen)
+    {
+        return predicate;
+    }
+    rebind_source_match_to_target(predicate)
+}
+
 fn post_rule_future_zone_and_self_replacement(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -1570,6 +1624,11 @@ fn post_rule_future_zone_and_self_replacement(
             .pop()
             .and_then(take_self_replacement_condition)
         {
+            let predicate = bind_self_replacement_condition_to_previous_target(
+                predicate,
+                sentence_tokens,
+                previous_target.as_ref(),
+            );
             if has_trailing_unpreventable_damage_rider(sentence_tokens)
                 && !mark_last_deal_damage_unpreventable(&mut if_true)
             {
@@ -1578,7 +1637,7 @@ fn post_rule_future_zone_and_self_replacement(
                     LexedClause::new(sentence_tokens).text(),
                 )));
             }
-            let (default_effects, carried_player) =
+            let (mut default_effects, carried_player) =
                 default_effects_for_self_replacement(state.effects, previous);
             if let Some(mill_count) = default_effects
                 .iter()
@@ -1589,6 +1648,11 @@ fn post_rule_future_zone_and_self_replacement(
             }
             if let Some(player) = carried_player {
                 bind_that_player_subjects_in_effects(&mut if_true, player);
+            }
+            preserve_search_owner_anaphor_in_self_replacement(&mut default_effects);
+            preserve_search_owner_anaphor_in_self_replacement(&mut if_true);
+            if let Some(owner) = first_search_library_owner(&default_effects) {
+                bind_self_replacement_search_owner(&mut if_true, &owner);
             }
             if let Some(target) = previous_target.as_ref() {
                 replace_it_target_in_effects(&mut if_true, target);
@@ -1989,10 +2053,12 @@ fn bind_that_player_subjects(effect: &mut EffectAst, player: PlayerAst) {
             subject.player = player;
         }
         if let SubjectVerbActionAst::SearchLibrary {
+            filter,
             player: library_owner,
             ..
         } = action
             && *library_owner == PlayerAst::That
+            && filter.owner.is_none()
         {
             // SearchLibrary deliberately models the search actor (`chooser`)
             // separately from the library owner.  Rebinding only the generic
@@ -2009,6 +2075,80 @@ fn bind_that_player_subjects(effect: &mut EffectAst, player: PlayerAst) {
             bind_that_player_subjects(nested_effect, player);
         }
     });
+}
+
+fn preserve_search_owner_anaphor_in_self_replacement(effects: &mut [EffectAst]) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    filter,
+                    chooser: PlayerAst::Implicit,
+                    player,
+                    ..
+                },
+            ..
+        }) = effect
+            && *player == PlayerAst::Target
+            && matches!(
+                filter.owner.as_ref(),
+                Some(PlayerFilter::Target(_) | PlayerFilter::IteratedPlayer)
+            )
+        {
+            // The owner filter retains the executable target identity. Inside
+            // both arms of a self-replacement, the action surface is an
+            // anaphoric reuse of that one target, not a second target choice.
+            *player = PlayerAst::That;
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            preserve_search_owner_anaphor_in_self_replacement(nested);
+        });
+    }
+}
+
+fn first_search_library_owner(effects: &[EffectAst]) -> Option<PlayerFilter> {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::SearchLibrary { filter, .. },
+            ..
+        }) = effect
+            && let Some(owner) = filter.owner.clone()
+        {
+            return Some(owner);
+        }
+        let mut nested_owner = None;
+        for_each_nested_effects(effect, true, |nested| {
+            if nested_owner.is_none() {
+                nested_owner = first_search_library_owner(nested);
+            }
+        });
+        if nested_owner.is_some() {
+            return nested_owner;
+        }
+    }
+    None
+}
+
+fn bind_self_replacement_search_owner(effects: &mut [EffectAst], established: &PlayerFilter) {
+    for effect in effects {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action:
+                SubjectVerbActionAst::SearchLibrary {
+                    filter,
+                    chooser: PlayerAst::Implicit,
+                    player: PlayerAst::That,
+                    ..
+                },
+            ..
+        }) = effect
+            && matches!(filter.owner.as_ref(), Some(PlayerFilter::IteratedPlayer))
+        {
+            filter.owner = Some(established.clone());
+        }
+        for_each_nested_effects_mut(effect, true, |nested| {
+            bind_self_replacement_search_owner(nested, established);
+        });
+    }
 }
 
 fn bind_that_player_subjects_in_effects(effects: &mut [EffectAst], player: PlayerAst) {
@@ -2749,28 +2889,40 @@ mod damage_self_replacement_followup_tests {
 #[cfg(test)]
 mod conditional_target_self_replacement_followup_tests {
     use super::*;
+    use crate::cards::builders::TurnHistoryPredicateAst;
 
     fn assert_it_characteristic_threshold(predicate: &PredicateAst, toughness: bool) {
-        let PredicateAst::ValueComparison {
-            left,
-            operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
-            ..
-        } = predicate
-        else {
-            panic!("expected a typed at-most threshold: {predicate:#?}");
-        };
-        let spec = match left {
-            Value::ToughnessOf(spec) if toughness => spec,
-            Value::ManaValueOf(spec) if !toughness => spec,
-            _ => panic!("expected the authored target characteristic: {predicate:#?}"),
-        };
-        assert!(
-            matches!(
-                spec.base(),
-                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
-            ),
-            "the threshold must remain linked to the targeted object: {predicate:#?}"
-        );
+        match predicate {
+            PredicateAst::ValueComparison {
+                left,
+                operator: crate::effect::ValueComparisonOperator::LessThanOrEqual,
+                ..
+            } => {
+                let spec = match left {
+                    Value::ToughnessOf(spec) if toughness => spec,
+                    Value::ManaValueOf(spec) if !toughness => spec,
+                    _ => panic!("expected the authored target characteristic: {predicate:#?}"),
+                };
+                assert!(
+                    matches!(
+                        spec.base(),
+                        ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+                    ),
+                    "the threshold must remain linked to the targeted object: {predicate:#?}"
+                );
+            }
+            PredicateAst::ItMatches(filter)
+                if matches!(
+                    (&filter.toughness, &filter.mana_value, toughness),
+                    (Some(crate::filter::Comparison::LessThanOrEqual(_)), _, true)
+                        | (
+                            _,
+                            Some(crate::filter::Comparison::LessThanOrEqual(_)),
+                            false
+                        )
+                ) => {}
+            _ => panic!("expected a typed at-most threshold: {predicate:#?}"),
+        }
     }
 
     fn trailing_threshold(effects: &[EffectAst], toughness: bool) {
@@ -2819,7 +2971,7 @@ mod conditional_target_self_replacement_followup_tests {
 
         let [
             EffectAst::SelfReplacement {
-                predicate: PredicateAst::ThisSpellWasKicked,
+                predicate,
                 if_true,
                 if_false,
                 attach_to_previous_ability: false,
@@ -2828,6 +2980,14 @@ mod conditional_target_self_replacement_followup_tests {
         else {
             panic!("expected one kicked self-replacement: {parsed:#?}");
         };
+        assert!(
+            matches!(
+                predicate,
+                PredicateAst::ThisSpellWasKicked
+                    | PredicateAst::TurnHistory(TurnHistoryPredicateAst::SourceWasKicked { .. })
+            ),
+            "expected a kicked-source predicate: {predicate:#?}"
+        );
         trailing_threshold(if_false, false);
         trailing_threshold(if_true, false);
     }
@@ -2892,10 +3052,10 @@ mod targeted_search_self_replacement_followup_tests {
                 (
                     PlayerAst::Implicit,
                     PlayerAst::That,
-                    Some(PlayerFilter::IteratedPlayer),
+                    Some(PlayerFilter::target_player()),
                 ),
             ],
-            "the default branch carries the target-qualified library; the replacement keeps a demonstrative owner for reference resolution"
+            "both branches carry the target-qualified library while preserving a demonstrative action surface"
         );
 
         let lowered =

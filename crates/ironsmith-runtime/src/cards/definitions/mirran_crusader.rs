@@ -38,7 +38,14 @@ mod tests {
         let static_count = def
             .abilities
             .iter()
-            .filter(|a| matches!(a.kind, AbilityKind::Static(_)))
+            .filter(|a| {
+                matches!(
+                    &a.kind,
+                    AbilityKind::Static(ability)
+                        if ability.id()
+                            != crate::static_abilities::StaticAbilityId::SourceLineKeywordGroup
+                )
+            })
             .count();
         assert_eq!(static_count, 3);
     }

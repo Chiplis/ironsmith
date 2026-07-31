@@ -1,4 +1,34 @@
-use crate::cards::builders::EffectAst;
+use crate::cards::builders::{EffectAst, SubjectVerbActionAst};
+
+/// Runtime result-producing leaf at the end of a presentation-only AST
+/// wrapper chain.
+///
+/// These producers expose typed outcomes whose identity must be attached to
+/// the leaf runtime effect rather than to an enclosing sequence. Semantic
+/// wrappers such as `May` deliberately stop this query because their own
+/// outcome, not the nested action's outcome, controls a result follow-up.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TerminalResultProducer {
+    Clash,
+    FlipCoin,
+}
+
+pub(crate) fn terminal_result_producer(effect: &EffectAst) -> Option<TerminalResultProducer> {
+    match effect {
+        EffectAst::SubjectVerb(subject_verb) => match &subject_verb.action {
+            SubjectVerbActionAst::Clash { .. } => Some(TerminalResultProducer::Clash),
+            SubjectVerbActionAst::FlipCoin => Some(TerminalResultProducer::FlipCoin),
+            _ => None,
+        },
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. } => {
+            effects.last().and_then(terminal_result_producer)
+        }
+        _ => None,
+    }
+}
 
 // Keep the list of wrapper variants with `effects: Vec<EffectAst>` in one place.
 // This avoids drift between immutable/mutable/fallible traversal helpers.
@@ -360,19 +390,11 @@ pub(crate) fn for_each_nested_effect_vec_mut(
                 }
             }
             EffectAst::IfEffectDidNotHappen { effect, otherwise } => {
-                walk(
-                    effect.as_mut(),
-                    include_unless_action_alternative,
-                    visit,
-                );
+                walk(effect.as_mut(), include_unless_action_alternative, visit);
                 visit(otherwise);
             }
             EffectAst::TagAffected { effect, .. } => {
-                walk(
-                    effect.as_mut(),
-                    include_unless_action_alternative,
-                    visit,
-                );
+                walk(effect.as_mut(), include_unless_action_alternative, visit);
             }
             nested_effects_variants!(effects) => {
                 visit(effects);

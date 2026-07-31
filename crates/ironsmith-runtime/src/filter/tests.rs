@@ -21,6 +21,103 @@ fn test_creature_filter() {
 }
 
 #[test]
+fn branch_scoped_type_union_applies_shared_controller_and_mana_value_once() {
+    use crate::card::CardBuilder;
+    use crate::ids::CardId;
+    use crate::mana::{ManaCost, ManaSymbol};
+
+    fn permanent(
+        id: u32,
+        name: &str,
+        card_type: CardType,
+        subtype: Option<Subtype>,
+        mana_value: u8,
+    ) -> crate::card::Card {
+        let mut builder = CardBuilder::new(CardId::from_raw(id), name)
+            .card_types(vec![card_type])
+            .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(
+                mana_value,
+            )]));
+        if let Some(subtype) = subtype {
+            builder = builder.subtypes(vec![subtype]);
+        }
+        builder.build()
+    }
+
+    let you = PlayerId::from_index(0);
+    let opponent = PlayerId::from_index(1);
+    let mut game = GameState::new(vec!["You".to_string(), "Opponent".to_string()], 20);
+    let artifact = game.create_object_from_card(
+        &permanent(47_260, "Relic", CardType::Artifact, None, 4),
+        you,
+        Zone::Battlefield,
+    );
+    let equipment = game.create_object_from_card(
+        &permanent(
+            47_261,
+            "Equipment",
+            CardType::Artifact,
+            Some(Subtype::Equipment),
+            4,
+        ),
+        you,
+        Zone::Battlefield,
+    );
+    let enchantment = game.create_object_from_card(
+        &permanent(47_262, "Blessing", CardType::Enchantment, None, 4),
+        you,
+        Zone::Battlefield,
+    );
+    let aura = game.create_object_from_card(
+        &permanent(
+            47_263,
+            "Aura",
+            CardType::Enchantment,
+            Some(Subtype::Aura),
+            4,
+        ),
+        you,
+        Zone::Battlefield,
+    );
+    let cheap_artifact = game.create_object_from_card(
+        &permanent(47_264, "Cheap Relic", CardType::Artifact, None, 3),
+        you,
+        Zone::Battlefield,
+    );
+    let opposing_artifact = game.create_object_from_card(
+        &permanent(47_265, "Opposing Relic", CardType::Artifact, None, 4),
+        opponent,
+        Zone::Battlefield,
+    );
+
+    let mut filter = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .controlled_by(PlayerFilter::You)
+        .with_mana_value(Comparison::GreaterThanOrEqual(4));
+    filter.any_of = vec![
+        ObjectFilter::default()
+            .with_type(CardType::Artifact)
+            .without_subtype(Subtype::Equipment),
+        ObjectFilter::default()
+            .with_type(CardType::Enchantment)
+            .without_subtype(Subtype::Aura),
+    ];
+    filter.set_conjunctive_set_surface(true);
+    let context = FilterContext::new(you);
+
+    assert_eq!(
+        filter.description(),
+        "a non-equipment artifact and non-aura enchantment you control with mana value 4 or greater"
+    );
+    assert!(filter.matches(game.object(artifact).unwrap(), &context, &game));
+    assert!(filter.matches(game.object(enchantment).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(equipment).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(aura).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(cheap_artifact).unwrap(), &context, &game));
+    assert!(!filter.matches(game.object(opposing_artifact).unwrap(), &context, &game));
+}
+
+#[test]
 fn compound_subtype_filter_requires_every_authored_subtype() {
     let you = PlayerId::from_index(0);
     let mut game = GameState::new(vec!["You".to_string()], 20);
@@ -861,7 +958,7 @@ fn foretold_filter_does_not_match_arbitrary_face_down_exile_cards() {
         ..ObjectFilter::default()
     };
     let ctx = FilterContext::new(owner);
-    assert_eq!(filter.description(), "foretold card you own in exile");
+    assert_eq!(filter.description(), "a foretold card you own in exile");
     assert!(
         !filter.matches(game.object(object_id).unwrap(), &ctx, &game),
         "face-down exile alone must not satisfy the foretold predicate"
@@ -2496,10 +2593,7 @@ fn dynamic_comparison_resolves_surface_hinted_source_counter_count() {
 fn dynamic_comparison_describes_player_counter_count() {
     let filter = ObjectFilter {
         mana_value: Some(Comparison::GreaterThanExpr(Box::new(
-            crate::effect::Value::PlayerCounters(
-                PlayerFilter::You,
-                crate::CounterType::Experience,
-            ),
+            crate::effect::Value::PlayerCounters(PlayerFilter::You, crate::CounterType::Experience),
         ))),
         ..ObjectFilter::default()
     };

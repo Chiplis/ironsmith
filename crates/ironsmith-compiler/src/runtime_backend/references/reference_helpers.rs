@@ -696,6 +696,7 @@ pub(crate) fn resolve_it_tag(
         .iter()
         .any(|constraint| constraint.tag.as_str() == IT_TAG)
     {
+        clear_redundant_live_combat_role_for_event_tag(&mut resolved);
         return Ok(resolved);
     }
 
@@ -772,7 +773,21 @@ pub(crate) fn resolve_it_tag(
             constraint.tag = tag.clone();
         }
     }
+    clear_redundant_live_combat_role_for_event_tag(&mut resolved);
     Ok(resolved)
+}
+
+fn clear_redundant_live_combat_role_for_event_tag(filter: &mut ObjectFilter) {
+    for constraint in &filter.tagged_constraints {
+        if constraint.relation != TaggedOpbjectRelation::IsTaggedObject {
+            continue;
+        }
+        match constraint.tag.as_str() {
+            "blocking" => filter.blocking = false,
+            "blocked" => filter.attacking = false,
+            _ => {}
+        }
+    }
 }
 
 pub(crate) fn resolve_it_tag_key(
@@ -915,6 +930,10 @@ pub(crate) fn resolve_restriction_it_tag(
                 resolve_contextual_player_filter(player, refs)?,
             )
         }
+        Restriction::AttackPlayer { attackers, player } => Restriction::attack_player(
+            resolve_it_tag(attackers, refs)?,
+            resolve_contextual_player_filter(player, refs)?,
+        ),
         Restriction::Block(filter) => Restriction::block(resolve_it_tag(filter, refs)?),
         Restriction::BlockSpecificAttacker { blockers, attacker } => {
             Restriction::block_specific_attacker(
@@ -1751,6 +1770,25 @@ mod tests {
             resolved.blocked_by,
             Some(ObjectRef::Tagged(tag)) if tag.as_str() == "targeted_0"
         ));
+    }
+
+    #[test]
+    fn exact_combat_event_tag_does_not_require_live_combat_role() {
+        let mut filter = ObjectFilter::creature()
+            .match_tagged(TagKey::from(IT_TAG), TaggedOpbjectRelation::IsTaggedObject);
+        filter.blocking = true;
+        let refs = ReferenceEnv {
+            last_object_tag: RefState::Known(TagKey::from("blocking")),
+            ..ReferenceEnv::default()
+        };
+
+        let resolved = resolve_it_tag(&filter, &refs).expect("resolve exact blocker tag");
+
+        assert!(!resolved.blocking, "{resolved:#?}");
+        assert!(resolved.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "blocking"
+        }));
     }
 
     #[test]

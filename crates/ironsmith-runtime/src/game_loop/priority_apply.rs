@@ -49,7 +49,7 @@ fn build_target_assignments(
 
     let Some(ranges) = crate::targeting::assigned_target_ranges(&requirement_contexts, targets)
     else {
-        return Err(GameLoopError::InvalidState(
+        return Err(GameLoopError::ActionCancelled(
             "targets do not satisfy the stored targeting requirements".to_string(),
         ));
     };
@@ -474,12 +474,7 @@ pub fn apply_priority_response_with_dm(
                 && game
                     .effect_store
                     .grant_registry
-                    .land_play_from_permissions_enters_tapped(
-                        game,
-                        *land_id,
-                        old_zone,
-                        player,
-                    );
+                    .land_play_from_permissions_enters_tapped(game, *land_id, old_zone, player);
             if let Some(linked_land_def) = game
                 .object(*land_id)
                 .and_then(|object| crate::decision::linked_other_face_land_definition(game, object))

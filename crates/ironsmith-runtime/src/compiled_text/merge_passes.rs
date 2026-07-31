@@ -1627,6 +1627,13 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
                 && is_trait(&right_verb)
                 && left_verb.eq_ignore_ascii_case(&right_verb)
             {
+                // The quoted-pair branch above only recognizes abilities with an
+                // activation cost. A triggered or static grant reaching here is
+                // still the non-final item of an "A" and "B" list, so its
+                // sentence-final period has to leave the quote as well —
+                // otherwise the line reads as two sentences joined by "And".
+                let left_rest =
+                    trim_quoted_grant_sentence_end(&left_rest).unwrap_or(left_rest.clone());
                 merged.push(format!(
                     "{left_subject} {left_verb} {left_rest} and {right_rest}"
                 ));
@@ -1648,6 +1655,15 @@ pub(super) fn merge_adjacent_subject_predicate_lines(lines: Vec<String>) -> Vec<
 fn trim_quoted_ability_sentence_end(text: &str) -> Option<String> {
     let inner = quoted_ability_inner_text(text)?;
     Some(format!("\"{}\"", inner.trim_end_matches('.')))
+}
+
+/// Drop the sentence-final period from inside a fully quoted grant, whether or not
+/// it carries an activation cost. Unlike [`trim_quoted_ability_sentence_end`] this
+/// does not require a `:` in the ability, so triggered and static grants qualify.
+fn trim_quoted_grant_sentence_end(text: &str) -> Option<String> {
+    let inner = text.trim().strip_prefix('"')?.strip_suffix('"')?;
+    let trimmed = inner.trim_end().trim_end_matches('.');
+    (!trimmed.is_empty()).then(|| format!("\"{trimmed}\""))
 }
 
 fn quoted_ability_text(text: &str) -> Option<String> {
@@ -3441,6 +3457,8 @@ pub(super) fn is_keyword_style_line(line: &str) -> bool {
         "basic landcycling ",
         "madness ",
         "morph ",
+        "megamorph ",
+        "disguise ",
         "mutate ",
         "suspend ",
         "prototype ",
@@ -3783,7 +3801,7 @@ mod tests {
         assert_eq!(
             merged,
             vec![
-                "Enchanted creature gets +1/+1 for each counter on another creature.".to_string(),
+                "Enchanted creature gets +1/+1 for each counter on another creature".to_string(),
                 "Enchanted creature has vigilance and \"{W}, {T}: Bolster 1.\"".to_string(),
             ]
         );

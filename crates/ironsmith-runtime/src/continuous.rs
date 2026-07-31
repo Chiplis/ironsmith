@@ -3866,6 +3866,7 @@ fn filter_requires_layered_clone_fallback(filter: &ObjectFilter) -> bool {
         || filter.surveilled_this_turn
         || filter.discarded_or_cycled_this_turn_by.is_some()
         || filter.was_dealt_damage_this_turn
+        || filter.dealt_damage_this_turn
         || filter.dealt_damage_by_source_this_turn.is_some()
         || filter.dealt_damage_to_player_this_turn.is_some()
         || filter.drawn_this_turn

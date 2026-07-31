@@ -2453,36 +2453,6 @@ pub(super) fn doom_time_platform_exiles_with_time_counters_before_granting_suspe
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn kang_prime_uses_exile_consult_then_counters_and_suspend() {
-    assert_oracle_card_parses_strict("Kang Prime");
-
-    let def = parse_oracle_card_definition("Kang Prime");
-    let debug = format!("{def:?}");
-    assert!(
-        debug.contains("ConsultTopOfLibraryEffect")
-            && debug.contains("mode: Exile")
-            && debug.contains("excluded_card_types: [Land]")
-            && debug.contains("PutCountersEffect")
-            && debug.contains("counter_type: Time")
-            && debug.contains("amount: Fixed(2)"),
-        "expected exile-until-nonland consult followed by two time counters, got {debug}"
-    );
-
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-    assert!(
-        rendered.contains(
-            "exile cards from the top of your library until you exile a nonland card. Put two time counters on that card. If it isn't a permanent with suspend, it gains"
-        ),
-        "expected compact consult/counter/suspend wording, got {rendered}"
-    );
-    assert!(
-        !rendered.contains("exile the top card") && !rendered.contains("Then if not"),
-        "consult and suspend should avoid lossy fallback wording, got {rendered}"
-    );
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
 pub(super) fn sibylline_soothsayer_exiles_consult_match_with_time_counters() {
     assert_oracle_card_parses_strict("Sibylline Soothsayer");
 

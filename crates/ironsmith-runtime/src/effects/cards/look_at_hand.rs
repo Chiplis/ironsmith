@@ -3,7 +3,7 @@
 use crate::decisions::context::ViewCardsContext;
 use crate::effect::EffectOutcome;
 use crate::effects::EffectExecutor;
-use crate::effects::helpers::resolve_players_from_spec;
+use crate::effects::helpers::{resolve_players_from_spec, view_hidden_candidate_objects};
 use crate::effects::{ExecutionContext, ExecutionError};
 use crate::game_state::GameState;
 use crate::target::ChooseSpec;
@@ -71,15 +71,14 @@ impl EffectExecutor for LookAtHandEffect {
                     crate::tag::TagKey::from(crate::effects::REVEALED_THIS_WAY_TAG),
                     revealed,
                 );
-                for viewer_idx in 0..game.players.len() {
-                    let viewer = crate::ids::PlayerId::from_index(viewer_idx as u8);
-                    let mut view_ctx =
-                        ViewCardsContext::look_at_hand(viewer, player_id, Some(ctx.source));
-                    view_ctx.description = "Reveal that player's hand".to_string();
-                    view_ctx.public = true;
-                    ctx.decision_maker
-                        .view_cards(game, viewer, &cards, &view_ctx);
-                }
+                view_hidden_candidate_objects(
+                    game,
+                    ctx,
+                    ctx.controller,
+                    &cards,
+                    "Reveal that player's hand",
+                    true,
+                );
             } else {
                 let view_ctx =
                     ViewCardsContext::look_at_hand(ctx.controller, player_id, Some(ctx.source));

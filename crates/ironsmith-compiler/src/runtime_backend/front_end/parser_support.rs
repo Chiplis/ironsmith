@@ -10,9 +10,7 @@ use super::grammar::primitives as grammar;
 use super::grammar::restriction_facts::{
     parse_activation_restriction_tokens, parse_trigger_restriction_tokens,
 };
-use super::lexer::{
-    LexStream, OwnedLexToken, TokenKind, TokenWordView, split_lexed_sentences,
-};
+use super::lexer::{LexStream, OwnedLexToken, TokenKind, TokenWordView, split_lexed_sentences};
 
 /// Splits an already-lexed line into semantic sentences and typed restriction
 /// facts without rendering and lexing the source a second time.

@@ -3,7 +3,7 @@ use winnow::error::ModalResult as WResult;
 use winnow::prelude::*;
 use winnow::token::any;
 
-use super::super::super::lexer::{LexStream, OwnedLexToken, trim_lexed_commas};
+use super::super::super::lexer::{LexStream, OwnedLexToken, TokenKind, trim_lexed_commas};
 use super::super::primitives;
 use super::restrictions::{AttachedCombatRestrictionKind, parse_attached_restriction_tail_tokens};
 use super::subjects::{
@@ -204,9 +204,38 @@ pub(crate) fn parse_attached_ability_splits_tokens(
     tokens: &[OwnedLexToken],
 ) -> Vec<AttachedAbilitySplit<'_>> {
     let mut splits = Vec::new();
-    let mut search_start = 0usize;
-    while let Some(relative) = find_and(tokens.get(search_start..).unwrap_or_default()) {
-        let and_token = search_start + relative;
+    let mut inside_double_quotes = false;
+    let mut inside_single_quotes = false;
+    let mut parenthesis_depth = 0usize;
+
+    for (and_token, token) in tokens.iter().enumerate() {
+        match token.kind {
+            TokenKind::Quote => {
+                inside_double_quotes = !inside_double_quotes;
+                continue;
+            }
+            TokenKind::Apostrophe => {
+                inside_single_quotes = !inside_single_quotes;
+                continue;
+            }
+            TokenKind::LParen if !inside_double_quotes && !inside_single_quotes => {
+                parenthesis_depth = parenthesis_depth.saturating_add(1);
+                continue;
+            }
+            TokenKind::RParen if !inside_double_quotes && !inside_single_quotes => {
+                parenthesis_depth = parenthesis_depth.saturating_sub(1);
+                continue;
+            }
+            _ => {}
+        }
+        if inside_double_quotes
+            || inside_single_quotes
+            || parenthesis_depth > 0
+            || !token.is_word("and")
+        {
+            continue;
+        }
+
         let keyword_tokens = trim_lexed_commas(tokens.get(..and_token).unwrap_or_default());
         let granted_tokens = trim_lexed_commas(tokens.get(and_token + 1..).unwrap_or_default());
         if !keyword_tokens.is_empty() && !granted_tokens.is_empty() {
@@ -216,7 +245,6 @@ pub(crate) fn parse_attached_ability_splits_tokens(
                 granted_tokens,
             });
         }
-        search_start = and_token + 1;
     }
     splits
 }

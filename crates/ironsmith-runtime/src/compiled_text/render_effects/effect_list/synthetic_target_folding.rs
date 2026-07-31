@@ -243,7 +243,8 @@ fn restriction_references_identity(
             player_filter_references_identity(player, identity)
                 || object_filter_references_identity(filter, identity)
         }
-        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player } => {
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
+        | Restriction::AttackPlayer { attackers, player } => {
             object_filter_references_identity(attackers, identity)
                 || player_filter_references_identity(player, identity)
         }
@@ -280,7 +281,7 @@ fn restriction_references_identity(
         | Restriction::AttackOrBlockAlone(filter) => {
             object_filter_references_identity(filter, identity)
         }
-        Restriction::PreventDamage | Restriction::AttackYouUnlessControllerPaysPerAttacker(_) => {
+        Restriction::PreventDamage | Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => {
             false
         }
     }

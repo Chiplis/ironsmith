@@ -438,6 +438,10 @@ mod tests {
         let [EffectAst::ForEachPlayer { effects: nested }] = effects.as_slice() else {
             panic!("expected one each-player sequence, got {effects:#?}");
         };
+        let nested = match nested.as_slice() {
+            [EffectAst::CommaThen { effects }] => effects.as_slice(),
+            effects => effects,
+        };
         let [
             EffectAst::TagAffected { tag, .. },
             EffectAst::SubjectVerb(SubjectVerbEffectAst {
@@ -449,7 +453,7 @@ mod tests {
                 action: SubjectVerbActionAst::PutOntoBattlefield { target, .. },
                 ..
             }),
-        ] = nested.as_slice()
+        ] = nested
         else {
             panic!("expected tagged exile, sacrifice, and return, got {nested:#?}");
         };

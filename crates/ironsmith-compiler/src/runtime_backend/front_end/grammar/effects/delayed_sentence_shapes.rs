@@ -394,6 +394,33 @@ pub(crate) fn parse_delayed_target_dies_subject(
     (!subject_tokens.is_empty()).then_some(subject_tokens)
 }
 
+pub(crate) struct DelayedTargetCombatDamageShape<'a> {
+    pub subject_tokens: &'a [OwnedLexToken],
+    pub recipient_tokens: &'a [OwnedLexToken],
+}
+
+/// Parse "target <subject> deals combat damage to <recipient>" for a delayed
+/// this-turn registration. The target is chosen while the enclosing ability
+/// resolves; the trigger must watch that exact object.
+pub(crate) fn parse_delayed_target_deals_combat_damage_shape(
+    tokens: &[OwnedLexToken],
+) -> Option<DelayedTargetCombatDamageShape<'_>> {
+    let tokens = trimmed(tokens);
+    let (_, after_target) = primitives::parse_prefix(tokens, primitives::kw("target"))?;
+    let (subject_tokens, recipient_tokens) =
+        primitives::split_lexed_once_on_separator(after_target, || {
+            primitives::phrase(&["deals", "combat", "damage", "to"]).void()
+        })?;
+    let subject_tokens = trimmed(subject_tokens);
+    let recipient_tokens = trimmed(recipient_tokens);
+    (!subject_tokens.is_empty() && !recipient_tokens.is_empty()).then_some(
+        DelayedTargetCombatDamageShape {
+            subject_tokens,
+            recipient_tokens,
+        },
+    )
+}
+
 /// Parse the object-kind portion of a delayed
 /// "target ... is put into your graveyard" trigger.
 pub(crate) fn parse_delayed_target_put_into_your_graveyard_subject(

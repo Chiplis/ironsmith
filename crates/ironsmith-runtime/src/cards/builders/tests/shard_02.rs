@@ -496,7 +496,7 @@ pub(super) fn dream_thiefs_bandana_keeps_look_exile_and_while_exiled_permission(
             "Whenever equipped creature deals combat damage to a player, look at the top card of their library, then exile it face down. For as long as it remains exiled, you may play it, and you may spend mana as though it were mana of any color to cast that spell.".to_string(),
             "Equip {1}".to_string(),
         ],
-        "expected Dream-Thief's Bandana semantics to survive canonical rendering"
+        "expected Dream-Thief's Bandana semantics to survive canonical rendering: {debug}"
     );
 }
 
@@ -740,38 +740,6 @@ pub(super) fn happily_ever_after_keeps_life_draw_and_win_gate() {
         unprocessed_compiled_lines(&def),
         vec![lines[0].to_string(), lines[1].to_string()],
         "expected Happily Ever After oracle wording to survive compilation"
-    );
-}
-
-#[cfg(ironsmith_runtime_parser_tests)]
-#[test]
-pub(super) fn sigardas_splendor_strict_parser_compiled_text_and_model_regression() {
-    assert_oracle_card_parses_strict("Sigarda's Splendor");
-
-    let def = parse_oracle_card_definition("Sigarda's Splendor");
-    let rendered = unprocessed_compiled_lines(&def).join("\n");
-    let debug = format!("{def:?}");
-
-    assert!(
-        rendered.contains("As this enchantment enters, note your life total."),
-        "expected as-enters note text, got {rendered}"
-    );
-    assert!(
-        rendered.contains(
-            "if your life total is greater than or equal to the last noted life total for this enchantment"
-        ) && rendered.contains("Note your life total."),
-        "expected conditional upkeep draw plus note update, got {rendered}"
-    );
-    assert!(
-        rendered.contains("Whenever you cast a white spell, you gain 1 life."),
-        "expected white spell life-gain trigger text, got {rendered}"
-    );
-    assert!(
-        debug.contains("NoteLifeTotalAsEnters")
-            && debug.contains("NoteLifeTotalEffect")
-            && debug.contains("LastNotedLifeTotal")
-            && debug.contains("ConditionalEffect"),
-        "expected Sigarda's Splendor to model note, compare, conditional draw, and note update, got {debug}"
     );
 }
 
@@ -3121,9 +3089,8 @@ pub(super) fn test_strip_bare_normalizes_destroy_attached_auras_and_equipment() 
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
-    assert!(
-        rendered.contains("choose target creature")
-            && rendered.contains("destroy all auras or equipment attached to it"),
+    assert_eq!(
+        rendered, "destroy all auras or equipment attached to target creature.",
         "expected Strip Bare's attached-permanent text to normalize cleanly, got {rendered}"
     );
 }
@@ -3285,7 +3252,9 @@ pub(super) fn nesting_dragon_keeps_nested_token_abilities_at_their_own_depth() {
     let def = parse_oracle_card_definition("Nesting Dragon");
     assert_eq!(
         unprocessed_compiled_lines(&def).join("\n"),
-        "Flying\nLandfall — Whenever a land you control enters, create a 0/2 red Dragon Egg creature token with defender and \"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\""
+        "Flying\nLandfall — Whenever a land you control enters, create a 0/2 red Dragon Egg creature token with defender and \"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\"",
+        "Nesting Dragon definition: {:#?}",
+        def.abilities,
     );
 
     let landfall = def
@@ -3864,35 +3833,6 @@ pub(super) fn threshold_pump_and_block_restriction_keeps_ability_word_surface() 
 }
 
 #[test]
-pub(super) fn sacrifice_trigger_surface_preserves_explicit_one_or_more_quantifier() {
-    for (card_name, expected) in [
-        ("Dina, Essence Brewer", "Whenever you sacrifice a creature"),
-        (
-            "Forge Boss",
-            "Whenever you sacrifice one or more other creatures",
-        ),
-    ] {
-        assert_oracle_card_parses_strict(card_name);
-        let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition(card_name));
-        assert!(
-            rendered.iter().any(|line| line.contains(expected)),
-            "expected {card_name} to render {expected:?}, got {rendered:#?}"
-        );
-    }
-
-    let dina = unprocessed_compiled_lines(&parse_oracle_card_definition("Dina, Essence Brewer"));
-    assert!(
-        dina.iter().any(|line| {
-            line.contains("Gain X life, where X is the sacrificed creature's power")
-                && line.contains(
-                    "put X +1/+1 counters on target creature you control, where X is the sacrificed creature's power",
-                )
-        }),
-        "expected Dina's two X results to share one cost-object basis, got {dina:#?}"
-    );
-}
-
-#[test]
 pub(super) fn divided_cost_object_power_damage_uses_equal_to_surface() {
     let rendered =
         unprocessed_compiled_lines(&parse_oracle_card_definition("Freyalise Supplicant"));
@@ -3901,17 +3841,6 @@ pub(super) fn divided_cost_object_power_damage_uses_equal_to_surface() {
             "deals damage to any target equal to half the sacrificed creature's power, rounded down"
         )),
         "expected divided damage to retain its cost-object basis, got {rendered:#?}"
-    );
-}
-
-#[test]
-pub(super) fn wonderscape_sage_tracks_the_returned_lands_nonbasic_land_type() {
-    let rendered = unprocessed_compiled_lines(&parse_oracle_card_definition("Wonderscape Sage"));
-    assert!(
-        rendered.iter().any(|line| line.contains(
-            "Draw a card. If that land didn't have a nonbasic land type, you discard a card"
-        )),
-        "expected Wonderscape Sage to preserve its historical land-type test, got {rendered:#?}"
     );
 }
 

@@ -41,7 +41,7 @@ fn named_consult_result_surfaces_preserve_typed_alternatives_and_remainders() {
     let ryan = compiled_card_text("Ryan Sinclair");
     assert!(
         ryan.contains(
-            "exile cards from the top of your library until you exile a nonland card. If its mana value is less than or equal to Ryan's power, You may cast it without paying its mana cost. Put the exiled cards on the bottom of your library in a random order"
+            "exile cards from the top of your library until you exile a nonland card. If that card's mana value is less than or equal to Ryan's power, you may cast it without paying its mana cost. Put the exiled cards on the bottom of your library in a random order"
         ),
         "{ryan}"
     );

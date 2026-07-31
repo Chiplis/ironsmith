@@ -6,8 +6,7 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
     let [for_players_effect, permission_effect] = effects else {
         return None;
     };
-    let for_players =
-        for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    let for_players = for_players_effect.downcast_ref::<crate::effects::ForPlayersEffect>()?;
     let player_text = match for_players.filter {
         PlayerFilter::Opponent => "Each opponent",
         PlayerFilter::Any => "Each player",
@@ -42,16 +41,14 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
     }
 
     let exile_effect = structural_unwrap_render_wrappers(exile_effect);
-    let exile_spec = if let Some(exile) =
-        exile_effect.downcast_ref::<crate::effects::ExileEffect>()
+    let exile_spec = if let Some(exile) = exile_effect.downcast_ref::<crate::effects::ExileEffect>()
     {
         if exile.face_down {
             return None;
         }
         &exile.spec
     } else {
-        let move_to_zone =
-            exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+        let move_to_zone = exile_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
         if !move_to_zone_is_plain_exile(move_to_zone) {
             return None;
         }
@@ -61,14 +58,11 @@ fn describe_each_player_hand_exile_with_linked_play_constraints(
         return None;
     }
 
-    let permission =
-        permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
+    let permission = permission_effect.downcast_ref::<crate::effects::GrantPlayTaggedEffect>()?;
     if permission.tag != choose.tag
-        || permission.duration
-            != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
+        || permission.duration != crate::effects::GrantPlayTaggedDuration::ForAsLongAsExiled
         || !permission.allow_land
-        || permission.mana_spend_mode
-            != ironsmith_core::value_model::ManaSpendMode::Normal
+        || permission.mana_spend_mode != ironsmith_core::value_model::ManaSpendMode::Normal
         || permission.allow_any_color_for_cast
         || permission.while_on_top_of_library
         || permission.filter.is_some()
@@ -319,6 +313,11 @@ fn immediately_chosen_player_action_actor(effect: &Effect) -> Option<PlayerFilte
     {
         return choose_spec_player_filter(&look.target);
     }
+    if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+        && let ChooseSpec::Object(filter) | ChooseSpec::All(filter) = put.target.base()
+    {
+        return filter.controller.clone();
+    }
     None
 }
 
@@ -346,7 +345,7 @@ fn immediately_chosen_player_action_text(
     Some(action)
 }
 
-pub(super) fn describe_distinct_player_choice_with_linked_action(
+pub(in crate::compiled_text) fn describe_distinct_player_choice_with_linked_action(
     effects: &[Effect],
 ) -> Option<String> {
     let (effects, sentence_leading_then) = if let [effect] = effects
@@ -391,6 +390,15 @@ pub(super) fn describe_distinct_player_choice_with_linked_action(
         with_indefinite_article(&format!("{ordinal} {player}"))
     };
     let action = immediately_chosen_player_action_text(action_effect, choose)?;
+    if choose.excluded_tags.is_empty()
+        && structural_unwrap_render_wrappers(action_effect)
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+            .is_some()
+    {
+        let action = normalize_you_verb_phrase(&action.replace("that player", "they"))
+            .replace(" they controls", " they control");
+        return Some(format!("Choose {selection}. They {action}"));
+    }
     let body = format!("choose {selection} to {action}");
     Some(if sentence_leading_then {
         format!("Then {body}")
@@ -2067,7 +2075,10 @@ pub(in crate::compiled_text) fn describe_linked_target_set_followup_prefix(
         .get(followup_idx)
         .and_then(|effect| describe_linked_group_continuous_followup(effect, group))
     {
-        return Some((format!("{}. {text}", prefix.text), followup_idx + 1));
+        return Some((
+            format!("{}. {text}", prefix.text.trim().trim_end_matches('.')),
+            followup_idx + 1,
+        ));
     }
     if let Some(text) = effects
         .get(followup_idx)
@@ -3569,26 +3580,25 @@ fn describe_all_activated_and_triggered_abilities(filter: &ObjectFilter) -> Opti
     if filter.zone != Some(Zone::Stack) || filter.any_of.len() != 2 {
         return None;
     }
-    let mut kinds = filter
+    let mut branches = filter
         .any_of
         .iter()
         .map(|branch| {
             let mut base = branch.clone();
             let kind = base.stack_kind.take()?;
             base.zone = None;
-            (base == ObjectFilter::default()).then_some(kind)
+            let controller = base.controller.take();
+            let other = std::mem::take(&mut base.other);
+            (base == ObjectFilter::default()).then_some((kind, controller, other))
         })
         .collect::<Option<Vec<_>>>()?;
-    kinds.sort_by_key(|kind| match kind {
+    branches.sort_by_key(|(kind, _, _)| match kind {
         StackObjectKind::ActivatedAbility => 0,
         StackObjectKind::TriggeredAbility => 1,
         _ => 2,
     });
-    if kinds
-        != [
-            StackObjectKind::ActivatedAbility,
-            StackObjectKind::TriggeredAbility,
-        ]
+    if branches[0].0 != StackObjectKind::ActivatedAbility
+        || branches[1].0 != StackObjectKind::TriggeredAbility
     {
         return None;
     }
@@ -3598,9 +3608,48 @@ fn describe_all_activated_and_triggered_abilities(filter: &ObjectFilter) -> Opti
     let other = std::mem::take(&mut outer.other);
     outer.zone = None;
     outer.any_of.clear();
+    // Generic copy lowering retains an ability-target shell around the exact
+    // activated/triggered union. `SpellOrAbility` is also harmless because the
+    // union arms still narrow the executable set to abilities. A `Spell` shell
+    // is not presentation metadata: runtime filter matching applies it
+    // conjunctively and would reject both ability branches, so never hide it.
+    if matches!(
+        outer.stack_kind,
+        Some(StackObjectKind::Ability | StackObjectKind::SpellOrAbility)
+    ) {
+        outer.stack_kind = None;
+    }
     if outer != ObjectFilter::default() {
         return None;
     }
+    let controller = if let Some(outer_controller) = controller {
+        if branches.iter().any(|(_, branch_controller, _)| {
+            branch_controller
+                .as_ref()
+                .is_some_and(|branch| branch != &outer_controller)
+        }) {
+            return None;
+        }
+        Some(outer_controller)
+    } else {
+        let branch_controller = branches[0].1.clone();
+        if branches
+            .iter()
+            .any(|(_, controller, _)| controller != &branch_controller)
+        {
+            return None;
+        }
+        branch_controller
+    };
+    let other = if other {
+        true
+    } else {
+        let branch_other = branches[0].2;
+        if branches.iter().any(|(_, _, other)| *other != branch_other) {
+            return None;
+        }
+        branch_other
+    };
     let controller = match controller {
         Some(PlayerFilter::You) => " you control",
         Some(PlayerFilter::NotYou) => " you don't control",
@@ -3612,6 +3661,52 @@ fn describe_all_activated_and_triggered_abilities(filter: &ObjectFilter) -> Opti
         "all {}activated and triggered abilities{controller}",
         if other { "other " } else { "" }
     ))
+}
+
+#[cfg(test)]
+mod activated_triggered_copy_target_tests {
+    use super::*;
+
+    fn ability_union(outer_kind: StackObjectKind) -> ObjectFilter {
+        ObjectFilter {
+            zone: Some(Zone::Stack),
+            controller: Some(PlayerFilter::You),
+            stack_kind: Some(outer_kind),
+            other: true,
+            any_of: vec![
+                ObjectFilter {
+                    zone: Some(Zone::Stack),
+                    stack_kind: Some(StackObjectKind::ActivatedAbility),
+                    ..ObjectFilter::default()
+                },
+                ObjectFilter {
+                    zone: Some(Zone::Stack),
+                    stack_kind: Some(StackObjectKind::TriggeredAbility),
+                    ..ObjectFilter::default()
+                },
+            ],
+            ..ObjectFilter::default()
+        }
+    }
+
+    #[test]
+    fn redundant_ability_shells_render_the_exact_union() {
+        for outer_kind in [StackObjectKind::Ability, StackObjectKind::SpellOrAbility] {
+            assert_eq!(
+                describe_all_activated_and_triggered_abilities(&ability_union(outer_kind))
+                    .as_deref(),
+                Some("all other activated and triggered abilities you control")
+            );
+        }
+    }
+
+    #[test]
+    fn contradictory_spell_shell_is_not_hidden_by_the_renderer() {
+        assert_eq!(
+            describe_all_activated_and_triggered_abilities(&ability_union(StackObjectKind::Spell)),
+            None
+        );
+    }
 }
 
 pub(super) fn describe_counter_all_stack_abilities(target: &ChooseSpec) -> Option<&'static str> {
@@ -4936,7 +5031,13 @@ pub(crate) fn describe_chosen_name_consult_after_top_exile_effects(
 pub(crate) fn describe_pay_life_reveal_hand_choose_exile_effects(
     effects: &[Effect],
 ) -> Option<String> {
-    let [target_effect, pay_effect, reveal_effect, choose_exile_effect] = effects else {
+    let [
+        target_effect,
+        pay_effect,
+        reveal_effect,
+        choose_exile_effect,
+    ] = effects
+    else {
         return None;
     };
     let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
@@ -4958,27 +5059,17 @@ pub(crate) fn describe_pay_life_reveal_hand_choose_exile_effects(
         || reveal.chooser != PlayerFilter::target_opponent()
         || reveal.zone != Some(Zone::Hand)
         || reveal.filter.zone != Some(Zone::Hand)
-        || reveal
-            .filter
-            .owner
-            .as_ref()
-            .is_none_or(|owner| {
-                !player_filters_refer_to_same_player(
-                    owner,
-                    &PlayerFilter::target_opponent(),
-                )
-            })
+        || reveal.filter.owner.as_ref().is_none_or(|owner| {
+            !player_filters_refer_to_same_player(owner, &PlayerFilter::target_opponent())
+        })
         || !reveal.count.dynamic_x
         || reveal.count_value.as_ref()
-            != Some(&Value::EventValue(
-                crate::effect::EventValueSpec::Amount,
-            ))
+            != Some(&Value::EventValue(crate::effect::EventValueSpec::Amount))
     {
         return None;
     }
 
-    let choose_exile =
-        choose_exile_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let choose_exile = choose_exile_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
     if !matches!(
         choose_exile.surface,
         ironsmith_core::SequenceSurface::Coordinated
@@ -7263,6 +7354,8 @@ pub(super) fn describe_quantified_player_effect(
         // conjugates the second action independently.
         .or_else(|| describe_each_player_may_discard_hand_draw_commander_value(for_players))
         .or_else(|| describe_each_player_may_discard_hand_draw(for_players))
+        .or_else(|| describe_for_players_may_search_library_then_shuffle(for_players))
+        .or_else(|| describe_for_players_search_library_then_shuffle(for_players))
         .or_else(|| describe_for_players_may_happened_sequence(for_players))
         .or_else(|| describe_quantified_damage_then_controller_gain(for_players))
         .or_else(|| describe_quantified_nested_shared_action(for_players))
@@ -7780,7 +7873,16 @@ fn describe_correlated_player_target_sacrifice_reveal_put(effects: &[Effect]) ->
         return None;
     }
 
-    let [reveal_effect, put_if_effect] = qualifying.if_true.as_slice() else {
+    let qualifying_effects = if let [effect] = qualifying.if_true.as_slice()
+        && let Some(sequence) = structural_unwrap_render_wrappers(effect)
+            .downcast_ref::<crate::effects::SequenceEffect>()
+        && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+    {
+        sequence.effects.as_slice()
+    } else {
+        qualifying.if_true.as_slice()
+    };
+    let [reveal_effect, put_if_effect] = qualifying_effects else {
         return None;
     };
     let reveal = structural_unwrap_render_wrappers(reveal_effect)
@@ -8300,6 +8402,9 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
     if let Some(compact) = describe_for_players_may_discard_then_draw_if_discarded(effects) {
         return Some(compact);
     }
+    if let Some(compact) = describe_for_players_may_draw_then_gain_if_drew(effects) {
+        return Some(compact);
+    }
     if let [choose_effect, look_effect, reveal_effect, distribute_effect] = effects
         && let Some(choose_name) =
             choose_effect.downcast_ref::<crate::effects::ChooseCardNameEffect>()
@@ -8625,8 +8730,19 @@ pub(in crate::compiled_text) fn describe_structural_multisentence_effect_list(
         let producer = describe_effect(producer_effect)
             .trim_end_matches('.')
             .to_string();
-        let power = describe_value(&set_pt.power);
-        let toughness = describe_value(&set_pt.toughness);
+        let producer_reference = unwrap_tag_wrapped_effect(producer_effect)
+            .downcast_ref::<crate::effects::DestroyNoRegenerationEffect>()
+            .and_then(|destroy| {
+                destroyed_target_reference_noun(&destroy.spec).map(|noun| format!("that {noun}'s"))
+            });
+        let power = producer_reference.as_ref().map_or_else(
+            || describe_value(&set_pt.power),
+            |subject| format!("{subject} power"),
+        );
+        let toughness = producer_reference.as_ref().map_or_else(
+            || describe_value(&set_pt.toughness),
+            |subject| format!("{subject} toughness"),
+        );
         let timing = describe_next_end_step_cleanup_timing(&create.next_end_step_player);
         Some(format!(
             "{producer}. {creation}. Its power is equal to {power} and its toughness is equal to {toughness}. Sacrifice the token at the beginning of {timing}"
@@ -8899,7 +9015,7 @@ pub(in crate::compiled_text) fn describe_source_exiled_graveyard_token_sacrifice
         return None;
     }
     let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
-    if !matches!(sacrifice.target, ChooseSpec::Source) {
+    if !matches!(sacrifice.target.base(), ChooseSpec::Source) {
         return None;
     }
 
@@ -10329,7 +10445,9 @@ pub(super) fn unwrap_structural_effect_tag(effect: &Effect) -> &Effect {
     effect
 }
 
-pub(super) fn describe_roll_choose_destroy_create_structural(effects: &[Effect]) -> Option<String> {
+pub(in crate::compiled_text) fn describe_roll_choose_destroy_create_structural(
+    effects: &[Effect],
+) -> Option<String> {
     let [roll_effect, destroy_effect, create_effect] = effects else {
         return None;
     };
@@ -10380,8 +10498,12 @@ pub(super) fn describe_roll_choose_destroy_create_structural(effects: &[Effect])
     let destroy_text = describe_effect(destroy_effect)
         .trim_end_matches('.')
         .to_string();
-    let create_text = lowercase_first(describe_effect(create_effect).trim_end_matches('.'));
-    Some(format!("{roll_text}. {destroy_text}. Then {create_text}."))
+    // The structural check above proves that this count is the roll's
+    // `OtherNumber` metric. Preserve that authored distinction even if an
+    // outer presentation wrapper rendered the generic "the result" surface.
+    let create_text = lowercase_first(describe_effect(create_effect).trim_end_matches('.'))
+        .replace(" equal to the result", " equal to the other result");
+    Some(format!("{roll_text}. {destroy_text}. {create_text}."))
 }
 
 pub(super) fn describe_roll_choose_draw_then_may_cast_structural(

@@ -491,6 +491,8 @@ pub fn declare_attackers(
         // Check both rules-based restrictions and effect-based restrictions.
         if !can_attack_defending_player(creature, defending_player, game)
             || !game.can_attack(*creature_id)
+            || (matches!(target, AttackTarget::Player(_))
+                && !game.can_attack_player_directly(*creature_id, defending_player))
         {
             return Err(CombatError::CreatureCannotAttack(*creature_id));
         }

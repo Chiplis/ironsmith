@@ -546,7 +546,10 @@ mod tests {
         .unwrap();
         assert_eq!(
             parse_trailing_counter_constraint_tokens(&constraint),
-            Some(CounterConstraint::Typed(CounterType::Stun))
+            Some(CounterConstraint::AtLeast {
+                counter_type: Some(CounterType::Stun),
+                count: 2,
+            })
         );
 
         let reveal = lex_line("Reveal the top three cards of your library.", 0).unwrap();

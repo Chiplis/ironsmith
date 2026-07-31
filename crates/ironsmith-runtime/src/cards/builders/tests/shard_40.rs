@@ -382,7 +382,7 @@ pub(super) fn dynamic_comparison_cards_do_not_leak_where_x_or_postfix_surfaces()
         ),
         (
             "Engulf the Shore",
-            "Return all creatures with toughness less than or equal to the number of Islands you control to their owners' hands.",
+            "Return to their owners' hands all creatures with toughness less than or equal to the number of Islands you control.",
         ),
         (
             "Glamdring",
@@ -394,14 +394,30 @@ pub(super) fn dynamic_comparison_cards_do_not_leak_where_x_or_postfix_surfaces()
         ),
         (
             "Squirming Emergence",
-            "Return target nonland permanent card with mana value less than or equal to the number of permanent cards in your graveyard from your graveyard to the battlefield.",
+            "Return to the battlefield target nonland permanent card in your graveyard with mana value less than or equal to the number of permanent cards in your graveyard.",
         ),
     ] {
         assert_compiled_line(card, expected);
     }
     assert_compiled_line(
         "Glamdring",
-        "Equipped creature has first strike and gets +1/+0 for each instant or sorcery card in your graveyard.",
+        "Equipped creature has first strike and gets +1/+0 for each instant and sorcery card in your graveyard.",
+    );
+    let glamdring = parse_oracle_card_definition("Glamdring");
+    let glamdring_lines = compiled_text_lines(&glamdring);
+    assert!(
+        glamdring_lines.iter().any(|line| {
+            line.contains("cast an instant or sorcery spell")
+                && !line.contains("cast an instant and sorcery spell")
+        }),
+        "Glamdring's cast permission must retain its authored disjunction: {glamdring_lines:#?}"
+    );
+    assert!(
+        glamdring_lines.iter().any(|line| {
+            line.contains("for each instant and sorcery card")
+                && !line.contains("for each instant or sorcery card")
+        }),
+        "Glamdring's counted graveyard types must retain their authored conjunction: {glamdring_lines:#?}"
     );
 }
 

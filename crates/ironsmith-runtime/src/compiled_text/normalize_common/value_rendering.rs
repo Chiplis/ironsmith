@@ -54,6 +54,9 @@ pub(crate) fn additionalize_card_count_phrase(phrase: &str) -> String {
 }
 
 pub(crate) fn describe_card_count(value: &Value) -> String {
+    if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay) {
+        return "cards equal to the number of opponents dealt damage this way".to_string();
+    }
     if value.has_surface_hint(ironsmith_core::ValueSurfaceHint::AsManyCardsThisWay) {
         return "as many cards as they discarded this way".to_string();
     }
@@ -344,6 +347,11 @@ pub(crate) fn pluralize_discard_card_phrase(phrase: &str) -> String {
 
 pub(crate) fn describe_effect_count_backref(value: &Value) -> Option<String> {
     match value {
+        Value::SurfaceHinted { hints, .. }
+            if hints.contains(&ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay) =>
+        {
+            None
+        }
         Value::SurfaceHinted { value, .. } => describe_effect_count_backref(value),
         Value::EffectValue(_) => Some("that many".to_string()),
         Value::EffectValueOffset(_, offset) => {
@@ -661,6 +669,10 @@ fn describe_spell_cast_history_filter_subject(filter: &ObjectFilter) -> Option<S
     let mut spell_domain = filter.clone();
     spell_domain.cast_by = None;
     spell_domain.cast_this_turn = false;
+    // Objects that were cast are spells, even when the stored history filter
+    // omitted the redundant stack-kind discriminator. Without it the generic
+    // stack renderer broadens the noun to "spells or abilities".
+    spell_domain.stack_kind = Some(StackObjectKind::Spell);
     let subject = describe_count_filter_value_subject(&spell_domain);
     let cast_surface = match caster {
         PlayerFilter::You => "you've cast this turn".to_string(),
@@ -798,6 +810,10 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
                 Some("sacrificed")
             )
     });
+    let has_sacrifice_cost_tag = filter.tagged_constraints.iter().any(|constraint| {
+        constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+            && constraint.tag.as_str().starts_with("sacrifice_cost_")
+    });
     // Count surfaces use the same authored controller/qualifier ordering as
     // explicit for-each loops. Calling the raw filter description here
     // canonicalized "creature with power 4 or greater you control" back to
@@ -891,14 +907,43 @@ pub(crate) fn describe_count_filter_value_subject(filter: &ObjectFilter) -> Stri
     {
         subject.push_str(" on the battlefield");
     }
-    if has_sacrificed_tag && !subject.to_ascii_lowercase().starts_with("the sacrificed ") {
-        subject = format!(
-            "the sacrificed {}",
-            subject.trim_start_matches("the ").trim()
-        );
+    if has_sacrificed_tag && !has_sacrifice_cost_tag {
+        // The generic tagged-action surface appends "sacrificed this way".
+        // Aggregate values use the compact noun phrase "the sacrificed
+        // creatures", so remove that suffix even when the lower-level
+        // renderer has already supplied the leading "the sacrificed".
+        subject = subject
+            .strip_suffix(" sacrificed this way")
+            .unwrap_or(&subject)
+            .to_string();
+        if !subject.to_ascii_lowercase().starts_with("the sacrificed ") {
+            subject = format!(
+                "the sacrificed {}",
+                subject.trim_start_matches("the ").trim()
+            );
+        }
     }
 
     subject
+}
+
+/// Describe the object set used by an aggregate characteristic value.
+///
+/// Open sets conventionally remain bare ("the total power of creatures you
+/// control"), while a set captured by an earlier action is definite ("the
+/// total power of the creatures sacrificed this way"). The result tag carries
+/// that distinction even when lowering did not retain an explicit value
+/// surface hint.
+pub(crate) fn describe_aggregate_filter_value_subject(filter: &ObjectFilter) -> String {
+    let subject = describe_count_filter_value_subject(filter);
+    if prior_effect_action_for_filter(filter).is_some()
+        && !subject.starts_with("the ")
+        && !subject.starts_with("those ")
+    {
+        format!("the {subject}")
+    } else {
+        subject
+    }
 }
 
 /// Whether an unscoped count subject needs its battlefield provenance spelled
@@ -1148,6 +1193,17 @@ pub(crate) fn describe_for_each_count_filter(filter: &ObjectFilter) -> String {
         return subject;
     }
 
+    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+        eprintln!(
+            "count-subject: excluded={:?} tags={:?}",
+            filter.excluded_card_types,
+            filter
+                .tagged_constraints
+                .iter()
+                .map(|c| c.tag.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
     let tagged_this_way_action = describe_tagged_this_way_action(filter);
     let mut bare = filter.clone();
     if tagged_this_way_action
@@ -1821,6 +1877,25 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             {
                 return format!("target {exiled_card}");
             }
+            // An attachment reference inside a target spec is still a target
+            // in oracle ("Destroy target enchanted creature"); a demonstrative
+            // back-reference ("that creature") names an object the spell has
+            // already chosen and takes no prefix.
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && let Some(attached_text) = describe_attached_tagged_object_filter(filter)
+            {
+                return format!("target {attached_text}");
+            }
+            // The filter describer spells a bare commander subject possessively
+            // ("Whenever your commander attacks"), but a targeted commander keeps
+            // the long form — oracle says "Return target commander you own to its
+            // owner's hand", never "target your commander". The filter itself is
+            // identical in both cases; only this spec knows it is a target.
+            if let ChooseSpec::Object(filter) = inner.as_ref()
+                && filter.description() == "your commander"
+            {
+                return "target commander you own".to_string();
+            }
             if let Some(tagged_text) = describe_demonstrative_tagged_object_spec(inner.as_ref()) {
                 return tagged_text;
             }
@@ -2127,6 +2202,26 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod grouped_damage_event_value_surface_tests {
+    use super::*;
+
+    #[test]
+    fn damaged_opponent_event_amount_preserves_its_authored_count_basis() {
+        let value = Value::EventValue(EventValueSpec::Amount)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay);
+
+        assert_eq!(
+            describe_value(&value),
+            "the number of opponents dealt damage this way"
+        );
+        assert_eq!(
+            describe_card_count(&value),
+            "cards equal to the number of opponents dealt damage this way"
+        );
     }
 }
 
@@ -2536,13 +2631,22 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
             if filter.zone == Some(Zone::Graveyard) {
                 // This renderer is used when the caller emits the origin
                 // separately ("from their graveyard"). Re-render the typed
-                // object filter without its zone/owner instead of trying to
-                // strip one of several context-sensitive possessive phrases.
+                // object filter in its nonbattlefield context, then remove the
+                // redundant location. Clearing the zone first would make an
+                // unconstrained card fall back to the battlefield noun
+                // "permanent".
                 let mut object = filter.clone();
-                object.zone = None;
                 object.owner = None;
                 object.single_graveyard = false;
-                let text = describe_object_filter_with_fixed_pt_shorthand(&object);
+                // The caller renders graveyard-entry history after the origin
+                // ("from a graveyard that was put there this turn"). Keeping
+                // the same predicate on this noun-only copy would render it
+                // once here and once again beside the origin.
+                object.entered_graveyard_this_turn = false;
+                object.entered_graveyard_from_battlefield_this_turn = false;
+                object.set_graveyard_entry_history_surface(None);
+                let text =
+                    describe_nonbattlefield_card_filter_without_zone(&object, Zone::Graveyard);
                 return ensure_indefinite_article(&render_artifact_non_aura_enchantment_text(
                     &object, &text,
                 ));
@@ -2570,10 +2674,13 @@ pub(crate) fn describe_choose_spec_without_graveyard_zone(spec: &ChooseSpec) -> 
         ChooseSpec::All(filter) => {
             if filter.zone == Some(Zone::Graveyard) {
                 let mut objects = filter.clone();
-                objects.zone = None;
                 objects.owner = None;
                 objects.single_graveyard = false;
-                let text = describe_object_filter_with_fixed_pt_shorthand(&objects);
+                objects.entered_graveyard_this_turn = false;
+                objects.entered_graveyard_from_battlefield_this_turn = false;
+                objects.set_graveyard_entry_history_surface(None);
+                let text =
+                    describe_nonbattlefield_card_filter_without_zone(&objects, Zone::Graveyard);
                 let text = strip_leading_article(&text);
                 return format!("all {}", pluralize_relative_object_phrase(text));
             }
@@ -2773,6 +2880,7 @@ pub(crate) fn render_counted_artifact_non_aura_enchantment_text(
 }
 
 pub(crate) fn describe_choice_count(count: &ChoiceCount) -> String {
+    let count_word = |value: usize| number_word(value as i32).unwrap_or_else(|| value.to_string());
     let base = if count.is_up_to_dynamic_x() {
         "up to X".to_string()
     } else if count.is_dynamic_x() {
@@ -2785,10 +2893,10 @@ pub(crate) fn describe_choice_count(count: &ChoiceCount) -> String {
         match (count.min, count.max) {
             (0, None) => "any number".to_string(),
             (1, None) => "one or more".to_string(),
-            (min, None) => format!("at least {min}"),
-            (0, Some(max)) => format!("up to {max}"),
-            (min, Some(max)) if min == max => format!("exactly {min}"),
-            (min, Some(max)) => format!("{min} to {max}"),
+            (min, None) => format!("at least {}", count_word(min)),
+            (0, Some(max)) => format!("up to {}", count_word(max)),
+            (min, Some(max)) if min == max => format!("exactly {}", count_word(min)),
+            (min, Some(max)) => format!("{} to {}", count_word(min), count_word(max)),
         }
     };
     if count.is_random() {
@@ -2891,8 +2999,14 @@ pub(crate) fn filter_explicitly_selects_permanent_cards(filter: &ObjectFilter) -
 }
 
 pub(crate) fn describe_single_search_filter_in_zone(filter: &ObjectFilter, zone: Zone) -> String {
-    let selection = describe_nonbattlefield_card_filter_without_zone(filter, zone);
-    if selection == "card" || filter_explicitly_selects_permanent_cards(filter) {
+    let mut selection = describe_nonbattlefield_card_filter_without_zone(filter, zone);
+    if filter_explicitly_selects_permanent_cards(filter) {
+        if selection == "card" || selection.starts_with("card ") {
+            selection = format!("permanent {selection}");
+        }
+        return with_indefinite_article(&selection);
+    }
+    if selection == "card" {
         return with_indefinite_article(&selection);
     }
     with_indefinite_article(&describe_search_selection_with_cards(&selection))
@@ -4780,6 +4894,12 @@ pub(crate) fn describe_value(value: &Value) -> String {
             {
                 return "the damage dealt".to_string();
             }
+            if hints.contains(
+                &ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay,
+            ) && matches!(value.unhinted(), Value::EventValue(EventValueSpec::Amount))
+            {
+                return "the number of opponents dealt damage this way".to_string();
+            }
             if hints.contains(&ironsmith_core::ValueSurfaceHint::RevealedCardReference)
                 && matches!(value.unhinted(), Value::ManaValueOf(_))
             {
@@ -4982,19 +5102,19 @@ pub(crate) fn describe_value(value: &Value) -> String {
             }
             format!(
                 "the total power of {}",
-                describe_count_filter_value_subject(filter)
+                describe_aggregate_filter_value_subject(filter)
             )
         }
         Value::TotalToughness(filter) => {
             format!(
                 "the total toughness of {}",
-                describe_count_filter_value_subject(filter)
+                describe_aggregate_filter_value_subject(filter)
             )
         }
         Value::TotalManaValue(filter) => {
             format!(
                 "the total mana value of {}",
-                describe_count_filter_value_subject(filter)
+                describe_aggregate_filter_value_subject(filter)
             )
         }
         Value::GreatestPower(filter) => {

@@ -158,7 +158,10 @@ fn bare_vanishing_adds_decay_triggers_without_entry_counter_ability() {
     );
     assert_eq!(
         crate::compiled_text::unprocessed_compiled_lines(&def),
-        vec!["Vanishing".to_string()]
+        vec![
+            "At the beginning of your upkeep, remove a time counter from it.".to_string(),
+            "Whenever a counter is removed from this creature, if this creature doesn't have a time counter on it, sacrifice this creature.".to_string(),
+        ]
     );
 }
 

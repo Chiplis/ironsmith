@@ -9,14 +9,24 @@ fn assert_named_inline_entry_counter(
     assert_oracle_card_parses_strict(name);
     let definition = parse_oracle_card_definition(name);
     let debug = format!("{definition:#?}");
+    let counter_marker = format!("counter_type: {counter_debug_name}");
+    let matching_entry_counters = debug
+        .split("BattlefieldEntryCounterSpec")
+        .skip(1)
+        .filter(|entry| {
+            entry
+                .split_once('}')
+                .is_some_and(|(spec, _)| spec.contains(&counter_marker))
+        })
+        .count();
 
     assert_eq!(
-        debug.matches("BattlefieldEntryCounterSpec").count(),
+        matching_entry_counters,
         1,
-        "{name} should encode its authored counter as one battlefield-entry modifier: {debug}"
+        "{name} should encode its authored {counter_debug_name} counter as one battlefield-entry modifier: {debug}"
     );
     assert!(
-        debug.contains(&format!("counter_type: {counter_debug_name}"))
+        debug.contains(&counter_marker)
             && debug.contains("surface: Inline"),
         "{name} should retain the counter kind and inline entry timing: {debug}"
     );

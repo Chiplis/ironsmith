@@ -204,6 +204,40 @@ fn effect_bound_tag(effect: &Effect) -> Option<crate::tag::TagKey> {
         .map(|tagged| tagged.tag.clone())
 }
 
+/// Flatten coordinated `SequenceEffect` wrappers into the printed actions they
+/// contain.
+///
+/// A simultaneous each-player action is analysed as action units — runs of
+/// read-only chooser effects plus the one mutating effect they feed (CR 608.2e).
+/// Lowering groups a chooser and its mutator into a single coordinated
+/// `SequenceEffect` when Oracle prints them as one clause ("Each player chooses
+/// ... , then sacrifices the rest"), and that wrapper implements neither
+/// `is_read_only_simultaneous_player_action` nor
+/// `supports_simultaneous_player_action`. Left wrapped it is opaque to the unit
+/// grouping and the whole action is rejected, so unwrap it here: inside
+/// `ForPlayers` a sequence is exactly an ordered list of that player's actions.
+fn flatten_sequences_for_simultaneous_units(effects: &[Effect]) -> Vec<Effect> {
+    let mut flattened = Vec::with_capacity(effects.len());
+    for effect in effects {
+        match effect.downcast_ref::<crate::effects::SequenceEffect>() {
+            // Only unwrap when every child can take part in the simultaneous
+            // protocol; otherwise keep the wrapper so the gate still reports the
+            // unsupported effect rather than silently reordering it.
+            Some(sequence)
+                if !sequence.effects.is_empty()
+                    && sequence.effects.iter().all(|child| {
+                        child.0.is_read_only_simultaneous_player_action()
+                            || child.0.supports_simultaneous_player_action()
+                    }) =>
+            {
+                flattened.extend(sequence.effects.iter().cloned());
+            }
+            _ => flattened.push(effect.clone()),
+        }
+    }
+    flattened
+}
+
 fn merge_tagged_object_sets(
     aggregate: &mut std::collections::HashMap<
         crate::tag::TagKey,
@@ -265,8 +299,14 @@ impl EffectExecutor for ForPlayersEffect {
         let mut outcomes = Vec::new();
         let mut outcomes_by_player = vec![Vec::new(); players.len()];
 
+        // The simultaneous protocol works on printed actions, so coordinated
+        // sequence wrappers are unwrapped first. The sequential branch below
+        // keeps `self.effects` as authored: nesting there is already executed in
+        // order and carries no unit grouping.
+        let simultaneous_effects = flatten_sequences_for_simultaneous_units(&self.effects);
+
         if !self.starting_with_controller && !self.stop_after_first_happened {
-            if let Some(unsupported) = self.effects.iter().find(|effect| {
+            if let Some(unsupported) = simultaneous_effects.iter().find(|effect| {
                 !effect.0.supports_simultaneous_player_action()
                     && !effect.0.is_read_only_simultaneous_player_action()
             }) {
@@ -311,7 +351,7 @@ impl EffectExecutor for ForPlayersEffect {
             // proposal without leaking into the next player's pass; game
             // mutations are deferred to the batched commit below.
             let shared_action_players =
-                twohg_shared_action_players(game, ctx, &self.effects, &players)?;
+                twohg_shared_action_players(game, ctx, &simultaneous_effects, &players)?;
             if ctx.decision_maker.awaiting_choice() {
                 return Ok(EffectOutcome::count(0));
             }
@@ -327,7 +367,7 @@ impl EffectExecutor for ForPlayersEffect {
             // then commits as one batch before the next unit begins.
             let mut units: Vec<Vec<usize>> = Vec::new();
             let mut current: Vec<usize> = Vec::new();
-            for (effect_index, effect) in self.effects.iter().enumerate() {
+            for (effect_index, effect) in simultaneous_effects.iter().enumerate() {
                 current.push(effect_index);
                 if effect.0.is_read_only_simultaneous_player_action() {
                     continue;
@@ -337,8 +377,7 @@ impl EffectExecutor for ForPlayersEffect {
                 // counter on it") — keep the consumer in the same unit so the
                 // per-player commit interleaving preserves the tag handoff.
                 if let Some(tag) = effect_bound_tag(effect)
-                    && self
-                        .effects
+                    && simultaneous_effects
                         .get(effect_index + 1)
                         .is_some_and(|next| effect_consumes_tag(next, &tag))
                 {
@@ -351,7 +390,14 @@ impl EffectExecutor for ForPlayersEffect {
             }
 
             for unit in units {
-                let mut prepared: Vec<(usize, Box<dyn SimultaneousEffectProposal>)> = Vec::new();
+                let mut prepared: Vec<(
+                    usize,
+                    std::collections::HashMap<
+                        crate::tag::TagKey,
+                        Vec<crate::snapshot::ObjectSnapshot>,
+                    >,
+                    Box<dyn SimultaneousEffectProposal>,
+                )> = Vec::new();
                 // Read-only choices bind tags in the shared execution context.
                 // Each player's proposal must see the same pre-unit context,
                 // not tags left behind by an earlier player's choice. The
@@ -360,7 +406,7 @@ impl EffectExecutor for ForPlayersEffect {
                 // accumulate normally across players.
                 let pre_unit_tagged_objects = ctx.tagged_objects.clone();
                 let unit_has_mutating_effect = unit.iter().any(|effect_index| {
-                    !self.effects[*effect_index]
+                    !simultaneous_effects[*effect_index]
                         .0
                         .is_read_only_simultaneous_player_action()
                 });
@@ -385,7 +431,7 @@ impl EffectExecutor for ForPlayersEffect {
                     }
                     ctx.with_temp_iterated_player(Some(player_id), |ctx| {
                         for &effect_index in &unit {
-                            let effect = &self.effects[effect_index];
+                            let effect = &simultaneous_effects[effect_index];
                             if effect.0.is_read_only_simultaneous_player_action() {
                                 let outcome = execute_effect(game, effect, ctx)?;
                                 outcomes_by_player[player_index].push(outcome.clone());
@@ -393,7 +439,12 @@ impl EffectExecutor for ForPlayersEffect {
                             } else if effect.0.supports_simultaneous_player_action() {
                                 let proposal =
                                     effect.0.prepare_simultaneous_player_action(game, ctx)?;
-                                prepared.push((player_index, proposal));
+                                // Some deferred proposals (notably a tagged
+                                // MoveToZone) resolve their tagged target at
+                                // commit time. Freeze this player's chooser
+                                // context beside the proposal so the reset for
+                                // the next APNAP player cannot erase it.
+                                prepared.push((player_index, ctx.tagged_objects.clone(), proposal));
                             } else {
                                 return Err(ExecutionError::Impossible(
                                     "generic each-player action lacks simultaneous proposal support"
@@ -412,7 +463,7 @@ impl EffectExecutor for ForPlayersEffect {
                 let mut batch_outcomes = Vec::with_capacity(prepared.len());
                 let mut accumulated_unit_tags = pre_unit_tagged_objects.clone();
                 let mut active_commit_player = None;
-                for (player_index, proposal) in prepared {
+                for (player_index, prepared_tagged_objects, proposal) in prepared {
                     if active_commit_player != Some(player_index) {
                         if active_commit_player.is_some() {
                             merge_tagged_object_sets(
@@ -420,7 +471,7 @@ impl EffectExecutor for ForPlayersEffect {
                                 &ctx.tagged_objects,
                             );
                         }
-                        ctx.tagged_objects = pre_unit_tagged_objects.clone();
+                        ctx.tagged_objects = prepared_tagged_objects;
                         active_commit_player = Some(player_index);
                     }
                     match proposal.commit(game, ctx) {
@@ -449,9 +500,9 @@ impl EffectExecutor for ForPlayersEffect {
             }
             let iteration_outcome =
                 EffectOutcome::aggregate_summing_counts(player_outcomes.iter().cloned());
-            let count = iteration_outcome.as_count().unwrap_or_else(|| {
-                i32::from(iteration_outcome.something_happened())
-            });
+            let count = iteration_outcome
+                .as_count()
+                .unwrap_or_else(|| i32::from(iteration_outcome.something_happened()));
             player_counts.push((player_id, count));
             if let Some(memory) = iteration_outcome.affected_object_memory()
                 && !memory.is_empty()
@@ -1064,6 +1115,59 @@ mod tests {
         assert_eq!(shuffled_players.len(), 2);
         assert!(shuffled_players.contains(&alice));
         assert!(shuffled_players.contains(&bob));
+    }
+
+    #[test]
+    fn per_player_choice_tags_survive_into_deferred_zone_move_commits() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+        for (owner, raw_id, name) in [
+            (alice, 3501, "Alice Hand Choice"),
+            (bob, 3502, "Bob Hand Choice"),
+        ] {
+            let card = crate::card::CardBuilder::new(crate::ids::CardId::from_raw(raw_id), name)
+                .card_types(vec![crate::types::CardType::Creature])
+                .build();
+            game.create_object_from_card(&card, owner, crate::zone::Zone::Hand);
+        }
+
+        let chosen_tag = crate::tag::TagKey::from("__each_player_hand_choice");
+        let choose = crate::effects::ChooseObjectsEffect::new(
+            crate::filter::ObjectFilter::default()
+                .in_zone(crate::zone::Zone::Hand)
+                .owned_by(PlayerFilter::IteratedPlayer),
+            crate::effect::ChoiceCount::exactly(1),
+            PlayerFilter::IteratedPlayer,
+            chosen_tag.clone(),
+        )
+        .in_zone(crate::zone::Zone::Hand);
+        let move_to_exile = crate::effects::MoveToZoneEffect::new(
+            crate::target::ChooseSpec::Tagged(chosen_tag),
+            crate::zone::Zone::Exile,
+            false,
+        );
+        let effect = ForPlayersEffect::new(
+            PlayerFilter::Any,
+            vec![Effect::new(choose), Effect::new(move_to_exile)],
+        );
+
+        let source = game.new_object_id();
+        let mut ctx = ExecutionContext::new_default(source, alice);
+        effect
+            .execute(&mut game, &mut ctx)
+            .expect("each player's tagged choice should move during the deferred commit");
+
+        for name in ["Alice Hand Choice", "Bob Hand Choice"] {
+            assert!(
+                game.objects_in_zone(crate::zone::Zone::Exile)
+                    .into_iter()
+                    .any(|object_id| game
+                        .object(object_id)
+                        .is_some_and(|object| object.name == name)),
+                "{name} should remain bound to its player's deferred zone-move proposal"
+            );
+        }
     }
 
     #[test]

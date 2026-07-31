@@ -181,6 +181,20 @@ fn double_quoted_rule_bodies(tokens: &[OwnedLexToken]) -> Vec<&[OwnedLexToken]> 
     bodies
 }
 
+fn tokens_outside_double_quoted_rules(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+    let mut in_quote = false;
+    tokens
+        .iter()
+        .filter_map(|token| {
+            if token.kind == TokenKind::Quote {
+                in_quote = !in_quote;
+                return None;
+            }
+            (!in_quote).then(|| token.clone())
+        })
+        .collect()
+}
+
 fn parse_unquoted_token_dynamic_power_toughness(
     tokens: &[OwnedLexToken],
 ) -> Option<(Value, Value)> {
@@ -240,26 +254,68 @@ fn append_inline_token_embedded_rule(
     }
 }
 
+fn quoted_rule_creates_a_nested_token(tokens: &[OwnedLexToken]) -> bool {
+    let words = token_word_refs(tokens);
+    words
+        .iter()
+        .position(|word| *word == "create")
+        .is_some_and(|create| {
+            words[create + 1..]
+                .iter()
+                .any(|word| matches!(*word, "token" | "tokens"))
+        })
+}
+
 fn parse_inline_token_granted_abilities(
     definition: &mut crate::runtime_backend::token_definition::TokenDefinitionSpec,
     tokens: &[OwnedLexToken],
 ) -> Vec<GrantedAbilityAst> {
     let mut abilities = Vec::new();
+    // The quoted grant and the trailing `and equip {N}` form one Equipment
+    // payload, but the latter sits outside the quoted-rule slices handled
+    // below. Recover only those typed Equipment facts from the complete
+    // clause; merging all complete-clause reminder facts would also leak
+    // keywords from nested tokens inside quotes onto the outer token.
     let complete_reminder = token_definition_grammar::parse_token_reminder_facts_tokens(tokens);
-    token_definition_grammar::merge_token_reminder_definition(definition, &complete_reminder);
+    token_definition_grammar::merge_token_equipment_reminder_definition(
+        definition,
+        &complete_reminder,
+    );
+    let outer_tokens = tokens_outside_double_quoted_rules(tokens);
+    let outer_reminder = token_definition_grammar::parse_token_reminder_facts_tokens(&outer_tokens);
+    token_definition_grammar::merge_token_reminder_definition(definition, &outer_reminder);
     for rule_tokens in double_quoted_rule_bodies(tokens) {
+        // Reminder parsing intentionally scans a whole quoted token rule so
+        // specialized rules such as a dies-triggered token creation can be
+        // retained in the blueprint. Keywords inside the token created by
+        // that rule, however, belong to the nested token. Preserve the outer
+        // token's already-established keyword set across that broad scan.
+        let outer_keywords = quoted_rule_creates_a_nested_token(rule_tokens)
+            .then(|| match definition {
+                crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(
+                    creature,
+                ) => Some(creature.keywords.clone()),
+                _ => None,
+            })
+            .flatten();
         let reminder = token_definition_grammar::parse_token_reminder_facts_tokens(rule_tokens);
-        if token_definition_grammar::merge_token_reminder_definition(definition, &reminder) {
+        let merged =
+            token_definition_grammar::merge_token_reminder_definition(definition, &reminder);
+        if let Some(keywords) = outer_keywords
+            && let crate::runtime_backend::token_definition::TokenDefinitionSpec::Creature(creature) =
+                definition
+        {
+            creature.keywords = keywords;
+        }
+        if merged {
             // Specialized token rules belong to the token blueprint. This is
             // particularly important after outer dispatch strips the quoted
             // suffix before parsing the create action: restore the typed rule
             // before deciding whether a generic granted ability is needed.
-            // Reapply the complete clause so an Equipment rule body cannot
-            // discard a trailing `and equip` clause outside its quotes.
-            token_definition_grammar::merge_token_reminder_definition(
-                definition,
-                &complete_reminder,
-            );
+            // Reapply the outer clause so an Equipment rule body cannot
+            // discard a trailing `and equip` clause outside its quotes. Do
+            // not merge keywords from a nested token rule into this token.
+            token_definition_grammar::merge_token_reminder_definition(definition, &outer_reminder);
             continue;
         }
         if append_inline_token_embedded_rule(definition, rule_tokens) {
@@ -1574,6 +1630,82 @@ mod tests {
     }
 
     #[test]
+    fn nested_token_keywords_stay_inside_the_quoted_token_rule() {
+        let tokens = lex_line(
+            "Create a 0/2 red Dragon Egg creature token with defender and \"When this token dies, create a 2/2 red Dragon creature token with flying and '{R}: This token gets +1/+0 until end of turn.'\".",
+            0,
+        )
+        .expect("nested token creation should lex");
+        let sentence_effects = super::super::parse_effect_sentences_lexed(&tokens)
+            .expect("nested token creation should parse through production dispatch");
+        let (effects, _) = crate::runtime_backend::compile_support::compile_effects(
+            &sentence_effects,
+            &mut crate::runtime_backend::EffectLoweringContext::new(),
+        )
+        .expect("nested token creation should lower");
+        let egg = effects
+            .iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("outer effect should create the Egg");
+
+        let outer_static_ids = egg
+            .token
+            .abilities
+            .iter()
+            .filter_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Static(static_ability) => Some(static_ability.id()),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            outer_static_ids.contains(&StaticAbilityId::Defender),
+            "the outer Egg should retain defender: {:#?}",
+            egg.token.abilities
+        );
+        assert!(
+            !outer_static_ids.contains(&StaticAbilityId::Flying),
+            "flying from the quoted nested Dragon must not attach to the outer Egg: {:#?}",
+            egg.token.abilities
+        );
+
+        let dies_trigger = egg
+            .token
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                crate::ability::AbilityKind::Triggered(triggered) => Some(triggered),
+                _ => None,
+            })
+            .expect("the outer Egg should retain its quoted dies trigger");
+        let dragon = dies_trigger
+            .effects
+            .flattened_default_effects()
+            .into_iter()
+            .find_map(crate::effect::Effect::as_create_token)
+            .expect("the Egg's dies trigger should create the inner Dragon");
+        assert!(
+            dragon.token.abilities.iter().any(|ability| {
+                matches!(
+                    &ability.kind,
+                    crate::ability::AbilityKind::Static(static_ability)
+                        if static_ability.id() == StaticAbilityId::Flying
+                )
+            }),
+            "the nested Dragon should retain flying: {:#?}",
+            dragon.token.abilities
+        );
+        assert!(
+            dragon
+                .token
+                .abilities
+                .iter()
+                .any(|ability| matches!(ability.kind, crate::ability::AbilityKind::Activated(_))),
+            "the nested Dragon should retain firebreathing: {:#?}",
+            dragon.token.abilities
+        );
+    }
+
+    #[test]
     fn separate_token_pronoun_sentence_attaches_quoted_activation() {
         let tokens = lex_line(
             "Create a 1/1 colorless Triskelavite artifact creature token with flying. It has \"Sacrifice this token: This token deals 1 damage to any target.\"",
@@ -1973,6 +2105,32 @@ mod tests {
 
     #[test]
     fn dynamic_token_count_cards_keep_equal_to_and_for_each_semantics() {
+        let shared_graveyard_union = parse_token_count(
+            "Create a 1/1 green Insect creature token for each artifact and/or creature card in your graveyard.",
+        );
+        let Value::Count(shared_graveyard_filter) = shared_graveyard_union.unhinted() else {
+            panic!("expected a typed shared-domain count: {shared_graveyard_union:#?}");
+        };
+        assert!(
+            shared_graveyard_filter.any_of.is_empty(),
+            "{shared_graveyard_filter:#?}"
+        );
+        assert_eq!(
+            shared_graveyard_filter.card_types,
+            [CardType::Artifact, CardType::Creature],
+            "{shared_graveyard_filter:#?}"
+        );
+        assert_eq!(
+            shared_graveyard_filter.owner,
+            Some(PlayerFilter::You),
+            "{shared_graveyard_filter:#?}"
+        );
+        assert_eq!(
+            shared_graveyard_filter.zone,
+            Some(crate::Zone::Graveyard),
+            "{shared_graveyard_filter:#?}"
+        );
+
         let ferrafor = parse_token_count(
             "Create a number of 1/1 green Saproling creature tokens equal to the number of counters among creatures target player controls.",
         );

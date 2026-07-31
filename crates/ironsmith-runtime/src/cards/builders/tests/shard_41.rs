@@ -481,7 +481,7 @@ pub(super) fn self_replacement_branches_reuse_their_typed_target_identity() {
         ),
         (
             "Grey Knight Paragon",
-            "exile that creature instead",
+            "exile it instead",
             "exile target attacking creature",
         ),
         (
@@ -511,7 +511,7 @@ pub(super) fn self_replacement_branches_reuse_their_typed_target_identity() {
         ),
         (
             "Will of the All-Hunter",
-            "put two +1/+1 counters on it instead",
+            "instead put two +1/+1 counters on it",
             "put two +1/+1 counters on target creature",
         ),
         (

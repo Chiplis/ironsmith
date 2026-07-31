@@ -51,7 +51,7 @@ fn parses_colored_instant_and_sorcery_spell_subject_with_shared_controller() {
     );
     assert_eq!(
         filter.description(),
-        "red instant and sorcery spell you control"
+        "a red instant and sorcery spell you control"
     );
 }
 
@@ -276,6 +276,13 @@ fn parses_differently_qualified_type_branches_as_typed_disjunction() {
         panic!("expected a typed shared-suffix disjunction");
     };
 
+    assert_eq!(filter.zone, Some(Zone::Battlefield), "{filter:#?}");
+    assert_eq!(filter.controller, Some(PlayerFilter::You), "{filter:#?}");
+    assert!(filter.mana_value.is_some(), "{filter:#?}");
+    assert!(filter.card_types.is_empty(), "{filter:#?}");
+    assert!(filter.subtypes.is_empty(), "{filter:#?}");
+    assert!(filter.excluded_card_types.is_empty(), "{filter:#?}");
+    assert!(filter.excluded_subtypes.is_empty(), "{filter:#?}");
     assert_eq!(filter.any_of.len(), 2, "{filter:#?}");
     let artifact = filter
         .any_of
@@ -283,9 +290,11 @@ fn parses_differently_qualified_type_branches_as_typed_disjunction() {
         .find(|branch| branch.card_types.contains(&CardType::Artifact))
         .expect("artifact branch");
     assert!(artifact.excluded_subtypes.contains(&Subtype::Equipment));
+    assert!(!artifact.subtypes.contains(&Subtype::Equipment));
     assert!(!artifact.excluded_subtypes.contains(&Subtype::Aura));
-    assert_eq!(artifact.controller, Some(PlayerFilter::You));
-    assert!(artifact.mana_value.is_some());
+    assert!(artifact.zone.is_none(), "{artifact:#?}");
+    assert!(artifact.controller.is_none(), "{artifact:#?}");
+    assert!(artifact.mana_value.is_none(), "{artifact:#?}");
 
     let enchantment = filter
         .any_of
@@ -293,9 +302,15 @@ fn parses_differently_qualified_type_branches_as_typed_disjunction() {
         .find(|branch| branch.card_types.contains(&CardType::Enchantment))
         .expect("enchantment branch");
     assert!(enchantment.excluded_subtypes.contains(&Subtype::Aura));
+    assert!(!enchantment.subtypes.contains(&Subtype::Aura));
     assert!(!enchantment.excluded_subtypes.contains(&Subtype::Equipment));
-    assert_eq!(enchantment.controller, Some(PlayerFilter::You));
-    assert!(enchantment.mana_value.is_some());
+    assert!(enchantment.zone.is_none(), "{enchantment:#?}");
+    assert!(enchantment.controller.is_none(), "{enchantment:#?}");
+    assert!(enchantment.mana_value.is_none(), "{enchantment:#?}");
+    assert_eq!(
+        filter.description(),
+        "a non-equipment artifact and non-aura enchantment you control with mana value 4 or greater"
+    );
 }
 
 #[test]

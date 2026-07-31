@@ -509,7 +509,7 @@ mod tests {
         assert_eq!(
             describe_for_players_single_iterated_animation(&for_players).as_deref(),
             Some(
-                "For each opponent, up to one target noncreature artifact they control becomes a 0/4 wall artifact creature with defender"
+                "For each opponent, up to one target noncreature artifact they control becomes a 0/4 Wall artifact creature with defender"
             )
         );
     }

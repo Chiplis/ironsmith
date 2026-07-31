@@ -23,6 +23,22 @@ use crate::types::Subtype;
 use crate::zone::Zone;
 use ironsmith_core::ValueSurfaceHint;
 
+fn visit_nested_effects<T: 'static>(
+    effects: &[crate::effect::Effect],
+    mut visitor: impl FnMut(&T),
+) {
+    fn visit<T: 'static>(effect: &crate::effect::Effect, visitor: &mut dyn FnMut(&T)) {
+        if let Some(effect) = effect.downcast_ref::<T>() {
+            visitor(effect);
+        }
+        effect.visit_child_effects(&mut |child| visit(child, visitor));
+    }
+
+    for effect in effects {
+        visit(effect, &mut visitor);
+    }
+}
+
 mod dynamic_color_among;
 #[cfg(ironsmith_runtime_parser_tests)]
 mod shard_00;

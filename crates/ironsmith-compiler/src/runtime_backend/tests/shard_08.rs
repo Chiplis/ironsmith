@@ -269,7 +269,7 @@ pub(super) fn as_enters_opponent_choice_persists_into_static_values_and_triggers
     let vise_debug = format!("{vise:#?}");
     assert!(
         vise_debug.contains("remember_as_chosen_player: true")
-            && vise_debug.contains("BeginningOfUpkeepTrigger {\n")
+            && vise_debug.contains("BeginningOfUpkeep {\n")
             && vise_debug.contains("player: ChosenPlayer"),
         "as-enters choice and possessive trigger must share persistent chosen-player state: {vise_debug}"
     );
@@ -354,7 +354,7 @@ pub(super) fn geth_full_card_mills_the_selected_graveyard_cards_owner() -> Resul
         .expect("Geth should have an activated ability");
     let mill = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::MillEffect>())
+        .find_map(|effect| super::find_nested_effect::<crate::effects::MillEffect>(effect))
         .expect("Geth's activated ability should mill");
 
     assert_eq!(mill.count, Value::X);

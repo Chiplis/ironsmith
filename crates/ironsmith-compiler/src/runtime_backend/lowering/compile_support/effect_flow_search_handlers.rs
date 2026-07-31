@@ -113,6 +113,16 @@ fn compiled_effects_are_play_permissions(effects: &[Effect]) -> bool {
     saw_play_grant
 }
 
+fn compiled_effects_handle_their_own_optional_cast_choice(effects: &[Effect]) -> bool {
+    matches!(
+        effects,
+        [effect]
+            if effect
+                .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+                .is_some()
+    )
+}
+
 fn effect_has_may_decider_scoped_search_followup(effect: &Effect, decider: &PlayerFilter) -> bool {
     if let Some(for_each) = effect.downcast_ref::<crate::effects::ForEachTaggedEffect<Effect>>() {
         return for_each.effects.iter().any(|inner| {
@@ -428,7 +438,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                     "empty compiled may-effect branch is unsupported".to_string(),
                 ));
             }
-            if compiled_effects_are_play_permissions(&inner_effects) {
+            if compiled_effects_are_play_permissions(&inner_effects)
+                || compiled_effects_handle_their_own_optional_cast_choice(&inner_effects)
+            {
                 return Ok(Some((inner_effects, inner_choices)));
             }
             let effect = if ctx.iterated_player
@@ -487,7 +499,9 @@ pub(super) fn try_compile_flow_and_iteration_effect(
                 reconcile_may_decider_scoped_search_effects(inner_effects, &player_filter);
             let mut choices = inner_choices;
             choices.extend(subject.into_choices());
-            if compiled_effects_are_play_permissions(&inner_effects) {
+            if compiled_effects_are_play_permissions(&inner_effects)
+                || compiled_effects_handle_their_own_optional_cast_choice(&inner_effects)
+            {
                 return Ok(Some((inner_effects, choices)));
             }
             let effect = Effect::may_player(player_filter, inner_effects);

@@ -626,18 +626,29 @@ impl Object {
             .power_toughness
             .map(|pt| (Some(pt.power), Some(pt.toughness)))
             .unwrap_or((None, None));
+        let is_token = card.is_token;
 
         Self {
             id,
             stable_id: StableId::from(id), // Set to same as id initially; preserved across zone changes
             last_modified: 0,
-            kind: ObjectKind::Card,
-            card: Some(card.id),
+            kind: if is_token {
+                ObjectKind::Token
+            } else {
+                ObjectKind::Card
+            },
+            card: (!is_token).then_some(card.id),
             zone,
             owner,
             name: card.name.clone().into(),
             first_printed_set_name: card.first_printed_set_name.clone().map(Into::into),
-            mana_cost: shared_optional_value(card.mana_cost.clone()),
+            // Tokens are not cards and have no mana cost, even if a reusable
+            // token template accidentally carries a card-like cost.
+            mana_cost: if is_token {
+                None
+            } else {
+                shared_optional_value(card.mana_cost.clone())
+            },
             color_override: card.color_indicator,
             supertypes: card.supertypes.clone().into(),
             card_types: card.card_types.clone().into(),
@@ -775,9 +786,17 @@ impl Object {
         def: &crate::cards::CardDefinition,
         handles: &CardSharedHandles,
     ) {
-        self.kind = ObjectKind::Card;
-        self.card = Some(def.card.id);
+        let is_token = def.card.is_token;
+        self.kind = if is_token {
+            ObjectKind::Token
+        } else {
+            ObjectKind::Card
+        };
+        self.card = (!is_token).then_some(def.card.id);
         self.apply_definition_face_with_shared(def, handles);
+        if is_token {
+            self.mana_cost = None;
+        }
         self.spell_effect = handles.spell_effect.clone();
         self.aura_attach_filter = handles.aura_attach_filter.clone();
         self.alternative_casts = handles.alternative_casts.clone();
@@ -1969,6 +1988,64 @@ mod tests {
     }
 
     #[test]
+    fn token_markers_survive_card_and_definition_construction_into_snapshots() {
+        let mut game =
+            crate::game_state::GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let mana_cost = ManaCost::from_pips(vec![vec![ManaSymbol::Green]]);
+
+        let token_card = CardBuilder::new(CardId::from_raw(2), "Card Token")
+            .mana_cost(mana_cost.clone())
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+            .token()
+            .build();
+        let token_card_id = game.create_object_from_card(&token_card, alice, Zone::Battlefield);
+        let token_card_object = game.object(token_card_id).expect("token card object");
+        assert_eq!(token_card_object.kind, ObjectKind::Token);
+        assert_eq!(token_card_object.card, None);
+        assert_eq!(token_card_object.mana_cost, None);
+        assert!(
+            ObjectSnapshot::from_object(token_card_object, &game).is_token,
+            "LKI must retain the token identity used by token/nontoken filters"
+        );
+
+        let token_definition =
+            crate::cards::CardDefinitionBuilder::new(CardId::from_raw(3), "Definition Token")
+                .mana_cost(mana_cost.clone())
+                .card_types(vec![CardType::Creature])
+                .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+                .token()
+                .build();
+        let token_definition_id =
+            game.create_object_from_definition(&token_definition, alice, Zone::Graveyard);
+        let token_definition_object = game
+            .object(token_definition_id)
+            .expect("token definition object");
+        assert_eq!(token_definition_object.kind, ObjectKind::Token);
+        assert_eq!(token_definition_object.card, None);
+        assert_eq!(token_definition_object.mana_cost, None);
+        assert_eq!(token_definition_object.zone, Zone::Graveyard);
+        assert!(
+            ObjectSnapshot::from_object(token_definition_object, &game).is_token,
+            "full definitions must preserve token identity in LKI"
+        );
+
+        let physical_card = CardBuilder::new(CardId::from_raw(4), "Physical Card")
+            .mana_cost(mana_cost)
+            .card_types(vec![CardType::Creature])
+            .power_toughness(crate::card::PowerToughness::fixed(1, 1))
+            .build();
+        let physical_card_id =
+            game.create_object_from_card(&physical_card, alice, Zone::Battlefield);
+        let physical_card_object = game.object(physical_card_id).expect("physical card object");
+        assert_eq!(physical_card_object.kind, ObjectKind::Card);
+        assert_eq!(physical_card_object.card, Some(physical_card.id));
+        assert!(physical_card_object.mana_cost.is_some());
+        assert!(!ObjectSnapshot::from_object(physical_card_object, &game).is_token);
+    }
+
+    #[test]
     fn cloned_object_shared_payload_mutations_do_not_leak() {
         let mut original = Object::new_token(
             ObjectId::from_raw(44),
@@ -2322,7 +2399,7 @@ mod tests {
         assert_eq!(token.compiled_card_text, original.compiled_card_text);
         assert!(
             token.compiled_card_text.contains("Flying")
-                && token.compiled_card_text.contains("vigilance"),
+                && token.compiled_card_text.contains("Vigilance"),
             "token copy should preserve the AST-rendered text box, got {}",
             token.compiled_card_text
         );

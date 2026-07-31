@@ -30,23 +30,172 @@ fn with_target_count_preserving_value(spec: ChooseSpec, count: ChoiceCount) -> C
     }
 }
 
-fn nested_create_token_affected_count_id(effect: &Effect) -> Option<EffectId> {
+#[derive(Clone, Copy)]
+enum NestedResultReferenceKind {
+    Outcome,
+    Metric(ironsmith_core::EffectMetricSource),
+    PriorMetric {
+        source: ironsmith_core::EffectMetricSource,
+        action: Option<ironsmith_core::PriorEffectAction>,
+    },
+}
+
+#[derive(Clone, Copy)]
+struct NestedResultReference {
+    id: EffectId,
+    kind: NestedResultReferenceKind,
+}
+
+fn collect_nested_result_references(value: &Value, references: &mut Vec<NestedResultReference>) {
+    let reference = match value {
+        Value::EffectValue(id) | Value::EffectValueOffset(id, _) => Some(NestedResultReference {
+            id: *id,
+            kind: NestedResultReferenceKind::Outcome,
+        }),
+        Value::EffectMetric {
+            effect_id, source, ..
+        }
+        | Value::EffectMetricOffset {
+            effect_id, source, ..
+        } => Some(NestedResultReference {
+            id: *effect_id,
+            kind: NestedResultReferenceKind::Metric(*source),
+        }),
+        Value::PriorEffectMetric { effect_id, query } => Some(NestedResultReference {
+            id: *effect_id,
+            kind: NestedResultReferenceKind::PriorMetric {
+                source: query.source,
+                action: query.action,
+            },
+        }),
+        Value::SurfaceHinted { value, .. }
+        | Value::Scaled(value, _)
+        | Value::DividedRoundedDown(value, _)
+        | Value::HalfRoundedDown(value) => {
+            collect_nested_result_references(value, references);
+            None
+        }
+        Value::Add(left, right) | Value::Min(left, right) => {
+            collect_nested_result_references(left, references);
+            collect_nested_result_references(right, references);
+            None
+        }
+        _ => None,
+    };
+    if let Some(reference) = reference
+        && !references
+            .iter()
+            .any(|existing| existing.id == reference.id)
+    {
+        references.push(reference);
+    }
+}
+
+fn visit_direct_nested_effect_values(effect: &Effect, visit: &mut impl FnMut(&Value)) {
     if let Some(with_id) = effect.as_with_id() {
-        return nested_create_token_affected_count_id(&with_id.effect);
+        visit_direct_nested_effect_values(&with_id.effect, visit);
+        return;
     }
     if let Some(tagged) = effect.as_tagged() {
-        return nested_create_token_affected_count_id(&tagged.effect);
+        visit_direct_nested_effect_values(&tagged.effect, visit);
+        return;
     }
-    let create = effect.downcast_ref::<crate::effects::CreateTokenEffect>()?;
-    match create.count.unhinted() {
-        Value::EffectMetric {
-            effect_id,
-            source: ironsmith_core::EffectMetricSource::AffectedObjects,
-            metric:
-                ironsmith_core::EffectMetric::Count | ironsmith_core::EffectMetric::AffectedCount,
-        } => Some(*effect_id),
-        _ => None,
+
+    if let Some(count_value) = effect.target_spec().and_then(|spec| spec.count_value()) {
+        visit(count_value);
     }
+    if let Some(modal) = effect.as_choose_mode() {
+        for value in [
+            &modal.min,
+            &modal.max,
+            &modal.choose_count,
+            &modal.min_choose_count,
+        ] {
+            visit(value);
+        }
+    }
+
+    macro_rules! value_field {
+        ($type:ty, $field:ident) => {
+            if let Some(value_effect) = effect.downcast_ref::<$type>() {
+                visit(&value_effect.$field);
+            }
+        };
+    }
+    value_field!(crate::effects::DealDamageEffect, amount);
+    value_field!(crate::effects::DrawCardsEffect, count);
+    value_field!(crate::effects::PutCountersEffect, amount);
+    value_field!(crate::effects::RemoveCountersEffect, count);
+    value_field!(crate::effects::RepeatEffectsEffect, count);
+    value_field!(crate::effects::CreateTokenEffect, count);
+    value_field!(crate::effects::CreateTokenCopyEffect, count);
+    value_field!(crate::effects::DiscardEffect, count);
+    value_field!(crate::effects::MillEffect, count);
+    value_field!(crate::effects::ScryEffect, count);
+    value_field!(crate::effects::SurveilEffect, count);
+    value_field!(crate::effects::FatesealEffect, count);
+    value_field!(crate::effects::ExileTopOfLibraryEffect, count);
+    value_field!(crate::effects::InvestigateEffect, count);
+    value_field!(crate::effects::GainLifeEffect, amount);
+    value_field!(crate::effects::LoseLifeEffect, amount);
+    value_field!(crate::effects::SetLifeTotalEffect, amount);
+    value_field!(crate::effects::PoisonCountersEffect, count);
+    value_field!(crate::effects::AdditionalLandPlaysEffect, count);
+    value_field!(crate::effects::PreventDamageEffect, amount);
+    value_field!(crate::effects::AddManaOfLandProducedTypesEffect, amount);
+    value_field!(crate::effects::ConniveEffect, count);
+    value_field!(crate::effects::RemoveUpToCountersEffect, max_count);
+    value_field!(crate::effects::mana::AddScaledManaEffect, amount);
+
+    if let Some(incubate) = effect.downcast_ref::<crate::effects::IncubateEffect>() {
+        visit(&incubate.amount);
+        visit(&incubate.count);
+    }
+    if let Some(choose) = effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
+        && let Some(count) = &choose.count_value
+    {
+        visit(count);
+    }
+    if let Some(search) = effect.downcast_ref::<crate::effects::SearchLibraryEffect>()
+        && let Some(position) = &search.library_position_from_top
+    {
+        visit(position);
+    }
+}
+
+fn direct_nested_effect_result_references(effect: &Effect) -> Vec<NestedResultReference> {
+    let mut references = Vec::new();
+    visit_direct_nested_effect_values(effect, &mut |value| {
+        collect_nested_result_references(value, &mut references);
+    });
+    references
+}
+
+fn nested_effect_is_exile(effect: &Effect) -> bool {
+    if effect
+        .downcast_ref::<crate::effects::ExileEffect>()
+        .is_some()
+    {
+        return true;
+    }
+    if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>()
+        && move_to_zone.zone == Zone::Exile
+    {
+        return true;
+    }
+    if let Some(with_id) = effect.as_with_id() {
+        return nested_effect_is_exile(&with_id.effect);
+    }
+    if let Some(tagged) = effect.as_tagged() {
+        return nested_effect_is_exile(&tagged.effect);
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && nested_effect_is_exile(child) {
+            found = true;
+        }
+    });
+    found
 }
 
 fn nested_effect_is_move_to_zone(effect: &Effect) -> bool {
@@ -62,39 +211,74 @@ fn nested_effect_is_move_to_zone(effect: &Effect) -> bool {
     if let Some(tagged) = effect.as_tagged() {
         return nested_effect_is_move_to_zone(&tagged.effect);
     }
-    false
-}
-
-fn nested_effect_result_id(effect: &Effect) -> Option<EffectId> {
-    if let Some(with_id) = effect.as_with_id() {
-        return Some(with_id.id);
-    }
-    if let Some(tagged) = effect.as_tagged() {
-        return nested_effect_result_id(&tagged.effect);
-    }
-    None
-}
-
-/// Reference annotation can resolve a pending affected-object metric before a
-/// typed sequence is lowered recursively. Preserve the producer wrapper when
-/// that happens so an adjacent "create ... for each card put ... this way"
-/// consumer can evaluate the exact move outcome at runtime.
-fn preserve_nested_move_affected_count_links(effects: &mut [Effect]) {
-    for consumer_index in 1..effects.len() {
-        let Some(effect_id) = nested_create_token_affected_count_id(&effects[consumer_index])
-        else {
-            continue;
-        };
-        let producer_index = consumer_index - 1;
-        if !nested_effect_is_move_to_zone(&effects[producer_index]) {
-            continue;
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && nested_effect_is_move_to_zone(child) {
+            found = true;
         }
-        match nested_effect_result_id(&effects[producer_index]) {
-            Some(existing) if existing == effect_id => {}
-            Some(_) => {}
-            None => {
+    });
+    found
+}
+
+fn nested_effect_defines_result_id(effect: &Effect, id: EffectId) -> bool {
+    if let Some(with_id) = effect.as_with_id() {
+        if with_id.id == id {
+            return true;
+        }
+    }
+    let mut found = false;
+    effect.visit_child_effects(&mut |child| {
+        if !found && nested_effect_defines_result_id(child, id) {
+            found = true;
+        }
+    });
+    found
+}
+
+fn nested_effect_can_produce_reference(effect: &Effect, reference: NestedResultReference) -> bool {
+    match reference.kind {
+        // Move-to-zone effects report the number of objects they actually
+        // moved as their scalar outcome. Search/exile procedures are commonly
+        // lowered behind a sequence wrapper, so accept that transparent
+        // aggregate just as we already accept nested mana producers.
+        NestedResultReferenceKind::Outcome => {
+            effect.contains_mana_production() || nested_effect_is_move_to_zone(effect)
+        }
+        NestedResultReferenceKind::Metric(ironsmith_core::EffectMetricSource::AffectedObjects) => {
+            nested_effect_is_move_to_zone(effect)
+        }
+        NestedResultReferenceKind::PriorMetric {
+            action: Some(ironsmith_core::PriorEffectAction::Exiled),
+            ..
+        } => nested_effect_is_exile(effect),
+        NestedResultReferenceKind::PriorMetric {
+            source: ironsmith_core::EffectMetricSource::AffectedObjects,
+            action: None,
+        } => nested_effect_is_move_to_zone(effect) || nested_effect_is_exile(effect),
+        _ => false,
+    }
+}
+
+/// Reference annotation can resolve a pending result value before a typed
+/// sequence is lowered recursively. The second annotation pass sees an
+/// already-resolved ID and therefore does not assign that ID to the nested
+/// producer again. Restore the adjacent producer wrapper for result shapes
+/// whose runtime producer is unambiguous.
+fn preserve_nested_result_value_links(effects: &mut [Effect]) {
+    for consumer_index in 1..effects.len() {
+        let references = direct_nested_effect_result_references(&effects[consumer_index]);
+        let producer_index = consumer_index - 1;
+        for reference in references {
+            if effects[..consumer_index]
+                .iter()
+                .any(|effect| nested_effect_defines_result_id(effect, reference.id))
+            {
+                continue;
+            }
+            if nested_effect_can_produce_reference(&effects[producer_index], reference) {
                 effects[producer_index] =
-                    Effect::with_id(effect_id.0, effects[producer_index].clone());
+                    Effect::with_id(reference.id.0, effects[producer_index].clone());
+                break;
             }
         }
     }
@@ -569,12 +753,12 @@ fn compile_effect_inner(
     }
     if let EffectAst::Sequence { effects } = effect {
         let (mut effects, choices) = compile_effects(effects, ctx)?;
-        preserve_nested_move_affected_count_links(&mut effects);
+        preserve_nested_result_value_links(&mut effects);
         return Ok((effects, choices));
     }
     if let EffectAst::CommaThen { effects } = effect {
         let (mut effects, choices) = compile_effects(effects, ctx)?;
-        preserve_nested_move_affected_count_links(&mut effects);
+        preserve_nested_result_value_links(&mut effects);
         return Ok((
             vec![Effect::new(crate::effects::SequenceEffect::comma_then(
                 effects,
@@ -587,7 +771,7 @@ fn compile_effect_inner(
         // sentence together while references are resolved. It has no
         // separate runtime effect; lower its typed children in order.
         let (mut effects, choices) = compile_effects(effects, ctx)?;
-        preserve_nested_move_affected_count_links(&mut effects);
+        preserve_nested_result_value_links(&mut effects);
         return Ok((effects, choices));
     }
     if let EffectAst::Coordinated {
@@ -607,7 +791,7 @@ fn compile_effect_inner(
         ctx.force_auto_tag_object_targets = saved_force_auto_tag_object_targets;
         ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
         let (mut effects, choices) = compiled?;
-        preserve_nested_move_affected_count_links(&mut effects);
+        preserve_nested_result_value_links(&mut effects);
         let (effects, choices) = preserve_independent_coordinated_targets(effects, choices);
         let sequence = if *result_conjunction {
             crate::effects::SequenceEffect::result_conjunction(effects, *leading_duration)
@@ -693,7 +877,33 @@ fn compile_effect_inner(
         return Ok((vec![wrapped, fallback], choices));
     }
     if let EffectAst::TagAffected { effect, tag } = effect {
-        let (mut lowered, choices) = compile_effect(effect, ctx)?;
+        // This wrapper is itself the authoritative outcome tag. Letting the
+        // nested action auto-tag its object result first creates two nested
+        // tags, and the outer group tag can then overwrite the explicit
+        // primary alias used by linked fanout filters. A coordinated
+        // choose-target prelude is the deliberate exception: its shared
+        // `__chosen_objects__` wrapper aggregates independently addressable
+        // target slots, so each explicit TargetOnly action must keep its
+        // inner `targeted_N` tag.
+        let preserves_explicit_chosen_target_slot = tag.as_str()
+            == crate::cards::builders::CHOSEN_OBJECTS_TAG
+            && matches!(
+                effect.as_ref(),
+                EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                    action: SubjectVerbActionAst::TargetOnly {
+                        explicit_declaration: true,
+                        ..
+                    },
+                    ..
+                })
+            );
+        let saved_auto_tag_object_targets = ctx.auto_tag_object_targets;
+        if !preserves_explicit_chosen_target_slot {
+            ctx.auto_tag_object_targets = false;
+        }
+        let compiled = compile_effect(effect, ctx);
+        ctx.auto_tag_object_targets = saved_auto_tag_object_targets;
+        let (mut lowered, choices) = compiled?;
         let inner = lowered.pop().ok_or_else(|| {
             CardTextError::ParseError("tag-affected requires a single nested effect".to_string())
         })?;
@@ -1280,5 +1490,139 @@ fn replace_iterated_player_with_target_player(filter: &mut PlayerFilter) {
             replace_iterated_player_with_target_player(inner)
         }
         _ => {}
+    }
+}
+
+#[cfg(test)]
+mod nested_result_value_link_tests {
+    use super::*;
+
+    #[test]
+    fn scaled_mana_keeps_the_result_id_used_by_following_draw() {
+        let result_id = EffectId(7);
+        let mut effects = vec![
+            Effect::new(crate::effects::mana::AddScaledManaEffect::new(
+                vec![ManaSymbol::Red],
+                Value::Fixed(2),
+                PlayerFilter::You,
+            )),
+            Effect::new(crate::effects::DrawCardsEffect::you(
+                Value::EffectValueOffset(result_id, 1),
+            )),
+        ];
+
+        preserve_nested_result_value_links(&mut effects);
+
+        let with_id = effects[0]
+            .as_with_id()
+            .expect("the scaled-mana producer should retain its result ID");
+        assert_eq!(with_id.id, result_id);
+        assert!(
+            with_id
+                .effect
+                .downcast_ref::<crate::effects::mana::AddScaledManaEffect>()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn exile_keeps_the_result_id_used_by_following_token_count() {
+        let result_id = EffectId(11);
+        let token = CardDefinitionBuilder::new(CardId::new(), "Zombie")
+            .token()
+            .card_types(vec![CardType::Creature])
+            .build();
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Exiled);
+        let mut effects = vec![
+            Effect::new(crate::effects::ExileEffect::all(ObjectFilter::creature())),
+            Effect::new(crate::effects::CreateTokenEffect::you(
+                token,
+                Value::PriorEffectMetric {
+                    effect_id: result_id,
+                    query,
+                },
+            )),
+        ];
+
+        preserve_nested_result_value_links(&mut effects);
+
+        let with_id = effects[0]
+            .as_with_id()
+            .expect("the exile producer should retain its result ID");
+        assert_eq!(with_id.id, result_id);
+        assert!(
+            with_id
+                .effect
+                .downcast_ref::<crate::effects::ExileEffect>()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn explicit_tag_affected_suppresses_nested_automatic_result_tag() {
+        let target = TargetAst::Object(
+            ObjectFilter::creature(),
+            Some(crate::cards::builders::TextSpan::synthetic()),
+            None,
+        );
+        let ast = EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_destroy(target)),
+            tag: TagKey::from("linked_primary"),
+        };
+        let mut ctx = EffectLoweringContext::new();
+        ctx.auto_tag_object_targets = true;
+
+        let (effects, _) = compile_effect(&ast, &mut ctx).expect("explicit tagged destroy");
+        let debug = format!("{effects:#?}");
+
+        assert!(debug.contains("linked_primary"), "{debug}");
+        assert!(!debug.contains("destroyed_"), "{debug}");
+        assert_eq!(ctx.last_object_tag.as_deref(), Some("linked_primary"));
+    }
+
+    #[test]
+    fn chosen_collection_wrapper_keeps_an_explicit_target_slot_tag() {
+        let target = TargetAst::Object(
+            ObjectFilter::creature(),
+            Some(crate::cards::builders::TextSpan::synthetic()),
+            None,
+        );
+        let ast = EffectAst::TagAffected {
+            effect: Box::new(EffectAst::subject_verb_explicit_target_only(target)),
+            tag: TagKey::from(crate::cards::builders::CHOSEN_OBJECTS_TAG),
+        };
+        let mut ctx = EffectLoweringContext::new();
+        ctx.auto_tag_object_targets = true;
+
+        let (effects, _) = compile_effect(&ast, &mut ctx).expect("chosen target slot");
+        let [outer] = effects.as_slice() else {
+            panic!("expected one doubly tagged target slot: {effects:#?}");
+        };
+        let outer = outer
+            .as_tagged()
+            .expect("chosen collection should remain the outer tag");
+        assert_eq!(
+            outer.tag.as_str(),
+            crate::cards::builders::CHOSEN_OBJECTS_TAG
+        );
+        let inner = outer
+            .effect
+            .as_tagged()
+            .expect("explicit target slot should retain its automatic tag");
+        assert_eq!(inner.tag.as_str(), "targeted_0");
+        assert!(
+            inner
+                .effect
+                .downcast_ref::<crate::effects::TargetOnlyEffect>()
+                .is_some()
+        );
+        assert_eq!(
+            ctx.last_object_tag.as_deref(),
+            Some(crate::cards::builders::CHOSEN_OBJECTS_TAG)
+        );
     }
 }

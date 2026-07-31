@@ -57,3 +57,23 @@ fn a_different_player_tag_does_not_claim_the_linked_surface() {
         None
     );
 }
+
+#[test]
+fn first_player_counter_choice_keeps_that_player_as_the_action_actor() {
+    let mut creature = ObjectFilter::default();
+    creature.zone = Some(Zone::Battlefield);
+    creature.controller = Some(PlayerFilter::TaggedPlayer("__it__".into()));
+    creature.card_types.push(CardType::Creature);
+    let effects = vec![
+        choose_player("chosen_player_0", &[]),
+        Effect::new(crate::effects::PutCountersEffect::plus_one_counters(
+            2,
+            ChooseSpec::Object(creature).with_count(ChoiceCount::exactly(1)),
+        )),
+    ];
+
+    assert_eq!(
+        describe_distinct_player_choice_with_linked_action(&effects).as_deref(),
+        Some("Choose a player. They put two +1/+1 counters on a creature they control")
+    );
+}

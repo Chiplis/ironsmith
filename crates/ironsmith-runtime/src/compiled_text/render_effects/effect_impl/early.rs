@@ -517,7 +517,7 @@
         };
         return format!(
             "{subject}, {}",
-            describe_effect_list(&for_each_tagged.effects)
+            lowercase_first(&describe_effect_list(&for_each_tagged.effects))
         );
     }
     if effect
@@ -527,6 +527,53 @@
         return "Ascend".to_string();
     }
     if let Some(for_players) = effect.downcast_ref::<crate::effects::ForPlayersEffect>() {
+        // "Each player may draw a card, then each player who drew a card this
+        // way gains N life." — must run before the broad may-clause arms,
+        // which would expose the WithId/If scaffolding.
+        if let Some(compact) =
+            describe_for_players_may_draw_then_gain_if_drew(std::slice::from_ref(effect))
+        {
+            return compact;
+        }
+        // A relative player predicate plus a subtraction-valued damage action
+        // has a precise Oracle surface. Keep it ahead of broad quantified-loop
+        // renderers, which otherwise expose the implementation as
+        // "for each ..., if ..." and describe the amount as "difference
+        // damage."
+        if !for_players.starting_with_controller
+            && !for_players.stop_after_first_happened
+            && let [conditional_effect] = for_players.effects.as_slice()
+            && let Some(conditional) =
+                conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()
+            && conditional.if_false.is_empty()
+            && let Some(relative) = relative_iterated_player_condition(&conditional.condition)
+            && let [damage_effect] = conditional.if_true.as_slice()
+            && let damage_effect = unwrap_basic_tag_wrappers(damage_effect)
+            && let Some(damage) = damage_effect
+                .downcast_ref::<crate::effects::DealDamageEffect>()
+                .or_else(|| {
+                    damage_effect
+                        .downcast_ref::<crate::effects::ExecuteWithSourceEffect>()
+                        .and_then(|with_source| {
+                            with_source
+                                .effect
+                                .downcast_ref::<crate::effects::DealDamageEffect>()
+                        })
+                })
+            && matches!(
+                damage.target,
+                ChooseSpec::Player(PlayerFilter::IteratedPlayer)
+            )
+            && damage
+                .amount
+                .has_surface_hint(ValueSurfaceHint::Difference)
+        {
+            let player_filter_text = describe_for_each_player_filter(&for_players.filter);
+            let each_player = strip_leading_article(&player_filter_text);
+            return format!(
+                "Deal damage to each {each_player} who {relative} equal to the difference"
+            );
+        }
         if let Some(compact) =
             describe_for_players_choose_each_graveyard_then_owner_shuffle(for_players)
         {
@@ -607,16 +654,20 @@
         if let Some(compact) = describe_for_players_correlated_result_loop(for_players) {
             return compact;
         }
-        if let Some(compact) = describe_for_players_may_happened_sequence(for_players) {
-            return compact;
-        }
-        if let Some(compact) = describe_sequential_any_player_may_action(for_players) {
-            return compact;
-        }
+        // Search procedures carry a shared searched-card collection and an
+        // authored sentence boundary before a conditional shuffle. Preserve
+        // that structure before the broad May/Happened renderer reduces the
+        // pair to independent player actions.
         if let Some(compact) = describe_for_players_may_search_library_then_shuffle(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_search_library_then_shuffle(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_for_players_may_happened_sequence(for_players) {
+            return compact;
+        }
+        if let Some(compact) = describe_sequential_any_player_may_action(for_players) {
             return compact;
         }
         if let Some(compact) = describe_for_players_choose_nonland_put_counter(for_players) {
@@ -694,12 +745,6 @@
         // quantified-player compactor before the broad iterated-sequence
         // fallback so qualified searches and choose/sacrifice complements
         // retain their authored "Each player who ..." surface.
-        if let Some(compact) = describe_quantified_player_effect(for_players) {
-            return compact;
-        }
-        if let Some(compact) = describe_for_players_iterated_action_sequence(for_players) {
-            return compact;
-        }
         if for_players.filter == PlayerFilter::Any
             && for_players.effects.len() == 1
             && let Some(cant) = for_players.effects[0].downcast_ref::<crate::effects::CantEffect>()
@@ -740,11 +785,20 @@
                 }
             );
         }
+        // Prefer the structural quantified-player renderers before the broad
+        // relative-condition fallback below. A qualified action can still be
+        // a coordinated procedure (for example, choose objects and sacrifice
+        // the complement), and flattening it first loses that relationship.
+        // The dedicated relative-difference-damage branch above remains
+        // earlier because it proves a narrower Oracle surface.
+        if let Some(compact) = describe_quantified_player_effect(for_players) {
+            return compact;
+        }
         if for_players.effects.len() == 1
             && let Some(conditional) =
                 for_players.effects[0].downcast_ref::<crate::effects::ConditionalEffect>()
             && conditional.if_false.is_empty()
-            && let Some(relative) = describe_player_relative_condition(&conditional.condition)
+            && let Some(relative) = relative_iterated_player_condition(&conditional.condition)
         {
             let player_filter_text = describe_for_each_player_filter(&for_players.filter);
             let each_player = strip_leading_article(&player_filter_text);
@@ -909,14 +963,14 @@
             } else {
                 String::new()
             };
-            return format!(
+            return capitalize_first(&format!(
                 "{} {} {} for {}{}",
                 chooser,
                 player_verb(&chooser, "search", "searches"),
                 search_origin,
                 choice_text,
                 reveal_clause
-            );
+            ));
         }
         let zone_location = |zone| match zone {
             Zone::Battlefield => ("on the battlefield", "battlefield"),
@@ -982,7 +1036,7 @@
                 format!(" {zone_phrase}")
             }
         };
-        return format!(
+        return capitalize_first(&format!(
             "{} {} {}{}",
             chooser,
             if search_like {
@@ -992,7 +1046,7 @@
             },
             choice_text,
             location_suffix
-        );
+        ));
     }
     if let Some(choose_name) = effect.downcast_ref::<crate::effects::ChooseCardNameEffect>() {
         let chooser = describe_player_filter(&choose_name.chooser);
@@ -1212,6 +1266,7 @@
                     .replacen("Put it ", "Put them ", 1)
                     .replacen("Return it ", "Return them ", 1)
                     .replacen("Move it ", "Move them ", 1)
+                    .replacen("Exile it", "Exile them", 1)
                     .replace("its owner's", "their owners'")
                     .replace("its owner", "their owners");
             }
@@ -1582,7 +1637,14 @@
             Zone::Ante => format!("Ante {target}"),
             Zone::OutsideGame => format!("Move {target} outside the game"),
         };
-        return if move_to_zone.zone == Zone::Battlefield {
+        // A non-battlefield move can also carry its counters ("Exile this with
+        // three time counters on it"); only the inline surface makes sense
+        // outside a battlefield-entry event.
+        return if move_to_zone.zone == Zone::Battlefield
+            || move_to_zone.enters_with_counters.iter().all(|counter| {
+                counter.surface == ironsmith_core::BattlefieldEntryCounterSurface::Inline
+            })
+        {
             append_battlefield_entry_counter_surface(
                 rendered,
                 &move_to_zone.enters_with_counters,
@@ -1650,6 +1712,7 @@
             && filter.one_per_card_type
         {
             let from = match filter.owner.as_ref() {
+                Some(PlayerFilter::Defending) => "defending player's graveyard".to_string(),
                 Some(owner) => format!(
                     "{} graveyard",
                     describe_possessive_graveyard_owner_filter(owner)
@@ -3016,8 +3079,15 @@
                     if filter.has_return_destination_first_surface()
             );
             let rendered = if destination_first {
+                let target_text = if let Some((head, qualifier)) =
+                    target_text.split_once(" with ")
+                {
+                    format!("{head} in {from_text} with {qualifier}")
+                } else {
+                    format!("{target_text} in {from_text}")
+                };
                 format!(
-                    "Return to the battlefield{} {target_text} in {from_text}{history_clause}{where_clause}",
+                    "Return to the battlefield{} {target_text}{history_clause}{where_clause}",
                     if return_to_battlefield.tapped {
                         " tapped"
                     } else {
@@ -5317,6 +5387,13 @@
         if body.contains("If you do,") || body.contains("if you do,") {
             return format!("{body} and repeat this process");
         }
+        // A repeated optional payment is authored as one clause ("you may pay
+        // {1}{W} any number of times"), not as a payment plus a repeat step.
+        if (body.starts_with("You may pay ") || body.starts_with("you may pay "))
+            && !body.contains(". ")
+        {
+            return format!("{body} any number of times");
+        }
         // An optional body only loops when taken; oracle spells the gate.
         if body.starts_with("You may ") || body.starts_with("you may ") {
             return format!("{body}. If you do, repeat this process");
@@ -5357,6 +5434,22 @@
         if conditional.surface == ironsmith_core::ConditionalSurface::TrailingIf {
             let effect_text = describe_effect_clause_list(&conditional.if_true)
                 .unwrap_or_else(|| describe_effect_list(&conditional.if_true));
+            // "Destroy target creature if it has mana value 2 or less" — the
+            // condition inspects the pending target of THIS clause's own
+            // action, so its tag must read present-tense, not as a
+            // "was destroyed this way" back-reference.
+            if let crate::effect::Condition::TaggedObjectMatches(tag, filter) =
+                &conditional.condition
+                && tag.as_str().starts_with("destroyed_")
+            {
+                let desc = filter.description();
+                if let Some(rest) = desc.strip_prefix("permanent with ") {
+                    return format!("{effect_text} if it has {rest}");
+                }
+                if let Some(rest) = desc.strip_prefix("creature with ") {
+                    return format!("{effect_text} if it has {rest}");
+                }
+            }
             return format!(
                 "{effect_text} if {}",
                 describe_condition(&conditional.condition)
@@ -5792,7 +5885,7 @@
             return compact;
         }
         if let Some(compact) = describe_may_compound_payment(may) {
-            return compact;
+            return capitalize_first(&compact);
         }
         if let Some(compact) = describe_may_have_source_deal_damage_to_decider(may) {
             return compact;
@@ -5844,6 +5937,17 @@
             }
             return format!("{who} may choose new targets for the copy");
         }
+        // Checked ahead of the decider branch below: a `Some(You)` decider on this
+        // shape would otherwise render as "You may " plus a clause that already
+        // carries its own permission.
+        if let Some(collective) =
+            crate::compiled_text::render_effects::effect_lists::helpers_02::render_may_cast_any_number_from_among_exiled(
+                may,
+            )
+        {
+            return collective;
+        }
+
         if let Some(decider) = may.decider.as_ref() {
             // A bare Opponent decider iterates every opponent: oracle says
             // "each opponent may ..." with their-possessives.

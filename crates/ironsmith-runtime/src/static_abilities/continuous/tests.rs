@@ -411,6 +411,71 @@ fn conditioned_set_card_types_reaches_the_generated_continuous_effect() {
 }
 
 #[test]
+fn compiled_conditioned_type_union_applies_through_the_layer_system() {
+    let alice = PlayerId::from_index(0);
+    let bob = PlayerId::from_index(1);
+    let mut filter = ObjectFilter {
+        zone: Some(Zone::Battlefield),
+        controller: Some(PlayerFilter::You),
+        mana_value: Some(crate::filter::Comparison::GreaterThanOrEqual(4)),
+        any_of: vec![
+            ObjectFilter::default()
+                .with_type(CardType::Artifact)
+                .without_subtype(Subtype::Equipment),
+            ObjectFilter::default()
+                .with_type(CardType::Enchantment)
+                .without_subtype(Subtype::Aura),
+        ],
+        ..ObjectFilter::default()
+    };
+    filter.set_conjunctive_set_surface(true);
+    let ability = StaticAbility::from_model(
+        crate::static_abilities::CompiledStaticAbility::add_card_types(
+            filter,
+            vec![CardType::Creature],
+        )
+        .with_condition(crate::ConditionExpr::YourTurn),
+    );
+    let source = CardDefinitionBuilder::new(CardId::new(), "Union Animator")
+        .card_types(vec![CardType::Creature])
+        .with_ability(Ability::static_ability(ability))
+        .build();
+    let artifact = CardBuilder::new(CardId::new(), "Qualifying Relic")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(4)]))
+        .card_types(vec![CardType::Artifact])
+        .build();
+    let equipment = CardBuilder::new(CardId::new(), "Excluded Equipment")
+        .mana_cost(ManaCost::from_symbols(vec![ManaSymbol::Generic(4)]))
+        .card_types(vec![CardType::Artifact])
+        .subtypes(vec![Subtype::Equipment])
+        .build();
+
+    let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+    game.create_object_from_definition(&source, alice, Zone::Battlefield);
+    let artifact = game.create_object_from_card(&artifact, alice, Zone::Battlefield);
+    let equipment = game.create_object_from_card(&equipment, alice, Zone::Battlefield);
+
+    game.turn.active_player = alice;
+    assert!(
+        game.current_card_types(artifact)
+            .is_some_and(|types| types.contains(&CardType::Creature)),
+        "the compiled, conditioned union should animate a qualifying artifact"
+    );
+    assert!(
+        game.current_card_types(equipment)
+            .is_some_and(|types| !types.contains(&CardType::Creature)),
+        "the Artifact arm's Equipment exclusion must survive model conversion and layering"
+    );
+
+    game.turn.active_player = bob;
+    assert!(
+        game.current_card_types(artifact)
+            .is_some_and(|types| !types.contains(&CardType::Creature)),
+        "the continuous effect must stop applying outside its source controller's turn"
+    );
+}
+
+#[test]
 fn test_single_global_land_subtype_addition_uses_each_land_surface() {
     let swamp = AddSubtypesForFilter::new(ObjectFilter::land(), vec![Subtype::Swamp]);
     assert_eq!(
@@ -1651,6 +1716,7 @@ fn parsed_compound_spell_keyword_grants_keep_shared_controller_scope() {
         "Instant and sorcery spells you control have rebound.",
         "Instant and sorcery spells you control have lifelink.",
         "Instant and sorcery spells you control have deathtouch.",
+        "Red instant and sorcery spells you control have lifelink.",
     ] {
         let definition = CardDefinitionBuilder::new(CardId::new(), "Controlled Spell Grant")
             .card_types(vec![CardType::Enchantment])
@@ -1662,6 +1728,24 @@ fn parsed_compound_spell_keyword_grants_keep_shared_controller_scope() {
             vec![text.to_string()]
         );
     }
+}
+
+#[test]
+fn branch_qualified_spell_grants_keep_plural_type_arms() {
+    let mut tapped_instant = ObjectFilter::default().with_type(CardType::Instant);
+    tapped_instant.tapped = true;
+    let mut untapped_sorcery = ObjectFilter::default().with_type(CardType::Sorcery);
+    untapped_sorcery.untapped = true;
+
+    let mut filter = ObjectFilter::spell().controlled_by(PlayerFilter::You);
+    filter.has_mana_cost = true;
+    filter.any_of = vec![tapped_instant, untapped_sorcery];
+    filter.set_conjunctive_set_surface(true);
+
+    assert_eq!(
+        GrantAbility::new(filter, StaticAbility::lifelink()).display(),
+        "tapped instants and untapped sorcery spells you control have lifelink"
+    );
 }
 
 #[test]

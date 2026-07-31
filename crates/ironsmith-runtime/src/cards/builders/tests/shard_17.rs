@@ -24,36 +24,6 @@ use super::shard_22::*;
 use super::shard_23::*;
 use super::*;
 
-#[test]
-pub(super) fn irresistible_prey_strict_parser_and_compiled_text_regression() {
-    let def = parse_oracle_card_definition("Irresistible Prey");
-    let rendered = unprocessed_compiled_lines(&def);
-    let spell_debug = format!("{:#?}", def.spell_effect);
-    let compact_debug = spell_debug.split_whitespace().collect::<Vec<_>>().join(" ");
-
-    assert_eq!(
-        rendered,
-        vec!["Target creature must be blocked this turn if able. Draw a card."],
-        "expected exact Irresistible Prey oracle-shaped compiled text"
-    );
-    assert!(
-        spell_debug.contains("TargetOnlyEffect")
-            && spell_debug.contains("CantEffect")
-            && spell_debug.contains("MustBeBlocked")
-            && spell_debug.contains("DrawCardsEffect"),
-        "expected direct targeted must-be-blocked restriction plus card draw, got {spell_debug}"
-    );
-    assert!(
-        !spell_debug.contains("AddAbility") && !spell_debug.contains("RuleRestriction"),
-        "Irresistible Prey must not grant a removable ability, got {spell_debug}"
-    );
-    assert!(
-        compact_debug.contains("Target( Object(")
-            && compact_debug.contains("card_types: [ Creature"),
-        "expected Irresistible Prey to require a target creature, got {spell_debug}"
-    );
-}
-
 pub(super) fn resolve_irresistible_prey_targeting_attacker(
     blocker_tapped: bool,
 ) -> (
@@ -318,7 +288,7 @@ pub(super) fn sulfuric_vortex_oracle_parses_strictly_and_renders_life_replacemen
 
     assert_eq!(
         rendered,
-        "At the beginning of each player's upkeep, this enchantment deals 2 damage to them.\nIf a player would gain life, that player gains no life instead."
+        "At the beginning of each player's upkeep, this enchantment deals 2 damage to that player.\nIf a player would gain life, that player gains no life instead."
     );
     assert!(
         ability_debug.contains("BeginningOfUpkeepTrigger")

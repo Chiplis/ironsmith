@@ -27,6 +27,57 @@ fn typed_move_surface_preserves_put_return_and_actor_agreement() {
     assert!(you_put_text.ends_with(" into exile"), "{you_put_text}");
 }
 
+fn source_exile_transformed_finality_surface(
+    verb_surface: ironsmith_core::MoveToZoneVerbSurface,
+) -> String {
+    let exile = Effect::new(crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            ),
+        ),
+        Zone::Exile,
+        false,
+    ));
+    let mut move_back = crate::effects::MoveToZoneEffect::new(
+        ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
+        Zone::Battlefield,
+        false,
+    )
+    .with_verb_surface(verb_surface)
+    .under_owner_control();
+    move_back.enters_transformed = true;
+    move_back.enters_with_counters.push(
+        ironsmith_core::BattlefieldEntryCounterSpec::new(
+            crate::object::CounterType::Finality,
+            1,
+            ironsmith_core::BattlefieldEntryCounterSurface::Inline,
+        ),
+    );
+
+    describe_effect_list(&[exile, Effect::new(move_back).tag(TagKey::from("moved"))])
+}
+
+#[test]
+fn source_exile_sequence_preserves_put_onto_transformed_surface() {
+    assert_eq!(
+        source_exile_transformed_finality_surface(
+            ironsmith_core::MoveToZoneVerbSurface::Put
+        ),
+        "Exile it, then put it onto the battlefield transformed under its owner's control with a finality counter on it"
+    );
+}
+
+#[test]
+fn source_exile_sequence_does_not_rewrite_return_surface_to_put() {
+    assert_eq!(
+        source_exile_transformed_finality_surface(
+            ironsmith_core::MoveToZoneVerbSurface::Return
+        ),
+        "Exile it, then return it to the battlefield transformed under its owner's control with a finality counter on it"
+    );
+}
+
 #[test]
 fn typed_move_surface_preserves_plural_tagged_sets_and_contextual_actor() {
     let tag = TagKey::from("exiled_set");

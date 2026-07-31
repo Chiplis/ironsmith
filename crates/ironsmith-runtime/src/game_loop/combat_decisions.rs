@@ -200,6 +200,7 @@ pub(super) fn generic_attack_tax_per_attacker_against_player(
         }
         if let crate::effect::Restriction::AttackYouUnlessControllerPaysPerAttacker(
             per_attacker_tax,
+            _,
         ) = &restriction.restriction
         {
             tax = tax.saturating_add(*per_attacker_tax);
@@ -2473,7 +2474,7 @@ mod declaration_batch_tests {
             .build();
         let source = game.create_object_from_card(&source_card, bob, Zone::Battlefield);
         let tax = crate::effects::CantEffect::new(
-            crate::effect::Restriction::attack_you_unless_controller_pays_per_attacker(2),
+            crate::effect::Restriction::attack_you_unless_controller_pays_per_attacker(2, true),
             Until::YourNextTurn,
         );
         tax.execute(&mut game, &mut ExecutionContext::new_default(source, bob))

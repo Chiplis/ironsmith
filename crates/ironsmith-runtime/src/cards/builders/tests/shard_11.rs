@@ -955,7 +955,8 @@ pub(super) fn parse_broken_visage_keeps_destroy_no_regen_and_token_followups_on_
     );
     assert!(
         rendered.contains("create a black spirit creature token")
-            && rendered.contains("that creature's power and toughness"),
+            && rendered.contains("its power is equal to that creature's power")
+            && rendered.contains("its toughness is equal to that creature's toughness"),
         "expected dynamic Spirit token wording in compiled output, got {rendered}"
     );
     assert!(
@@ -998,12 +999,25 @@ pub(super) fn parse_sound_the_call_token_does_not_misread_named_card_reference_a
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn specialized_token_reminders_preserve_separate_sentence_presentation() {
-    fn created_token_effect(definition: &CardDefinition) -> &CreateTokenEffect {
+    fn nested_create_token(effect: &Effect) -> Option<CreateTokenEffect> {
+        if let Some(create) = effect.downcast_ref::<CreateTokenEffect>() {
+            return Some(create.clone());
+        }
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = nested_create_token(child);
+            }
+        });
+        found
+    }
+
+    fn created_token_effect(definition: &CardDefinition) -> CreateTokenEffect {
         if let Some(create) = definition.spell_effect.as_ref().and_then(|program| {
             program
                 .flattened_default_effects()
                 .iter()
-                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+                .find_map(|effect| nested_create_token(effect))
         }) {
             return create;
         }
@@ -1015,13 +1029,13 @@ pub(super) fn specialized_token_reminders_preserve_separate_sentence_presentatio
             };
             if let Some(create) = effects
                 .iter()
-                .find_map(|effect| effect.downcast_ref::<CreateTokenEffect>())
+                .find_map(|effect| nested_create_token(effect))
             {
                 return create;
             }
         }
         panic!(
-            "expected a direct create-token effect for {}",
+            "expected a create-token effect for {}",
             definition.card.name
         );
     }
@@ -1365,7 +1379,9 @@ pub(super) fn parse_giant_solifuge_keeps_keyword_structure_and_compares_cleanly(
         .abilities
         .iter()
         .filter_map(|ability| match &ability.kind {
-            AbilityKind::Static(static_ability) => Some(static_ability.id()),
+            AbilityKind::Static(static_ability) if static_ability.id().is_keyword() => {
+                Some(static_ability.id())
+            }
             _ => None,
         })
         .collect::<Vec<_>>();

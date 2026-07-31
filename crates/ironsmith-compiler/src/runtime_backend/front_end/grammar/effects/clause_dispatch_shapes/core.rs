@@ -174,7 +174,7 @@ fn causative_player_subject<'a>(input: &mut LexStream<'a>) -> WResult<()> {
         .parse_next(input)
 }
 
-pub(crate) fn parse_leading_may_clause_shape(
+pub(crate) fn parse_leading_may_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<LeadingMayClauseShape<'_>> {
     let (actor, effect_tokens) = primitives::parse_prefix(tokens, may_actor)?;

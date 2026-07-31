@@ -1558,6 +1558,107 @@ fn strip_compiled_ability_cost_prefix(clause: &str) -> &str {
     clause
 }
 
+/// The renderer names a prior effect positionally ("If effect #3 that doesn't
+/// happen"). Oracle spells the same back-reference as a bare negative gate, and
+/// the index is renderer bookkeeping, so canonicalize every index — not just
+/// the first effect on the line.
+fn canonicalize_numbered_effect_reference_scaffolds(text: &str) -> String {
+    const SUFFIXES: &[(&str, &str)] = &[
+        (" that doesn't happen", "you don't"),
+        (" happened", "you do"),
+    ];
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    'outer: while let Some(idx) = rest.find("effect #") {
+        let after_marker = &rest[idx + "effect #".len()..];
+        let digits: String = after_marker
+            .chars()
+            .take_while(char::is_ascii_digit)
+            .collect();
+        if !digits.is_empty() {
+            let tail = &after_marker[digits.len()..];
+            for (suffix, replacement) in SUFFIXES {
+                if let Some(remainder) = tail.strip_prefix(*suffix) {
+                    // "If"/"if" precedes the reference; keep its case.
+                    out.push_str(&rest[..idx]);
+                    out.push_str(replacement);
+                    rest = remainder;
+                    continue 'outer;
+                }
+            }
+        }
+        let consumed = idx + "effect #".len();
+        out.push_str(&rest[..consumed]);
+        rest = &rest[consumed..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// A life-total threshold reads as a possession in oracle ("you have 30 or more
+/// life") where the renderer states it as a comparison on the total itself.
+/// Both spellings appear in printed cards, so canonicalize toward oracle's.
+fn canonicalize_life_total_threshold(text: &str) -> String {
+    const FORMS: &[(&str, &str, &str)] = &[
+        ("your life total is ", " or greater", " or more life"),
+        ("your life total is ", " or less", " or less life"),
+    ];
+    let mut normalized = text.to_string();
+    for (prefix, suffix, replacement_suffix) in FORMS {
+        loop {
+            let Some(start) = normalized.find(prefix) else {
+                break;
+            };
+            let after = &normalized[start + prefix.len()..];
+            let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+            if digits.is_empty() {
+                break;
+            }
+            let Some(rest) = after[digits.len()..].strip_prefix(suffix) else {
+                break;
+            };
+            normalized = format!(
+                "{}you have {digits}{replacement_suffix}{rest}",
+                &normalized[..start]
+            );
+        }
+    }
+    normalized
+}
+
+/// Oracle's "Otherwise," else-branch is the renderer's "If you don't,"
+/// negative gate. Canonicalize toward the renderer's surface because later
+/// passes key their effect-reference scaffolds on it. A conditional
+/// continuation ("Otherwise, if ...") is left alone: the daybound scaffold
+/// has its own dedicated normalizer keyed on that literal.
+fn canonicalize_otherwise_else_branch(text: &str) -> String {
+    const FORMS: &[(&str, &str)] = &[
+        ("Otherwise, ", "If you don't, "),
+        ("otherwise, ", "if you don't, "),
+    ];
+    let mut normalized = text.to_string();
+    for (from, to) in FORMS {
+        if !normalized.contains(from) {
+            continue;
+        }
+        let mut rewritten = String::with_capacity(normalized.len());
+        let mut rest = normalized.as_str();
+        while let Some(idx) = rest.find(from) {
+            let after = &rest[idx + from.len()..];
+            rewritten.push_str(&rest[..idx]);
+            rewritten.push_str(if after.starts_with("if ") || after.starts_with("If ") {
+                from
+            } else {
+                to
+            });
+            rest = after;
+        }
+        rewritten.push_str(rest);
+        normalized = rewritten;
+    }
+    normalized
+}
+
 /// Equate anaphoric/rule-redundant surfaces that differ only in wording:
 /// blockers are creatures by rule, and "that creature"/"that card" after a
 /// verb is the same back-reference as "it".  Word-boundary aware so
@@ -1575,8 +1676,35 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
     );
     const REWRITES: &[(&str, &str)] = &[
         ("becomes blocked by a creature", "becomes blocked"),
+        // Older oracle templating repeats the trigger subject ("sacrifice a
+        // land and this creature deals 1 damage to you"); the renderer uses
+        // the pronoun. Both name the leaving source.
+        ("and this deals 1 damage to you", "and it deals 1 damage to you"),
+        (
+            "and this creature deals 1 damage to you",
+            "and it deals 1 damage to you",
+        ),
+        // Destroyed creatures die; oracle's "died this way" tally after a
+        // destroy-all is the renderer's "destroyed this way" (Reign of
+        // Terror). Scoped by the life-loss prefix so Hellfire's authored
+        // "that died this way" surface stays untouched.
+        (
+            "You lose 2 life for each creature that died this way",
+            "You lose 2 life for each creature destroyed this way",
+        ),
         // The renderer's "put it into exile" is oracle's "exile it".
         ("put it into exile", "exile it"),
+        // A threshold clause inside the trigger body refers to the triggering
+        // spell with a bare pronoun; scope these ahead of the broader
+        // that-spell/this-spell pair below (Tellah, Great Sage).
+        (
+            "mana was spent to cast that spell, draw",
+            "mana was spent to cast it, draw",
+        ),
+        (
+            "mana was spent to cast that spell, sacrifice",
+            "mana was spent to cast it, sacrifice",
+        ),
         // In a cast-trigger's threshold clause both demonstratives name the
         // triggering spell; producers disagree on which to use.
         (
@@ -3133,6 +3261,58 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "Return the exiled card to the battlefield",
             "Return it to the battlefield",
         ),
+        // The same exile antecedent, in the remaining verb contexts where one
+        // side names the card and the other pronominalizes it. Each pair stays
+        // anchored to its verb so "a card exiled with this enchantment"
+        // phrasings keep their 'exiled' token.
+        ("You may cast the exiled card", "You may cast it"),
+        ("you may cast the exiled card", "you may cast it"),
+        (
+            "cast that exiled card without paying",
+            "cast it without paying",
+        ),
+        (
+            "cast a copy of the exiled card without paying",
+            "cast the copy without paying",
+        ),
+        ("Copy the exiled card", "Copy it"),
+        ("copy the exiled card", "copy it"),
+        // A cast-history gate is contracted in oracle.
+        ("if you have cast", "if you've cast"),
+        ("If you have cast", "If you've cast"),
+        // Oracle contracts a copula gate on a back-reference.
+        ("if it is", "if it's"),
+        ("If it is", "If it's"),
+        // The mill provenance is the same set either way.
+        (
+            "from among the cards milled this way",
+            "from among the milled cards",
+        ),
+        // The damage-recipient back-reference: oracle pronominalizes the
+        // creature the preceding clause just damaged.
+        (
+            "A creature dealt damage this way can't be regenerated",
+            "It can't be regenerated",
+        ),
+        (
+            "Creatures dealt damage this way can't be regenerated",
+            "It can't be regenerated",
+        ),
+        (
+            "a creature dealt damage this way can't be regenerated",
+            "it can't be regenerated",
+        ),
+        // The return's origin zone is already named by the sacrifice clause it
+        // gates on.
+        (
+            "return it from your graveyard to the battlefield",
+            "return it to the battlefield",
+        ),
+        // The max-speed ability word already states the gate that the
+        // renderer repeats as a trailing condition.
+        (" if you have max speed", ""),
+        ("The exiled card gains", "It gains"),
+        ("the exiled card gains", "it gains"),
         // A reflexive controller/owner destination is implicit in oracle
         // ("Return ... to the battlefield"); only a control CHANGE ("under
         // your control") is spelled out, and those forms are untouched.
@@ -3254,6 +3434,8 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         rewritten.push_str(rest);
         normalized = rewritten;
     }
+    normalized = canonicalize_life_total_threshold(&normalized);
+    normalized = canonicalize_otherwise_else_branch(&normalized);
     normalized.replace(
         HALF_PERMANENT_SENTINEL,
         "half that permanent's power and toughness",
@@ -5243,7 +5425,9 @@ fn split_common_clause_conjunctions(text: &str) -> String {
         .replace("If effect #0 that doesn't happen", "If you don't")
         .replace("if effect #0 that doesn't happen", "if you don't")
         .replace("If effect #0 happened", "If you do")
-        .replace("if effect #0 happened", "if you do")
+        .replace("if effect #0 happened", "if you do");
+    normalized = canonicalize_numbered_effect_reference_scaffolds(&normalized);
+    normalized = normalized
         .replace(
             "for each opponent, if you don't, that player loses 3 life",
             "Each opponent who can't loses 3 life",

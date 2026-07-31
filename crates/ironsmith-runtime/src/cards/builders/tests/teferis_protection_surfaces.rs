@@ -9,6 +9,7 @@ fn teferis_protection_renders_its_duration_protection_and_phasing_exactly() {
     let definition = parse_oracle_card_definition("Teferi's Protection");
     let compiled = canonical_compiled_lines(&definition).join("\n");
     let debug = format!("{definition:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
 
     assert_eq!(compiled, oracle, "{debug}");
     assert!(
@@ -16,7 +17,9 @@ fn teferis_protection_renders_its_duration_protection_and_phasing_exactly() {
             && debug.contains("BeTargetedPlayer")
             && debug.contains("PreventAllDamageToTargetEffect")
             && debug.contains("PhaseOutEffect")
-            && debug.contains("ExileEffect")
+            && debug.contains("MoveToZoneEffect")
+            && compact_debug.contains("spec:Source")
+            && compact_debug.contains("zone:Exile")
             && debug.matches("YourNextTurn").count() >= 3,
         "{debug}"
     );

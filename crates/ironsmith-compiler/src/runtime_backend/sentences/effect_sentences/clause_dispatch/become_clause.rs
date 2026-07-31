@@ -642,4 +642,35 @@ mod quoted_duration_tests {
             &tokens, &remainder
         ));
     }
+
+    #[test]
+    fn unclosed_sentence_quote_keeps_animation_descriptor_and_granted_trigger() {
+        let subject =
+            crate::runtime_backend::lexer::lex_line("until end of turn enchanted Plains", 0)
+                .expect("animation subject should lex");
+        let body = crate::runtime_backend::lexer::lex_line(
+            "a 2/5 white Spirit creature with \"Whenever this creature deals damage, its controller gains that much life",
+            0,
+        )
+        .expect("quoted animation body should lex");
+        let effect =
+            parse_become_clause(&subject, &body).expect("quoted land animation should parse");
+        let EffectAst::SubjectVerb(crate::cards::builders::SubjectVerbEffectAst {
+            action:
+                crate::cards::builders::SubjectVerbActionAst::BecomeBasePtCreature {
+                    subtypes,
+                    colors: Some(colors),
+                    granted_abilities,
+                    ..
+                },
+            ..
+        }) = effect
+        else {
+            panic!("expected a typed animation bundle, got {effect:#?}");
+        };
+
+        assert_eq!(subtypes, vec![crate::types::Subtype::Spirit]);
+        assert!(colors.contains(crate::color::Color::White), "{colors:?}");
+        assert_eq!(granted_abilities.len(), 1, "{granted_abilities:#?}");
+    }
 }

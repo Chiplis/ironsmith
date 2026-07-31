@@ -184,6 +184,29 @@ fn first_matching_spell_cast_each_turn_matches(
         matching_filter.zone = Some(Zone::Stack);
     }
 
+    // Continuous characteristics can be queried while a spell is being put
+    // onto the stack, before its SpellCastEvent has reached turn history. In
+    // that window the generic cast-order fallback cannot distinguish "first
+    // spell" from "first matching spell" (for example, first from exile).
+    // Evaluate the live stack entry authoritatively so that a result cached
+    // during casting remains correct after the event is recorded.
+    let current_live_match = game.object(object_id).and_then(|object| {
+        let entry = game
+            .stack
+            .iter()
+            .find(|entry| entry.object_id == object_id)?;
+        let origin = stack_spell_cast_origin_zone(object, entry)?;
+        if cast_origin_zone.is_some_and(|zone| origin != zone)
+            || excluded_cast_origin_zone.is_some_and(|zone| origin == zone)
+        {
+            return Some(false);
+        }
+        let mut live_ctx = ctx.clone();
+        live_ctx.caster = Some(entry.controller);
+        Some(matching_filter.matches_non_recursive(object, &live_ctx, game))
+    });
+
+    let mut saw_current_spell_cast = false;
     for record in game.turn_store.turn_history.projected_records() {
         let Some(event) = record
             .event
@@ -191,6 +214,9 @@ fn first_matching_spell_cast_each_turn_matches(
         else {
             continue;
         };
+        if event.spell == object_id {
+            saw_current_spell_cast = true;
+        }
         if cast_origin_zone.is_some_and(|zone| event.from_zone != zone) {
             continue;
         }
@@ -205,6 +231,18 @@ fn first_matching_spell_cast_each_turn_matches(
         if matching_filter.matches_snapshot(snapshot, &history_ctx, game) {
             return event.spell == object_id;
         }
+    }
+
+    // If the current spell has an explicit history record, reaching this
+    // point means it failed one of the authored matching constraints (most
+    // commonly the origin zone or caster). Do not reinterpret "first" as the
+    // first spell of any kind via the generic cast-order fallback below.
+    if saw_current_spell_cast {
+        return false;
+    }
+
+    if let Some(current_live_match) = current_live_match {
+        return current_live_match;
     }
 
     let cast_order = fallback_cast_player
@@ -2711,6 +2749,10 @@ impl ObjectFilterExt for ObjectFilter {
             return false;
         }
 
+        if self.dealt_damage_this_turn && !game.source_dealt_damage_this_turn(object.id) {
+            return false;
+        }
+
         if let Some(damager) = &self.dealt_damage_by_source_this_turn {
             let Some(source) = ctx.source else {
                 return false;
@@ -2825,8 +2867,7 @@ impl ObjectFilterExt for ObjectFilter {
             if object.zone != Zone::Stack {
                 return false;
             }
-            if stack_entry
-                .and_then(|entry| stack_spell_cast_origin_zone(object, entry))
+            if stack_entry.and_then(|entry| stack_spell_cast_origin_zone(object, entry))
                 == Some(excluded_zone)
             {
                 return false;
@@ -4993,9 +5034,15 @@ impl ObjectFilterExt for ObjectFilter {
             post_noun_qualifiers.push("blocked by this creature this turn".to_string());
         }
         if let Some(combat_partner) = &self.blocked_or_was_blocked_by_this_turn {
+            let mut partner_description = combat_partner.description();
+            if combat_partner.card_types.as_slice() == [CardType::Creature]
+                && !combat_partner.subtypes.is_empty()
+            {
+                partner_description = partner_description.replacen(" creature", "", 1);
+            }
             post_noun_qualifiers.push(format!(
                 "that blocked or was blocked by {} this turn",
-                ensure_filter_indefinite_article(combat_partner.description())
+                ensure_filter_indefinite_article(partner_description)
             ));
         }
         if self.tapped && self.untapped {
@@ -5047,8 +5094,7 @@ impl ObjectFilterExt for ObjectFilter {
         if let Some(player_filter) = &self.attacking_player_or_planeswalker_controlled_by {
             let player_text = if matches!(player_filter, PlayerFilter::ChosenPlayer) {
                 "the last chosen player".to_string()
-            } else if self.attacking_player_only
-                && matches!(player_filter, PlayerFilter::Defending)
+            } else if self.attacking_player_only && matches!(player_filter, PlayerFilter::Defending)
             {
                 "that player".to_string()
             } else {
@@ -5174,10 +5220,7 @@ impl ObjectFilterExt for ObjectFilter {
                 } else {
                     describe_card_type_list(&self.card_types, self.union_connective())
                 };
-                Some((
-                    true,
-                    card_type_phrase,
-                ))
+                Some((true, card_type_phrase))
             }
         } else if !self.token && !subtype_implies_type {
             // Default noun depends on zone context.
@@ -5568,9 +5611,28 @@ impl ObjectFilterExt for ObjectFilter {
         for marker in &self.ability_markers {
             parts.push(format!("with {}", marker.to_ascii_lowercase()));
         }
-        for ability in &self.excluded_static_abilities {
-            if let Some(label) = describe_filter_static_ability(*ability) {
-                parts.push(format!("without {}", label));
+        if self.excluded_static_abilities.len() > 1 {
+            // Oracle writes a multi-keyword exclusion as one serial clause
+            // ("that doesn't have first strike, double strike, vigilance, or
+            // haste"), never as repeated "without" parts.
+            let labels = self
+                .excluded_static_abilities
+                .iter()
+                .filter_map(|ability| describe_filter_static_ability(*ability))
+                .collect::<Vec<_>>();
+            if let [leading @ .., last] = labels.as_slice()
+                && !leading.is_empty()
+            {
+                parts.push(format!(
+                    "that doesn't have {}, or {last}",
+                    leading.join(", ")
+                ));
+            }
+        } else {
+            for ability in &self.excluded_static_abilities {
+                if let Some(label) = describe_filter_static_ability(*ability) {
+                    parts.push(format!("without {}", label));
+                }
             }
         }
         for marker in &self.excluded_ability_markers {
@@ -5711,6 +5773,9 @@ impl ObjectFilterExt for ObjectFilter {
 
         if self.was_dealt_damage_this_turn {
             parts.push("that was dealt damage this turn".to_string());
+        }
+        if self.dealt_damage_this_turn {
+            parts.push("that dealt damage this turn".to_string());
         }
         if let Some(damager) = &self.dealt_damage_by_source_this_turn {
             let source = match damager {

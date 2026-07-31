@@ -722,6 +722,60 @@ fn effect_contains_deal_damage(effect: &Effect) -> bool {
     contains_damage
 }
 
+fn runtime_effect_is_terminal_result_producer(
+    effect: &Effect,
+    producer: TerminalResultProducer,
+) -> bool {
+    match producer {
+        TerminalResultProducer::Clash => effect
+            .downcast_ref::<crate::effects::ClashEffect>()
+            .is_some(),
+        TerminalResultProducer::FlipCoin => effect
+            .downcast_ref::<crate::effects::FlipCoinEffect>()
+            .is_some(),
+    }
+}
+
+fn wrap_terminal_runtime_result_producer(
+    effect: &Effect,
+    producer: TerminalResultProducer,
+    id: EffectId,
+) -> Option<Effect> {
+    if runtime_effect_is_terminal_result_producer(effect, producer) {
+        return Some(Effect::with_id(id.0, effect.clone()));
+    }
+
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let mut sequence = sequence.clone();
+    let terminal = sequence.effects.last()?.clone();
+    *sequence.effects.last_mut()? = wrap_terminal_runtime_result_producer(&terminal, producer, id)?;
+    Some(Effect::new(sequence))
+}
+
+pub(super) fn assign_effect_result_id_for_ast(
+    effects: &mut Vec<Effect>,
+    ast: &EffectAst,
+    id: EffectId,
+    error_message: &str,
+) -> Result<(), CardTextError> {
+    let Some(producer) = terminal_result_producer(ast) else {
+        return assign_effect_result_id(effects, id, error_message);
+    };
+    let Some(terminal) = effects.last().cloned() else {
+        return Err(CardTextError::InvariantViolation(error_message.to_string()));
+    };
+    let wrapped =
+        wrap_terminal_runtime_result_producer(&terminal, producer, id).ok_or_else(|| {
+            CardTextError::InvariantViolation(format!(
+                "{error_message}: terminal {producer:?} producer was not present in lowered effects"
+            ))
+        })?;
+    *effects
+        .last_mut()
+        .expect("nonempty lowered effects checked above") = wrapped;
+    Ok(())
+}
+
 pub(crate) fn compile_result_followup(
     first: &EffectAst,
     second: &EffectAst,
@@ -766,10 +820,12 @@ pub(crate) fn compile_result_followup(
         };
         first_effects.push(Effect::with_id(id.0, antecedent));
     } else {
-        let last = first_effects
-            .pop()
-            .expect("nonempty antecedent checked above");
-        first_effects.push(Effect::with_id(id.0, last));
+        assign_effect_result_id_for_ast(
+            &mut first_effects,
+            first,
+            id,
+            "result follow-up is missing its antecedent effect",
+        )?;
     }
 
     let (inner_effects, inner_choices) = with_preserved_lowering_context(
@@ -933,8 +989,9 @@ pub(crate) fn compile_repeat_process_body(
                 break candidate;
             }
         };
-        assign_effect_result_id(
+        assign_effect_result_id_for_ast(
             &mut compiled,
+            &effects[continue_effect_index],
             condition,
             "repeat process condition is missing a final effect",
         )?;
@@ -965,8 +1022,9 @@ pub(crate) fn compile_repeat_process_body(
                 ));
             }
             let id = ctx.next_effect_id();
-            assign_effect_result_id(
+            assign_effect_result_id_for_ast(
                 &mut effect_list,
+                effect,
                 id,
                 "repeat process condition is missing a final effect",
             )?;
@@ -1287,6 +1345,28 @@ fn vote_extra_amount(effect: &EffectAst) -> Option<(u32, bool)> {
     }
 }
 
+/// `compile_annotated_effects_with_context` normally installs an annotated
+/// result ID after lowering one effect. Vote and secret-choice sequences lower
+/// their members manually, so they must perform the same final-effect wrapping
+/// before a later result predicate tries to read that outcome.
+fn preserve_annotated_effect_result_id(
+    annotated: &AnnotatedEffect,
+    compiled: &mut Vec<Effect>,
+) -> Result<(), CardTextError> {
+    let Some(id) = annotated.assigned_effect_id else {
+        return Ok(());
+    };
+    if compiled.is_empty() {
+        return Ok(());
+    }
+    assign_effect_result_id_for_ast(
+        compiled,
+        &annotated.effect,
+        id,
+        "missing final effect while assigning event id (vote sequence)",
+    )
+}
+
 pub(crate) fn compile_vote_sequence(
     effects: &[AnnotatedEffect],
     ctx: &mut EffectLoweringContext,
@@ -1324,12 +1404,14 @@ pub(crate) fn compile_vote_sequence(
             crate::effects::SecretChoiceEffect::new(options.clone(), participants.clone())
         };
         let mut compiled = vec![Effect::new(secret_choice)];
+        preserve_annotated_effect_result_id(first, &mut compiled)?;
         let mut choices = Vec::new();
         for annotated in effects.iter().take(consumed).skip(1) {
             apply_local_reference_env(ctx, &annotated.in_env);
             ctx.auto_tag_object_targets =
                 ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
-            let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+            let (mut followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+            preserve_annotated_effect_result_id(annotated, &mut followups)?;
             compiled.extend(followups);
             for choice in followup_choices {
                 push_choice(&mut choices, choice);
@@ -1421,13 +1503,15 @@ pub(crate) fn compile_vote_sequence(
         .starting_with_controller(starting_with_controller);
         let effect = Effect::new(vote);
         let mut compiled = vec![effect];
+        preserve_annotated_effect_result_id(first, &mut compiled)?;
         let mut choices = Vec::new();
         for annotated in effects.iter().take(consumed).skip(1) {
             apply_local_reference_env(ctx, &annotated.in_env);
             ctx.auto_tag_object_targets =
                 ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
             if vote_extra_amount(&annotated.effect).is_none() {
-                let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                let (mut followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                preserve_annotated_effect_result_id(annotated, &mut followups)?;
                 compiled.extend(followups);
                 for choice in followup_choices {
                     push_choice(&mut choices, choice);
@@ -1449,13 +1533,15 @@ pub(crate) fn compile_vote_sequence(
         .starting_with_controller(starting_with_controller);
         let effect = Effect::new(vote);
         let mut compiled = vec![effect];
+        preserve_annotated_effect_result_id(first, &mut compiled)?;
         let mut choices = Vec::new();
         for annotated in effects.iter().take(consumed).skip(1) {
             apply_local_reference_env(ctx, &annotated.in_env);
             ctx.auto_tag_object_targets =
                 ctx.force_auto_tag_object_targets || annotated.auto_tag_object_targets;
             if vote_extra_amount(&annotated.effect).is_none() {
-                let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                let (mut followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                preserve_annotated_effect_result_id(annotated, &mut followups)?;
                 compiled.extend(followups);
                 for choice in followup_choices {
                     push_choice(&mut choices, choice);
@@ -1489,8 +1575,9 @@ pub(crate) fn compile_vote_sequence(
                 if ast_uses_iterated_player
                     || compiled_vote_option_uses_iterated_player(&repeat_effects, &repeat_choices)
                 {
-                    let (per_vote_effects, per_vote_choices) =
+                    let (mut per_vote_effects, per_vote_choices) =
                         compile_effects_in_iterated_player_context(&option_effects_ast, ctx, None)?;
+                    preserve_annotated_effect_result_id(annotated, &mut per_vote_effects)?;
                     let mut matching_vote_option = None;
                     for (index, vote_option) in vote_options.iter().enumerate() {
                         if vote_option.name.eq_ignore_ascii_case(option) {
@@ -1507,17 +1594,20 @@ pub(crate) fn compile_vote_sequence(
                         push_choice(&mut choices, choice);
                     }
                 } else {
-                    post_vote_effects.push(Effect::repeat_effects(
+                    let mut repeated = vec![Effect::repeat_effects(
                         Value::VoteCount(option.clone()),
                         repeat_effects,
-                    ));
+                    )];
+                    preserve_annotated_effect_result_id(annotated, &mut repeated)?;
+                    post_vote_effects.extend(repeated);
                     for choice in repeat_choices {
                         push_choice(&mut choices, choice);
                     }
                 }
             }
             _ => {
-                let (followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                let (mut followups, followup_choices) = compile_effect(&annotated.effect, ctx)?;
+                preserve_annotated_effect_result_id(annotated, &mut followups)?;
                 post_vote_effects.extend(followups);
                 for choice in followup_choices {
                     push_choice(&mut choices, choice);
@@ -1536,6 +1626,7 @@ pub(crate) fn compile_vote_sequence(
     .starting_with_controller(starting_with_controller);
     let effect = Effect::new(vote);
     let mut compiled = vec![effect];
+    preserve_annotated_effect_result_id(first, &mut compiled)?;
     compiled.extend(post_vote_effects);
 
     Ok(Some((compiled, choices, consumed)))
@@ -1624,6 +1715,173 @@ mod typed_search_predicate_tests {
         assert_eq!(
             effect_predicate_from_if_result(IfResultPredicate::PriorEffectResult(surface)),
             EffectPredicate::SearchedLibrary
+        );
+    }
+
+    #[test]
+    fn result_followup_ids_the_nested_terminal_coin_flip() {
+        let effects = vec![
+            EffectAst::CommaThen {
+                effects: vec![
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::You,
+                        SubjectVerbActionAst::Draw {
+                            count: Value::Fixed(1),
+                        },
+                    ),
+                    EffectAst::subject_verb_flip_coin(PlayerAst::You),
+                ],
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::Did,
+                effects: vec![EffectAst::subject_verb(
+                    SubjectVerbRoleAst::AffectedPlayer,
+                    PlayerAst::You,
+                    SubjectVerbActionAst::Draw {
+                        count: Value::Fixed(1),
+                    },
+                )],
+            },
+        ];
+
+        let compiled = crate::runtime_backend::compile_support::compile_statement_effects(&effects)
+            .expect("coin-flip result follow-up should lower");
+        let sequence = compiled[0]
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .expect("authored comma-then should remain a sequence");
+        assert!(
+            sequence.effects[0]
+                .downcast_ref::<crate::effects::DrawCardsEffect>()
+                .is_some(),
+            "the preceding action must remain outside the result wrapper"
+        );
+        let flip_with_id = sequence.effects[1]
+            .as_with_id()
+            .expect("the terminal coin flip should carry the result ID");
+        assert!(
+            flip_with_id
+                .effect
+                .downcast_ref::<crate::effects::FlipCoinEffect>()
+                .is_some(),
+            "WithId must wrap the coin flip itself"
+        );
+        let followup = compiled[1]
+            .as_if_effect()
+            .expect("the coin-flip outcome should gate the follow-up");
+        assert_eq!(followup.condition, flip_with_id.id);
+    }
+
+    #[test]
+    fn repeat_process_ids_the_nested_terminal_clash() {
+        let process = EffectAst::RepeatProcess {
+            effects: vec![EffectAst::Coordinated {
+                effects: vec![
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::You,
+                        SubjectVerbActionAst::LoseLife {
+                            amount: Value::Fixed(2),
+                        },
+                    ),
+                    EffectAst::subject_verb(
+                        SubjectVerbRoleAst::AffectedPlayer,
+                        PlayerAst::You,
+                        SubjectVerbActionAst::Draw {
+                            count: Value::Fixed(2),
+                        },
+                    ),
+                    EffectAst::subject_verb_clash(ClashOpponentAst::Opponent),
+                ],
+                leading_duration: false,
+                result_conjunction: false,
+            }],
+            continue_effect_index: 0,
+            continue_predicate: IfResultPredicate::WonClash,
+        };
+
+        let compiled =
+            crate::runtime_backend::compile_support::compile_statement_effects(&[process])
+                .expect("wrapped clash repeat process should lower");
+        let repeat = compiled[0]
+            .downcast_ref::<crate::effects::RepeatProcessEffect>()
+            .expect("expected a runtime repeat process");
+        assert_eq!(
+            repeat.predicate,
+            EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
+        );
+        let sequence = repeat.effects[0]
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .expect("the coordinated process body should remain a sequence");
+        assert!(
+            sequence.effects[0]
+                .downcast_ref::<crate::effects::LoseLifeEffect>()
+                .is_some()
+                && sequence.effects[1]
+                    .downcast_ref::<crate::effects::DrawCardsEffect>()
+                    .is_some(),
+            "the non-result actions must remain outside the result wrapper"
+        );
+        let clash_with_id = sequence.effects[2]
+            .as_with_id()
+            .expect("the terminal clash should carry the repeat condition ID");
+        assert_eq!(clash_with_id.id, repeat.condition);
+        assert!(
+            clash_with_id
+                .effect
+                .downcast_ref::<crate::effects::ClashEffect>()
+                .is_some(),
+            "WithId must wrap the clash itself"
+        );
+    }
+
+    #[test]
+    fn secret_choice_followup_keeps_the_result_id_used_by_otherwise() {
+        let compiled = crate::runtime_backend::compile_card_text(
+            CardDefinitionBuilder::new(CardId::new(), "Expert-Level Safe")
+                .card_types(vec![CardType::Artifact]),
+            "When this artifact enters, exile the top two cards of your library face down.\n\
+             {1}, {T}: You and target opponent each secretly choose 1, 2, or 3. Then those choices \
+             are revealed. If they match, sacrifice this artifact and put all cards exiled with it \
+             into their owners' hands. Otherwise, exile the top card of your library face down.",
+            false,
+        )
+        .expect("Expert-Level Safe should compile");
+
+        let activated = compiled
+            .definition
+            .abilities
+            .iter()
+            .find_map(|ability| match &ability.kind {
+                AbilityKind::Activated(activated) => Some(activated),
+                _ => None,
+            })
+            .expect("Expert-Level Safe should have an activated ability");
+        let effects = activated
+            .effects
+            .segments
+            .iter()
+            .flat_map(|segment| &segment.default_effects)
+            .collect::<Vec<_>>();
+        let conditional_id = effects
+            .iter()
+            .find_map(|effect| {
+                let with_id = effect.as_with_id()?;
+                with_id
+                    .effect
+                    .as_conditional()
+                    .is_some()
+                    .then_some(with_id.id)
+            })
+            .expect("the secret-choice match conditional should retain its result ID");
+
+        assert!(
+            effects.iter().any(|effect| {
+                effect
+                    .as_if_effect()
+                    .is_some_and(|fallback| fallback.condition == conditional_id)
+            }),
+            "the otherwise branch should consume the conditional's retained result ID"
         );
     }
 }

@@ -1377,6 +1377,19 @@ fn lower_direct_clause_shape(
 }
 
 pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst, CardTextError> {
+    // Clause parsing is a public compiler boundary as well as an internal
+    // sentence-parser stage. Lower-level callers and focused tests can enter
+    // here without passing through the stack guards on the sentence and chain
+    // dispatchers, while the clause alternatives still recurse through the
+    // same deeply nested object-filter grammar.
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_effect_clause_unstacked(tokens)
+    })
+}
+
+fn parse_effect_clause_unstacked(
+    tokens: &[OwnedLexToken],
+) -> Result<EffectAst, CardTextError> {
     if tokens.is_empty() {
         return Err(CardTextError::ParseError("empty effect clause".to_string()));
     }
@@ -1570,7 +1583,7 @@ pub(crate) fn parse_effect_clause(tokens: &[OwnedLexToken]) -> Result<EffectAst,
         return Ok(effect);
     }
 
-    if let Some(shape) = clause_grammar::parse_leading_may_clause_shape(tokens) {
+    if let Some(shape) = clause_grammar::parse_leading_may_shape(tokens) {
         // In permission text such as "You may play an additional land this
         // turn", "may" describes the granted game-rule permission. It is not
         // an optional resolution action and therefore must not become a

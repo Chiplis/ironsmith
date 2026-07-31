@@ -126,12 +126,17 @@ fn combat_requirement<'a>(input: &mut LexStream<'a>) -> WResult<CombatRequiremen
 pub(crate) fn parse_combat_requirement_shape(
     tokens: &[OwnedLexToken],
 ) -> Option<CombatRequirementShape<'_>> {
-    primitives::parse_all(
+    let shape = primitives::parse_all(
         trim_shape_edges(tokens),
         combat_requirement,
         "combat requirement clause",
     )
-    .ok()
+    .ok()?;
+    // A combat requirement's subject belongs to the same sentence as its
+    // suffix. Without this boundary, the suffix parser can scan backward
+    // across prior instructions and reinterpret an entire animation sentence
+    // as the target of a later “It must be blocked” follow-up.
+    (!shape.subject_tokens.iter().any(|token| token.is_period())).then_some(shape)
 }
 
 fn subject_blocks_this_turn<'a>(input: &mut LexStream<'a>) -> WResult<MustBlockShape<'a>> {

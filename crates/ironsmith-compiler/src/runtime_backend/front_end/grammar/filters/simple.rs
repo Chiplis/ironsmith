@@ -57,6 +57,8 @@ enum SimpleObjectFilterAtom {
     Nonhistoric,
     Modified,
     Suspected,
+    Tapped,
+    Untapped,
     Colorless,
     Multicolored,
     Monocolored,
@@ -492,6 +494,8 @@ fn parse_simple_filter_body(
             SimpleObjectFilterAtom::Nonhistoric => filter.nonhistoric = true,
             SimpleObjectFilterAtom::Modified => filter.modified = true,
             SimpleObjectFilterAtom::Suspected => filter.suspected = true,
+            SimpleObjectFilterAtom::Tapped => filter.tapped = true,
+            SimpleObjectFilterAtom::Untapped => filter.untapped = true,
             SimpleObjectFilterAtom::Colorless => filter.colorless = true,
             SimpleObjectFilterAtom::Multicolored => filter.multicolored = true,
             SimpleObjectFilterAtom::Monocolored => filter.monocolored = true,
@@ -679,6 +683,8 @@ fn parse_simple_flag_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilt
         "nonhistoric" | "non-historic" => SimpleObjectFilterAtom::Nonhistoric,
         "modified" => SimpleObjectFilterAtom::Modified,
         "suspected" => SimpleObjectFilterAtom::Suspected,
+        "tapped" => SimpleObjectFilterAtom::Tapped,
+        "untapped" => SimpleObjectFilterAtom::Untapped,
         "colorless" => SimpleObjectFilterAtom::Colorless,
         "multicolored" | "multicolour" | "multicoloured" => SimpleObjectFilterAtom::Multicolored,
         "monocolored" | "monocolour" | "monocoloured" => SimpleObjectFilterAtom::Monocolored,
@@ -725,14 +731,24 @@ fn parse_split_non_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilter
 fn parse_typed_word_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterAtom> {
     let checkpoint = *input;
     let word = parse_any_word.parse_next(input)?;
-    let atom = if let Some(card_type) = parse_card_type(word) {
-        SimpleObjectFilterAtom::CardType(card_type)
-    } else if let Some(card_type) = parse_non_type(word) {
+    // Flexible positive characteristic parsers intentionally tolerate several
+    // surface prefixes. Test the explicit `non-` forms first so a word such
+    // as `non-Equipment` cannot be recorded as both Equipment and an
+    // Equipment exclusion, producing an impossible branch.
+    let atom = if let Some(card_type) = parse_non_type(word) {
         SimpleObjectFilterAtom::ExcludedCardType(card_type)
+    } else if let Some(subtype) = parse_non_subtype(word) {
+        SimpleObjectFilterAtom::ExcludedSubtype(subtype)
+    } else if let Some(supertype) = parse_non_supertype(word) {
+        SimpleObjectFilterAtom::ExcludedSupertype(supertype)
+    } else if let Some(color) = parse_non_color(word) {
+        SimpleObjectFilterAtom::ExcludedColor(color)
+    } else if let Some(card_type) = parse_card_type(word) {
+        SimpleObjectFilterAtom::CardType(card_type)
     } else if let Some(subtype) = parse_subtype_flexible(word) {
         SimpleObjectFilterAtom::Subtype(subtype)
-    } else if let Some(subtype) =
-        super::super::leaf::classify_token_definition_subtype(word).filter(|_| {
+    } else if let Some(subtype) = super::super::leaf::classify_token_definition_subtype(word)
+        .filter(|_| {
             input
                 .first()
                 .and_then(|next| parse_subtype_flexible(next))
@@ -743,16 +759,10 @@ fn parse_typed_word_atom(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilte
         // subtype parser, but become unambiguous when immediately followed by
         // another subtype in a compound type phrase ("Sand Warriors").
         SimpleObjectFilterAtom::Subtype(subtype)
-    } else if let Some(subtype) = parse_non_subtype(word) {
-        SimpleObjectFilterAtom::ExcludedSubtype(subtype)
     } else if let Some(supertype) = parse_supertype_word(word) {
         SimpleObjectFilterAtom::Supertype(supertype)
-    } else if let Some(supertype) = parse_non_supertype(word) {
-        SimpleObjectFilterAtom::ExcludedSupertype(supertype)
     } else if let Some(color) = parse_color(word) {
         SimpleObjectFilterAtom::Color(color)
-    } else if let Some(color) = parse_non_color(word) {
-        SimpleObjectFilterAtom::ExcludedColor(color)
     } else if is_outlaw_word(word) {
         SimpleObjectFilterAtom::Outlaw
     } else if is_non_outlaw_word(word) {
@@ -1027,7 +1037,6 @@ fn parse_owner_suffix(input: &mut WordInput<'_>) -> WResult<SimpleObjectFilterSu
 
 fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<PlayerFilter> {
     alt((
-        parse_target_player_or_planeswalker_controller,
         alt((
             word_phrase(&["target", "opponent"]).value(PlayerFilter::target_opponent()),
             word_phrase(&["target", "player"]).value(PlayerFilter::target_player()),
@@ -1039,6 +1048,7 @@ fn parse_controller_player(input: &mut WordInput<'_>) -> WResult<PlayerFilter> {
             primitives::word_slice_exact("opponent").value(PlayerFilter::Opponent),
             primitives::word_slice_exact("you").value(PlayerFilter::You),
         )),
+        parse_target_player_or_planeswalker_controller,
     ))
     .parse_next(input)
 }

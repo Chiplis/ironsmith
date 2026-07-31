@@ -1171,24 +1171,39 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
     let for_each_value_tokens = static_keyword_cost_shapes::parse_dynamic_cost_each_word(tokens)
         .and_then(|boundary| tokens.get(boundary.token.saturating_add(1)..));
     let history_tokens = for_each_value_tokens.unwrap_or(tokens);
-    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(history_tokens)
-    {
-        return Ok(Some(if for_each_value_tokens.is_some() {
-            value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
-        } else {
-            value
-        }));
-    }
-    let parsed_shape = keyword_static_lines::parse_dynamic_cost_value_shape_tokens(tokens);
-    let Some(shape) = parsed_shape else {
-        return Ok(None);
-    };
     let with_for_each_surface = |value: Value| {
         if for_each_value_tokens.is_some() {
             value.with_surface_hint(ironsmith_core::ValueSurfaceHint::ForEach)
         } else {
             value
         }
+    };
+    let parsed_shape = keyword_static_lines::parse_dynamic_cost_value_shape_tokens(tokens);
+    // A card-types-among aggregate can contain a historical qualifier in its
+    // object scope ("permanents you've sacrificed this turn"). Classify the
+    // outer aggregate before the generic history parser sees that nested
+    // phrase and incorrectly turns the whole value into a sacrifice count.
+    match parsed_shape {
+        Some(DynamicCostValueShape::CardTypesAmong { scope_tokens }) => {
+            let Ok(filter) = parse_object_filter(scope_tokens, false) else {
+                return Ok(None);
+            };
+            return Ok(Some(with_for_each_surface(Value::CardTypesAmong(filter))));
+        }
+        Some(DynamicCostValueShape::UnsupportedCardTypesAmong) => {
+            return Err(CardTextError::ParseError(format!(
+                "unsupported card-types-among dynamic value (clause: '{}')",
+                parser_token_word_refs(tokens).join(" ")
+            )));
+        }
+        _ => {}
+    }
+    if let Some(value) = crate::runtime_backend::front_end::grammar::shared_util::value_semantics::parse_turn_history_count_value(history_tokens)
+    {
+        return Ok(Some(with_for_each_surface(value)));
+    }
+    let Some(shape) = parsed_shape else {
+        return Ok(None);
     };
     let player_filter = |player| match player {
         DynamicPlayerKind::You => PlayerFilter::You,
@@ -1263,17 +1278,9 @@ pub(crate) fn parse_dynamic_cost_modifier_value(
             };
             value
         }
-        DynamicCostValueShape::CardTypesAmong { scope_tokens } => {
-            let Ok(filter) = parse_object_filter(scope_tokens, false) else {
-                return Ok(None);
-            };
-            Value::CardTypesAmong(filter)
-        }
-        DynamicCostValueShape::UnsupportedCardTypesAmong => {
-            return Err(CardTextError::ParseError(format!(
-                "unsupported card-types-among dynamic value (clause: '{}')",
-                parser_token_word_refs(tokens).join(" ")
-            )));
+        DynamicCostValueShape::CardTypesAmong { .. }
+        | DynamicCostValueShape::UnsupportedCardTypesAmong => {
+            unreachable!("card-types-among values are handled before history fallbacks")
         }
         DynamicCostValueShape::CountersRemovedThisWay => {
             Value::PendingPriorEffectMetric(
@@ -1965,6 +1972,7 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
     else {
         return Ok(None);
     };
+    let granted_tail_tokens = &tokens[has_idx + 1..];
     let (base_power_toughness, subtype_start_word, granted_tail) = match before_has_words
         .first()
         .and_then(|word| parse_pt_modifier(word).ok())
@@ -1973,12 +1981,31 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
             if creature_idx == 0 {
                 return Ok(None);
             }
-            let Some(granted_tail) = parse_heterogeneous_granted_tail(
-                &tokens[has_idx + 1..],
+            let parsed_tail = parse_heterogeneous_granted_tail(
+                granted_tail_tokens,
                 &clause_words,
                 attached_subject,
-            )?
-            else {
+            )?;
+            // Quotation marks are presentation delimiters around a granted
+            // triggered ability, not part of its trigger grammar. A quoted
+            // trigger at the end of a heterogeneous grant list can make the
+            // segmenter retain the delimiters while the equivalent unquoted
+            // trigger parses normally. Retry the same generic tail after
+            // removing only quote tokens when a quote directly introduces a
+            // trigger; activated abilities keep their quote-aware comma
+            // grouping.
+            let parsed_tail =
+                if parsed_tail.is_none() && quoted_trigger_intro_present(granted_tail_tokens) {
+                    let unquoted = granted_tail_tokens
+                        .iter()
+                        .filter(|token| token.kind != TokenKind::Quote)
+                        .cloned()
+                        .collect::<Vec<_>>();
+                    parse_heterogeneous_granted_tail(&unquoted, &clause_words, attached_subject)?
+                } else {
+                    parsed_tail
+                };
+            let Some(granted_tail) = parsed_tail else {
                 return Ok(None);
             };
             (
@@ -2037,6 +2064,19 @@ pub(crate) fn parse_filter_is_pt_creature_in_addition_and_has_line(
             granted_tail,
         },
     )))
+}
+
+fn quoted_trigger_intro_present(tokens: &[OwnedLexToken]) -> bool {
+    tokens.iter().enumerate().any(|(idx, token)| {
+        if token.kind != TokenKind::Quote {
+            return false;
+        }
+        matches!(
+            tokens.get(idx + 1).and_then(OwnedLexToken::as_word),
+            Some("when" | "whenever")
+        ) || (tokens.get(idx + 1).and_then(OwnedLexToken::as_word) == Some("at")
+            && tokens.get(idx + 2).and_then(OwnedLexToken::as_word) == Some("the"))
+    })
 }
 
 pub(crate) fn parse_subject_is_subtype_with_base_pt_and_granted_abilities_line(
@@ -3988,6 +4028,26 @@ mod tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
     use crate::static_abilities::StaticAbilityId;
+
+    #[test]
+    fn animation_bundle_accepts_a_quoted_granted_trigger() {
+        let tokens = lex_line(
+            "During your turn, each non-Equipment artifact and non-Aura enchantment you control \
+             with mana value 4 or greater is a 4/4 Elemental creature in addition to its other \
+             types and has indestructible, haste, and \"Whenever this creature deals combat \
+             damage to a player, draw a card.\"",
+            0,
+        )
+        .expect("compound animation should lex");
+        let abilities = parse_filter_is_pt_creature_in_addition_and_has_line(&tokens)
+            .expect("compound animation should not hard-error")
+            .expect("quoted granted trigger should not mask the animation parser");
+
+        assert_eq!(abilities.len(), 6, "{abilities:#?}");
+        let debug = format!("{abilities:#?}");
+        assert!(debug.contains("Triggered"), "{debug}");
+        assert!(debug.contains("action: Draw("), "{debug}");
+    }
 
     #[test]
     fn plural_creature_type_addition_is_a_static_grant() {

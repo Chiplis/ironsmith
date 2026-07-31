@@ -867,6 +867,7 @@ pub enum StaticAbilityPayload<T, E, C, Cond> {
         combat_only: Option<bool>,
     },
     CantAttackYouUnlessControllerPaysPerAttacker(u32),
+    CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(u32),
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     Grants(Box<GrantSpecModel<T, E, C, Cond>>),
     EntersTappedUnlessCondition {
@@ -2082,6 +2083,11 @@ where
             StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(amount) => {
                 StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(amount)
             }
+            StaticAbilityPayload::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(
+                amount,
+            ) => StaticAbilityPayload::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(
+                amount,
+            ),
             StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl => {
                 StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
             }
@@ -3721,6 +3727,19 @@ impl<
             id: Some(StaticAbilityId::CantAttackYouUnlessControllerPaysPerAttacker),
             label: "cant attack you unless pays per attacker".to_string(),
             payload: StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(cost),
+        }
+    }
+    /// Oracle's planeswalker-inclusive wording, which also spells the payment as
+    /// "for each of those creatures" rather than "for each creature they control
+    /// that's attacking you".
+    pub fn cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(cost: u32) -> Self {
+        Self {
+            id: Some(StaticAbilityId::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker),
+            label: "cant attack you or planeswalkers unless pays per attacker".to_string(),
+            payload:
+                StaticAbilityPayload::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(
+                    cost,
+                ),
         }
     }
     pub fn cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control()

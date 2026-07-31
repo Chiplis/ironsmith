@@ -149,7 +149,7 @@ pub(super) fn sail_into_the_west_strict_parser_text_and_structure_regression() {
     );
     assert!(
         rendered.contains(
-            "If return gets more votes, each player returns up to two cards from their graveyard to their hand, then you exile Sail into the West"
+            "If return gets more votes, each player returns up to two cards from that player's graveyard to that player's hand, then you exile Sail into the West"
         ),
         "expected return vote branch and self-exile to render inside one conditional clause, got {rendered}"
     );
@@ -2318,7 +2318,7 @@ pub(super) fn selected_hand_discard_surfaces_keep_the_choice_bound_to_those_card
         (
             "Discordant Dirge Effect Variant",
             "Look at target opponent's hand and choose up to X cards from it, where X is the number of verse counters on this enchantment. That player discards those cards.",
-            "Look at target opponent's hand and choose up to X cards from it, where X is the number of verse counters on this source. That player discards those cards.",
+            "Look at target opponent's hand and choose up to X cards from it, where X is the number of verse counters on this enchantment. That player discards those cards.",
         ),
         (
             "Extortion Effect Variant",
@@ -2353,7 +2353,7 @@ pub(super) fn selected_hand_discard_surfaces_keep_the_choice_bound_to_those_card
 #[test]
 pub(super) fn selected_hand_discard_preserves_two_distinct_mana_value_filters() {
     let text = "When you cast this spell, target opponent reveals their hand. You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater. That player discards those cards.";
-    let expected = "When you cast this spell, target opponent reveals their hand. You choose from it a nonland card with mana value 3 or less and a card with mana value 4 or greater. That player discards those cards.";
+    let expected = "When you cast this spell, target opponent reveals their hand, choose a nonland card with mana value 3 or less, choose a card with mana value 4 or greater, then that player discards those cards.";
     let def = CardDefinitionBuilder::new(CardId::new(), "Double Filter Hand Choice Variant")
         .card_types(vec![CardType::Creature])
         .parse_text(text)
@@ -2819,7 +2819,7 @@ pub(super) fn parse_oracle_from_under_the_floorboards_madness_self_replacement()
     );
     assert!(
         rendered.contains("Create three tapped 2/2 black Zombie creature tokens and you gain 3 life")
-            && rendered.contains("If this spell's madness cost was paid, create X tapped 2/2 black Zombie creature tokens and you gain X life instead")
+            && rendered.contains("If this spell's madness cost was paid, instead create X tapped 2/2 black Zombie creature tokens and you gain X life")
             && rendered.contains("Madness {X}{B}{B}")
             && !rendered.contains("token tokens"),
         "expected From Under the Floorboards compiled text to preserve the madness replacement clause, got {rendered}"
@@ -3039,7 +3039,7 @@ pub(super) fn parse_oracle_kethek_keeps_revealed_hit_and_remainder_in_one_clause
 
     assert_eq!(
         rendered,
-        "At the beginning of your end step, you may sacrifice another creature. If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value, put it onto the battlefield, then put the rest on the bottom of your library in a random order.",
+        "At the beginning of your end step, you may sacrifice another creature. If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value than it. Put it onto the battlefield, then put the rest of the revealed cards on the bottom of your library in a random order.",
         "Kethek should render the consult match and remainder without exposing the per-object loop"
     );
 }

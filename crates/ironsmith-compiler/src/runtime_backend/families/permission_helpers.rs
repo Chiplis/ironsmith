@@ -1045,14 +1045,24 @@ pub(crate) fn parse_permission_clause_spec_lexed(
         }
 
         let leading_duration = prefixed_lifetime.is_some();
-        let surface = (leading_duration || target_surface.is_some()).then(|| {
-            let mut surface = ironsmith_core::GrantPlayTaggedSurface::default()
-                .with_leading_duration(leading_duration);
-            if let Some(object) = target_surface {
-                surface = surface.with_object(object);
-            }
-            surface
-        });
+        let surface = (leading_duration
+            || target_surface.is_some()
+            || lifetime == PermissionLifetime::ForAsLongAsYouControlSource)
+            .then(|| {
+                let mut surface = ironsmith_core::GrantPlayTaggedSurface::default()
+                    .with_leading_duration(leading_duration);
+                if let Some(object) = target_surface {
+                    surface = surface.with_object(object);
+                }
+                if lifetime == PermissionLifetime::ForAsLongAsYouControlSource {
+                    surface = surface.with_control_source(
+                        ironsmith_core::SourceReferenceSurface::ThisPermanentType(
+                            "this creature".to_string(),
+                        ),
+                    );
+                }
+                surface
+            });
 
         return Ok(Some(PermissionClauseSpec::Tagged {
             tag: target_ref.tag,
@@ -2048,6 +2058,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
             as_copy: false,
             without_paying_mana_cost: false,
             lifetime: PermissionLifetime::ForAsLongAsYouControlSource,
+            surface,
             ..
         }) if player == PlayerAst::Implicit || player == PlayerAst::You => Ok(Some(
             EffectAst::subject_verb_grant_play_tagged_for_as_long_as_you_control_source(
@@ -2055,6 +2066,7 @@ pub(crate) fn parse_cast_or_play_tagged_clause(
                 PlayerAst::Implicit,
                 allow_land,
                 mana_spend_mode,
+                surface,
             ),
         )),
         _ => Ok(conditional_tagged_permission),
@@ -2098,5 +2110,21 @@ mod source_exile_duration_tests {
                 "play permission must include lands: {debug}"
             );
         }
+    }
+
+    #[test]
+    fn source_control_duration_preserves_authored_source_noun() {
+        let text = "You may play that card for as long as you control this creature";
+        let tokens = lex_line(text, 0).expect("permission should lex");
+        let effect = parse_cast_or_play_tagged_clause(&tokens)
+            .expect("permission parsing should not error")
+            .expect("permission should parse");
+        let debug = format!("{effect:#?}");
+        assert!(
+            debug.contains("GrantPlayTaggedForAsLongAsYouControlSource"),
+            "{debug}"
+        );
+        assert!(debug.contains("control_source"), "{debug}");
+        assert!(debug.contains("this creature"), "{debug}");
     }
 }

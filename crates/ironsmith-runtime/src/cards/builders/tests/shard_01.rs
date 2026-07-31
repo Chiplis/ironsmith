@@ -89,30 +89,6 @@ pub(super) fn plague_of_vermin_runtime_starts_payment_rounds_with_spell_controll
 }
 
 #[test]
-pub(super) fn commander_liara_portyr_strict_parser_and_compiled_text_regression() {
-    let def = parse_oracle_card_definition("Commander Liara Portyr");
-    let ability_debug = format!("{:#?}", def.abilities);
-    let rendered = unprocessed_compiled_lines(&def).join(" ");
-
-    assert!(
-        def.abilities
-            .iter()
-            .any(|ability| matches!(ability.kind, AbilityKind::Triggered(_))),
-        "Commander Liara Portyr should parse its attack trigger strictly"
-    );
-    assert!(
-        ability_debug.contains("PlayersBeingAttacked")
-            && ability_debug.contains("applies_to_all_matching_this_turn: true")
-            && ability_debug.contains("GrantPlayTaggedEffect"),
-        "expected Commander Liara Portyr to lower the dynamic exile-spell reduction and cast permission structurally, got {ability_debug}"
-    );
-    assert_eq!(
-        rendered,
-        "Whenever you attack, spells you cast from exile this turn cost {X} less to cast, where X is the number of players being attacked. Exile the top X cards of your library, where X is the number of players being attacked. Until end of turn, you may cast spells from among those exiled cards."
-    );
-}
-
-#[test]
 pub(super) fn order_of_succession_strict_parser_and_compiled_text_regression() {
     let def = parse_oracle_card_definition("Order of Succession");
     let rendered = unprocessed_compiled_lines(&def).join(" ");
@@ -1400,7 +1376,7 @@ pub(super) fn whirlpool_whelm_strict_parser_and_compiled_text_regression() {
             && rendered.contains(
                 "If you win, you may put that creature on top of its owner's library instead"
             ),
-        "Whirlpool Whelm should preserve its clash replacement wording, got {rendered}"
+        "Whirlpool Whelm should preserve its clash replacement wording, got {rendered}: {debug}"
     );
     assert!(
         debug.contains("ClashEffect")
@@ -2383,7 +2359,7 @@ pub(super) fn pious_kitsune_strict_parser_and_compiled_text_regression() {
         "Pious Kitsune should structurally keep the named-creature condition, devotion-counter life scaling, and activated counter cost, got {ability_debug}"
     );
     assert!(
-        rendered.contains("If a creature named eight-and-a-half-tails is on the battlefield")
+        rendered.contains("if a creature named Eight-and-a-Half-Tails is on the battlefield")
             && rendered.contains("you gain 1 life for each devotion counter on this creature")
             && rendered.contains("Remove a devotion counter from this creature"),
         "expected Pious Kitsune compiled text to preserve named-creature condition and devotion counter clauses, got {rendered}"
@@ -2892,17 +2868,26 @@ pub(super) fn parse_day_of_the_moon_goads_creatures_with_chosen_name() {
             _ => None,
         })
         .expect("Day of the Moon should compile to a saga chapter trigger");
-    let effects = &triggered.effects.segments[0].default_effects;
+    let effects = triggered.effects.flattened_default_effects();
+    let [sequence] = effects else {
+        panic!("Day of the Moon should keep its choose-name and goad actions together");
+    };
+    let sequence = sequence
+        .downcast_ref::<crate::effects::SequenceEffect>()
+        .expect("Day of the Moon should sequence choosing a name before goading");
+    let [choose_name_effect, goad_effect] = sequence.effects.as_slice() else {
+        panic!(
+            "Day of the Moon should have exactly a choose-name action followed by a goad action"
+        );
+    };
 
-    let choose_name = effects
-        .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::ChooseCardNameEffect>())
+    let choose_name = choose_name_effect
+        .downcast_ref::<crate::effects::ChooseCardNameEffect>()
         .expect("Day of the Moon should choose a card name before goading");
     assert_eq!(choose_name.tag.as_str(), "__chosen_name__");
 
-    let goad = effects
-        .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::GoadEffect>())
+    let goad = goad_effect
+        .downcast_ref::<crate::effects::GoadEffect>()
         .expect("Day of the Moon should goad the matching creatures");
     let ChooseSpec::All(filter) = &goad.target else {
         panic!("expected Day of the Moon to goad all matching creatures, got {goad:#?}");

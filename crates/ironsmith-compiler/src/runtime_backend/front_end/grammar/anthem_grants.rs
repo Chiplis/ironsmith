@@ -81,8 +81,7 @@ pub(crate) use special_grant_shapes::{
 };
 pub(crate) use static_grant_facts::{
     GrantedAlternativeCastKeyword, parse_every_subtype_family_tokens,
-    parse_first_spell_each_turn_subject_tokens, parse_granted_alternative_cast_keyword_tokens,
-    parse_static_grant_duration_fact,
+    parse_granted_alternative_cast_keyword_tokens, parse_static_grant_duration_fact,
 };
 pub(crate) use subject_shapes::{
     AnthemSubjectGrammarMatch, object_filter_specificity_score, parse_exact_anthem_subject_grammar,

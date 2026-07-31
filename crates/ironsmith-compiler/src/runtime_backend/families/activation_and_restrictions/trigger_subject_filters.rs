@@ -680,7 +680,15 @@ pub(crate) fn parse_spell_activity_trigger(
                     return Ok(Some(ObjectFilter::spell().of_chosen_color()));
                 }
                 match parse_object_filter(filter_tokens, false) {
-                    Ok(filter) => Ok(Some(filter)),
+                    Ok(mut filter) => {
+                        if let Some(origin_filter) = parse_spell_origin_zone_filter() {
+                            filter.zone = origin_filter.zone;
+                            if filter.owner.is_none() {
+                                filter.owner = origin_filter.owner;
+                            }
+                        }
+                        Ok(Some(filter))
+                    }
                     Err(err) => {
                         if let Some(color_words) = filter_facts.qualifier_words.as_deref() {
                             if !color_words.is_empty()
@@ -1105,11 +1113,7 @@ pub(crate) fn is_generic_token_reminder_sentence(tokens: &[OwnedLexToken]) -> bo
 }
 
 pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    if let Some(with_idx) =
-        trigger_subject_grammar::parse_embedded_token_rules_boundary_tokens(tokens)
-    {
-        let mut stripped = tokens[..with_idx].to_vec();
-
+    let append_outer_where_x_tail = |stripped: &mut Vec<OwnedLexToken>| {
         // Inline token rules are parsed separately and attached to the token
         // blueprint, but an outer value binding after the closing quote still
         // belongs to the create action:
@@ -1131,6 +1135,55 @@ pub(crate) fn strip_embedded_token_rules_text(tokens: &[OwnedLexToken]) -> Vec<O
                 stripped.extend(where_shape.where_tokens.iter().cloned());
             }
         }
+    };
+
+    if let Some(with_idx) =
+        trigger_subject_grammar::parse_embedded_token_rules_boundary_tokens(tokens)
+    {
+        let mut stripped = tokens[..with_idx].to_vec();
+        append_outer_where_x_tail(&mut stripped);
+        return stripped;
+    }
+
+    // A token can have ordinary keyword modifiers before its quoted rule:
+    // `... token with flying and "{R}: This token gets ..."`.
+    // Keep those modifiers available to the create parser while removing the
+    // quoted suffix that contains its own verbs and activation colon. The
+    // untouched source tokens are used later to attach the quoted rule to the
+    // token blueprint.
+    let opening_quote = tokens
+        .iter()
+        .position(|token| token.kind == crate::runtime_backend::lexer::TokenKind::Quote);
+    if let Some(opening_quote) = opening_quote
+        && tokens[opening_quote + 1..]
+            .iter()
+            .any(|token| token.kind == crate::runtime_backend::lexer::TokenKind::Quote)
+        && tokens[..opening_quote]
+            .iter()
+            .any(|token| token.is_word("create"))
+        && tokens[..opening_quote]
+            .iter()
+            .any(|token| token.is_any_word(&["token", "tokens"]))
+        && let Some(with_idx) = tokens[..opening_quote]
+            .iter()
+            .rposition(|token| token.is_word("with"))
+        && with_idx + 1 < opening_quote
+    {
+        let mut prefix_end = opening_quote;
+        if tokens
+            .get(prefix_end.saturating_sub(1))
+            .is_some_and(|token| token.is_word("and"))
+        {
+            prefix_end -= 1;
+        }
+        while tokens
+            .get(prefix_end.saturating_sub(1))
+            .is_some_and(OwnedLexToken::is_comma)
+        {
+            prefix_end -= 1;
+        }
+        let mut stripped = tokens[..prefix_end].to_vec();
+        append_outer_where_x_tail(&mut stripped);
         return stripped;
     }
     tokens.to_vec()
@@ -1236,6 +1289,14 @@ fn append_token_granted_ability_to_effect(
             }
             let combine_separate_sentence =
                 !definition.has_intrinsic_abilities() && granted_abilities.is_empty();
+            // Same rule as the token-followup applier in dispatch_entry.rs: when
+            // the creation sentence already carried the keywords inline ("… Bat
+            // creature token with flying.") this sentence is an ADDITIONAL one,
+            // so it must not claim the grouped presentation and pull those
+            // keywords into their own "It has flying." sentence.
+            let keywords_authored_inline = ability_presentation.is_none()
+                && definition.has_intrinsic_abilities()
+                && granted_abilities.is_empty();
             for ability in parsed {
                 if !granted_abilities.contains(&ability) {
                     granted_abilities.push(ability);
@@ -1248,7 +1309,9 @@ fn append_token_granted_ability_to_effect(
             } else {
                 ironsmith_core::TokenAbilityPresentation::SeparateSentence
             };
-            *ability_presentation = Some(if combine_separate_sentence {
+            *ability_presentation = Some(if keywords_authored_inline {
+                ironsmith_core::TokenAbilityPresentation::with_added_standalone_tail(None)
+            } else if combine_separate_sentence {
                 presentation.combined_separate_sentence()
             } else {
                 presentation
@@ -1480,10 +1543,7 @@ mod typed_trigger_subject_migration_tests {
         let tokens = lex_line("the fourth spell of a turn is cast", 0).unwrap();
         let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
 
-        assert_eq!(
-            trigger,
-            TriggerSpec::NthSpellOfTurnCast { spell_number: 4 }
-        );
+        assert_eq!(trigger, TriggerSpec::NthSpellOfTurnCast { spell_number: 4 });
     }
 
     #[test]
@@ -1558,6 +1618,46 @@ mod typed_trigger_subject_migration_tests {
         assert_eq!(filter.card_types, vec![crate::types::CardType::Creature]);
         assert!(filter.subtypes.is_empty());
         assert!(!filter.type_or_subtype_union);
+    }
+
+    #[test]
+    fn spell_cast_filter_preserves_graveyard_origin_when_generic_filter_parses() {
+        let tokens = lex_line("you cast a spell from your graveyard", 0).unwrap();
+        let trigger = parse_spell_activity_trigger(&tokens).unwrap().unwrap();
+        let TriggerSpec::SpellCast {
+            filter: Some(filter),
+            caster,
+            ..
+        } = trigger
+        else {
+            panic!("expected a filtered spell-cast trigger, got {trigger:?}");
+        };
+
+        assert_eq!(caster, PlayerFilter::You);
+        assert_eq!(filter.zone, Some(Zone::Graveyard), "{filter:#?}");
+        assert_eq!(filter.owner, Some(PlayerFilter::You), "{filter:#?}");
+    }
+
+    #[test]
+    fn trigger_clause_dispatch_preserves_spell_cast_origin_zones() {
+        for (text, expected_zone) in [
+            ("you cast a spell from exile", Zone::Exile),
+            ("you cast a spell from your graveyard", Zone::Graveyard),
+            ("you cast a spell from your hand", Zone::Hand),
+        ] {
+            let tokens = lex_line(text, 0).unwrap();
+            let trigger = super::trigger_clause_core::parse_trigger_clause_lexed(&tokens).unwrap();
+            let TriggerSpec::SpellCast {
+                filter: Some(filter),
+                caster,
+                ..
+            } = trigger
+            else {
+                panic!("expected an origin-qualified spell-cast trigger for {text}");
+            };
+            assert_eq!(caster, PlayerFilter::You, "{text}: {filter:#?}");
+            assert_eq!(filter.zone, Some(expected_zone), "{text}: {filter:#?}");
+        }
     }
 
     #[test]

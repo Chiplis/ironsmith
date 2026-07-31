@@ -21,6 +21,8 @@ pub fn white_knight() -> CardDefinition {
 #[cfg(all(test, ironsmith_runtime_parser_tests))]
 mod tests {
     use super::*;
+    use crate::ability::AbilityKind;
+    use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -28,7 +30,19 @@ mod tests {
     fn test_white_knight() {
         let def = white_knight();
         assert_eq!(def.name(), "White Knight");
-        assert_eq!(def.abilities.len(), 2);
+        assert_eq!(
+            def.abilities
+                .iter()
+                .filter(|ability| {
+                    !matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id() == StaticAbilityId::SourceLineKeywordGroup
+                    )
+                })
+                .count(),
+            2
+        );
     }
 
     // =========================================================================

@@ -41,6 +41,9 @@ pub(crate) fn parse_keyword_bundle_pump_sentence(
                     shape.toughness.clone(),
                     shape.duration.clone(),
                 )
+                .with_set_quantifier_surface(Some(
+                    ironsmith_core::SetQuantifierSurface::Each,
+                ))
             })
             .collect(),
     ))

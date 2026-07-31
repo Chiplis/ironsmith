@@ -8,8 +8,7 @@ use crate::runtime_backend::util::{
     source_reference_surface_for_words, this_source_surface_for_words,
 };
 use crate::target::{
-    ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter, SacrificedObjectKind,
-    SourceReferenceSurface,
+    ChooseSpec, ChooseSpecSurfaceHint, PlayerFilter, SacrificedObjectKind, SourceReferenceSurface,
 };
 use crate::{Color, TagKey};
 use ironsmith_core::ValueSurfaceHint;
@@ -665,11 +664,13 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
 
     if permission_shapes::prefix_words(words, &["its", "power"]) {
         return Some((
-            Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
-                ChooseSpecSurfaceHint::SourceReference(
-                    SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            Value::PowerOf(Box::new(
+                ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                    ChooseSpecSurfaceHint::SourceReference(
+                        SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                    ),
                 ),
-            ))),
+            )),
             2,
         ));
     }
@@ -702,11 +703,13 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     }
     if permission_shapes::prefix_words(words, &["its", "toughness"]) {
         return Some((
-            Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
-                ChooseSpecSurfaceHint::SourceReference(
-                    SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            Value::ToughnessOf(Box::new(
+                ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                    ChooseSpecSurfaceHint::SourceReference(
+                        SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                    ),
                 ),
-            ))),
+            )),
             2,
         ));
     }
@@ -725,11 +728,13 @@ fn parse_value_expr_term_words(words: &[&str]) -> Option<(Value, usize)> {
     }
     if permission_shapes::prefix_words(words, &["its", "mana", "value"]) {
         return Some((
-            Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
-                ChooseSpecSurfaceHint::SourceReference(
-                    SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            Value::ManaValueOf(Box::new(
+                ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                    ChooseSpecSurfaceHint::SourceReference(
+                        SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                    ),
                 ),
-            ))),
+            )),
             3,
         ));
     }
@@ -1173,14 +1178,26 @@ mod tests {
         assert_eq!(
             parse_value_expr_words(&["its", "power"]),
             Some((
-                Value::PowerOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                Value::PowerOf(Box::new(
+                    ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                        ChooseSpecSurfaceHint::SourceReference(
+                            SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                        ),
+                    ),
+                )),
                 2,
             ))
         );
         assert_eq!(
             parse_value_expr_words(&["its", "toughness"]),
             Some((
-                Value::ToughnessOf(Box::new(ChooseSpec::Tagged(TagKey::from(IT_TAG)))),
+                Value::ToughnessOf(Box::new(
+                    ChooseSpec::Tagged(TagKey::from(IT_TAG)).with_surface_hint(
+                        ChooseSpecSurfaceHint::SourceReference(
+                            SourceReferenceSurface::ThisPermanentType("it".to_string()),
+                        ),
+                    ),
+                )),
                 2,
             ))
         );

@@ -164,7 +164,7 @@ pub(super) fn top_of_library_collection_cards_keep_counts_tags_and_followups() {
                 assert!(debug.contains("GrantPlayTaggedEffect"), "{debug}");
                 assert!(
                     compiled.contains(
-                        "Exile the top two cards of your library. Choose one of them. Until end of turn, you may play that card"
+                        "Exile the top two cards of your library. Choose one of them. You may play that card this turn"
                     ),
                     "{compiled}"
                 );

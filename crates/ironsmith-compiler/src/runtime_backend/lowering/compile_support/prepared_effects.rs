@@ -1,6 +1,6 @@
 use crate::cards::builders::{
     CHOSEN_OBJECTS_TAG, CardTextError, EffectAst, EffectLoweringContext, IT_TAG, PlayerAst,
-    PredicateAst, SubjectVerbActionAst, TagKey,
+    PredicateAst, SubjectVerbActionAst, TagKey, TargetAst,
 };
 use crate::effect::{ChoiceCount, Condition, Effect, EffectPredicate, SearchSelectionMode, Value};
 use crate::filter::ObjectRef;
@@ -10,8 +10,8 @@ use super::{
     AnnotatedEffect, AnnotatedEffectSequence, EffectPreludeTag, LoweredEffects,
     PreparedEffectsForLowering, PreparedPredicateForLowering, PreparedTriggeredEffectsForLowering,
     ReferenceEnv, ReferenceExports, ReferenceImports, compile_annotated_effects_with_context,
-    compile_condition_from_predicate_ast, merge_compiled_choices, push_choice,
-    rewrite_prepare_effects_for_lowering,
+    compile_condition_from_predicate_ast, effects_reference_tag, merge_compiled_choices,
+    push_choice, rewrite_prepare_effects_for_lowering,
 };
 
 #[cfg(test)]
@@ -533,6 +533,31 @@ fn fold_cross_segment_counter_rewrites(segments: &mut Vec<crate::resolution::Res
 /// boundaries. Keep the generic ordered-target fight repairs effective when
 /// the target declarations, conditional action, and final fight originated in
 /// separate Oracle sentences.
+fn sentence_leading_fight_tail(effect: &Effect) -> Option<&[Effect]> {
+    let sequence = effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    if sequence.surface != ironsmith_core::SequenceSurface::SentenceLeadingThen {
+        return None;
+    }
+    match sequence.effects.as_slice() {
+        [fight]
+            if fight
+                .downcast_ref::<crate::effects::FightEffect>()
+                .is_some() =>
+        {
+            Some(&sequence.effects)
+        }
+        [target, fight]
+            if untagged_target_only(target).is_some()
+                && fight
+                    .downcast_ref::<crate::effects::FightEffect>()
+                    .is_some() =>
+        {
+            Some(&sequence.effects)
+        }
+        _ => None,
+    }
+}
+
 fn normalize_cross_segment_fight_sequences(segments: &mut [crate::resolution::ResolutionSegment]) {
     if segments.len() < 2
         || segments
@@ -542,17 +567,20 @@ fn normalize_cross_segment_fight_sequences(segments: &mut [crate::resolution::Re
         return;
     }
 
-    let flattened = segments
-        .iter()
-        .enumerate()
-        .flat_map(|(segment_idx, segment)| {
-            segment
-                .default_effects
-                .iter()
-                .cloned()
-                .map(move |effect| (segment_idx, effect))
-        })
-        .collect::<Vec<_>>();
+    let mut flattened = Vec::new();
+    for (segment_idx, segment) in segments.iter().enumerate() {
+        for effect in &segment.default_effects {
+            if let Some(tail) = sentence_leading_fight_tail(effect) {
+                flattened.extend(
+                    tail.iter()
+                        .cloned()
+                        .map(|tail_effect| (segment_idx, tail_effect)),
+                );
+            } else {
+                flattened.push((segment_idx, effect.clone()));
+            }
+        }
+    }
     let mut effects = Vec::with_capacity(flattened.len() + 1);
     let mut owners = Vec::with_capacity(flattened.len() + 1);
     let mut idx = 0usize;
@@ -1126,6 +1154,58 @@ fn compiled_sentence_is_only_you_draw(effects: &[Effect]) -> bool {
         .is_some_and(|draw| draw.player == PlayerFilter::You)
 }
 
+fn target_has_explicit_declaration_span(target: &TargetAst) -> bool {
+    match target {
+        TargetAst::AnyTarget(span) | TargetAst::AnyOtherTarget(span) | TargetAst::Spell(span) => {
+            span.is_some()
+        }
+        TargetAst::ObjectOrPlayer(_, _, span)
+        | TargetAst::PlayerOrPlaneswalker(_, span)
+        | TargetAst::Player(_, span) => span.is_some(),
+        TargetAst::Object(_, target_span, _) => target_span.is_some(),
+        TargetAst::WithCount(inner, _) | TargetAst::WithCountValue(inner, _, _) => {
+            target_has_explicit_declaration_span(inner)
+        }
+        TargetAst::Source(_)
+        | TargetAst::AttackedPlayerOrPlaneswalker(_)
+        | TargetAst::Tagged(_, _) => false,
+    }
+}
+
+/// A self-replacement may repeat an earlier target anaphorically ("that
+/// artifact") even though both branch actions carry a concrete `TargetAst`
+/// after parsing. `replace_it_target_in_effects` deliberately copies the
+/// original target, including its declaration span, into the replacement
+/// branch. Matching that exact identity lets lowering share the target choice
+/// without conflating separately authored, equal-looking target phrases.
+fn self_replacement_branches_share_explicit_target(
+    if_false: &[EffectAst],
+    if_true: &[EffectAst],
+) -> bool {
+    if !effects_reference_tag(if_false, IT_TAG) || !effects_reference_tag(if_true, IT_TAG) {
+        return false;
+    }
+    let Some(default_target) = if_false
+        .iter()
+        .find_map(crate::runtime_backend::effect_sentences::primary_target_from_effect)
+    else {
+        return false;
+    };
+    let Some(replacement_target) = if_true
+        .iter()
+        .find_map(crate::runtime_backend::effect_sentences::primary_target_from_effect)
+    else {
+        return false;
+    };
+    target_has_explicit_declaration_span(&default_target) && default_target == replacement_target
+}
+
+fn leading_target_only_spec(effect: &Effect) -> Option<&ChooseSpec> {
+    tagged_target_only(effect)
+        .map(|(_, target)| target)
+        .or_else(|| untagged_target_only(effect))
+}
+
 fn materialize_trailing_self_replacement(
     prepared: &PreparedEffectsForLowering,
 ) -> Result<Option<LoweredEffects>, CardTextError> {
@@ -1158,7 +1238,29 @@ fn materialize_trailing_self_replacement(
         // player's library").
         let branch_imports = ReferenceExports::from_env(&condition_env).to_imports();
         let default_lowered = compile_statement_effects_with_imports(if_false, &branch_imports)?;
-        let replacement_lowered = compile_statement_effects_with_imports(if_true, &branch_imports)?;
+        let shared_target_prelude =
+            self_replacement_branches_share_explicit_target(if_false, if_true)
+                .then(|| {
+                    default_lowered
+                        .effects
+                        .flattened_default_effects()
+                        .first()
+                        .and_then(tagged_target_only)
+                        .map(|(tag, target)| (tag.clone(), target.clone()))
+                })
+                .flatten();
+        let mut replacement_imports = branch_imports.clone();
+        if let Some((tag, _)) = shared_target_prelude.as_ref() {
+            // The declaration is an unconditional prelude of the default arm,
+            // so it is also available before the replacement branch resolves.
+            // Seed only that object identity; result/player exports from the
+            // mutually exclusive default action must not leak across.
+            replacement_imports.last_object_tag = Some(tag.clone());
+            replacement_imports.last_it_choice_is_set =
+                default_lowered.exports.last_it_choice_is_set;
+        }
+        let replacement_lowered =
+            compile_statement_effects_with_imports(if_true, &replacement_imports)?;
         let mut default_effects = prefix_lowered.effects.flattened_default_effects().to_vec();
         default_effects.extend(default_lowered.effects.flattened_default_effects().to_vec());
         let implicit_condition_tag = if condition_env.known_last_object_tag().is_none()
@@ -1187,10 +1289,21 @@ fn materialize_trailing_self_replacement(
             &condition_env,
             condition_tag,
         )?;
-        let replacement_effects = replacement_lowered
+        let mut replacement_effects = replacement_lowered
             .effects
             .flattened_default_effects()
             .to_vec();
+        if let Some((_, shared_target)) = shared_target_prelude.as_ref()
+            && replacement_effects
+                .first()
+                .and_then(leading_target_only_spec)
+                .is_some_and(|target| target == shared_target)
+        {
+            // Compiling a conditional arm in isolation exposes its hidden
+            // target choice with a TargetOnly prelude. The identical target
+            // is already exposed by the shared default prelude above.
+            replacement_effects.remove(0);
+        }
         let mut replacement_effects =
             strip_duplicate_self_replacement_prelude(&default_effects, replacement_effects);
         if let Some(previous_target) = default_effects.iter().rev().find_map(|effect| {

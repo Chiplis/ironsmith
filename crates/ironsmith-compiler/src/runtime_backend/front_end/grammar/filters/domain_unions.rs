@@ -64,7 +64,43 @@ fn branch_has_scoped_state(filter: &ObjectFilter) -> bool {
         || filter.unblocked
         || filter.tapped
         || filter.untapped
+        || filter.power.is_some()
+        || filter.toughness.is_some()
+        || filter.mana_value.is_some()
         || !filter.tagged_constraints.is_empty()
+}
+
+fn contains_other_than_exclusion(tokens: &[OwnedLexToken]) -> bool {
+    tokens
+        .windows(2)
+        .any(|window| window[0].is_word("other") && window[1].is_word("than"))
+}
+
+fn contains_attacking_player_or_planeswalker_relation(tokens: &[OwnedLexToken]) -> bool {
+    let words = TokenWordView::new(tokens).word_refs();
+    let Some(attacking) = words.iter().position(|word| *word == "attacking") else {
+        return false;
+    };
+    words[attacking..].windows(3).any(|window| {
+        window[0] == "or" && matches!(window[1], "a" | "an" | "the") && window[2] == "planeswalker"
+    })
+}
+
+fn propagate_leading_shared_state(tokens: &[OwnedLexToken], branches: &mut [ObjectFilter]) {
+    let first_word = tokens.iter().find_map(OwnedLexToken::as_word);
+    match first_word {
+        Some("tapped") => {
+            for branch in branches {
+                branch.tapped = true;
+            }
+        }
+        Some("untapped") => {
+            for branch in branches {
+                branch.untapped = true;
+            }
+        }
+        _ => {}
+    }
 }
 
 fn propagate_trailing_shared_player_scope(branches: &mut [ObjectFilter]) {
@@ -79,8 +115,16 @@ fn propagate_trailing_shared_player_scope(branches: &mut [ObjectFilter]) {
             branch.controller = Some(controller.clone());
         }
     }
+    // A trailing owner is usually a possessive on the last arm's own zone
+    // ("... and each creature card in your graveyard"), not a scope stated once
+    // for the whole list. An arm that already names its own controller
+    // ("each creature you control") therefore keeps that scope alone: adding the
+    // owner too would both narrow the match to permanents you own and render as
+    // "creature you both own and control".
     if let Some(owner) = last.owner.clone()
-        && preceding.iter().all(|branch| branch.owner.is_none())
+        && preceding
+            .iter()
+            .all(|branch| branch.owner.is_none() && branch.controller.is_none())
     {
         for branch in preceding.iter_mut() {
             branch.owner = Some(owner.clone());
@@ -242,6 +286,17 @@ fn contains_historical_block_partner_relation(tokens: &[OwnedLexToken]) -> bool 
     })
 }
 
+/// `creature blocking or blocked by this creature` describes one creature
+/// related to the source, not a union between a blocking creature and a
+/// blocked creature. Leave the connective for the reference/tag grammar so it
+/// can retain the source-relative combat constraint.
+fn contains_current_block_partner_relation(tokens: &[OwnedLexToken]) -> bool {
+    TokenWordView::new(tokens)
+        .word_refs()
+        .windows(4)
+        .any(|window| window == ["blocking", "or", "blocked", "by"])
+}
+
 /// Parse a union whose branches each name their own object class and may
 /// carry independent qualifiers.
 ///
@@ -276,7 +331,16 @@ pub(crate) fn parse_branch_scoped_object_filter_union_lexed(
     if contains_relative_characteristic_union(tokens) {
         return None;
     }
+    if contains_other_than_exclusion(tokens) {
+        return None;
+    }
+    if contains_attacking_player_or_planeswalker_relation(tokens) {
+        return None;
+    }
     if contains_historical_block_partner_relation(tokens) {
+        return None;
+    }
+    if contains_current_block_partner_relation(tokens) {
         return None;
     }
     if contains_target_player_or_planeswalker_controller_relation(tokens) {
@@ -350,6 +414,7 @@ pub(crate) fn parse_branch_scoped_object_filter_union_lexed(
 
     propagate_trailing_shared_player_scope(&mut branches);
     propagate_trailing_shared_attachment_scope(&mut branches);
+    propagate_leading_shared_state(tokens, &mut branches);
     let mut union = ObjectFilter::default();
     factor_common_domain_scope(&mut branches, &mut union);
     let mixes_card_type_and_subtype = branches
@@ -555,6 +620,11 @@ pub(crate) fn parse_domain_union_object_filter_lexed(
     tokens: &[OwnedLexToken],
     other: bool,
 ) -> Option<ObjectFilter> {
+    if contains_other_than_exclusion(tokens)
+        || contains_attacking_player_or_planeswalker_relation(tokens)
+    {
+        return None;
+    }
     if let Some(filter) = parse_elided_shared_domain_union(tokens, other) {
         return Some(filter);
     }
@@ -615,6 +685,26 @@ pub(crate) fn parse_domain_union_object_filter_lexed(
         union.set_union_connective(ObjectFilterUnionConnective::AndOr);
     }
     Some(union)
+}
+
+/// Parse independently scoped domains that repeat the same object selector.
+///
+/// This narrower entry point lets callers distinguish
+/// `creatures you control and creature cards in your graveyard` from a
+/// characteristic list with one shared terminal noun such as
+/// `instant and sorcery cards in your graveyard`.
+pub(crate) fn parse_repeated_selector_domain_union_lexed(
+    tokens: &[OwnedLexToken],
+    other: bool,
+) -> Option<ObjectFilter> {
+    let union = parse_domain_union_object_filter_lexed(tokens, other)?;
+    let first_signature = domain_selector_signature(union.any_of.first()?)?;
+    union
+        .any_of
+        .iter()
+        .skip(1)
+        .all(|branch| domain_selector_signature(branch).as_ref() == Some(&first_signature))
+        .then_some(union)
 }
 
 #[cfg(test)]
@@ -756,6 +846,24 @@ mod tests {
         assert!(
             parse_branch_scoped_object_filter_union_lexed(&tokens, false).is_none(),
             "the Zombie is the nested combat partner, not a second object-domain arm"
+        );
+    }
+
+    #[test]
+    fn current_block_partner_relation_is_not_split_as_an_or_union() {
+        let tokens = lex_line("creature blocking or blocked by this creature", 0).unwrap();
+
+        assert!(contains_current_block_partner_relation(&tokens));
+        assert!(
+            parse_branch_scoped_object_filter_union_lexed(&tokens, false).is_none(),
+            "blocking and blocked describe the two directions of one source-relative relation"
+        );
+        let filter = parse_object_filter(&tokens, false).unwrap();
+        assert!(filter.any_of.is_empty(), "{filter:#?}");
+        assert!(filter.in_combat_with_source, "{filter:#?}");
+        assert_eq!(
+            filter.description(),
+            "creature blocking or blocked by this creature"
         );
     }
 
@@ -1079,10 +1187,7 @@ mod tests {
         assert_eq!(filter.any_of[0].zone, Some(Zone::Exile));
         assert_eq!(filter.any_of[1].zone, Some(Zone::Graveyard));
         assert!(
-            filter
-                .any_of
-                .iter()
-                .all(|branch| branch.owner.is_none()),
+            filter.any_of.iter().all(|branch| branch.owner.is_none()),
             "{filter:#?}"
         );
     }

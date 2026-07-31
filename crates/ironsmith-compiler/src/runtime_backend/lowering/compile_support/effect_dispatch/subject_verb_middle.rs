@@ -547,6 +547,7 @@ pub(super) fn compile_subject_verb_middle(
             player,
             allow_land,
             allow_any_color_for_cast,
+            surface,
         } => {
             let player_filter =
                 resolve_non_target_player_filter(*player, &current_reference_env(ctx))?;
@@ -573,6 +574,9 @@ pub(super) fn compile_subject_verb_middle(
                 *allow_land,
                 *allow_any_color_for_cast,
             );
+            if let Some(surface) = surface {
+                grant_play = grant_play.with_surface(surface.clone());
+            }
             if is_sentence_helper_exiled_collection_tag(resolved_tag.as_str())
                 && ctx.last_exiled_collection_is_plural
             {
@@ -2229,6 +2233,7 @@ pub(super) fn compile_subject_verb_middle(
             library_position_from_top,
             result_reference_surface,
             tapped,
+            enters_under_your_control,
         } => {
             let (chooser_filter, chooser_choices) = if matches!(*chooser, PlayerAst::Implicit) {
                 // An omitted search actor is always the resolving spell or
@@ -2320,7 +2325,8 @@ pub(super) fn compile_subject_verb_middle(
                 )
                 .with_count_value_opt(count_value.clone())
                 .in_zone(Zone::Library)
-                .with_description(choose_description);
+                .with_description(choose_description)
+                .with_search_result_reference_surface(*result_reference_surface);
                 let choose = match search_mode {
                     crate::effect::SearchSelectionMode::Exact => choose.as_search(),
                     crate::effect::SearchSelectionMode::Optional => choose.as_optional_search(),
@@ -2332,11 +2338,15 @@ pub(super) fn compile_subject_verb_middle(
 
                 let to_top = matches!(destination, Zone::Library);
                 let move_effect = if *destination == Zone::Battlefield {
-                    Effect::put_onto_battlefield(
-                        ChooseSpec::Iterated,
-                        *tapped,
-                        player_filter.clone(),
-                    )
+                    // Default: the found card stays under the control of the
+                    // player whose library was searched. An authored "under
+                    // your control" hands it to the searcher instead.
+                    let entry_controller = if *enters_under_your_control {
+                        PlayerFilter::You
+                    } else {
+                        player_filter.clone()
+                    };
+                    Effect::put_onto_battlefield(ChooseSpec::Iterated, *tapped, entry_controller)
                 } else {
                     Effect::move_to_zone(ChooseSpec::Iterated, *destination, to_top)
                 };

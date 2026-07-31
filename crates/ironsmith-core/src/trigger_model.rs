@@ -984,8 +984,29 @@ impl Trigger {
         player: PlayerFilter,
         source_surface: DamageSourceSurface,
     ) -> Self {
+        let source_description = match source_surface {
+            DamageSourceSurface::Source => "this source".to_string(),
+            DamageSourceSurface::Filter | DamageSourceSurface::PassiveBy => {
+                if source == ObjectFilter::default() {
+                    "a source".to_string()
+                } else {
+                    source.description()
+                }
+            }
+        };
+        let label = if source_surface == DamageSourceSurface::PassiveBy {
+            format!(
+                "Whenever {} is dealt damage by {source_description}",
+                player.description()
+            )
+        } else {
+            format!(
+                "Whenever {source_description} deals damage to {}",
+                player.description()
+            )
+        };
         Self::typed(
-            "deals_damage_to_player",
+            label,
             TriggerKind::DealsDamageToPlayer {
                 source,
                 player,
@@ -1701,7 +1722,24 @@ impl Trigger {
         Self::wins_clash_with_surface(player, ClashWinTriggerSurface::WinAClash)
     }
     pub fn wins_clash_with_surface(player: PlayerFilter, surface: ClashWinTriggerSurface) -> Self {
-        Self::typed("wins_clash", TriggerKind::WinsClash { player, surface })
+        let label = match (&player, surface) {
+            (PlayerFilter::You, ClashWinTriggerSurface::ClashAndWin) => {
+                "Whenever you clash and win"
+            }
+            (PlayerFilter::Opponent, ClashWinTriggerSurface::ClashAndWin) => {
+                "Whenever an opponent clashes and wins"
+            }
+            (PlayerFilter::Any, ClashWinTriggerSurface::ClashAndWin) => {
+                "Whenever a player clashes and wins"
+            }
+            (PlayerFilter::You, ClashWinTriggerSurface::WinAClash) => "Whenever you win a clash",
+            (PlayerFilter::Opponent, ClashWinTriggerSurface::WinAClash) => {
+                "Whenever an opponent wins a clash"
+            }
+            (_, ClashWinTriggerSurface::ClashAndWin) => "Whenever a player clashes and wins",
+            (_, ClashWinTriggerSurface::WinAClash) => "Whenever a player wins a clash",
+        };
+        Self::typed(label, TriggerKind::WinsClash { player, surface })
     }
     pub fn expend(amount: u32, player: PlayerFilter) -> Self {
         Self::typed("expend", TriggerKind::Expend { amount, player })

@@ -2253,7 +2253,8 @@ pub(super) fn exile_cost_count_can_drive_dynamic_token_power_toughness() {
     assert!(
         debug.contains("exile_cost_0")
             && debug.contains("SetBasePowerToughnessEffect")
-            && debug.contains("CountScaled"),
+            && debug.contains("Scaled(")
+            && debug.contains("Count("),
         "expected token power/toughness to count cards exiled as an activation cost, got {debug}"
     );
 }
@@ -2627,8 +2628,12 @@ pub(super) fn rewrite_split_destination_search_uses_one_tagged_partition() {
     let effects = super::super::clause_support::parse_effect_sentences_lexed(&lexed)
         .expect("split-destination search should parse");
     let debug = format!("{effects:#?}");
+    let partition = match effects.as_slice() {
+        [EffectAst::CommaThen { effects }] => effects.as_slice(),
+        effects => effects,
+    };
 
-    let searches = effects
+    let searches = partition
         .iter()
         .filter_map(|effect| match effect {
             EffectAst::ChooseObjectsAcrossZones { count, .. } => Some(count),
@@ -2996,7 +3001,7 @@ pub(super) fn curse_of_misfortunes_search_excludes_names_of_attached_curses() {
     assert!(debug.contains("attached_to_player: Some"), "{debug}");
     assert!(debug.contains("\"enchanted\""), "{debug}");
     assert!(
-        compact.contains("target:Player(TaggedPlayer(TagKey(\"enchanted\")))"),
+        compact.contains("target:Target(Player(TaggedPlayer(TagKey(\"enchanted\""),
         "the attachment's `that player` must resolve to the enchanted player: {debug}"
     );
 }

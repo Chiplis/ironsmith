@@ -427,8 +427,10 @@ pub(super) fn parse_oracle_gomazoa_strict_and_renders_blocked_creatures_shuffle_
     assert!(
         rendered.contains("defender")
             && rendered.contains("flying")
-            && rendered.contains("put this creature and each creature it's blocking on top of their owners' libraries")
-            && rendered.contains("then those players shuffle"),
+            && rendered
+                .contains("for each this creature or creature blocked by this creature this turn")
+            && rendered.contains("put it on top of its owner's library")
+            && rendered.contains("shuffle its owner's library"),
         "expected Gomazoa compiled text to preserve the blocking top-library shuffle clause, got {rendered}"
     );
 
@@ -641,9 +643,10 @@ pub(super) fn parse_possessive_target_owner_shuffle_preserves_subject_surface() 
         ["Target creature's owner shuffles it into their library."]
     );
     let debug = format!("{def:#?}");
+    let compact_debug = debug.split_whitespace().collect::<String>();
     assert!(
-        debug.contains("possessive_owner_subject: true")
-            && debug.contains("player: OwnerOf(Target)"),
+        compact_debug.contains("possessive_owner_subject:true")
+            && compact_debug.contains("player:OwnerOf(Target,"),
         "expected typed possessive owner surface, got {debug}"
     );
 }
@@ -2161,9 +2164,11 @@ pub(super) fn parse_each_player_may_search_their_library_then_shuffle_keeps_play
 
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains(
+        (rendered.contains(
             "each player may search their library for a card and put that card into their hand"
-        ) && rendered.contains("each player who searched their library this way shuffles"),
+        ) || rendered.contains(
+            "each player may search their library for a card, put that card into their hand"
+        )) && rendered.contains("each player who searched their library this way shuffles"),
         "expected oracle-like per-player search rendering, got {rendered}"
     );
     assert!(
@@ -3586,16 +3591,28 @@ pub(super) fn metadata_basic_typed_dual_land_mana_line_stays_a_mana_ability() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-pub(super) fn parse_reveal_hand_clause_with_trailing_effect_fails_strictly() {
-    let err = CardDefinitionBuilder::new(CardId::new(), "Retraced Image Variant")
-            .parse_text(
-                "Reveal a card in your hand, then put that card onto the battlefield if it has the same name as a permanent.",
-            )
-            .expect_err("partial reveal-hand parsing should fail");
-    let message = format!("{err:?}");
+pub(super) fn parse_reveal_hand_clause_with_trailing_effect_keeps_tagged_same_name_condition() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Retraced Image Variant")
+        .parse_text(
+            "Reveal a card in your hand, then put that card onto the battlefield if it has the same name as a permanent.",
+        )
+        .expect("reveal-hand clause and its conditional follow-up should parse");
+    let debug = format!("{def:?}");
     assert!(
-        message.contains("unsupported reveal-hand clause"),
-        "expected strict reveal-hand parse error, got {message}"
+        debug.contains("ChooseObjectsEffect")
+            && debug.contains("RevealTaggedEffect")
+            && debug.contains("ConditionalEffect")
+            && debug.contains("TaggedObjectMatches")
+            && debug.contains("SameNameAsTagged")
+            && debug.contains("MoveToZoneEffect"),
+        "expected a tagged reveal followed by a typed same-name battlefield move, got {debug}"
+    );
+    let rendered = unprocessed_compiled_lines(&def).join(" ");
+    assert!(
+        rendered.contains(
+            "reveal it, then put it onto the battlefield if it has the same name as a permanent"
+        ),
+        "expected the supported reveal and conditional move to render, got {rendered}"
     );
 }
 

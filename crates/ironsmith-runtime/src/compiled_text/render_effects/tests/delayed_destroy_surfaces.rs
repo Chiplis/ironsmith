@@ -40,7 +40,9 @@ fn one_shot_end_step_phase_out_keeps_action_first_timing() {
         .with_count(crate::effect::ChoiceCount::up_to(2));
     let schedule = crate::effects::ScheduleDelayedTriggerEffect::new(
         crate::triggers::Trigger::beginning_of_end_step(PlayerFilter::Any),
-        vec![Effect::new(crate::effects::PhaseOutEffect::with_spec(target))],
+        vec![Effect::new(crate::effects::PhaseOutEffect::with_spec(
+            target,
+        ))],
         true,
         Vec::new(),
         PlayerFilter::You,

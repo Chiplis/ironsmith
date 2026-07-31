@@ -1486,14 +1486,31 @@ pub(super) fn simple_filter_plural_noun(filter: &ObjectFilter) -> Option<String>
         && filter.excluded_subtypes.is_empty()
         && filter.supertypes.is_empty()
         && filter.excluded_supertypes.is_empty()
-        && filter.colors.is_none()
         && filter.controller.is_none()
         && filter.owner.is_none()
         && filter.zone == Some(Zone::Battlefield)
         && filter.any_of.is_empty()
         && filter.tagged_constraints.is_empty()
     {
-        return Some(filter.card_types[0].plural_name().to_ascii_lowercase());
+        let noun = filter.card_types[0].plural_name().to_ascii_lowercase();
+        // A single color adjective keeps the compact noun ("green creatures",
+        // "nonwhite enchantments"); anything richer needs the full describer.
+        return match (filter.colors, filter.excluded_colors.count()) {
+            (None, 0) => Some(noun),
+            (Some(colors), 0) if colors.count() == 1 => {
+                let color = crate::color::Color::ALL
+                    .into_iter()
+                    .find(|color| colors.contains(*color))?;
+                Some(format!("{} {noun}", color.name().to_ascii_lowercase()))
+            }
+            (None, 1) => {
+                let color = crate::color::Color::ALL
+                    .into_iter()
+                    .find(|color| filter.excluded_colors.contains(*color))?;
+                Some(format!("non{} {noun}", color.name().to_ascii_lowercase()))
+            }
+            _ => None,
+        };
     }
     None
 }
@@ -3583,10 +3600,21 @@ pub(super) fn describe_exile_creatures_consult_that_many_battlefield_shuffle(
             {
                 return None;
             }
-            let [consult_effect, move_effect, shuffle_effect] =
-                schedule.effects.flattened_default_effects()
-            else {
-                return None;
+            let flattened = schedule.effects.flattened_default_effects();
+            let (consult_effect, move_effect, shuffle_effect) = match flattened {
+                [consult_effect, move_effect, shuffle_effect] => {
+                    (consult_effect, move_effect, shuffle_effect)
+                }
+                [sequence_effect] => {
+                    let sequence = unwrap_effect(sequence_effect)
+                        .downcast_ref::<crate::effects::SequenceEffect>()?;
+                    let [consult_effect, move_effect, shuffle_effect] = sequence.effects.as_slice()
+                    else {
+                        return None;
+                    };
+                    (consult_effect, move_effect, shuffle_effect)
+                }
+                _ => return None,
             };
             (
                 *exile_effect,
@@ -4302,8 +4330,11 @@ pub(in crate::compiled_text) fn describe_life_amount_phrase(amount: &Value) -> S
     if let Some(additive) = describe_additive_for_each_life_amount(amount) {
         return additive;
     }
+    // Match through any surface hint: a hinted `ManaValueOf` is still a
+    // characteristic basis and takes oracle's "life equal to ..." tail rather
+    // than an inline determiner ("the sacrificed permanent's mana value life").
     if matches!(
-        amount,
+        amount.unhinted(),
         Value::SourcePower
             | Value::SourceToughness
             | Value::PowerOf(_)

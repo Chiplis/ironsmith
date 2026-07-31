@@ -1,7 +1,12 @@
 use super::*;
 
 fn retarget_prefix<'a>(input: &mut LexStream<'a>) -> WResult<bool> {
-    alt((primitives::kw("and").void(), primitives::comma().void())).parse_next(input)?;
+    alt((
+        primitives::kw("and").void(),
+        primitives::comma().void(),
+        primitives::end_of_sentence(),
+    ))
+    .parse_next(input)?;
     opt(alt((
         primitives::kw("you").void(),
         primitives::phrase(&["that", "player"]),
@@ -40,13 +45,25 @@ fn word_slice_boundary(words: &[&str], expected: &'static str) -> Option<usize> 
 }
 
 pub(crate) fn parse_copy_tail_shape_tokens(tokens: &[OwnedLexToken]) -> CopyTailShape {
-    let retarget =
-        boundary_before(tokens, retarget_prefix).and_then(|(index, may)| {
+    let retarget = boundary_before(tokens, retarget_prefix)
+        .and_then(|(index, may)| {
             let tail = tokens.get(index + 1..).unwrap_or_default();
             let has_target = marker_anywhere(tail, primitives::kw("target"));
             let has_targets = marker_anywhere(tail, primitives::kw("targets"));
             ((has_target || has_targets) && marker_anywhere(tail, primitives::kw("copy")))
                 .then_some((index, may, has_target && !has_targets))
+        })
+        .or_else(|| {
+            // A period is also an authored boundary between the copy action
+            // and its retarget permission. Parse the following sentence as a
+            // complete retarget clause so punctuation cannot hide it from the
+            // prefix scanner.
+            tokens.iter().enumerate().find_map(|(index, token)| {
+                token.is_period().then(|| {
+                    parse_copy_retarget_shape_tokens(tokens.get(index + 1..).unwrap_or_default())
+                        .map(|shape| (index, shape.may_choose, shape.single_target))
+                })?
+            })
         });
     CopyTailShape {
         retarget_split: retarget.map(|(index, _, _)| index),
@@ -207,4 +224,31 @@ pub(crate) fn parse_copy_retarget_shape_tokens(
         "copy retarget",
     )
     .ok()
+    .or_else(|| {
+        // Sentence splitting can leave authored punctuation around this
+        // follow-up. Recover the same narrow shape from normalized words
+        // without requiring the whole token slice to be one parser block.
+        let words = parser_token_word_refs(tokens);
+        let choose = words.iter().position(|word| *word == "choose")?;
+        if choose > 3
+            || words[..choose]
+                .iter()
+                .any(|word| !matches!(*word, "you" | "that" | "player" | "may"))
+        {
+            return None;
+        }
+        let tail = words.get(choose + 1..)?;
+        let has_target = tail.contains(&"target");
+        let has_targets = tail.contains(&"targets");
+        if !(has_target || has_targets)
+            || !tail.iter().any(|word| matches!(*word, "copy" | "copies"))
+        {
+            return None;
+        }
+        Some(CopyRetargetShape {
+            may_choose: words[..choose].contains(&"may"),
+            has_new: tail.contains(&"new"),
+            single_target: has_target && !has_targets,
+        })
+    })
 }

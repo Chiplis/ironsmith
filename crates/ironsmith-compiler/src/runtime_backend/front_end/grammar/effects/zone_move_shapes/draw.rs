@@ -542,6 +542,11 @@ pub(crate) fn parse_draw_this_way_metric_shape(tokens: &[OwnedLexToken]) -> Opti
         source: ironsmith_core::EffectMetricSource::Outcome,
         metric: ironsmith_core::EffectMetric::Count,
     };
+    if counter_words == ["opponents", "dealt", "damage", "this", "way"] {
+        return Some(
+            metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay),
+        );
+    }
     if contains_word(tokens, "discarded") {
         return Some(
             metric.with_surface_hint(ironsmith_core::ValueSurfaceHint::CardsDiscardedThisWay),
@@ -782,6 +787,26 @@ mod tests {
             Some(ironsmith_core::PriorEffectAction::Removed)
         );
         assert_eq!(query.counter_type, Some(crate::object::CounterType::Stun));
+    }
+
+    #[test]
+    fn preserves_opponents_dealt_damage_this_way_count_surface() {
+        let parsed = parse_draw_equal_this_way_metric_shape(&tokens(
+            "equal to the number of opponents dealt damage this way",
+        ))
+        .expect("grouped damaged-opponent count");
+
+        assert!(
+            parsed.has_surface_hint(ironsmith_core::ValueSurfaceHint::OpponentsDealtDamageThisWay,),
+            "{parsed:#?}"
+        );
+        assert!(matches!(
+            parsed.unhinted(),
+            Value::PendingEffectMetric {
+                source: ironsmith_core::EffectMetricSource::Outcome,
+                metric: ironsmith_core::EffectMetric::Count,
+            }
+        ));
     }
 
     #[test]

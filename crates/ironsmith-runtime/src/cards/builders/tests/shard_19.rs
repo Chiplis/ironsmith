@@ -1625,7 +1625,7 @@ pub(super) fn skeleton_crew_compiled_text_keeps_graveyard_leave_trigger() {
     let def = parse_oracle_card_definition("Skeleton Crew");
     let rendered = canonical_compiled_lines(&def).join(" ");
     assert!(
-        rendered.contains("Each other Skeleton or Pirate creature you control gets +1/+1")
+        rendered.contains("Each other creature you control that's a Skeleton or Pirate gets +1/+1")
             && rendered.contains("Whenever one or more creature cards leave your graveyard, create a 2/2 black Skeleton Pirate creature token")
             && rendered.contains("{5}{B}: Return this card from your graveyard to the battlefield tapped"),
         "expected Skeleton Crew compiled text to preserve anthem, graveyard-leave trigger, and graveyard activation, got {rendered}"
@@ -2288,10 +2288,11 @@ pub(super) fn strict_parse_regression_batch_target_cards() {
 pub(super) fn feudkillers_verdict_compiled_text_mentions_life_lead_condition() {
     let def = parse_oracle_card_definition("Feudkiller's Verdict");
     let rendered = canonical_compiled_lines(&def).join(" ");
+    let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
-        rendered.contains("You gain 10 life")
-            && rendered.contains("If you have more life than an opponent")
-            && rendered.contains("create a 5/5 white Giant Warrior creature token"),
+        rendered_lower.contains("you gain 10 life")
+            && rendered_lower.contains("if you have more life than an opponent")
+            && rendered_lower.contains("create a 5/5 white giant warrior creature token"),
         "expected compiled text to preserve Feudkiller's Verdict condition and token clause, got: {rendered}"
     );
 }
@@ -2542,10 +2543,10 @@ pub(super) fn nighthawk_scavenger_characteristic_runtime_scaling_regression() {
         panic!("expected Nighthawk Scavenger to use a SetPowerToughness CDA");
     };
 
-    let is_expected_power = match power {
+    let is_expected_power = match power.unhinted() {
         crate::effect::Value::Add(left, right) => {
             matches!(
-                (&**left, &**right),
+                (left.unhinted(), right.unhinted()),
                 (
                     crate::effect::Value::Fixed(1),
                     crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Opponent)
@@ -2563,7 +2564,7 @@ pub(super) fn nighthawk_scavenger_characteristic_runtime_scaling_regression() {
         power
     );
     assert!(
-        matches!(toughness, crate::effect::Value::SourceToughness),
+        matches!(toughness.unhinted(), crate::effect::Value::SourceToughness),
         "expected Nighthawk Scavenger toughness CDA axis to keep source toughness, got {:?}",
         toughness
     );
@@ -2606,22 +2607,22 @@ pub(super) fn polygoyf_strict_parser_and_compiled_text_preserves_all_graveyards_
 
     assert!(
         matches!(
-            power,
+            power.unhinted(),
             crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any)
         ),
         "Polygoyf should structurally count card types across all graveyards, got {power:?}"
     );
     assert!(
         matches!(
-            toughness,
+            toughness.unhinted(),
             crate::effect::Value::Add(left, right)
-                if matches!(&**left, crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
-                    && matches!(&**right, crate::effect::Value::Fixed(1))
+                if matches!(left.unhinted(), crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
+                    && matches!(right.unhinted(), crate::effect::Value::Fixed(1))
         ) || matches!(
-            toughness,
+            toughness.unhinted(),
             crate::effect::Value::Add(left, right)
-                if matches!(&**right, crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
-                    && matches!(&**left, crate::effect::Value::Fixed(1))
+                if matches!(right.unhinted(), crate::effect::Value::CardTypesInGraveyard(PlayerFilter::Any))
+                    && matches!(left.unhinted(), crate::effect::Value::Fixed(1))
         ),
         "Polygoyf toughness should be card types across all graveyards plus 1, got {toughness:?}"
     );
@@ -2840,26 +2841,30 @@ pub(super) fn consuming_tide_regression_draws_for_each_opponent_who_is_ahead_on_
 
 #[test]
 pub(super) fn participant_choice_cluster_preserves_the_chooser_and_selected_set() {
-    for (name, choice_text, result_text) in [
+    for (name, participant_action_text, result_text, unique_text) in [
         (
             "Consuming Tide",
             "each player chooses a nonland permanent they control",
             "return all other nonland permanents to their owners' hands",
+            None,
         ),
         (
             "Divine Reckoning",
             "each player chooses a creature they control",
             "destroy the rest",
+            None,
         ),
         (
             "Fatal Grudge",
-            "each opponent chooses a permanent they control",
-            "and sacrifices it",
+            "each opponent sacrifices a permanent of their choice",
+            "that shares a card type with the sacrificed permanent",
+            Some("that shares a card type with the sacrificed permanent"),
         ),
         (
             "Summon: Valefor",
-            "each opponent chooses a creature with the greatest mana value among creatures they control",
+            "each opponent chooses a creature they control with the greatest mana value among creatures they control",
             "return those creatures to their owners' hands",
+            None,
         ),
     ] {
         let def = parse_oracle_card_definition(name);
@@ -2869,13 +2874,20 @@ pub(super) fn participant_choice_cluster_preserves_the_chooser_and_selected_set(
         let debug = format!("{def:#?}");
 
         assert!(
-            rendered.contains(choice_text),
+            rendered.contains(participant_action_text),
             "expected {name} choice, got {rendered}"
         );
         assert!(
             rendered.contains(result_text),
             "expected {name} result, got {rendered}"
         );
+        if let Some(unique_text) = unique_text {
+            assert_eq!(
+                rendered.matches(unique_text).count(),
+                1,
+                "expected {name} to render {unique_text:?} exactly once, got {rendered}"
+            );
+        }
         assert!(
             debug.contains("ChooseObjectsEffect") && debug.contains("chooser: IteratedPlayer"),
             "expected {name}'s participant to own the choice, got {debug}"
@@ -3202,12 +3214,14 @@ pub(super) fn travel_through_caradhras_regression_renders_council_dilemma_vote_b
     let rendered = unprocessed_compiled_lines(&def).join(" ");
     let lower = rendered.to_ascii_lowercase();
     assert!(
-        lower.contains("council's dilemma")
-            && rendered.contains("Starting with you, each player votes for Redhorn Pass or Mines of Moria")
-            && rendered.contains("For each Redhorn Pass vote, search your library for a basic land card and put it onto the battlefield tapped")
-            && rendered.contains("then shuffle")
-            && rendered.contains("For each Mines of Moria vote, return a card from your graveyard to your hand")
-            && rendered.contains("Exile Travel Through Caradhras"),
+        lower.contains("each player votes for redhorn pass or mines of moria")
+            && lower.contains("for each redhorn pass vote")
+            && lower.contains("search your library for a basic land card")
+            && lower.contains("put it onto the battlefield tapped")
+            && lower.contains("then shuffle")
+            && lower.contains("for each mines of moria vote")
+            && lower.contains("return a card from your graveyard to your hand")
+            && lower.contains("exile travel through caradhras"),
         "expected Travel Through Caradhras to render its council dilemma branches, got {rendered}"
     );
 

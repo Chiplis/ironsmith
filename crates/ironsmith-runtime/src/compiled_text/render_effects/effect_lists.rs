@@ -17,7 +17,7 @@ mod helpers_00;
 #[path = "effect_list/helpers_01.rs"]
 mod helpers_01;
 #[path = "effect_list/helpers_02.rs"]
-mod helpers_02;
+pub(crate) mod helpers_02;
 #[path = "effect_list/mixed_target_consult.rs"]
 mod mixed_target_consult;
 #[path = "effect_list/optional_consult_partitions.rs"]
@@ -42,9 +42,11 @@ use helpers_00::*;
 pub(in crate::compiled_text) use helpers_00::{
     describe_choose_then_color_matched_combat_prevention,
     describe_energy_then_pay_any_then_destroy, describe_move_then_color_subtype_addition,
+    describe_optional_sticker_aura_return_attach_sequence,
     describe_result_producer_then_for_each_tagged, describe_return_then_color_subtype_addition,
     describe_tagged_continuous_then_counter_conditional_draw,
     describe_tagged_pump_then_conditional_keyword, describe_target_only_then_damage_that_player,
+    describe_target_player_cast_and_creatures_attack_restrictions,
     describe_targeted_conditional_action_then_fight,
     describe_two_distinct_targets_conditional_then_fight,
     describe_two_distinct_targets_counter_then_fight, render_necromentia_shape,
@@ -78,6 +80,19 @@ pub(in crate::compiled_text) fn structural_unwrap_render_wrappers(effect: &Effec
     }
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return structural_unwrap_render_wrappers(&tag_all.effect);
+    }
+    effect
+}
+
+/// Lowering can retain an authored sequence boundary around a single action.
+/// The boundary is presentation metadata rather than a second runtime action;
+/// structural recognizers that reconstruct the complete surrounding sentence
+/// may inspect the one enclosed effect without losing identity.
+pub(super) fn unwrap_singleton_sequence_member(effect: &Effect) -> &Effect {
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && let [only] = sequence.effects.as_slice()
+    {
+        return only;
     }
     effect
 }
@@ -550,8 +565,20 @@ pub(super) fn describe_may_compound_payment(may: &crate::effects::MayEffect) -> 
     let members = if let [effect] = may.effects.as_slice()
         && let Some(sequence) = structural_unwrap_render_wrappers(effect)
             .downcast_ref::<crate::effects::SequenceEffect>()
-        && sequence.surface == ironsmith_core::SequenceSurface::Sequential
-    {
+        && (sequence.surface == ironsmith_core::SequenceSurface::Sequential
+            || (sequence.surface == ironsmith_core::SequenceSurface::Coordinated
+                && sequence.effects.len() == 2
+                && sequence.effects.iter().all(|effect| {
+                    let effect = structural_unwrap_render_wrappers(effect);
+                    effect.0.as_cost_executable().is_some()
+                        && effect
+                            .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+                            .is_none()
+                        && effect.downcast_ref::<crate::effects::MayEffect>().is_none()
+                        && effect
+                            .downcast_ref::<crate::effects::SequenceEffect>()
+                            .is_none()
+                }))) {
         sequence.effects.as_slice()
     } else {
         may.effects.as_slice()
@@ -656,6 +683,27 @@ mod compound_optional_payment_surface_tests {
     #[test]
     fn sequential_nonmana_and_mana_costs_remain_one_optional_conjunction() {
         let payment = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::sacrifice_source(),
+            Effect::new(crate::effects::PayManaEffect::new(
+                crate::mana::ManaCost::from_symbols(vec![
+                    ManaSymbol::Generic(2),
+                    ManaSymbol::Green,
+                    ManaSymbol::Green,
+                ]),
+                ChooseSpec::Player(PlayerFilter::You),
+            )),
+        ]));
+        let may = crate::effects::MayEffect::new_for_player(vec![payment], PlayerFilter::You);
+
+        assert_eq!(
+            describe_may_compound_payment(&may).as_deref(),
+            Some("you may sacrifice this source and pay {2}{G}{G}")
+        );
+    }
+
+    #[test]
+    fn coordinated_direct_costs_share_one_optional_subject() {
+        let payment = Effect::new(crate::effects::SequenceEffect::coordinated(vec![
             Effect::sacrifice_source(),
             Effect::new(crate::effects::PayManaEffect::new(
                 crate::mana::ManaCost::from_symbols(vec![
@@ -880,9 +928,17 @@ fn describe_linked_counter_followup(effects: &[Effect]) -> Option<String> {
         return None;
     }
     let surface = linked_counter_followup_surface(put)?;
-    let first_tag = effect_outer_tag(first_effect)?;
+    let tagged_first_effect = if let Some(may) =
+        first_effect.downcast_ref::<crate::effects::MayEffect>()
+        && let [effect] = may.effects.as_slice()
+    {
+        effect
+    } else {
+        first_effect
+    };
+    let first_tag = effect_outer_tag(tagged_first_effect)?;
 
-    let first = structural_unwrap_render_wrappers(first_effect);
+    let first = structural_unwrap_render_wrappers(tagged_first_effect);
     let mut put_text = describe_effect(put_effect)
         .trim()
         .trim_end_matches('.')
@@ -3538,6 +3594,16 @@ pub(super) fn describe_choose_top_exile_then_conditional_cast_structural(
 pub(in crate::compiled_text) fn describe_choose_name_target_mills_conditional_draw(
     effects: &[Effect],
 ) -> Option<String> {
+    if let [producer_effect, matched_effect, fallback_effect] = effects
+        && let Some(rendered) = describe_result_gated_choose_name_mill_draw(
+            producer_effect,
+            matched_effect,
+            fallback_effect,
+        )
+    {
+        return Some(rendered);
+    }
+
     let [
         choose_effect,
         target_effect,
@@ -3593,6 +3659,99 @@ pub(in crate::compiled_text) fn describe_choose_name_target_mills_conditional_dr
         || draw_one.player != PlayerFilter::You
         || draw_one.count != Value::Fixed(1)
     {
+        return None;
+    }
+
+    Some(
+        "Choose a card name, then target player mills a card. If a card with the chosen name was milled this way, draw two cards. Otherwise, draw a card"
+            .to_string(),
+    )
+}
+
+/// Modern lowering assigns an ID to the whole choose/target/mill sequence,
+/// then assigns a second ID to the successful result predicate so the inverse
+/// branch can refer to that exact observation. Keep that typed two-stage gate
+/// as an Oracle "Otherwise" branch instead of exposing either internal ID.
+fn describe_result_gated_choose_name_mill_draw(
+    producer_effect: &Effect,
+    matched_effect: &Effect,
+    fallback_effect: &Effect,
+) -> Option<String> {
+    let producer_with_id = producer_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let producer = producer_with_id
+        .effect
+        .downcast_ref::<crate::effects::SequenceEffect>()?;
+    if producer.surface != ironsmith_core::SequenceSurface::CommaThen {
+        return None;
+    }
+    let [choose_effect, target_effect, mill_effect] = producer.effects.as_slice() else {
+        return None;
+    };
+    let choose = choose_effect.downcast_ref::<crate::effects::ChooseCardNameEffect>()?;
+    if choose.chooser != PlayerFilter::You || choose.filter.is_some() {
+        return None;
+    }
+    let target = target_effect.downcast_ref::<crate::effects::TargetOnlyEffect>()?;
+    if target.target != ChooseSpec::target_player() {
+        return None;
+    }
+    let tagged_mill = mill_effect.downcast_ref::<crate::effects::TaggedEffect>()?;
+    let mill = tagged_mill
+        .effect
+        .downcast_ref::<crate::effects::MillEffect>()?;
+    if mill.count != Value::Fixed(1) || mill.player != PlayerFilter::target_player() {
+        return None;
+    }
+
+    let matched_with_id = matched_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let matched = matched_with_id
+        .effect
+        .downcast_ref::<crate::effects::IfEffect>()?;
+    if matched.condition != producer_with_id.id || !matched.else_.is_empty() {
+        return None;
+    }
+    let EffectPredicate::PriorEffectResult(result) = &matched.predicate else {
+        return None;
+    };
+    if result.action != crate::effect::PriorEffectAction::Milled
+        || result.actor != crate::effect::PriorEffectResultActor::Passive
+        || result.quantifier != crate::effect::PriorEffectResultQuantifier::One
+        || result.required_count.is_some()
+        || result.shared_characteristic.is_some()
+    {
+        return None;
+    }
+    let mut expected_filter = ObjectFilter::default();
+    expected_filter.set_explicit_card_noun(true);
+    expected_filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: choose.tag.clone(),
+            relation: crate::filter::TaggedOpbjectRelation::SameNameAsTagged,
+        });
+    if result.filter != expected_filter {
+        return None;
+    }
+    let [draw_two_effect] = matched.then.as_slice() else {
+        return None;
+    };
+    let draw_two = draw_two_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw_two.player != PlayerFilter::You || draw_two.count != Value::Fixed(2) {
+        return None;
+    }
+
+    let fallback = fallback_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if fallback.condition != matched_with_id.id
+        || fallback.predicate != EffectPredicate::DidNotHappen
+        || !fallback.else_.is_empty()
+    {
+        return None;
+    }
+    let [draw_one_effect] = fallback.then.as_slice() else {
+        return None;
+    };
+    let draw_one = draw_one_effect.downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw_one.player != PlayerFilter::You || draw_one.count != Value::Fixed(1) {
         return None;
     }
 
@@ -6199,6 +6358,12 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     if let Some(compact) = describe_sacrifice_consult_with_terminal_sequence(effects) {
         return Some(compact);
     }
+    // A discard and its exact outcome-count draw are one authored sequence.
+    // Preserve the typed shared actor, "up to" count, and "that many" surface
+    // before the broad prior-action consumer expands them into two sentences.
+    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
+        return Some(compact);
+    }
     if let Some(compact) = describe_id_backed_prior_action_count_consumer(effects) {
         return Some(compact);
     }
@@ -6411,10 +6576,6 @@ pub(crate) fn describe_pre_clause_structural_effect_list(effects: &[Effect]) -> 
     }
 
     if let Some(compact) = describe_chain_copy_effect_list(effects) {
-        return Some(compact);
-    }
-
-    if let Some(compact) = describe_discard_then_draw_amount_sequence(effects) {
         return Some(compact);
     }
 
@@ -7911,10 +8072,22 @@ fn describe_tagged_blocked_set_tap_then_next_untap(effects: &[Effect]) -> Option
     ))
 }
 
-fn describe_explicit_target_then_coin_flip(effects: &[Effect]) -> Option<(String, usize)> {
-    let [target_effect, flip_effect, ..] = effects else {
-        return None;
-    };
+pub(in crate::compiled_text) fn describe_explicit_target_then_coin_flip(
+    effects: &[Effect],
+) -> Option<(String, usize)> {
+    let (target_effect, flip_effect, trailing_effects, nested_sequence) =
+        if let [first_effect, trailing_effects @ ..] = effects
+            && let Some(sequence) = first_effect.downcast_ref::<crate::effects::SequenceEffect>()
+            && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+            && let [target_effect, flip_effect] = sequence.effects.as_slice()
+        {
+            (target_effect, flip_effect, trailing_effects, true)
+        } else {
+            let [target_effect, flip_effect, trailing_effects @ ..] = effects else {
+                return None;
+            };
+            (target_effect, flip_effect, trailing_effects, false)
+        };
     let target = structural_unwrap_render_wrappers(target_effect)
         .downcast_ref::<crate::effects::TargetOnlyEffect>()?;
     let flip = structural_unwrap_render_wrappers(flip_effect)
@@ -7927,13 +8100,20 @@ fn describe_explicit_target_then_coin_flip(effects: &[Effect]) -> Option<(String
         || flip.forced_loser.is_some()
     {
         return None;
-    }
+    };
     let target_rendered = describe_effect(target_effect);
     let target_text = target_rendered.trim().trim_end_matches('.');
     // Keep the result-producing flip in the recursively rendered suffix. If
     // it is consumed here, later `IfEffect` branches lose their typed
     // antecedent and fall back to raw surfaces such as "effect #0 happened".
-    let flip_and_results = describe_effect_list(&effects[1..]);
+    let flip_and_results = if nested_sequence {
+        let mut linked_results = Vec::with_capacity(trailing_effects.len() + 1);
+        linked_results.push(flip_effect.clone());
+        linked_results.extend_from_slice(trailing_effects);
+        describe_effect_list(&linked_results)
+    } else {
+        describe_effect_list(&effects[1..])
+    };
     Some((
         format!(
             "{target_text}, then {}",
@@ -8265,6 +8445,21 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     {
         return compact;
     }
+    // "You and target opponent each create ..." — a synthetic target
+    // declaration followed by the you/target halves of a joint action. The
+    // declaration's target must be the one the second half acts for, so the
+    // compact surface still names it.
+    if let [declaration, first, second] = effects
+        && let Some(target_only) = structural_unwrap_render_wrappers(declaration)
+            .downcast_ref::<crate::effects::TargetOnlyEffect>()
+        && !target_only.explicit_declaration
+        && unwrap_basic_tag_wrappers(second)
+            .downcast_ref::<crate::effects::CreateTokenEffect>()
+            .is_some_and(|create| create.controller_target.as_ref() == Some(&target_only.target))
+        && let Some(compact) = describe_joint_subject_pair(first, second)
+    {
+        return compact;
+    }
     // This exact producer/consumer triple is a single authored library
     // procedure. Recognize it before broad list renderers can consume the
     // consult, move, and remainder independently and lose their shared tags.
@@ -8559,13 +8754,36 @@ pub(crate) fn describe_effect_list(effects: &[Effect]) -> String {
     if let Some(compact) = describe_pay_life_reveal_hand_choose_exile_effects(effects) {
         return compact;
     }
+    // This public reveal/choice partition may contain a lowering-only player
+    // target used as the chooser. Preserve the complete typed bundle before
+    // the generic one-consumer target fold erases that declaration and leaves
+    // the tagged-card move visible.
+    let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some((compact, consumed)) = describe_revealed_top_choose_one_graveyard(&raw_effects) {
+        if consumed == effects.len() {
+            return compact;
+        }
+        let suffix = describe_effect_list(&effects[consumed..]);
+        return format!(
+            "{}. {}",
+            compact.trim_end_matches('.'),
+            capitalize_first(suffix.trim_end_matches('.'))
+        );
+    }
+    if let Some(compact) = describe_linked_exile_top_play_clause(effects) {
+        return capitalize_first(&compact);
+    }
+    if let [first, second] = effects
+        && let Some(compact) = describe_must_block_then_control_block_assignments(first, second)
+    {
+        return compact;
+    }
     if let Some(compact) = describe_single_consumer_synthetic_target_fold(effects) {
         return compact;
     }
     if let Some(compact) = describe_multi_consumer_synthetic_target_declaration(effects) {
         return compact;
     }
-    let raw_effects = effects.iter().collect::<Vec<_>>();
     include!("effect_list/raw_patterns.rs");
     let preserve_target_only_players = effects.iter().any(|effect| {
         structural_unwrap_render_wrappers(effect)
@@ -9418,7 +9636,34 @@ pub(in crate::compiled_text) fn describe_linked_exile_top_play_clause(
     )))
 }
 
+/// `describe_put_counters_then_grant_same_filter` already honours the authored
+/// `CounterGrantSeparateSentence` hint, but only for an exact `[put, grant]` pair.
+/// A third instruction after the grant ("... . You gain 2 life.") drops the whole
+/// clause onto the comma-joining path, producing the run-on
+/// "Put a +1/+1 counter on target creature, that creature gains first strike until
+/// end of turn, then gain 2 life."
+///
+/// Keying off the same hint keeps the comma where oracle authored one — Olivia,
+/// Mobilized for War's "put a +1/+1 counter on that creature, it gains haste until
+/// end of turn" never carries it.
+fn counter_placement_precedes_tagged_grant(effects: &[&Effect]) -> bool {
+    effects.windows(2).any(|pair| {
+        unwrap_basic_tag_wrappers(pair[0])
+            .downcast_ref::<crate::effects::PutCountersEffect>()
+            .is_some_and(|put| {
+                put.amount
+                    .has_surface_hint(ValueSurfaceHint::CounterGrantSeparateSentence)
+            })
+            && unwrap_basic_tag_wrappers(pair[1])
+                .downcast_ref::<crate::effects::ApplyContinuousEffect>()
+                .is_some()
+    })
+}
+
 pub(super) fn clause_effects_have_typed_sentence_boundaries(effects: &[&Effect]) -> bool {
+    if counter_placement_precedes_tagged_grant(effects) {
+        return true;
+    }
     match effects {
         [first, second] => {
             if let Some(add_mana) = unwrap_basic_tag_wrappers(first)
@@ -10705,6 +10950,12 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
         return Some(compact);
     }
     let direct_refs = effects.iter().collect::<Vec<_>>();
+    if let Some(compact) = describe_graveyard_creature_pile_exile_return_bundle(&direct_refs) {
+        // This exact producer/disposition bundle has an authored sentence
+        // boundary. Recognize it before clause fallback renders the selected
+        // pile as an internal tag reference.
+        return Some(compact);
+    }
     if let Some(compact) = describe_prior_effect_dynamic_count_token_bundle(&direct_refs) {
         return Some(lowercase_first(&compact));
     }
@@ -10825,6 +11076,28 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
     // synthetic-target folds split its payment, reveal, and selection into
     // unrelated instructions.
     if let Some(compact) = describe_pay_life_reveal_hand_choose_exile_effects(effects) {
+        return Some(lowercase_first(&compact));
+    }
+    let raw_effects = effects.iter().collect::<Vec<_>>();
+    if let Some((compact, consumed)) = describe_revealed_top_choose_one_graveyard(&raw_effects) {
+        let compact = lowercase_first(&compact);
+        if consumed == effects.len() {
+            return Some(compact);
+        }
+        let suffix = describe_effect_clause_list(&effects[consumed..])
+            .unwrap_or_else(|| describe_effect_list(&effects[consumed..]));
+        return Some(format!(
+            "{}. {}",
+            compact.trim_end_matches('.'),
+            capitalize_first(suffix.trim_end_matches('.'))
+        ));
+    }
+    if let Some(compact) = describe_linked_exile_top_play_clause(effects) {
+        return Some(lowercase_first(&compact));
+    }
+    if let [first, second] = effects
+        && let Some(compact) = describe_must_block_then_control_block_assignments(first, second)
+    {
         return Some(lowercase_first(&compact));
     }
     if let Some(compact) = describe_single_consumer_synthetic_target_fold(effects) {

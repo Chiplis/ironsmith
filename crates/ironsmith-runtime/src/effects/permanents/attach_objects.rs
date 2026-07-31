@@ -57,13 +57,12 @@ impl EffectExecutor for AttachObjectsEffect {
             // replay earlier choices without partially applying the effect.
             let mut assignments = Vec::new();
             for object_id in object_ids {
-                let candidate_ids =
-                    crate::effects::helpers::preview_object_ids_for_choose_spec(
-                        game,
-                        &self.target,
-                        ctx,
-                    )
-                    .unwrap_or_default();
+                let candidate_ids = crate::effects::helpers::preview_object_ids_for_choose_spec(
+                    game,
+                    &self.target,
+                    ctx,
+                )
+                .unwrap_or_default();
                 let candidates = candidate_ids
                     .into_iter()
                     .filter(|candidate_id| {
@@ -526,10 +525,9 @@ mod tests {
         let second_creature = create_creature(&mut game, "Second Bear", alice);
         let mut aura_filter = ObjectFilter::default().in_zone(Zone::Battlefield);
         aura_filter.subtypes.push(Subtype::Aura);
-        let destination =
-            ObjectFilter::creature().in_zone(Zone::Battlefield).controlled_by(
-                crate::target::PlayerFilter::You,
-            );
+        let destination = ObjectFilter::creature()
+            .in_zone(Zone::Battlefield)
+            .controlled_by(crate::target::PlayerFilter::You);
         let effect = AttachObjectsEffect::new(
             ChooseSpec::All(aura_filter),
             ChooseSpec::Object(destination),
@@ -548,7 +546,8 @@ mod tests {
 
         assert_eq!(outcome.count_or_zero(), 2);
         assert_eq!(
-            game.object(first_aura).and_then(|object| object.attached_to),
+            game.object(first_aura)
+                .and_then(|object| object.attached_to),
             Some(AttachmentTarget::Object(first_creature))
         );
         assert_eq!(

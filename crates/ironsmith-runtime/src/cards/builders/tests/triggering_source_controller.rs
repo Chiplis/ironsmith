@@ -14,8 +14,7 @@ fn crag_saurian_binds_control_to_the_damage_source_controller() {
         "the damage source must be snapshotted for its controller relation: {debug}"
     );
     assert!(
-        debug.contains("ControllerOf")
-            && debug.contains("triggering_source"),
+        debug.contains("ControllerOf") && debug.contains("triggering_source"),
         "the controller change must reference the triggering damage source: {debug}"
     );
     assert!(

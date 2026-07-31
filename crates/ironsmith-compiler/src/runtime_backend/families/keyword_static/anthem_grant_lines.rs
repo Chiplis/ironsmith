@@ -35,13 +35,9 @@ fn with_leading_set_quantifier_surface(
 }
 
 fn first_spell_each_turn_subject(filter_tokens: &[OwnedLexToken]) -> Option<AnthemSubjectAst> {
-    anthem_grant_grammar::parse_first_spell_each_turn_subject_tokens(filter_tokens).map(|_| {
-        AnthemSubjectAst::Filter(
-            ObjectFilter::spell()
-                .cast_by(PlayerFilter::You)
-                .first_spell_cast_each_turn(),
-        )
-    })
+    first_spell_each_turn_subject_tokens(filter_tokens)
+        .ok()
+        .flatten()
 }
 fn first_spell_each_turn_subject_tokens(
     tokens: &[OwnedLexToken],
@@ -624,16 +620,18 @@ fn filtered_object_animation_abilities(
         abilities.push(StaticAbility::remove_all_abilities(filter.clone()));
     }
     if !shape.descriptor.card_types.is_empty() {
-        abilities.push(StaticAbility::set_card_types(
-            filter.clone(),
-            shape.descriptor.card_types,
-        ));
+        abilities.push(if shape.preserve_other_types {
+            StaticAbility::add_card_types(filter.clone(), shape.descriptor.card_types)
+        } else {
+            StaticAbility::set_card_types(filter.clone(), shape.descriptor.card_types)
+        });
     }
     if !shape.descriptor.subtypes.is_empty() {
-        abilities.push(StaticAbility::set_creature_subtypes(
-            filter.clone(),
-            shape.descriptor.subtypes,
-        ));
+        abilities.push(if shape.preserve_other_types {
+            StaticAbility::add_subtypes(filter.clone(), shape.descriptor.subtypes)
+        } else {
+            StaticAbility::set_creature_subtypes(filter.clone(), shape.descriptor.subtypes)
+        });
     }
     if let Some(colors) = shape.descriptor.colors {
         abilities.push(StaticAbility::set_colors(filter.clone(), colors));
@@ -679,27 +677,33 @@ fn split_union_grant_subjects(
     // The ordinary anthem-subject parser already preserves its branch-local
     // qualifiers; recognizing the leading player here prevents the generic
     // suffix recovery from silently discarding that member.
-    if subject_tokens.first().and_then(OwnedLexToken::as_word) == Some("you")
+    if subject_tokens
+        .first()
+        .is_some_and(|token| token.is_word("you"))
         && subject_tokens.get(1).is_some_and(OwnedLexToken::is_comma)
     {
         let right = trim_commas(&subject_tokens[2..]);
-        if right.iter().any(|token| token.as_word() == Some("and")) {
+        if right.iter().any(|token| token.is_word("and")) {
             let (right_subject, losses) =
                 crate::parse_loss::capture(|| parse_anthem_subject(&right));
-            if let Ok(right_subject) = right_subject
-                && !losses.is_lossy()
-            {
-                let right_subject = match right_subject {
-                    AnthemSubjectAst::Source => UnionGrantSubject::Source,
-                    AnthemSubjectAst::Filter(filter) => UnionGrantSubject::Filter(filter),
-                };
-                return Some((UnionGrantSubject::PlayerYou, right_subject));
+            if let Ok(right_subject) = right_subject {
+                let loss_preserves_serial_union = matches!(
+                    &right_subject,
+                    AnthemSubjectAst::Filter(filter) if filter.any_of.len() >= 2
+                );
+                if !losses.is_lossy() || loss_preserves_serial_union {
+                    let right_subject = match right_subject {
+                        AnthemSubjectAst::Source => UnionGrantSubject::Source,
+                        AnthemSubjectAst::Filter(filter) => UnionGrantSubject::Filter(filter),
+                    };
+                    return Some((UnionGrantSubject::PlayerYou, right_subject));
+                }
             }
         }
     }
 
     for (idx, token) in subject_tokens.iter().enumerate() {
-        if token.as_word() != Some("and") {
+        if !token.is_word("and") {
             continue;
         }
         let left = trim_commas(&subject_tokens[..idx]);
@@ -707,7 +711,7 @@ fn split_union_grant_subjects(
         if left.is_empty() || right.is_empty() {
             continue;
         }
-        let left_words = crate::runtime_backend::token_word_refs(&left);
+        let left_words = crate::runtime_backend::front_end::lexer::parser_token_word_refs(&left);
         let left_subject = if left_words == ["you"] {
             UnionGrantSubject::PlayerYou
         } else if anthem_grant_grammar::is_source_it_subject(&left)
@@ -4099,6 +4103,29 @@ mod dynamic_anthem_tests {
         assert_eq!(filter.cast_by, Some(PlayerFilter::You));
         assert!(filter.has_mana_cost);
         assert!(filter.first_spell_cast_each_turn);
+    }
+
+    #[test]
+    fn all_spells_cast_from_zone_grant_keeps_origin_filter() {
+        let tokens = lex_line("Spells you cast from exile have cascade.", 0)
+            .expect("all-from-exile grant should lex");
+        let abilities = parse_granted_keyword_static_line(&tokens)
+            .expect("all-from-exile grant should parse")
+            .expect("granted-keyword parser should match");
+        let [
+            StaticAbilityAst::GrantKeywordAction {
+                filter,
+                action: KeywordAction::Cascade,
+                condition: None,
+            },
+        ] = abilities.as_slice()
+        else {
+            panic!("expected one typed cascade grant: {abilities:#?}");
+        };
+
+        assert_eq!(filter.zone, Some(Zone::Exile), "{filter:#?}");
+        assert_eq!(filter.cast_by, Some(PlayerFilter::You), "{filter:#?}");
+        assert!(!filter.first_spell_cast_each_turn, "{filter:#?}");
     }
 
     #[test]

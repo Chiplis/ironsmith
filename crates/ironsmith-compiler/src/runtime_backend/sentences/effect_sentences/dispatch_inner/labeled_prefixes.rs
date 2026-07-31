@@ -93,7 +93,16 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     }
 
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
-        let trailing_effects = super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?;
+        let trailing_effects =
+            if let Some(copy_effect) = parse_copy_spell_clause(prefix.trailing_tokens)? {
+                // The copy specialist can own a complete `copy ..., then copy
+                // ...` program. Keep its typed coordination boundary inside
+                // the result wrapper instead of flattening its actions
+                // through the generic chain splitter.
+                vec![copy_effect]
+            } else {
+                super::parse_effect_chain_inner_lexed(prefix.trailing_tokens)?
+            };
         let mut result = vec![match prefix.kind {
             LeadingResultPrefixKind::If => EffectAst::IfResult {
                 predicate: prefix.predicate,
@@ -130,7 +139,8 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     {
         return Ok(vec![effect]);
     }
-    if let Some(effects) = super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
+    if let Some(effects) =
+        super::subject_verb_special_recognizers::parse_scaled_target_power_sentence(tokens)?
     {
         return Ok(effects);
     }
@@ -188,8 +198,7 @@ fn parse_effect_sentence_inner_lexed_unstacked(
     if let Some(mut effects) = parse_conditional_sentence_family_lexed(
         tokens,
         parse_effect_chain_preserving_source_exiled_owner_library_bottom,
-    )?
-    {
+    )? {
         super::preserve_leading_result_coordination_lexed(tokens, &mut effects);
         return Ok(effects);
     }

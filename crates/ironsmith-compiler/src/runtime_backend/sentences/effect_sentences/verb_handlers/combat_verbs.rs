@@ -713,10 +713,21 @@ pub(crate) fn parse_deal_damage_with_amount(
         combat_grammar::CombatDamageTargetShape::Simple {
             shape,
             target_tokens,
-        } => Ok(EffectAst::subject_verb_damage(
-            amount,
-            combat_simple_damage_target_ast(shape, target_tokens),
-        )),
+        } => {
+            let amount = if shape == combat_grammar::CombatSimpleDamageTargetShape::IteratedPlayer
+                && crate::runtime_backend::token_word_refs(target_tokens) == ["them"]
+            {
+                amount.with_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun,
+                )
+            } else {
+                amount
+            };
+            Ok(EffectAst::subject_verb_damage(
+                amount,
+                combat_simple_damage_target_ast(shape, target_tokens),
+            ))
+        }
         combat_grammar::CombatDamageTargetShape::EachOfCount { count, span_tokens } => {
             let target = TargetAst::WithCount(
                 Box::new(TargetAst::AnyTarget(span_from_tokens(span_tokens))),
@@ -887,6 +898,38 @@ mod equal_to_damage_surface_tests {
 
         assert!(amount.has_surface_hint(ironsmith_core::ValueSurfaceHint::EqualTo));
         assert!(matches!(amount.unhinted(), Value::Add(_, _)));
+    }
+
+    #[test]
+    fn authored_damage_recipient_pronoun_is_preserved_on_the_amount() {
+        for (text, expects_hint) in [
+            ("2 damage to them", true),
+            ("2 damage to that player", false),
+        ] {
+            let tokens = lex_line(text, 0).expect("damage clause should lex");
+            let effect = parse_deal_damage(&tokens).expect("damage clause should parse");
+            let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action:
+                    SubjectVerbActionAst::DealDamage {
+                        amount,
+                        target:
+                            TargetAst::Player(PlayerFilter::IteratedPlayer, _),
+                        ..
+                    },
+                ..
+            }) = effect
+            else {
+                panic!("expected iterated-player damage for {text}: {effect:#?}");
+            };
+
+            assert_eq!(
+                amount.has_surface_hint(
+                    ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun
+                ),
+                expects_hint,
+                "{text}"
+            );
+        }
     }
 
     #[test]

@@ -1671,6 +1671,24 @@ pub(super) fn test_omniscience_does_not_bypass_sorcery_timing_restrictions() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_for_free() {
+    fn find_matching_cast_filter(
+        effect: &crate::effect::Effect,
+    ) -> Option<crate::filter::ObjectFilter> {
+        if let Some(cast) =
+            effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+        {
+            return Some(cast.filter.clone());
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_matching_cast_filter(child);
+            }
+        });
+        found
+    }
+
     let mut game = setup_game();
     let alice = PlayerId::from_index(0);
 
@@ -1688,12 +1706,7 @@ pub(super) fn test_brain_in_a_jar_first_ability_casts_matching_mana_value_spell_
             _ => None,
         })
         .flat_map(|program| program.all_effects())
-        .filter_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
-        .flat_map(|may| may.effects.iter())
-        .find_map(|effect| {
-            effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
-        })
-        .map(|effect| effect.filter.clone())
+        .find_map(find_matching_cast_filter)
         .expect("Brain in a Jar should expose its counter-derived cast filter");
     let brain_id = game.create_object_from_definition(&brain, alice, Zone::Battlefield);
     let matching_spell = CardBuilder::new(CardId::from_raw(93_001), "One-Mana Instant")

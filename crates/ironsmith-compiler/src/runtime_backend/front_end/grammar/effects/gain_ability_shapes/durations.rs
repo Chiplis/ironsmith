@@ -6,7 +6,7 @@ use winnow::token::any;
 use crate::ConditionExpr;
 use crate::effect::Until;
 use crate::runtime_backend::front_end::grammar::primitives::WordSliceInput;
-use crate::runtime_backend::front_end::grammar::{filters, primitives};
+use crate::runtime_backend::front_end::grammar::{filters, leaf, primitives};
 use crate::runtime_backend::front_end::lexer::{
     LexStream, OwnedLexToken, TokenWordView, trim_lexed_commas,
 };
@@ -54,7 +54,8 @@ fn until_end_of_combat(input: &mut WordSliceInput<'_>) -> WResult<Until> {
 }
 
 fn fixed_number(input: &mut WordSliceInput<'_>) -> WResult<u32> {
-    let (value, consumed) = ironsmith_core::parse_cardinal_words(input)
+    let (value, consumed) = leaf::parse_leaf_number_prefix_words(input)
+        .and_then(|number| number.into_fixed())
         .ok_or_else(|| primitives::backtrack_err("die result", "fixed number"))?;
     *input = input
         .get(consumed..)

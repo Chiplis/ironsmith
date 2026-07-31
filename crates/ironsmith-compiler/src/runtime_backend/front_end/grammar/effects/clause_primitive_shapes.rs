@@ -327,7 +327,17 @@ pub(crate) fn parse_power_damage_shape(
     let after_equal = trim_shape_edges(after_equal);
     let power_words = TokenWordView::new(after_equal);
     let word_refs = power_words.to_word_refs();
-    let (amount, used_words) = if let Some((value, used)) =
+    let (amount, used_words) = if word_refs.starts_with(&["its", "power"]) {
+        // The possessive is local to this clause's grammatical damage
+        // source. Do not let the general value parser bind it to an ambient
+        // object/player antecedent left by an earlier sentence.
+        let source = crate::target::ChooseSpec::Source.with_surface_hint(
+            crate::target::ChooseSpecSurfaceHint::SourceReference(
+                crate::target::SourceReferenceSurface::ThisPermanentType("it".to_string()),
+            ),
+        );
+        (Value::PowerOf(Box::new(source)), 2)
+    } else if let Some((value, used)) =
         crate::runtime_backend::util::parse_value_expr_words(&word_refs)
         && value_references_power(&value)
     {

@@ -283,11 +283,8 @@ mod tests {
             "a zone-moving return can consume the head action's typed target"
         );
 
-        let exile_then_return = lex_line(
-            "Exile it, then return that card to its owner's hand.",
-            0,
-        )
-        .unwrap();
+        let exile_then_return =
+            lex_line("Exile it, then return that card to its owner's hand.", 0).unwrap();
         assert!(
             has_explicit_comma_then_boundary_tokens(&exile_then_return, |_| false),
             "a returned card can consume the immediately preceding exile result"
@@ -339,10 +336,7 @@ mod tests {
         )
         .unwrap();
         assert!(
-            has_explicit_comma_then_boundary_tokens(
-                &counters_then_dynamic_phase_out,
-                |_| false
-            ),
+            has_explicit_comma_then_boundary_tokens(&counters_then_dynamic_phase_out, |_| false),
             "a dynamic target-count phase-out tail is an independent ordered action"
         );
     }
@@ -393,6 +387,21 @@ mod tests {
                 "permanent",
                 "card"
             ]
+        );
+    }
+
+    #[test]
+    fn token_copy_soulbond_exception_is_not_split_as_ability_removal() {
+        let tokens = lex_line(
+            "Create a token that's a copy of this creature, except it has haste and loses soulbond.",
+            0,
+        )
+        .expect("copy exception should lex");
+
+        assert_eq!(
+            split_effect_chain_on_and_tokens(&tokens, true).len(),
+            1,
+            "the complete copy exception must reach typed copy-modifier lowering"
         );
     }
 }

@@ -416,6 +416,15 @@ const SUBJECT_VERB_SEQUENCE_RULES: &[SequenceRuleDef] = &[
         parser: generic_subject_verb_sequences::quads::parse_look_then_may_sacrifice_if_did_select_battlefield_rest_bottom,
     },
     SequenceRuleDef {
+        name: "look-may-action-result-branches-move-looked-card",
+        feature_tag: Some("looked-cards-result-branch-linkage"),
+        priority: 432,
+        consumed_sentences: 4,
+        predicate: first_word_look,
+        parser:
+            generic_subject_verb_sequences::quads::parse_look_then_may_action_if_did_or_did_not_move_looked_card,
+    },
+    SequenceRuleDef {
         name: "look-at-top-conditional-hand-counts-rest-bottom",
         feature_tag: Some("looked-cards-conditional-cardinality-partition"),
         priority: 431,
@@ -1249,9 +1258,7 @@ pub(crate) fn subject_verb_sequence_route(name: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cards::builders::{
-        IfResultPredicate, SubjectVerbActionAst, SubjectVerbEffectAst,
-    };
+    use crate::cards::builders::{IfResultPredicate, SubjectVerbActionAst, SubjectVerbEffectAst};
     use crate::runtime_backend::{lex_line, split_lexed_sentences};
 
     #[test]
@@ -1353,11 +1360,13 @@ mod tests {
         assert_eq!(matched.name, "starting-each-player-optional-repeat");
         assert_eq!(matched.consumed_sentences, 2);
 
-        let [EffectAst::RepeatProcess {
-            effects,
-            continue_effect_index,
-            continue_predicate: IfResultPredicate::Did,
-        }] = matched.effects.as_slice()
+        let [
+            EffectAst::RepeatProcess {
+                effects,
+                continue_effect_index,
+                continue_predicate: IfResultPredicate::Did,
+            },
+        ] = matched.effects.as_slice()
         else {
             panic!(
                 "expected one typed repeat process, got: {:#?}",
@@ -1365,11 +1374,13 @@ mod tests {
             );
         };
         assert_eq!(*continue_effect_index, 0);
-        let [EffectAst::SourceSentence {
-            effects,
-            starting_with_controller: true,
-            ..
-        }] = effects.as_slice()
+        let [
+            EffectAst::SourceSentence {
+                effects,
+                starting_with_controller: true,
+                ..
+            },
+        ] = effects.as_slice()
         else {
             panic!("the repeat body must retain authored participant order: {effects:#?}");
         };

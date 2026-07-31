@@ -1007,7 +1007,7 @@ fn global_spell_cost_increase_matches_spell_filter_power() {
     let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
 
     let effective = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
-    assert_eq!(effective.to_oracle(), "{3}{G}{1}");
+    assert_eq!(effective.to_oracle(), "{4}{G}");
 }
 
 #[test]
@@ -1044,7 +1044,7 @@ fn global_spell_cost_increase_uses_caster_for_spell_filter_controller() {
     let base_cost = spell_obj.mana_cost.as_ref().expect("spell has mana cost");
 
     let effective_for_alice = calculate_effective_mana_cost(&game, alice, spell_obj, base_cost);
-    assert_eq!(effective_for_alice.to_oracle(), "{2}{U}{1}");
+    assert_eq!(effective_for_alice.to_oracle(), "{3}{U}");
 
     let effective_for_bob = calculate_effective_mana_cost(&game, bob, spell_obj, base_cost);
     assert_eq!(effective_for_bob.to_oracle(), "{2}{U}");
@@ -1113,7 +1113,7 @@ fn granted_target_tax_uses_each_affected_flying_creature_as_its_source() {
         .to_oracle()
     };
 
-    assert_eq!(cost_targeting(bob, alice_flying), "{U}{2}");
+    assert_eq!(cost_targeting(bob, alice_flying), "{2}{U}");
     assert_eq!(
         cost_targeting(bob, alice_grounded),
         "{U}",

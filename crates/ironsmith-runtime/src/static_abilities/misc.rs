@@ -142,7 +142,14 @@ fn describe_enters_with_counters_equal_to_value(count: &Value) -> String {
 fn describe_matching_object_count_for_each_basis(value: &Value) -> Option<(i32, String)> {
     match value.unhinted() {
         Value::Count(filter) => {
-            let description = describe_enters_with_counters_count_filter(filter);
+            let description = if is_revealed_this_way_count_filter(filter) {
+                // `for each` takes a singular basis. The shared count
+                // description is intentionally plural for "the number of
+                // cards revealed this way", so specialize it here.
+                "card revealed this way".to_string()
+            } else {
+                describe_enters_with_counters_count_filter(filter)
+            };
             let description = description
                 .strip_prefix("an ")
                 .or_else(|| description.strip_prefix("a "))
@@ -1644,6 +1651,21 @@ impl EntersWithCounters {
 impl StaticAbilityKind for EntersWithCounters {
     fn id(&self) -> StaticAbilityId {
         StaticAbilityId::EnterWithCounters
+    }
+
+    fn with_static_condition(&self, condition: crate::ConditionExpr) -> Option<StaticAbility> {
+        let described = super::describe_static_condition(&condition);
+        let condition_display = described
+            .strip_prefix("as long as ")
+            .or_else(|| described.strip_prefix("if "))
+            .unwrap_or(&described)
+            .to_string();
+        Some(StaticAbility::new(EntersWithCountersIfCondition::new(
+            self.counter_type,
+            self.count.clone(),
+            condition,
+            condition_display,
+        )))
     }
 
     fn prefers_card_name_subject(&self) -> bool {

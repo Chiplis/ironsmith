@@ -97,6 +97,19 @@ fn chain_continuation(
     let [.., enabling_effect, conditional_effect] = effects else {
         panic!("chain card should have an antecedent and two-effect continuation: {effects:#?}");
     };
+    let enabling_effect = if let Some(sequence) =
+        enabling_effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && let [only] = sequence.effects.as_slice()
+    {
+        assert_eq!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::SentenceLeadingThen,
+            "a wrapped enabling choice should retain its authored sentence boundary"
+        );
+        only
+    } else {
+        enabling_effect
+    };
     let enabling_with_id = enabling_effect
         .downcast_ref::<WithIdEffect>()
         .expect("enabling choice should have a result id");

@@ -161,7 +161,7 @@ pub(super) fn effect_driven_cast_options_for_card_with_payment(
     }
 
     if cast_filter_matches(game, caster, source, object, filter) {
-        let casting_method = if from_zone == Zone::Hand {
+        let casting_method = if from_zone == Zone::Hand && object.owner == caster {
             CastingMethod::Normal
         } else {
             CastingMethod::PlayFrom {

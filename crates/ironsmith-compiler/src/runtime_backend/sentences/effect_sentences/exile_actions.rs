@@ -449,6 +449,7 @@ mod tests {
             action:
                 SubjectVerbActionAst::Exile {
                     target: TargetAst::Object(filter, ..),
+                    target_plural_surface,
                     ..
                 },
             ..
@@ -462,6 +463,7 @@ mod tests {
                 && constraint.relation == TaggedOpbjectRelation::IsTaggedObject
         }));
         assert!(filter.has_plural_object_noun_surface());
+        assert!(target_plural_surface);
     }
 
     #[test]

@@ -40,6 +40,7 @@ use crate::cards::builders::{
 };
 use crate::effect::{Until, Value};
 use crate::mana::ManaCost;
+use crate::runtime_backend::front_end::grammar::clause_support as clause_grammar;
 use crate::runtime_backend::front_end::grammar::effects::gain_ability_shapes as gain_shapes;
 use crate::runtime_backend::front_end::grammar::trigger_surface;
 use crate::runtime_backend::token_definition::TokenDefinitionSpec;
@@ -61,23 +62,54 @@ type SharedSubjectBasePt = (Value, Value, usize, Until);
 type SharedSubjectGrant = (Vec<GrantedAbilityAst>, bool);
 
 fn trim_edge_punctuation_and_quotes(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
-    let mut tokens = trim_edge_punctuation(tokens);
+    fn trim_non_quote_punctuation(tokens: &[OwnedLexToken]) -> Vec<OwnedLexToken> {
+        let mut start = 0usize;
+        let mut end = tokens.len();
+        while start < end
+            && matches!(
+                tokens[start].kind,
+                TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+            )
+        {
+            start += 1;
+        }
+        while end > start
+            && matches!(
+                tokens[end - 1].kind,
+                TokenKind::Comma | TokenKind::Period | TokenKind::Semicolon
+            )
+        {
+            end -= 1;
+        }
+        tokens[start..end].to_vec()
+    }
+
+    let mut tokens = trim_non_quote_punctuation(tokens);
     loop {
-        if tokens
+        let edge_kind = tokens
             .first()
-            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-        {
-            tokens = trim_edge_punctuation(&tokens[1..]);
-            continue;
+            .map(|token| token.kind)
+            .filter(|kind| matches!(kind, TokenKind::Quote | TokenKind::Apostrophe));
+        let edge_count = edge_kind.map_or(0, |kind| {
+            tokens.iter().filter(|token| token.kind == kind).count()
+        });
+        let has_matching_quote_pair = tokens.len() >= 2
+            && edge_count % 2 == 0
+            && edge_kind.is_some()
+            && tokens
+                .last()
+                .is_some_and(|token| Some(token.kind) == edge_kind);
+        if has_matching_quote_pair {
+            tokens = trim_non_quote_punctuation(&tokens[1..tokens.len() - 1]);
+        } else if edge_count % 2 == 1 && edge_kind.is_some() {
+            // Sentence splitting keeps the opening delimiter when the closing
+            // quote follows sentence-final punctuation. Remove only that
+            // unmatched outer delimiter; any balanced nested quotes remain
+            // available to the granted-ability parser.
+            tokens = trim_non_quote_punctuation(&tokens[1..]);
+        } else {
+            break;
         }
-        if tokens
-            .last()
-            .is_some_and(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
-        {
-            tokens = trim_edge_punctuation(&tokens[..tokens.len() - 1]);
-            continue;
-        }
-        break;
     }
     tokens
 }
@@ -573,8 +605,7 @@ fn parse_granted_ability_component_for_gain(
 
     if let Some(actions) = parse_ability_line(&ability_tokens) {
         reject_unimplemented_keyword_actions(&actions, &clause_words.join(" "))?;
-        if authored_as_quoted_ability
-            && matches!(actions.as_slice(), [KeywordAction::Unblockable])
+        if authored_as_quoted_ability && matches!(actions.as_slice(), [KeywordAction::Unblockable])
         {
             let restriction = crate::effect::Restriction::block_specific_attacker(
                 ObjectFilter::creature(),
@@ -1535,6 +1566,14 @@ pub(crate) fn parse_simple_ability_modifier_clause(
 pub(crate) fn parse_gain_ability_sentence(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<EffectAst>>, CardTextError> {
+    stacker::maybe_grow(32 * 1024 * 1024, 64 * 1024 * 1024, || {
+        parse_gain_ability_sentence_inner(tokens)
+    })
+}
+
+fn parse_gain_ability_sentence_inner(
+    tokens: &[OwnedLexToken],
+) -> Result<Option<Vec<EffectAst>>, CardTextError> {
     if let Some(player) = super::chain_carry::parse_leading_player_may_lexed(tokens) {
         let mut stripped = super::chain_carry::remove_through_first_word(tokens);
         if let Some(rest) =
@@ -1812,8 +1851,12 @@ fn parse_gain_ability_sentence_with_subject(
     .into_iter()
     .flatten()
     .min();
-    let ability_end_token_idx = if let Some((end_token_idx, _)) = nested_quoted_ability {
-        end_token_idx
+    let ability_end_token_idx = if let Some((close_quote_token_idx, _)) = nested_quoted_ability {
+        // This index is used as the exclusive bound below, so retain the
+        // closing delimiter. The granted-ability parser can then remove the
+        // matching outer quote pair without mistaking it for an unmatched
+        // nested-rule delimiter.
+        close_quote_token_idx + 1
     } else if let Some(end_word_idx) = ability_end_word_idx {
         word_view
             .token_boundary_for_word_or_end(end_word_idx)
@@ -2569,6 +2612,55 @@ fn apply_gain_clause_duration_to_leading_effect(effect: &mut EffectAst, duration
     }
 }
 
+fn parse_granted_trigger_with_nested_token_rule(
+    ability_tokens: &[OwnedLexToken],
+    display: &str,
+) -> Result<Option<ParsedAbility>, CardTextError> {
+    let trigger_intro = clause_grammar::parse_trigger_intro_tokens(ability_tokens);
+    let start_idx = trigger_intro.body_first;
+    let Some(split_idx) =
+        clause_grammar::parse_trigger_delimiters_tokens(ability_tokens).first_comma
+    else {
+        return Ok(None);
+    };
+    if split_idx <= start_idx || split_idx + 1 >= ability_tokens.len() {
+        return Ok(None);
+    }
+
+    let trigger_tokens = &ability_tokens[start_idx..split_idx];
+    let effect_tokens = trim_lexed_commas(&ability_tokens[split_idx + 1..]);
+    let stripped_effect_tokens = strip_embedded_token_rules_text(&effect_tokens);
+    if stripped_effect_tokens.as_slice() == effect_tokens {
+        return Ok(None);
+    }
+
+    // Only claim this boundary when both ordinary typed parsers succeed.
+    // Otherwise the complete triggered-line grammar retains first refusal for
+    // complex trigger clauses.
+    let Ok(trigger) = parse_trigger_clause_lexed(trigger_tokens) else {
+        return Ok(None);
+    };
+    let Ok(mut effects) = super::parse_effect_sentences_lexed(&stripped_effect_tokens) else {
+        return Ok(None);
+    };
+    if !super::creation_handlers::attach_inline_token_granted_abilities_to_last_create(
+        &mut effects,
+        &effect_tokens,
+    ) {
+        return Ok(None);
+    }
+
+    Ok(Some(parsed_triggered_ability(
+        trigger,
+        effects,
+        vec![Zone::Battlefield],
+        Some(display.to_string()),
+        trigger_surface::parse_trigger_frequency_condition_tokens(ability_tokens, None),
+        None,
+        ReferenceImports::default(),
+    )))
+}
+
 pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
     ability_tokens: &[OwnedLexToken],
     clause_words: &[&str],
@@ -2592,16 +2684,36 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
     }
 
     let display = display_text_for_tokens(&ability_tokens);
+    // Nested quoted rules use apostrophes when their enclosing granted
+    // ability is already double-quoted. Normalize those standalone delimiter
+    // tokens for semantic parsing so sentence splitting treats punctuation
+    // inside the nested activation as part of that rule. Possessives remain
+    // ordinary word tokens and are unaffected.
+    let semantic_tokens = ability_tokens
+        .iter()
+        .map(|token| {
+            if token.kind == TokenKind::Apostrophe {
+                OwnedLexToken::new(TokenKind::Quote, "\"", token.span())
+            } else {
+                token.clone()
+            }
+        })
+        .collect::<Vec<_>>();
     // An activated ability nested inside a triggered ability can contribute a
     // colon to the full token stream. The leading grammatical shape owns the
     // outer ability kind; only use a colon to select activation when the
     // ability itself does not begin with a trigger.
     let parsed_ability = if looks_like_trigger {
-        if let Some(parsed) = parse_granted_triggered_otherwise_ability(&ability_tokens, &display)?
+        if let Some(parsed) =
+            parse_granted_trigger_with_nested_token_rule(&semantic_tokens, &display)?
+        {
+            parsed
+        } else if let Some(parsed) =
+            parse_granted_triggered_otherwise_ability(&semantic_tokens, &display)?
         {
             parsed
         } else {
-            match parse_triggered_line_lexed(&ability_tokens)? {
+            match parse_triggered_line_lexed(&semantic_tokens)? {
                 LineAst::Triggered {
                     trigger,
                     effects,
@@ -2612,7 +2724,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
                     vec![Zone::Battlefield],
                     Some(display.clone()),
                     trigger_surface::parse_trigger_frequency_condition_tokens(
-                        &ability_tokens,
+                        &semantic_tokens,
                         max_triggers_per_turn,
                     ),
                     None,
@@ -2627,7 +2739,7 @@ pub(crate) fn parse_granted_activated_or_triggered_ability_for_gain(
             }
         }
     } else {
-        let Some(parsed) = parse_activated_line(&ability_tokens)? else {
+        let Some(parsed) = parse_activated_line(&semantic_tokens)? else {
             return Err(CardTextError::ParseError(format!(
                 "unsupported granted activated/triggered ability clause (clause: '{}')",
                 clause_words.join(" ")
@@ -2829,9 +2941,14 @@ mod tests {
         )
         .expect("nested token trigger should lex");
         let words = crate::runtime_backend::token_word_refs(&tokens);
-        let parsed = parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words)
-            .expect("nested token trigger should parse")
-            .expect("nested token trigger should produce an ability");
+        let parsed = crate::runtime_backend::util::with_token_source_reference_context(
+            "Dragon Egg",
+            &[crate::types::CardType::Creature],
+            &[crate::types::Subtype::Dragon],
+            || parse_granted_activated_or_triggered_ability_for_gain(&tokens, &words),
+        )
+        .expect("nested token trigger should parse")
+        .expect("nested token trigger should produce an ability");
         let GrantedAbilityAst::ParsedObjectAbility { ability, .. } = parsed else {
             panic!("expected a parsed object ability");
         };
@@ -2839,6 +2956,30 @@ mod tests {
             matches!(ability.kind(), AbilityKind::Triggered(_)),
             "the nested activation must not become the outer ability: {ability:#?}"
         );
+    }
+
+    #[test]
+    fn edge_trimming_preserves_nested_rules_closing_quote() {
+        for text in [
+            "When this token dies, create a token with '{R}: This token gets +1/+0 until end of turn.'",
+            "When this token dies, create a token with \"{R}: This token gets +1/+0 until end of turn.\"",
+        ] {
+            let tokens = lex_line(text, 0).expect("nested token rule should lex");
+            let trimmed = trim_edge_punctuation_and_quotes(&tokens);
+            let quote_count = trimmed
+                .iter()
+                .filter(|token| matches!(token.kind, TokenKind::Quote | TokenKind::Apostrophe))
+                .count();
+
+            assert_eq!(quote_count, 2, "{trimmed:#?}");
+            assert!(
+                trimmed.last().is_some_and(|token| matches!(
+                    token.kind,
+                    TokenKind::Quote | TokenKind::Apostrophe
+                )),
+                "{trimmed:#?}"
+            );
+        }
     }
 
     #[test]
@@ -2887,9 +3028,8 @@ mod tests {
 
     #[test]
     fn keyword_before_final_quoted_ability_is_preserved() {
-        let ability_tokens =
-            lex_line("trample and \"{G}: Regenerate this creature.\"", 0)
-                .expect("mixed granted-ability list should lex");
+        let ability_tokens = lex_line("trample and \"{G}: Regenerate this creature.\"", 0)
+            .expect("mixed granted-ability list should lex");
         let clause_words = crate::runtime_backend::token_word_refs(&ability_tokens);
         let (abilities, is_choice) =
             parse_granted_abilities_for_gain_clause(&ability_tokens, &clause_words, true)
@@ -2908,9 +3048,8 @@ mod tests {
             "Target artifact you control becomes a 9/9 Construct artifact creature and gains vigilance, indestructible, and \"This creature can't be blocked.\"",
             0,
         );
-        let effects = parse_gain_ability_sentence(&tokens)
-            .expect("become-and-grant sentence should parse")
-            .expect("become-and-grant sentence should produce effects");
+        let effects = super::super::parse_effect_sentences_lexed(&tokens)
+            .expect("become-and-grant sentence should parse through the full effect pipeline");
         let debug = format!("{effects:#?}");
 
         assert!(debug.contains("BecomeBasePtCreature"), "{debug}");
@@ -2931,7 +3070,10 @@ mod tests {
         let debug = format!("{effects:#?}");
 
         assert!(debug.contains(COPIED_STACK_OBJECT_TAG), "{debug}");
-        assert!(!debug.contains(&format!("TagKey(\n                    \"{IT_TAG}\"")), "{debug}");
+        assert!(
+            !debug.contains(&format!("TagKey(\n                    \"{IT_TAG}\"")),
+            "{debug}"
+        );
     }
 
     #[test]
@@ -3695,7 +3837,8 @@ mod tests {
                 && string_contains(&debug, "TriggeredAbility")
                 && string_contains(&debug, "LoseLifeEffect")
                 && (string_contains(&debug, "sacrifice_source")
-                    || string_contains(&debug, "SacrificeTargetEffect { target: Source }")),
+                    || (string_contains(&debug, "SacrificeTargetEffect")
+                        && string_contains(&debug, "Source"))),
             "granted trigger should keep its inline trigger effects together, got {debug}"
         );
         assert!(

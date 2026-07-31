@@ -133,6 +133,20 @@ impl AttacksYouTrigger {
         };
         format!("{article} {subject}")
     }
+
+    fn is_enchanted_player_creature_group(&self) -> bool {
+        if !matches!(
+            self.filter.controller.as_ref(),
+            Some(crate::target::PlayerFilter::TaggedPlayer(tag))
+                if tag.as_str() == "enchanted"
+        ) {
+            return false;
+        }
+
+        let mut creature_filter = self.filter.clone();
+        creature_filter.controller = None;
+        creature_filter == ObjectFilter::creature()
+    }
 }
 
 impl TriggerMatcher for AttacksYouTrigger {
@@ -167,14 +181,7 @@ impl TriggerMatcher for AttacksYouTrigger {
     fn display(&self) -> String {
         if self.one_or_more {
             let mut subject = self.filter.description();
-            if matches!(
-                self.filter.controller.as_ref(),
-                Some(crate::target::PlayerFilter::TaggedPlayer(tag))
-                    if tag.as_str() == "enchanted"
-            ) && matches!(
-                subject.as_str(),
-                "creature enchanted player controls" | "a creature enchanted player controls"
-            ) {
+            if self.is_enchanted_player_creature_group() {
                 return "Whenever enchanted player attacks you or a planeswalker you control"
                     .to_string();
             }

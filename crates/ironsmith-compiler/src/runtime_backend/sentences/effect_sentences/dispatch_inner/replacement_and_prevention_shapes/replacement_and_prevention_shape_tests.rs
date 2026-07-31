@@ -59,6 +59,27 @@ fn exile_then_face_down_return_keeps_the_same_object_link() {
 }
 
 #[test]
+fn source_exile_then_return_at_end_of_combat_stays_delayed() {
+    let tokens = crate::runtime_backend::lex_line(
+        "Exile it at end of combat, then return it to the battlefield transformed under your control.",
+        0,
+    )
+    .expect("delayed source exile-return text should lex");
+
+    let effects =
+        parse_effect_sentence_lexed(&tokens).expect("full sentence dispatcher should parse");
+    assert!(
+        matches!(
+            effects.as_slice(),
+            [EffectAst::DelayedUntilEndOfCombat { .. }]
+        ),
+        "{effects:#?}"
+    );
+    let debug = format!("{effects:#?}");
+    assert!(debug.contains(crate::tag::SOURCE_EXILED_TAG), "{debug}");
+}
+
+#[test]
 fn token_end_of_combat_recognizer_uses_captured_verb_object_and_timing() {
     let exile_tokens = crate::runtime_backend::lex_line("Exile those tokens at end of combat.", 0)
         .expect("exile token end-combat text should lex");
@@ -299,11 +320,8 @@ fn destroy_all_split_uses_captured_verb_and_object_tail() {
 
 #[test]
 fn repeated_all_or_branches_remain_a_resolution_choice() {
-    let tokens = crate::runtime_backend::lex_line(
-        "Destroy all lands or all creatures.",
-        0,
-    )
-    .expect("destroy-all alternative text should lex");
+    let tokens = crate::runtime_backend::lex_line("Destroy all lands or all creatures.", 0)
+        .expect("destroy-all alternative text should lex");
 
     let effects = parse_destroy_or_exile_all_split_sentence(&tokens)
         .expect("destroy-all alternative parser should not error")

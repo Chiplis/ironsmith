@@ -4146,7 +4146,13 @@ mod generic_subject_verb_program_tests {
         for (text, expected) in [
             (
                 "That creature enters with X additional +1/+1 counters on it, where X is the number of ingredient counters on this enchantment.",
-                &["CountersOnSource(", "ingredient", "WhereXIs"][..],
+                &[
+                    "CountersOn(",
+                    "spec: Source",
+                    "this enchantment",
+                    "ingredient",
+                    "WhereXIs",
+                ][..],
             ),
             (
                 "That creature enters with X additional +1/+1 counters on it, where X is its mana value minus 4.",

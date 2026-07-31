@@ -2294,9 +2294,11 @@ fn parse_put_from_milled_cards_followup(
     } else {
         (false, sentence_tokens)
     };
-    let Some(action_match) =
-        sentence_markers::parse_leading_may_action_tokens(&action_sentence, &["put"], true)
-    else {
+    let Some(action_match) = sentence_markers::parse_leading_may_action_tokens(
+        &action_sentence,
+        &["put", "return"],
+        true,
+    ) else {
         return Ok(None);
     };
     let chooser = leading_may_actor_to_player(action_match.actor, default_player);
@@ -2364,19 +2366,24 @@ fn parse_put_from_milled_cards_followup(
             zone: Zone::Graveyard,
         });
     }
+    let mut move_effect = EffectAst::subject_verb_move_to_zone_with_attack_target(
+        TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
+        zone,
+        false,
+        controller,
+        tapped,
+        attacking,
+        attack_target_player,
+        false,
+        None,
+    );
+    if action_match.verb == "return" {
+        move_effect =
+            move_effect.with_move_to_zone_verb_surface(ironsmith_core::MoveToZoneVerbSurface::Return);
+    }
     effects.push(EffectAst::ForEachTagged {
         tag: chosen_tag,
-        effects: vec![EffectAst::subject_verb_move_to_zone_with_attack_target(
-            TargetAst::Tagged(TagKey::from(crate::cards::builders::IT_TAG), None),
-            zone,
-            false,
-            controller,
-            tapped,
-            attacking,
-            attack_target_player,
-            false,
-            None,
-        )],
+        effects: vec![move_effect],
     });
     Ok(Some((effects, conditional_followup)))
 }

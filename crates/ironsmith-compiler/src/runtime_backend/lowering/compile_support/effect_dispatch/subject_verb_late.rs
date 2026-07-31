@@ -644,6 +644,7 @@ pub(super) fn compile_subject_verb_late(
             target,
             face_down,
             source_top_only,
+            target_plural_surface,
         } => {
             if *source_top_only {
                 let (spec, choices) =
@@ -685,6 +686,9 @@ pub(super) fn compile_subject_verb_late(
                         player,
                         &current_reference_env(ctx),
                     )?);
+                }
+                if *target_plural_surface {
+                    move_effect = move_effect.with_target_plural_surface();
                 }
                 Effect::new(move_effect)
             } else {
@@ -2002,9 +2006,9 @@ pub(super) fn compile_subject_verb_late(
                         )
                     })
                     .unwrap_or(ChooseSpec::Source);
-                effects.push(Effect::new(
-                    crate::effects::SacrificeTargetEffect::new(source),
-                ));
+                effects.push(Effect::new(crate::effects::SacrificeTargetEffect::new(
+                    source,
+                )));
                 return Ok(Some((effects, subject.into_choices())));
             }
             if !*one_of_referenced_set

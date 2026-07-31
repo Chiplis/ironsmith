@@ -65,7 +65,7 @@ fn collapse_whitespace_runs(text: &str) -> String {
     out
 }
 
-fn strip_parenthetical_segments(line: &str) -> String {
+pub(super) fn strip_parenthetical_segments(line: &str) -> String {
     match preprocess_grammar::parse_parenthetical_line_surface(line) {
         Some(preprocess_grammar::ParentheticalLineSurface::FullyWrapped) => {
             return line.to_string();

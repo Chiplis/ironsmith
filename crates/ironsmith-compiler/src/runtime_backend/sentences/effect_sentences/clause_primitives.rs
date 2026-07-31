@@ -22,7 +22,7 @@ use crate::cards::builders::{
     SubjectVerbRoleAst, TagKey, TargetAst,
 };
 use crate::effect::Value;
-use crate::target::{ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
+use crate::target::{ChooseSpec, ObjectFilter, PlayerFilter, TaggedOpbjectRelation};
 use crate::zone::Zone;
 
 pub(crate) type ClausePrimitiveParser =
@@ -1099,11 +1099,16 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
     } else {
         None
     };
+    let amount = if iterated_source_filter.is_some() {
+        bind_iterated_source_possessive_power(shape.amount)
+    } else {
+        shape.amount
+    };
     let effect = match shape.target {
         clause_shapes::PowerDamageTargetShape::EachPlayer => Ok(Some(EffectAst::ForEachPlayer {
             effects: vec![EffectAst::subject_verb_damage_with_source(
                 source,
-                shape.amount,
+                amount,
                 TargetAst::Player(PlayerFilter::IteratedPlayer, None),
             )],
         })),
@@ -1112,7 +1117,7 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
                 filter: PlayerFilter::NotYou,
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source,
-                    shape.amount,
+                    amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
             }))
@@ -1121,20 +1126,18 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
             Ok(Some(EffectAst::ForEachOpponent {
                 effects: vec![EffectAst::subject_verb_damage_with_source(
                     source,
-                    shape.amount,
+                    amount,
                     TargetAst::Player(PlayerFilter::IteratedPlayer, None),
                 )],
             }))
         }
         clause_shapes::PowerDamageTargetShape::Source => Ok(Some(
-            EffectAst::subject_verb_damage_with_source(source.clone(), shape.amount, source),
+            EffectAst::subject_verb_damage_with_source(source.clone(), amount, source),
         )),
         clause_shapes::PowerDamageTargetShape::Tokens(target_tokens) => {
             let target = parse_target_phrase(target_tokens)?;
             Ok(Some(EffectAst::subject_verb_damage_with_source(
-                source,
-                shape.amount,
-                target,
+                source, amount, target,
             )))
         }
     }?;
@@ -1145,6 +1148,29 @@ pub(crate) fn parse_deal_damage_equal_to_power_clause(
         }))
     } else {
         Ok(effect)
+    }
+}
+
+fn bind_iterated_source_possessive_power(value: Value) -> Value {
+    match value {
+        Value::SurfaceHinted { value, hints } => Value::SurfaceHinted {
+            value: Box::new(bind_iterated_source_possessive_power(*value)),
+            hints,
+        },
+        Value::PowerOf(spec)
+            if matches!(
+                spec.base(),
+                ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG
+            ) && matches!(
+                spec.source_reference_surface(),
+                Some(crate::target::SourceReferenceSurface::ThisPermanentType(surface))
+                    if matches!(surface.as_str(), "it" | "its")
+            ) =>
+        {
+            let hints = spec.surface_hints().to_vec();
+            Value::PowerOf(Box::new(ChooseSpec::Source.with_surface_hints(hints)))
+        }
+        value => value,
     }
 }
 
@@ -1235,16 +1261,15 @@ mod result_subject_tests {
         let tokens =
             crate::runtime_backend::lex_line("This spell deals 2 damage to each other player.", 0)
                 .expect("lex each-other-player damage");
-        let effect = parse_deal_damage_equal_to_power_clause(&tokens)
-            .expect("parse damage clause")
-            .expect("match damage clause");
+        let effects = super::super::parse_effect_sentence_lexed(&tokens)
+            .expect("parse damage sentence through the ordinary dispatcher");
 
         assert!(matches!(
-            effect,
-            EffectAst::ForEachPlayersFiltered {
+            effects.as_slice(),
+            [EffectAst::ForEachPlayersFiltered {
                 filter: PlayerFilter::NotYou,
                 ..
-            }
+            }]
         ));
     }
 
@@ -1272,25 +1297,25 @@ mod result_subject_tests {
             [EffectAst::SubjectVerb(SubjectVerbEffectAst {
                 action: SubjectVerbActionAst::DealDamageEqualToPower {
                     source: TargetAst::Object(_, _, _),
+                    amount: Value::PowerOf(spec),
                     target: TargetAst::Object(target_filter, _, _),
                     ..
                 },
                 ..
-            })] if target_filter.tagged_constraints.iter().any(|constraint| {
-                constraint.tag.as_str() == IT_TAG
-                    && constraint.relation
-                        == crate::filter::TaggedOpbjectRelation::IsTaggedObject
-            })
+            })] if matches!(spec.base(), ChooseSpec::Source)
+                && target_filter.tagged_constraints.iter().any(|constraint| {
+                    constraint.tag.as_str() == IT_TAG
+                        && constraint.relation
+                            == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+                })
         ));
     }
 
     #[test]
     fn additional_damage_pronoun_keeps_the_spell_or_ability_as_source() {
-        let tokens = crate::runtime_backend::lex_line(
-            "It deals an additional 3 damage to that player.",
-            0,
-        )
-        .expect("lex additional damage");
+        let tokens =
+            crate::runtime_backend::lex_line("It deals an additional 3 damage to that player.", 0)
+                .expect("lex additional damage");
         let effect = parse_anaphoric_object_deals_damage_clause(&tokens)
             .expect("parse additional damage")
             .expect("match additional damage");

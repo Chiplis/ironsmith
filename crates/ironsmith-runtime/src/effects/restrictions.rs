@@ -165,6 +165,38 @@ fn normalize_restriction_for_resolution(
     }
 }
 
+#[derive(Debug)]
+struct CantEffectProposal {
+    effect: CantEffect,
+    iterated_player: Option<crate::ids::PlayerId>,
+    tagged_objects:
+        std::collections::HashMap<crate::tag::TagKey, Vec<crate::snapshot::ObjectSnapshot>>,
+}
+
+impl crate::effects::SimultaneousEffectProposal for CantEffectProposal {
+    fn commit(
+        self: Box<Self>,
+        game: &mut GameState,
+        ctx: &mut ExecutionContext,
+    ) -> Result<EffectOutcome, ExecutionError> {
+        let Self {
+            effect,
+            iterated_player,
+            tagged_objects,
+        } = *self;
+        ctx.with_temp_iterated_player(iterated_player, |ctx| {
+            // A preceding read-only choice can define the matching set for a
+            // restriction ("only creatures in the chosen pile can block").
+            // ForPlayers restores the shared pre-action tags before committing
+            // proposals, so carry this player's frozen choice into the commit.
+            let previous_tags = std::mem::replace(&mut ctx.tagged_objects, tagged_objects);
+            let outcome = effect.execute(game, ctx);
+            ctx.tagged_objects = previous_tags;
+            outcome
+        })
+    }
+}
+
 /// Effect that applies a restriction for a duration.
 impl EffectExecutor for CantEffect {
     fn supports_simultaneous_player_action(&self) -> bool {
@@ -176,9 +208,10 @@ impl EffectExecutor for CantEffect {
         _game: &GameState,
         ctx: &mut ExecutionContext,
     ) -> Result<Box<dyn crate::effects::SimultaneousEffectProposal>, ExecutionError> {
-        Ok(Box::new(crate::effects::DeferredPlayerActionProposal {
-            effect: crate::effect::Effect::new(self.clone()),
+        Ok(Box::new(CantEffectProposal {
+            effect: self.clone(),
             iterated_player: ctx.iteration.iterated_player,
+            tagged_objects: ctx.tagged_objects.clone(),
         }))
     }
 
@@ -563,6 +596,57 @@ mod tests {
         ))
         .execute(&mut game, &mut ctx)
         .expect("execute block cant effect");
+
+        assert!(
+            game.can_block(chosen_id),
+            "the chosen pile should remain able to block"
+        );
+        assert!(
+            !game.can_block(other_id),
+            "the unchosen pile should be unable to block"
+        );
+    }
+
+    #[test]
+    fn simultaneous_cant_effect_keeps_the_players_frozen_tagged_choice() {
+        let mut game = GameState::new(vec!["Alice".to_string(), "Bob".to_string()], 20);
+        let alice = PlayerId::from_index(0);
+        let bob = PlayerId::from_index(1);
+
+        let chosen_card = CardBuilder::new(CardId::from_raw(11), "Chosen Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let chosen_id = game.create_object_from_card(&chosen_card, bob, Zone::Battlefield);
+        let other_card = CardBuilder::new(CardId::from_raw(12), "Other Bear")
+            .card_types(vec![CardType::Creature])
+            .power_toughness(PowerToughness::fixed(2, 2))
+            .build();
+        let other_id = game.create_object_from_card(&other_card, bob, Zone::Battlefield);
+
+        let chosen_snapshot = ObjectSnapshot::from_object(
+            game.object(chosen_id).expect("chosen creature exists"),
+            &game,
+        );
+        let mut ctx = ExecutionContext::new_default(game.new_object_id(), alice);
+        ctx.iteration.iterated_player = Some(bob);
+        ctx.tag_object("divvy_chosen", chosen_snapshot);
+
+        let effect = CantEffect::until_end_of_turn(Restriction::block(
+            ObjectFilter::creature()
+                .controlled_by(PlayerFilter::IteratedPlayer)
+                .not_tagged("divvy_chosen"),
+        ));
+        let proposal = effect
+            .prepare_simultaneous_player_action(&game, &mut ctx)
+            .expect("prepare block restriction");
+
+        // The each-player coordinator restores the pre-action context before
+        // committing every frozen proposal.
+        ctx.tagged_objects.clear();
+        proposal
+            .commit(&mut game, &mut ctx)
+            .expect("commit block restriction");
 
         assert!(
             game.can_block(chosen_id),

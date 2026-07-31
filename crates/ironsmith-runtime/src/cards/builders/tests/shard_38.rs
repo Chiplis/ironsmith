@@ -86,10 +86,19 @@ pub(super) fn sacrificed_this_way_predicates_survive_source_effects() {
         } else {
             assert!(debug.contains("sacrifice_cost_0"), "{name}: {debug}");
         }
-        assert!(
-            debug.contains("PriorEffectResult") && debug.contains("Sacrificed"),
-            "{name}: {debug}"
-        );
+        if name == "Warren Weirding" {
+            assert!(
+                debug.contains("PriorEffectResult") && debug.contains("Sacrificed"),
+                "{name}: {debug}"
+            );
+        } else {
+            assert!(
+                debug.contains("ConditionalEffect")
+                    && debug.contains("TaggedObjectMatches")
+                    && debug.contains("sacrifice_cost_0"),
+                "{name}: {debug}"
+            );
+        }
         match name {
             "Boneyard Desecrator" => assert!(
                 compiled.contains("if an outlaw was sacrificed this way, create a treasure token"),

@@ -207,6 +207,13 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
                 | SubjectVerbActionAst::AddManaCommanderIdentity { .. }
                 | SubjectVerbActionAst::AddManaImprintedColors
         ),
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ManaRestricted { effects, .. } => {
+            !effects.is_empty() && effects.iter().all(effect_ast_is_mana_effect)
+        }
         EffectAst::Conditional {
             if_true, if_false, ..
         }
@@ -222,7 +229,11 @@ fn effect_ast_is_mana_effect(effect: &EffectAst) -> bool {
 
 fn effect_ast_starts_with_mana_effect(effect: &EffectAst) -> bool {
     match effect {
-        EffectAst::SourceSentence { effects, .. } => effects
+        EffectAst::Sequence { effects }
+        | EffectAst::CommaThen { effects }
+        | EffectAst::SourceSentence { effects, .. }
+        | EffectAst::Coordinated { effects, .. }
+        | EffectAst::ManaRestricted { effects, .. } => effects
             .first()
             .is_some_and(effect_ast_starts_with_mana_effect),
         other => effect_ast_is_mana_effect(other),
@@ -256,13 +267,18 @@ fn parse_standalone_x_definition_value(tokens: &[OwnedLexToken]) -> Option<crate
         }
     };
 
-    parse_value_binding_clause(&value_tokens).or_else(|| {
-        shape.exiled_card_mana_value.then(|| {
-            crate::effect::Value::ManaValueOf(Box::new(ChooseSpec::Tagged(TagKey::from(
-                crate::tag::SOURCE_EXILED_TAG,
-            ))))
-        })
-    })
+    if shape.exiled_card_mana_value {
+        // A standalone "X is ... that card's mana value" clause on an
+        // activated ability refers to the source-linked exiled card (the
+        // persistent imprint), not the transient `__it__` binding from a
+        // different resolution context. Check this typed shape before the
+        // generic value parser can erase that distinction.
+        return Some(crate::effect::Value::ManaValueOf(Box::new(
+            ChooseSpec::Tagged(TagKey::from(crate::tag::SOURCE_EXILED_TAG)),
+        )));
+    }
+
+    parse_value_binding_clause(&value_tokens)
 }
 
 fn is_standalone_x_definition_sentence(tokens: &[OwnedLexToken]) -> bool {

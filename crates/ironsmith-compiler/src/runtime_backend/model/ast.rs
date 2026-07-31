@@ -1519,6 +1519,7 @@ pub(crate) enum SubjectVerbActionAst {
         player: PlayerAst,
         allow_land: bool,
         allow_any_color_for_cast: ironsmith_core::value_model::ManaSpendMode,
+        surface: Option<ironsmith_core::GrantPlayTaggedSurface>,
     },
     ReturnToBattlefield {
         target: TargetAst,
@@ -1808,6 +1809,11 @@ pub(crate) enum SubjectVerbActionAst {
         library_position_from_top: Option<Value>,
         result_reference_surface: crate::effect::SearchResultReferenceSurface,
         tapped: bool,
+        /// Whether the put clause hands the found card to the searcher ("… and
+        /// put it onto the battlefield under your control"). Without it the card
+        /// enters under the SEARCHED player's control, which is only correct
+        /// when you searched your own library.
+        enters_under_your_control: bool,
     },
     Cant {
         restriction: crate::effect::Restriction,
@@ -2028,6 +2034,9 @@ pub(crate) enum SubjectVerbActionAst {
         face_down: bool,
         /// The target is selected from the first matching object in its ordered source zone.
         source_top_only: bool,
+        /// Preserve an authored plural reference even when the linked target
+        /// specification itself is represented by a singular tagged handle.
+        target_plural_surface: bool,
     },
     ExileAll {
         filter: ObjectFilter,
@@ -3050,12 +3059,14 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 player,
                 allow_land,
                 allow_any_color_for_cast,
+                surface,
             } => f
                 .debug_struct("GrantPlayTaggedForAsLongAsYouControlSource")
                 .field("tag", tag)
                 .field("player", player)
                 .field("allow_land", allow_land)
                 .field("allow_any_color_for_cast", allow_any_color_for_cast)
+                .field("surface", surface)
                 .finish(),
             Self::ReturnToBattlefield {
                 target,
@@ -3602,8 +3613,10 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 library_position_from_top,
                 result_reference_surface,
                 tapped,
+                enters_under_your_control,
             } => f
                 .debug_struct("SearchLibrary")
+                .field("enters_under_your_control", enters_under_your_control)
                 .field("filter", filter)
                 .field("destination", destination)
                 .field("chooser", chooser)
@@ -3839,11 +3852,13 @@ impl std::fmt::Debug for SubjectVerbActionAst {
                 target,
                 face_down,
                 source_top_only,
+                target_plural_surface,
             } => f
                 .debug_struct("Exile")
                 .field("target", target)
                 .field("face_down", face_down)
                 .field("source_top_only", source_top_only)
+                .field("target_plural_surface", target_plural_surface)
                 .finish(),
             Self::ExileAll { filter, face_down } => f
                 .debug_struct("ExileAll")

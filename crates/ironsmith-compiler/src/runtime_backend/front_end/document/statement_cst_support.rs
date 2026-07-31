@@ -266,8 +266,27 @@ fn looks_like_day_night_starts_day_as_enters_static_line(tokens: &[OwnedLexToken
     statement_shapes::parse_day_night_enters_tokens(tokens).is_some()
 }
 
+fn is_plural_tagged_result_followup_tokens(tokens: &[OwnedLexToken]) -> bool {
+    super::super::grammar::effects::delayed_step_shapes::parse_implicit_become_subject_shape(tokens)
+        .is_some_and(|shape| {
+            shape.kind
+                == super::super::grammar::effects::delayed_step_shapes::ImplicitBecomeSubjectKind::Tagged
+                && shape.set_quantifier_surface
+                    == Some(ironsmith_core::SetQuantifierSurface::They)
+        })
+}
+
 fn is_trigger_result_followup_line(line: &PreprocessedLine) -> bool {
-    structure::split_leading_result_prefix_lexed(&line.tokens).is_some()
+    if structure::split_leading_result_prefix_lexed(&line.tokens).is_some() {
+        return true;
+    }
+
+    // A plural demonstrative can be the result subject of the preceding
+    // statement even though it is not introduced by "if"/"when": "Return
+    // ... to the battlefield. They are 5/5 Elemental creatures ...". Keep
+    // that sentence in the same effect program so `they` binds to the exact
+    // returned result set instead of being reclassified as a source static.
+    is_plural_tagged_result_followup_tokens(&line.tokens)
 }
 
 fn append_joined_line_tokens(target: &mut Vec<OwnedLexToken>, extra: &[OwnedLexToken]) {
@@ -489,6 +508,7 @@ fn first_trailing_static_sentence_idx_inner(
             .skip(1)
             .find_map(|(idx, sentence)| {
                 (!followup_shapes::is_if_did_untap_source_followup(sentence)
+                    && !is_plural_tagged_result_followup_tokens(sentence)
                     && followup_shapes::parse_cant_be_regenerated_followup(sentence).is_none()
                     && clause_dispatch_shapes::parse_direct_clause_shape(sentence)
                         != Some(DirectClauseShape::DamageCantBePrevented)

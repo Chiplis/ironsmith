@@ -190,8 +190,8 @@ fn explicit_land_noun_is_preserved_separately_from_subtype_semantics() {
     assert_eq!(explicit.explicit_card_type_noun(), Some(CardType::Land));
     assert_eq!(canonical.explicit_card_type_noun(), None);
     assert_eq!(explicit, canonical);
-    assert_eq!(explicit.description(), "a Urza's land you control");
-    assert_eq!(canonical.description(), "a Urza's you control");
+    assert_eq!(explicit.description(), "an Urza's land you control");
+    assert_eq!(canonical.description(), "an Urza's you control");
 }
 
 #[test]

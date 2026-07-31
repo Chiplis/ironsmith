@@ -68,6 +68,12 @@ struct EffectReferenceResolutionState {
     /// durable producer for phrases such as “the total power of the creatures
     /// sacrificed this way.”
     last_sacrifice_cost_tag_index: Option<u32>,
+    /// Index of the object-set tag exported by an exile activation cost.
+    ///
+    /// Like sacrifice costs, exile costs execute outside the resolution
+    /// program and therefore expose their affected set through a stable tag
+    /// rather than a resolution-program EffectId.
+    last_exile_cost_tag_index: Option<u32>,
     allow_life_event_value: bool,
     bind_unbound_x_to_last_effect: bool,
 }
@@ -725,16 +731,22 @@ fn advance_reference_frame_for_effect(
                     maybe_tag_target(target, frame, id_gen, "untapped")?;
                 }
                 SubjectVerbActionAst::TapAll { filter } => {
+                    // Preserve the actor/controller antecedent before the tap
+                    // action exports its result set. If the generated
+                    // `tapped_*` tag wins first, a following "they lose all
+                    // unspent mana" incorrectly derives the player from that
+                    // possibly-empty result instead of from the countered
+                    // spell/controller that introduced the actor.
+                    track_player_from_object_filter(filter, frame);
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "tapped"));
                     }
-                    track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::UntapAll { filter } => {
+                    track_player_from_object_filter(filter, frame);
                     if frame.auto_tag_object_targets {
                         frame.last_object_tag = Some(next_reference_tag(id_gen, "untapped"));
                     }
-                    track_player_from_object_filter(filter, frame);
                 }
                 SubjectVerbActionAst::TapOrUntapAll {
                     tap_filter,
@@ -1782,14 +1794,24 @@ fn effect_reference_resolution_state(env: &ReferenceEnv) -> EffectReferenceResol
     EffectReferenceResolutionState {
         last_effect_id: env.last_effect_id.clone().into_option(),
         last_library_search_effect_id: env.last_library_search_effect_id.clone().into_option(),
-        last_sacrifice_cost_tag_index: env.known_last_object_tag().and_then(|tag| {
-            tag.as_str()
-                .strip_prefix("sacrifice_cost_")
-                .and_then(|index| index.parse().ok())
-        }),
+        last_sacrifice_cost_tag_index: cost_tag_index_from_env(env, "sacrifice_cost_"),
+        last_exile_cost_tag_index: cost_tag_index_from_env(env, "exile_cost_"),
         allow_life_event_value: env.allow_life_event_value,
         bind_unbound_x_to_last_effect: env.bind_unbound_x_to_last_effect,
     }
+}
+
+fn cost_tag_index_from_env(env: &ReferenceEnv, prefix: &str) -> Option<u32> {
+    env.known_last_object_tag()
+        .and_then(|tag| tag.as_str().strip_prefix(prefix))
+        .and_then(|index| index.parse().ok())
+        .or_else(|| {
+            env.snapshot_tag_aliases
+                .iter()
+                .rev()
+                .filter_map(|(_, tag)| tag.strip_prefix(prefix))
+                .find_map(|index| index.parse().ok())
+        })
 }
 
 fn effect_exports_damage_each_object_set(effect: &EffectAst) -> bool {
@@ -1809,6 +1831,12 @@ fn annotate_effect_sequence_with_env_internal(
     id_gen: &mut IdGenContext,
 ) -> Result<AnnotatedEffectSequence, CardTextError> {
     let mut annotated = Vec::with_capacity(effects.len());
+    // Activation costs execute before this resolution sequence. Preserve
+    // their exported snapshot tags independently from ordinary object memory,
+    // which later instructions are free to advance.
+    let imported_sacrifice_cost_tag_index =
+        cost_tag_index_from_env(&current_env, "sacrifice_cost_");
+    let imported_exile_cost_tag_index = cost_tag_index_from_env(&current_env, "exile_cost_");
 
     for (idx, effect) in effects.iter().enumerate() {
         let in_env = current_env.clone();
@@ -1833,11 +1861,15 @@ fn annotate_effect_sequence_with_env_internal(
             resolution_env.last_object_tag =
                 RefState::Known(crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG));
         }
-        let mut effect = resolve_effect_references_in_effect(
-            effect.clone(),
-            id_gen,
-            effect_reference_resolution_state(&resolution_env),
-        )?;
+        let mut resolution_state = effect_reference_resolution_state(&resolution_env);
+        resolution_state.last_sacrifice_cost_tag_index = resolution_state
+            .last_sacrifice_cost_tag_index
+            .or(imported_sacrifice_cost_tag_index);
+        resolution_state.last_exile_cost_tag_index = resolution_state
+            .last_exile_cost_tag_index
+            .or(imported_exile_cost_tag_index);
+        let mut effect =
+            resolve_effect_references_in_effect(effect.clone(), id_gen, resolution_state)?;
         // Some surface parsers initially spell "the exiled card" as the
         // ordinary `it` target and only resolve it to the source-linked exile
         // tag while resolving the action. If the trailing `it` predicate was
@@ -1898,6 +1930,12 @@ fn annotate_effect_sequence_with_env_internal(
             auto_tag_object_targets_for_env,
             suppress_force_auto_tag_object_targets,
         )?;
+        // Keep the surface-shaped choice available while advancing the frame:
+        // a hand choice written as "a card from it" uses that original `it`
+        // marker to preserve the revealed player's antecedent. Once the frame
+        // has consumed that signal, store the choice with its exact typed
+        // result-set tag so lowering cannot widen it to the whole zone.
+        resolve_direct_choice_filter_references(&mut effect, &resolution_env)?;
         if source_exiled_condition_subject {
             out_env.last_object_tag =
                 RefState::Known(crate::TagKey::from(crate::tag::SOURCE_EXILED_TAG));
@@ -1956,6 +1994,23 @@ fn annotate_effect_sequence_with_env_internal(
         effects: annotated,
         final_env: current_env,
     })
+}
+
+fn resolve_direct_choice_filter_references(
+    effect: &mut EffectAst,
+    refs: &ReferenceEnv,
+) -> Result<(), CardTextError> {
+    let filter = match effect {
+        EffectAst::ChooseObjects { filter, .. }
+        | EffectAst::ChooseObjectsWithAggregateConstraint { filter, .. }
+        | EffectAst::ChooseObjectsBottomOfLibrary { filter, .. }
+        | EffectAst::ChooseObjectsTopOfLibrary { filter, .. }
+        | EffectAst::ChooseTaggedObjectsInZone { filter, .. }
+        | EffectAst::ChooseObjectsAcrossZones { filter, .. } => filter,
+        _ => return Ok(()),
+    };
+    *filter = resolve_it_tag(filter, refs)?;
+    Ok(())
 }
 
 pub(crate) fn preserves_existing_it_for_power_self_damage_followup(
@@ -2355,6 +2410,16 @@ fn effect_references_pending_metric_action(effect: &EffectAst, action: PriorEffe
 }
 
 fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectAction) -> bool {
+    if let EffectAst::MoveTaggedGroupToZone { zone, .. } = effect {
+        return matches!(
+            (action, zone),
+            (
+                PriorEffectAction::PutOntoBattlefield,
+                crate::zone::Zone::Battlefield
+            ) | (PriorEffectAction::Exiled, crate::zone::Zone::Exile)
+                | (PriorEffectAction::Returned, crate::zone::Zone::Hand)
+        );
+    }
     if action == PriorEffectAction::Chosen {
         return matches!(
             effect,
@@ -2462,6 +2527,10 @@ fn is_object_memory_producer_for_action(effect: &EffectAst, action: PriorEffectA
             SubjectVerbActionAst::PutOntoBattlefield { .. }
                 | SubjectVerbActionAst::ReturnToBattlefield { .. }
                 | SubjectVerbActionAst::ReturnAllToBattlefield { .. }
+                | SubjectVerbActionAst::MoveToZone {
+                    zone: crate::zone::Zone::Battlefield,
+                    ..
+                }
         ),
         PriorEffectAction::Returned => matches!(
             producer_action,
@@ -2784,6 +2853,36 @@ fn resolve_effect_references_in_effect(
     id_gen: &mut IdGenContext,
     state: EffectReferenceResolutionState,
 ) -> Result<EffectAst, CardTextError> {
+    if let EffectAst::IfResult {
+        predicate: IfResultPredicate::PriorEffectResult(surface),
+        effects,
+    } = &effect
+        && state.last_effect_id.is_none()
+        && surface.action == PriorEffectAction::Sacrificed
+        && surface.actor == ironsmith_core::PriorEffectResultActor::Passive
+        && surface.quantifier == ironsmith_core::PriorEffectResultQuantifier::One
+        && surface.required_count.is_none()
+        && surface.shared_characteristic.is_none()
+        && let Some(tag_index) = state.last_sacrifice_cost_tag_index
+    {
+        // An activation cost executes before its resolution program, so its
+        // sacrifice has no EffectId for an ordinary `IfResult` to read. The
+        // cost nevertheless exports exact last-known-information snapshots
+        // under `sacrifice_cost_*`; use that durable set as the executable
+        // predicate. Restrict this bridge to the passive singular shape that
+        // `TaggedObjectMatches` represents exactly. A compatible sacrifice
+        // inside the resolution program still receives an EffectId and wins
+        // through the ordinary result path above.
+        effect = EffectAst::Conditional {
+            predicate: PredicateAst::TaggedMatches(
+                crate::TagKey::from(format!("sacrifice_cost_{tag_index}")),
+                surface.filter.clone(),
+            ),
+            if_true: effects.clone(),
+            if_false: Vec::new(),
+        };
+    }
+
     if let EffectAst::IfResult { predicate, effects } = effect {
         let condition = if matches!(
             predicate,
@@ -2803,6 +2902,7 @@ fn resolve_effect_references_in_effect(
                 last_effect_id: Some(condition),
                 last_library_search_effect_id: state.last_library_search_effect_id,
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
+                last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: predicate != IfResultPredicate::AcceptedChoice,
             },
@@ -2825,6 +2925,7 @@ fn resolve_effect_references_in_effect(
                 last_effect_id: Some(condition),
                 last_library_search_effect_id: state.last_library_search_effect_id,
                 last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
+                last_exile_cost_tag_index: state.last_exile_cost_tag_index,
                 allow_life_event_value: state.allow_life_event_value,
                 bind_unbound_x_to_last_effect: true,
             },
@@ -2876,6 +2977,7 @@ fn resolve_effect_references_in_effect(
             last_effect_id: state.last_effect_id,
             last_library_search_effect_id: state.last_library_search_effect_id,
             last_sacrifice_cost_tag_index: state.last_sacrifice_cost_tag_index,
+            last_exile_cost_tag_index: state.last_exile_cost_tag_index,
             allow_life_event_value: trigger_supports_event_amount(trigger),
             bind_unbound_x_to_last_effect: state.bind_unbound_x_to_last_effect,
         };
@@ -3559,16 +3661,27 @@ fn resolve_effect_result_value(
             }
         }
         Value::PendingEffectMetric { source, metric } => {
-            let id = state.last_effect_id.ok_or_else(|| {
-                CardTextError::ParseError(
-                    "pending effect metric requires a prior memory-producing effect".to_string(),
+            if state.last_effect_id.is_none()
+                && state.allow_life_event_value
+                && matches!(
+                    (*source, *metric),
+                    (EffectMetricSource::Outcome, EffectMetric::Count)
                 )
-            })?;
-            *value = Value::EffectMetric {
-                effect_id: id,
-                source: *source,
-                metric: *metric,
-            };
+            {
+                *value = Value::EventValue(EventValueSpec::Amount);
+            } else {
+                let id = state.last_effect_id.ok_or_else(|| {
+                    CardTextError::ParseError(
+                        "pending effect metric requires a prior memory-producing effect"
+                            .to_string(),
+                    )
+                })?;
+                *value = Value::EffectMetric {
+                    effect_id: id,
+                    source: *source,
+                    metric: *metric,
+                };
+            }
         }
         Value::PendingEffectMetricOffset {
             source,
@@ -3594,8 +3707,11 @@ fn resolve_effect_result_value(
                     query: query.clone(),
                 };
             } else if let Some(index) = state.last_sacrifice_cost_tag_index
-                && let Some(tagged_metric) =
-                    resolve_sacrifice_cost_tagged_metric(query, index)
+                && let Some(tagged_metric) = resolve_sacrifice_cost_tagged_metric(query, index)
+            {
+                *value = tagged_metric;
+            } else if let Some(index) = state.last_exile_cost_tag_index
+                && let Some(tagged_metric) = resolve_exile_cost_tagged_metric(query, index)
             {
                 *value = tagged_metric;
             } else {
@@ -3672,14 +3788,43 @@ fn resolve_sacrifice_cost_tagged_metric(
     {
         return None;
     }
-    let filter = query
-        .filter
-        .clone()
-        .unwrap_or_default()
-        .match_tagged(
-            crate::TagKey::from(format!("sacrifice_cost_{tag_index}")),
-            TaggedOpbjectRelation::IsTaggedObject,
-        );
+    let filter = query.filter.clone().unwrap_or_default().match_tagged(
+        crate::TagKey::from(format!("sacrifice_cost_{tag_index}")),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
+    match query.metric {
+        EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount => {
+            Some(Value::Count(filter))
+        }
+        EffectMetric::TotalPower => Some(Value::TotalPower(filter)),
+        EffectMetric::TotalToughness => Some(Value::TotalToughness(filter)),
+        EffectMetric::TotalManaValue => Some(Value::TotalManaValue(filter)),
+        EffectMetric::GreatestPower => Some(Value::GreatestPower(filter)),
+        EffectMetric::GreatestToughness => Some(Value::GreatestToughness(filter)),
+        EffectMetric::GreatestManaValue => Some(Value::GreatestManaValue(filter)),
+        EffectMetric::ColorsAmong => Some(Value::ColorsAmong(filter)),
+        EffectMetric::CardTypesAmong => Some(Value::CardTypesAmong(filter)),
+        _ => None,
+    }
+}
+
+fn resolve_exile_cost_tagged_metric(
+    query: &ironsmith_core::PriorEffectMetricQuery,
+    tag_index: u32,
+) -> Option<Value> {
+    if query.action != Some(PriorEffectAction::Exiled)
+        || query.player.is_some()
+        || !matches!(
+            query.source,
+            EffectMetricSource::AffectedObjects | EffectMetricSource::ChosenObjects
+        )
+    {
+        return None;
+    }
+    let filter = query.filter.clone().unwrap_or_default().match_tagged(
+        crate::TagKey::from(format!("exile_cost_{tag_index}")),
+        TaggedOpbjectRelation::IsTaggedObject,
+    );
     match query.metric {
         EffectMetric::Count | EffectMetric::ChosenCount | EffectMetric::AffectedCount => {
             Some(Value::Count(filter))
@@ -4804,7 +4949,8 @@ fn bind_unresolved_it_in_restriction(
             bind_unresolved_it_in_filter(blockers, seed_tag)
                 + bind_unresolved_it_in_filter(attacker, seed_tag)
         }
-        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. } => {
+        Restriction::AttackPlayerOrPlaneswalkersControlledBy { attackers, .. }
+        | Restriction::AttackPlayer { attackers, .. } => {
             bind_unresolved_it_in_filter(attackers, seed_tag)
         }
         _ => 0,
@@ -5002,6 +5148,55 @@ mod tests {
     }
 
     #[test]
+    fn typed_battlefield_result_accepts_nested_generic_zone_move() {
+        let chosen_tag = TagKey::from("__chosen");
+        let producer = EffectAst::ForEachTagged {
+            tag: chosen_tag,
+            effects: vec![EffectAst::subject_verb_move_to_zone(
+                TargetAst::Tagged(TagKey::from(IT_TAG), None),
+                Zone::Battlefield,
+                false,
+                ReturnControllerAst::Preserve,
+                false,
+                None,
+            )],
+        };
+        let surface = PriorEffectResultSurface::new(
+            PriorEffectAction::PutOntoBattlefield,
+            ObjectFilter::creature(),
+            PriorEffectResultActor::You,
+            PriorEffectResultQuantifier::One,
+        );
+        let gate = EffectAst::WhenResult {
+            predicate: IfResultPredicate::PriorEffectResult(surface),
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            )],
+        };
+
+        let annotated = annotate_effect_sequence(
+            &[producer, gate],
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("nested battlefield move should export its typed result");
+
+        assert_eq!(annotated.effects[0].assigned_effect_id, Some(EffectId(0)));
+        assert!(matches!(
+            annotated.effects[1].effect,
+            EffectAst::ResolvedWhenResult {
+                condition: EffectId(0),
+                ..
+            }
+        ));
+    }
+
+    #[test]
     fn resolves_if_result_after_optional_turn_skip() {
         let effects = vec![EffectAst::Conditional {
             predicate: PredicateAst::SourceIsTapped,
@@ -5162,12 +5357,109 @@ mod tests {
                 last_effect_id: Some(EffectId(7)),
                 last_library_search_effect_id: None,
                 last_sacrifice_cost_tag_index: None,
+                last_exile_cost_tag_index: None,
                 allow_life_event_value: true,
                 bind_unbound_x_to_last_effect: false,
             },
         )
         .expect("ambient trigger amount remains valid");
         assert_eq!(ambient, Value::EventValue(EventValueSpec::Amount));
+    }
+
+    #[test]
+    fn pending_outcome_count_without_a_producer_binds_to_ambient_trigger_amount() {
+        let mut value = Value::PendingEffectMetric {
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::Count,
+        };
+
+        resolve_effect_result_value(
+            &mut value,
+            EffectReferenceResolutionState {
+                last_effect_id: None,
+                last_library_search_effect_id: None,
+                last_sacrifice_cost_tag_index: None,
+                last_exile_cost_tag_index: None,
+                allow_life_event_value: true,
+                bind_unbound_x_to_last_effect: false,
+            },
+        )
+        .expect("compatible trigger should provide the pending outcome count");
+
+        assert_eq!(value, Value::EventValue(EventValueSpec::Amount));
+    }
+
+    #[test]
+    fn pending_outcome_count_prefers_an_explicit_prior_effect_producer() {
+        let mut value = Value::PendingEffectMetric {
+            source: EffectMetricSource::Outcome,
+            metric: EffectMetric::Count,
+        };
+
+        resolve_effect_result_value(
+            &mut value,
+            EffectReferenceResolutionState {
+                last_effect_id: Some(EffectId(7)),
+                last_library_search_effect_id: None,
+                last_sacrifice_cost_tag_index: None,
+                last_exile_cost_tag_index: None,
+                allow_life_event_value: true,
+                bind_unbound_x_to_last_effect: false,
+            },
+        )
+        .expect("explicit prior effect should remain the metric producer");
+
+        assert_eq!(
+            value,
+            Value::EffectMetric {
+                effect_id: EffectId(7),
+                source: EffectMetricSource::Outcome,
+                metric: EffectMetric::Count,
+            }
+        );
+    }
+
+    #[test]
+    fn tagged_group_battlefield_move_supplies_typed_result_through_may_wrapper() {
+        let moved_filter = ObjectFilter::artifact();
+        let result_surface = PriorEffectResultSurface::new(
+            PriorEffectAction::PutOntoBattlefield,
+            moved_filter,
+            PriorEffectResultActor::Passive,
+            PriorEffectResultQuantifier::One,
+        );
+        let effects = vec![
+            EffectAst::MayByPlayer {
+                player: PlayerAst::You,
+                effects: vec![EffectAst::MoveTaggedGroupToZone {
+                    tag: TagKey::from("chosen"),
+                    zone: Zone::Battlefield,
+                }],
+            },
+            EffectAst::IfResult {
+                predicate: IfResultPredicate::PriorEffectResult(result_surface),
+                effects: vec![EffectAst::subject_verb_investigate(
+                    PlayerAst::You,
+                    Value::Fixed(1),
+                )],
+            },
+        ];
+
+        let annotated = annotate_effect_sequence(
+            &effects,
+            &ModelReferenceImports::default(),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("the optional tagged move should supply the typed result gate");
+
+        let assigned = annotated.effects[0]
+            .assigned_effect_id
+            .expect("the tagged battlefield move should export a result id");
+        assert!(matches!(
+            &annotated.effects[1].effect,
+            EffectAst::ResolvedIfResult { condition, .. } if *condition == assigned
+        ));
     }
 
     #[test]
@@ -5709,6 +6001,7 @@ mod tests {
             None,
             crate::effect::SearchResultReferenceSurface::ThatCard,
             false,
+            false,
         )
     }
 
@@ -5902,6 +6195,91 @@ mod tests {
     }
 
     #[test]
+    fn sacrifice_cost_result_gate_uses_cost_snapshots_not_an_unrelated_resolution_effect() {
+        let put_counter = EffectAst::subject_verb_put_counters(
+            CounterType::PlusOnePlusOne,
+            Value::Fixed(1),
+            TargetAst::Source(None),
+            None,
+            false,
+        );
+        let surface = PriorEffectResultSurface::new(
+            PriorEffectAction::Sacrificed,
+            ObjectFilter::creature(),
+            PriorEffectResultActor::Passive,
+            PriorEffectResultQuantifier::One,
+        );
+        let gate = EffectAst::IfResult {
+            predicate: IfResultPredicate::PriorEffectResult(surface),
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            )],
+        };
+
+        let annotated = annotate_effect_sequence(
+            &[put_counter, gate],
+            &ModelReferenceImports::with_last_object_tag("sacrifice_cost_4"),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("the activation cost's sacrifice snapshots should satisfy the result gate");
+
+        assert_eq!(
+            annotated.effects[0].assigned_effect_id, None,
+            "the counter instruction is not the sacrifice named by the typed gate"
+        );
+        assert!(matches!(
+            &annotated.effects[1].effect,
+            EffectAst::Conditional {
+                predicate: PredicateAst::TaggedMatches(tag, filter),
+                ..
+            } if tag.as_str() == "sacrifice_cost_4" && filter == &ObjectFilter::creature()
+        ));
+    }
+
+    #[test]
+    fn resolution_sacrifice_result_still_precedes_imported_cost_snapshots() {
+        let sacrifice =
+            EffectAst::subject_verb_sacrifice(PlayerAst::You, ObjectFilter::creature(), 1, None);
+        let surface = PriorEffectResultSurface::new(
+            PriorEffectAction::Sacrificed,
+            ObjectFilter::creature(),
+            PriorEffectResultActor::Passive,
+            PriorEffectResultQuantifier::One,
+        );
+        let gate = EffectAst::IfResult {
+            predicate: IfResultPredicate::PriorEffectResult(surface),
+            effects: vec![EffectAst::subject_verb(
+                SubjectVerbRoleAst::AffectedPlayer,
+                PlayerAst::You,
+                SubjectVerbActionAst::Draw {
+                    count: Value::Fixed(1),
+                },
+            )],
+        };
+
+        let annotated = annotate_effect_sequence(
+            &[sacrifice, gate],
+            &ModelReferenceImports::with_last_object_tag("sacrifice_cost_4"),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("the resolution sacrifice should remain the exact result producer");
+
+        let assigned = annotated.effects[0]
+            .assigned_effect_id
+            .expect("the resolution sacrifice should export its result");
+        assert!(matches!(
+            &annotated.effects[1].effect,
+            EffectAst::ResolvedIfResult { condition, .. } if *condition == assigned
+        ));
+    }
+
+    #[test]
     fn sacrifice_activation_cost_metric_uses_the_imported_snapshot_set() {
         let total_power = Value::PendingPriorEffectMetric(
             ironsmith_core::PriorEffectMetricQuery::new(
@@ -5938,6 +6316,46 @@ mod tests {
         assert!(filter.tagged_constraints.iter().any(|constraint| {
             constraint.relation == TaggedOpbjectRelation::IsTaggedObject
                 && constraint.tag.as_str() == "sacrifice_cost_3"
+        }));
+    }
+
+    #[test]
+    fn exile_activation_cost_metric_uses_the_imported_snapshot_set() {
+        let count = Value::PendingPriorEffectMetric(
+            ironsmith_core::PriorEffectMetricQuery::new(
+                EffectMetricSource::AffectedObjects,
+                EffectMetric::Count,
+            )
+            .with_filter(ObjectFilter::creature())
+            .with_action(PriorEffectAction::Exiled),
+        );
+        let consumer = EffectAst::subject_verb(
+            SubjectVerbRoleAst::AffectedPlayer,
+            PlayerAst::You,
+            SubjectVerbActionAst::Draw { count },
+        );
+
+        let annotated = annotate_effect_sequence(
+            &[consumer],
+            &ModelReferenceImports::with_last_object_tag("exile_cost_2"),
+            EffectReferenceResolutionConfig::default(),
+            IdGenContext::default(),
+        )
+        .expect("an activation cost's exiled snapshots should satisfy the aggregate");
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::Draw { count },
+            ..
+        }) = &annotated.effects[0].effect
+        else {
+            panic!("expected draw consumer");
+        };
+        let Value::Count(filter) = count else {
+            panic!("expected a tagged count value, got {count:#?}");
+        };
+        assert!(filter.tagged_constraints.iter().any(|constraint| {
+            constraint.relation == TaggedOpbjectRelation::IsTaggedObject
+                && constraint.tag.as_str() == "exile_cost_2"
         }));
     }
 

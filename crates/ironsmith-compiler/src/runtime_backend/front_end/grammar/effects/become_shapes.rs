@@ -43,6 +43,7 @@ pub(crate) struct FilteredObjectAnimationShape<'a> {
     pub(crate) subject_tokens: &'a [OwnedLexToken],
     pub(crate) dependent_subject: bool,
     pub(crate) removes_all_abilities: bool,
+    pub(crate) preserve_other_types: bool,
     pub(crate) descriptor: BecomeCreatureDescriptor,
     pub(crate) power: Value,
     pub(crate) toughness: Value,
@@ -122,7 +123,37 @@ fn parsed_controller_owner_shape(
     target_tokens: &[OwnedLexToken],
 ) -> Option<ControllerOwnerSubjectShape> {
     let target_tokens = normalize_trailing_possessive(target_tokens);
+    let target_words = TokenWordView::new(&target_tokens).to_word_refs();
+    let persistent_source_surface =
+        crate::runtime_backend::front_end::shared::util::source_reference_surface_for_words(
+            &target_words,
+        )
+        .or_else(|| {
+            crate::runtime_backend::front_end::shared::util::this_source_surface_for_words(
+                &target_words,
+            )
+        });
     let target = crate::runtime_backend::util::parse_target_phrase(&target_tokens).ok()?;
+    let target = match (persistent_source_surface, target) {
+        (Some(surface), TargetAst::Source(_)) => {
+            // A quoted attached-object ability is parsed in a temporary
+            // name-only source context.  Span-indexed surface metadata
+            // disappears when that nested parse returns, so carry the
+            // authored source identity in the AST itself.
+            TargetAst::Object(
+                ObjectFilter::source().with_source_surface(surface),
+                None,
+                None,
+            )
+        }
+        (Some(surface), TargetAst::Object(mut filter, target_span, reference_span))
+            if filter.source =>
+        {
+            filter.source_surface = Some(surface);
+            TargetAst::Object(filter, target_span, reference_span)
+        }
+        (_, target) => target,
+    };
     Some(ControllerOwnerSubjectShape {
         subject: SubjectAst::Player(player),
         target,
@@ -324,12 +355,37 @@ pub(crate) fn parse_filtered_object_animation_tokens(
         ) {
             continue;
         }
-        let Some(power_toughness) = parse_become_base_pt_words(&words[copula_word + 1..]) else {
-            continue;
-        };
-        let Some(descriptor) =
-            parse_become_creature_descriptor_words(power_toughness.descriptor_words)
-        else {
+        let body_words = &words[copula_word + 1..];
+        let parsed_body = parse_become_base_pt_words(body_words)
+            .and_then(|power_toughness| {
+                let descriptor =
+                    parse_become_creature_descriptor_words(power_toughness.descriptor_words)?;
+                Some((
+                    power_toughness.power,
+                    power_toughness.toughness,
+                    descriptor,
+                    false,
+                ))
+            })
+            .or_else(|| {
+                let body_words = body_words
+                    .strip_prefix(&["a"])
+                    .or_else(|| body_words.strip_prefix(&["an"]))
+                    .unwrap_or(body_words);
+                let (descriptor_words, preserve_other_types) =
+                    strip_become_addition_tail_words(body_words);
+                let leading = parse_become_leading_pt_shape(descriptor_words, &[])?;
+                let descriptor = parse_become_creature_descriptor_words(
+                    descriptor_words.get(leading.value_word_count..)?,
+                )?;
+                Some((
+                    leading.power,
+                    leading.toughness,
+                    descriptor,
+                    preserve_other_types,
+                ))
+            });
+        let Some((power, toughness, descriptor, preserve_other_types)) = parsed_body else {
             continue;
         };
         if !descriptor
@@ -338,10 +394,16 @@ pub(crate) fn parse_filtered_object_animation_tokens(
         {
             continue;
         }
-        parsed = Some((copula_word, power_toughness, descriptor));
+        parsed = Some((
+            copula_word,
+            power,
+            toughness,
+            descriptor,
+            preserve_other_types,
+        ));
         break;
     }
-    let (copula_word, power_toughness, descriptor) = parsed?;
+    let (copula_word, power, toughness, descriptor, preserve_other_types) = parsed?;
 
     let dependent_subject = matches!(words[copula_word], "its" | "it's" | "it’s");
     let subject_word_end = if lose_all.is_some() {
@@ -367,9 +429,10 @@ pub(crate) fn parse_filtered_object_animation_tokens(
         subject_tokens: &tokens[..subject_token_end],
         dependent_subject,
         removes_all_abilities: lose_all.is_some(),
+        preserve_other_types,
         descriptor,
-        power: power_toughness.power,
-        toughness: power_toughness.toughness,
+        power,
+        toughness,
     })
 }
 
@@ -428,6 +491,30 @@ mod tests {
         let tokens = lex_line("target creature's base power and toughness", 0).expect("lex");
         let shape = parse_base_power_toughness_subject_tokens(&tokens).expect("base pt subject");
         assert!(!shape.target_tokens.is_empty());
+    }
+
+    #[test]
+    fn named_possessive_controller_subject_persists_source_identity() {
+        crate::runtime_backend::front_end::shared::util::with_source_reference_context(
+            "Hold for Ransom",
+            || {
+                let tokens =
+                    lex_line("Hold for Ransom's controller", 0).expect("lex named controller");
+                let shape =
+                    parse_controller_owner_subject_tokens(&tokens).expect("controller subject");
+                assert_eq!(shape.subject, SubjectAst::Player(PlayerAst::ItsController));
+                let TargetAst::Object(filter, None, None) = shape.target else {
+                    panic!("named source must persist in an object-backed source target");
+                };
+                assert!(filter.source);
+                assert_eq!(
+                    filter.source_surface,
+                    Some(crate::target::SourceReferenceSurface::FullName(
+                        "Hold for Ransom".to_string()
+                    ))
+                );
+            },
+        );
     }
 
     #[test]
@@ -511,6 +598,7 @@ mod tests {
                 .unwrap_or_else(|| panic!("animation shape should parse: {text}"));
             assert_eq!(shape.removes_all_abilities, removes_all_abilities, "{text}");
             assert_eq!(shape.dependent_subject, dependent_subject, "{text}");
+            assert!(!shape.preserve_other_types, "{text}: {shape:#?}");
             assert!(
                 shape
                     .descriptor
@@ -530,5 +618,31 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn parses_filtered_leading_pt_animation_in_addition_to_other_types() {
+        let text = "Each non-Equipment artifact and non-Aura enchantment you control with mana value 4 or greater is a 4/4 Elemental creature in addition to its other types.";
+        let tokens = lex_line(text, 0).expect("lex animation");
+        let shape = parse_filtered_object_animation_tokens(&tokens)
+            .expect("leading-P/T additive animation should parse");
+
+        assert!(shape.preserve_other_types, "{shape:#?}");
+        assert_eq!(shape.power, Value::Fixed(4));
+        assert_eq!(shape.toughness, Value::Fixed(4));
+        assert!(
+            shape
+                .descriptor
+                .card_types
+                .contains(&crate::types::CardType::Creature),
+            "{shape:#?}"
+        );
+        assert!(
+            shape
+                .descriptor
+                .subtypes
+                .contains(&crate::types::Subtype::Elemental),
+            "{shape:#?}"
+        );
     }
 }

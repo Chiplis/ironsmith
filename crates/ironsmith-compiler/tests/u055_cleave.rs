@@ -155,10 +155,7 @@ fn cleave_removes_negative_cast_origin_from_wash_away_target() {
     let ChooseSpec::Object(normal_filter) = normal_counter.target.base() else {
         panic!("normal Wash Away should carry an object target: {normal_counter:#?}");
     };
-    assert_eq!(
-        normal_filter.excluded_cast_origin_zone,
-        Some(Zone::Hand)
-    );
+    assert_eq!(normal_filter.excluded_cast_origin_zone, Some(Zone::Hand));
 
     let cleave_effects = definition
         .alternative_casts

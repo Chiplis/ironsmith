@@ -936,28 +936,95 @@ fn clash_win_optional_top_replacement_program(
     if !facts.has_replacement_surface(StatementReplacementSurfaceKind::ClashWinTopOfLibrary) {
         return None;
     }
-    let [clash_effect, return_with_id_effect, followup] = compiled else {
-        return None;
+
+    // Result-id lowering may either leave the clash and tagged return as
+    // separate effects (the legacy shape), or group the authored
+    // "clash, then return" clause in one `CommaThen` sequence. In both cases
+    // the following "if you win" must observe the clash, while the optional
+    // library move rewrites the return's zone change.
+    let (clash_id, clash_effect, return_effect, followup) = match compiled {
+        [clash_effect, return_with_id_effect, followup]
+            if clash_effect
+                .downcast_ref::<crate::effects::ClashEffect>()
+                .is_some() =>
+        {
+            let return_with_id = return_with_id_effect.as_with_id()?;
+            (
+                return_with_id.id,
+                clash_effect,
+                return_with_id.effect.as_ref(),
+                followup,
+            )
+        }
+        [grouped_effect, followup] => {
+            let grouped = grouped_effect.as_with_id()?;
+            let sequence = grouped
+                .effect
+                .downcast_ref::<crate::effects::SequenceEffect>()?;
+            if sequence.surface != ironsmith_core::SequenceSurface::CommaThen {
+                return None;
+            }
+            let [clash_effect, return_effect] = sequence.effects.as_slice() else {
+                return None;
+            };
+            if clash_effect
+                .downcast_ref::<crate::effects::ClashEffect>()
+                .is_none()
+            {
+                return None;
+            }
+            (grouped.id, clash_effect, return_effect, followup)
+        }
+        _ => return None,
     };
-    if clash_effect
-        .downcast_ref::<crate::effects::ClashEffect>()
+
+    let tagged_return = return_effect.as_tagged()?;
+    if tagged_return
+        .effect
+        .downcast_ref::<crate::effects::ReturnToHandEffect>()
         .is_none()
     {
         return None;
     }
-    let return_with_id = return_with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let return_tag = tagged_return.tag.clone();
+
     let followup = followup.downcast_ref::<crate::effects::IfEffect>()?;
-    if followup.condition != return_with_id.id
+    if followup.condition != clash_id
         || !matches!(
             followup.predicate,
             crate::effect::EffectPredicate::Happened
                 | crate::effect::EffectPredicate::Value(crate::effect::Comparison::GreaterThan(0))
         )
+        || !followup.else_.is_empty()
     {
         return None;
     }
-    let target = ChooseSpec::Tagged(crate::tag::TagKey::from("returned_0"));
-    let return_effect = (*return_with_id.effect).clone();
+
+    let [optional_move] = followup.then.as_slice() else {
+        return None;
+    };
+    let optional_move =
+        optional_move.downcast_ref::<crate::effects::MayEffect<crate::effect::Effect>>()?;
+    let [move_effect] = optional_move.effects.as_slice() else {
+        return None;
+    };
+    let move_effect = move_effect
+        .as_tagged()
+        .map_or(move_effect, |tagged| tagged.effect.as_ref());
+    let move_to_library = move_effect.downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    let move_filter = choose_spec_object_filter(&move_to_library.target)?;
+    if move_to_library.zone != Zone::Library
+        || !move_to_library.to_top
+        || !move_filter.tagged_constraints.iter().any(|constraint| {
+            constraint.tag == return_tag
+                && constraint.relation == crate::target::TaggedOpbjectRelation::IsTaggedObject
+        })
+    {
+        return None;
+    }
+
+    let target = ChooseSpec::Tagged(return_tag);
+    let return_effect = return_effect.clone();
     let replacement_return = optional_zone_rewrite_effect(
         return_effect.clone(),
         target,
@@ -966,7 +1033,6 @@ fn clash_win_optional_top_replacement_program(
         Zone::Library,
         "Put that creature on top of its owner's library instead of into its owner's hand",
     );
-    let clash_id = return_with_id.id;
     Some(crate::resolution::ResolutionProgram::from_effects(vec![
         crate::effect::Effect::with_id(clash_id.0, clash_effect.clone()),
         crate::effect::Effect::new(crate::effects::IfEffect::new(

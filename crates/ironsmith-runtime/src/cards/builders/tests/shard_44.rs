@@ -177,7 +177,7 @@ pub(super) fn named_generic_as_enters_setup_cards_keep_typed_timing_and_line_pos
     );
     assert_eq!(
         unprocessed_compiled_lines(&parse_oracle_card_definition("Wood Elemental")).join("\n"),
-        "As this creature enters, sacrifice any number of untapped Forests.\nThis creature's power and toughness are each equal to the number of Forests sacrificed as it entered."
+        "As this creature enters, sacrifice any number of untapped Forests.\nWood Elemental's power and toughness are each equal to the number of Forests sacrificed as it entered."
     );
 }
 

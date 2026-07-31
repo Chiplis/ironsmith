@@ -563,7 +563,7 @@ mod tests {
         assert!(filter.didnt_enter_battlefield_this_turn);
         assert_eq!(
             filter.description(),
-            "creature you control that didn't attack or enter this turn"
+            "a creature you control that didn't attack or enter this turn"
         );
     }
 

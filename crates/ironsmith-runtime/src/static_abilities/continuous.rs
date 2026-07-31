@@ -784,13 +784,49 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
         return None;
     }
 
+    let coordinated_card_types = filter
+        .has_conjunctive_set_surface()
+        .then(|| {
+            filter
+                .any_of
+                .iter()
+                .map(|branch| {
+                    let [card_type] = branch.card_types.as_slice() else {
+                        return None;
+                    };
+                    (branch == &ObjectFilter::default().with_type(*card_type)).then_some(*card_type)
+                })
+                .collect::<Option<Vec<_>>>()
+        })
+        .flatten()
+        .filter(|card_types| card_types.len() >= 2);
+
     // A spell's controller is independent of who cast it (most visibly for
-    // spell copies).  The specialized spell subject below is useful for cast
-    // and origin-zone clauses, but it does not model controller qualifiers.
-    // Stack filters already have an exact generic description for those, so
-    // preserve that description instead of silently dropping the constraint.
-    if matches!(filter.zone, Some(Zone::Stack)) && filter.controller.is_some() {
-        return Some(pluralized_subject_text(filter));
+    // spell copies). Preserve the generic description for arbitrary
+    // controller-qualified stack filters, but let the exact coordinated
+    // card-type shape below keep its shared noun: "instant and sorcery
+    // spells you control", not "instants and sorcery spells you control".
+    let coordinated_controller_scope =
+        matches!(filter.zone, Some(Zone::Stack)) && filter.controller.is_some();
+    if coordinated_controller_scope {
+        let mut base = filter.clone();
+        base.controller = None;
+        base.any_of.clear();
+        base.set_conjunctive_set_surface(false);
+        // The spell noun already carries this semantic distinction; it does
+        // not add another surface qualifier to the coordinated type head.
+        base.has_mana_cost = false;
+        // A color on the outer filter qualifies the shared spell head, not
+        // either coordinated card-type arm independently. The specialized
+        // path below renders that color before `instant and sorcery spells`;
+        // do not force it through the generic arm-by-arm pluralizer.
+        base.colors = None;
+        if coordinated_card_types.is_none()
+            || filter.cast_by.is_some()
+            || base != ObjectFilter::spell()
+        {
+            return Some(pluralized_subject_text(filter));
+        }
     }
 
     let mut qualifiers = Vec::new();
@@ -833,23 +869,7 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
                 .collect::<Vec<_>>(),
         ));
     }
-    let coordinated_card_types = filter
-        .has_conjunctive_set_surface()
-        .then(|| {
-            filter
-                .any_of
-                .iter()
-                .map(|branch| {
-                    let [card_type] = branch.card_types.as_slice() else {
-                        return None;
-                    };
-                    (branch == &ObjectFilter::default().with_type(*card_type)).then_some(*card_type)
-                })
-                .collect::<Option<Vec<_>>>()
-        })
-        .flatten()
-        .filter(|card_types| card_types.len() >= 2);
-    if let Some(card_types) = coordinated_card_types {
+    if let Some(card_types) = coordinated_card_types.as_ref() {
         qualifiers.push(join_with_and(
             &card_types
                 .iter()
@@ -884,6 +904,22 @@ fn spell_grant_subject_text(filter: &ObjectFilter) -> Option<String> {
             crate::target::PlayerFilter::Opponent => subject.push_str(" your opponents cast"),
             other => subject.push_str(&format!(" cast by {}", other.description())),
         }
+    }
+    if coordinated_controller_scope {
+        let controller = describe_player_filter(
+            filter
+                .controller
+                .as_ref()
+                .expect("controller scope checked above"),
+        );
+        subject.push(' ');
+        subject.push_str(&controller);
+        subject.push(' ');
+        subject.push_str(if controller == "you" {
+            "control"
+        } else {
+            "controls"
+        });
     }
 
     let zone_suffix = match filter.zone {
@@ -3458,6 +3494,9 @@ impl StaticAbilityKind for GrantAbility {
                 | StaticAbilityId::CostIncrease
                 | StaticAbilityId::CostIncreaseManaCost
         );
+        if is_quoted_cost_modifier {
+            ability_text = capitalize_first(&ability_text);
+        }
         if matches!(
             ability_text.split_whitespace().next(),
             Some("If" | "When" | "Whenever" | "At")

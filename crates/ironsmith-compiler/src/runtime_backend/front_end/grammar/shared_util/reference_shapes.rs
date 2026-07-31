@@ -372,6 +372,58 @@ pub(crate) fn parse_filter_keyword_constraint_words(
     None
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum FilterKeywordListConnective {
+    And,
+    Or,
+    AndOr,
+}
+
+/// Parse a serial keyword list ("first strike, double strike, vigilance, or
+/// haste"). Commas are elided from the word view, so adjacent keywords with no
+/// separator word are accepted as list items; the final connective word picks
+/// the surface ("or" vs "and/or" vs "and").
+pub(crate) fn parse_filter_keyword_constraint_list_words(
+    words: &[&str],
+) -> Option<(
+    Vec<FilterKeywordConstraint>,
+    FilterKeywordListConnective,
+    usize,
+)> {
+    let (first, first_used) = parse_filter_keyword_constraint_words(words)?;
+    let mut constraints = vec![first];
+    let mut consumed = first_used;
+    let mut saw_or = false;
+    let mut saw_and_or = false;
+    loop {
+        let rest = &words[consumed..];
+        let separator = match rest.first().copied() {
+            Some("or") => 1,
+            Some("and") => 1,
+            Some("and/or") => 1,
+            _ => 0,
+        };
+        let Some((next, used)) = parse_filter_keyword_constraint_words(&rest[separator..]) else {
+            break;
+        };
+        match rest.first().copied() {
+            Some("or") if separator == 1 => saw_or = true,
+            Some("and/or") if separator == 1 => saw_and_or = true,
+            _ => {}
+        }
+        constraints.push(next);
+        consumed += separator + used;
+    }
+    let connective = if saw_and_or {
+        FilterKeywordListConnective::AndOr
+    } else if saw_or {
+        FilterKeywordListConnective::Or
+    } else {
+        FilterKeywordListConnective::And
+    };
+    Some((constraints, connective, consumed))
+}
+
 pub(crate) fn cycling_keyword_root(word: &str) -> Option<&str> {
     if permission_shapes::exact_words(&[word], &["cycling"]) {
         return Some("");

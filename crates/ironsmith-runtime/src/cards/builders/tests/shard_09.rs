@@ -74,7 +74,7 @@ pub(super) fn hand_reveal_choice_effects_render_oracle_style_surfaces() {
         (
             "Appetite Variant",
             "Target opponent reveals their hand. You choose a card from it with mana value 4 or greater and exile that card.",
-            "Target opponent reveals their hand. You choose a card with mana value 4 or greater from it and exile that card.",
+            "Target opponent reveals their hand. You choose a card from it with mana value 4 or greater and exile that card.",
         ),
     ];
 
@@ -1186,6 +1186,24 @@ pub(super) fn parse_omniscience_static_free_cast_permission() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast() {
+    fn find_matching_cast_filter(
+        effect: &crate::effect::Effect,
+    ) -> Option<crate::filter::ObjectFilter> {
+        if let Some(cast) =
+            effect.downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
+        {
+            return Some(cast.filter.clone());
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_matching_cast_filter(child);
+            }
+        });
+        found
+    }
+
     let def = CardDefinitionBuilder::new(CardId::from_raw(1), "Brain in a Jar")
         .card_types(vec![CardType::Artifact])
         .parse_text(
@@ -1212,13 +1230,7 @@ pub(super) fn parse_brain_in_a_jar_strictly_and_renders_counter_gated_free_cast(
             _ => None,
         })
         .flat_map(|program| program.all_effects())
-        .filter_map(|effect| effect.downcast_ref::<crate::effects::MayEffect>())
-        .flat_map(|may| may.effects.iter())
-        .find_map(|effect| {
-            effect
-                .downcast_ref::<crate::effects::MayCastMatchingSpellWithoutPayingManaCostEffect>()
-                .map(|cast| &cast.filter)
-        })
+        .find_map(find_matching_cast_filter)
         .expect("Brain in a Jar should lower to a matching-spell cast effect");
     let has_counter_gate = counter_gated_filter.mana_value_eq_counters_on_source
         == Some(crate::object::CounterType::Charge)
@@ -1509,7 +1521,7 @@ pub(super) fn parse_oracle_edgar_graveyard_cast_permission_with_tapped_this_way_
         "expected Edgar graveyard artifact-cast permission, got {rendered}"
     );
     assert!(
-        rendered.contains("if you cast a spell this way, that artifact enters tapped"),
+        rendered.contains("if you cast an artifact spell this way, that artifact enters tapped"),
         "expected Edgar cast-this-way tapped suffix, got {rendered}"
     );
 
@@ -1625,8 +1637,11 @@ pub(super) fn parse_recommission_text_parses_typed_counter_followup() {
 
     let debug = format!("{:?}", def.spell_effect);
     assert!(
-        debug.contains("IfEffect") && debug.contains("PutCountersEffect"),
-        "expected typed conditional put-counters followup, got {debug}"
+        debug.contains("BattlefieldEntryCounterSpec")
+            && debug.contains("IfObjectEntersThisWay")
+            && debug.contains("PlusOnePlusOne")
+            && !debug.contains("PutCountersEffect"),
+        "expected fused conditional battlefield-entry counter, got {debug}"
     );
     let static_ids: Vec<_> = def
         .abilities
@@ -1656,7 +1671,8 @@ pub(super) fn parse_teferis_time_twist_text_parses_typed_counter_followup() {
         debug.contains("ScheduleDelayedTriggerEffect")
             && debug.contains("BattlefieldEntryCounterSpec")
             && debug.contains("IfObjectEntersThisWay")
-            && debug.contains("PlusOnePlusOne"),
+            && debug.contains("PlusOnePlusOne")
+            && !debug.contains("PutCountersEffect"),
         "expected typed delayed conditional battlefield-entry counter, got {debug}"
     );
     let static_ids: Vec<_> = def
@@ -2367,6 +2383,11 @@ pub(super) fn parse_where_x_is_count_minus_fixed_preserves_negative_offset() {
         matches!(
             left.unhinted(),
             crate::effect::Value::CardsInHand(PlayerFilter::You)
+        ) || matches!(
+            left.unhinted(),
+            crate::effect::Value::Count(filter)
+                if filter.zone == Some(Zone::Hand)
+                    && filter.owner == Some(PlayerFilter::You)
         ),
         "expected left side to count cards in hand, got {left:?}"
     );

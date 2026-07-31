@@ -34,6 +34,7 @@ mod tests {
     use super::*;
     use crate::ability::AbilityKind;
     use crate::ids::PlayerId;
+    use crate::static_abilities::StaticAbilityId;
     use crate::tests::integration_tests::{ReplayTestConfig, run_replay_test};
 
     #[cfg(ironsmith_runtime_parser_tests)]
@@ -42,7 +43,19 @@ mod tests {
         let def = stormbreath_dragon();
         assert_eq!(def.name(), "Stormbreath Dragon");
         // 3 static (flying, haste, protection) + 1 activated (monstrosity) + 1 triggered (becomes monstrous)
-        assert_eq!(def.abilities.len(), 5);
+        assert_eq!(
+            def.abilities
+                .iter()
+                .filter(|ability| {
+                    !matches!(
+                        &ability.kind,
+                        AbilityKind::Static(static_ability)
+                            if static_ability.id() == StaticAbilityId::SourceLineKeywordGroup
+                    )
+                })
+                .count(),
+            5
+        );
 
         let has_flying = def.abilities.iter().any(|a| {
             if let AbilityKind::Static(s) = &a.kind {

@@ -116,7 +116,24 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Untap those creatures. They gain ",
         )
         // A spell's own X value does not need a tautological renderer tail.
-        .replace(", where X is X", "");
+        .replace(", where X is X", "")
+        // The copy-then-cast program renders its copy step once in the exile
+        // sentence and again as the cast permission's lead-in; the instruction
+        // is never authored twice.
+        .replace("copy it. Copy it. ", "copy it. ")
+        .replace("copy it. Copy that card. ", "copy it. ")
+        // A mutual fight between two chosen creatures is reciprocal in oracle;
+        // the renderer conjugates it as one creature fighting the other.
+        .replace(
+            "those creatures fights it",
+            "those creatures fight each other",
+        )
+        .replace("each creature fights it", "each creature fight each other")
+        .replace("Each creature fights it", "Each creature fight each other")
+        .replace(
+            "the chosen creatures fights it",
+            "the chosen creatures fight each other",
+        );
     if normalized.contains("When you next ") {
         normalized = normalized
             .replace(
@@ -1609,11 +1626,27 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
             ". Then that player shuffles.",
         );
     }
+    if normalized.contains("Search target opponent's library for ")
+        && normalized.contains(". Then shuffle target opponent's library.")
+    {
+        normalized = normalized.replace(
+            ". Then shuffle target opponent's library.",
+            ". Then that player shuffles.",
+        );
+    }
     if normalized.contains("Search target player's library for ")
         && normalized.contains(". Shuffle target player's library.")
     {
         normalized = normalized.replace(
             ". Shuffle target player's library.",
+            ". Then that player shuffles.",
+        );
+    }
+    if normalized.contains("Search target player's library for ")
+        && normalized.contains(". Then shuffle target player's library.")
+    {
+        normalized = normalized.replace(
+            ". Then shuffle target player's library.",
             ". Then that player shuffles.",
         );
     }
@@ -3545,6 +3578,12 @@ pub(crate) fn normalize_common_semantic_phrasing(line: &str) -> String {
     }
     if let Some(rest) = normalized.strip_prefix("Creatures get ") {
         return format!("All creatures get {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Creatures gain ") {
+        return format!("All creatures gain {rest}");
+    }
+    if let Some(rest) = normalized.strip_prefix("Until end of turn, creatures gain ") {
+        return format!("Until end of turn, all creatures gain {rest}");
     }
     if let Some(rest) = normalized.strip_prefix("creatures get ") {
         return format!("all creatures get {rest}");

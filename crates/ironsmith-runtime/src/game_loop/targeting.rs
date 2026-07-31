@@ -756,16 +756,26 @@ fn relaxed_exchange_later_target_spec(spec: &ChooseSpec) -> ChooseSpec {
 #[derive(Clone)]
 pub(super) struct DeclaredTarget {
     spec: ChooseSpec,
+    synthetic_prelude: bool,
+    synthetic_prelude_consumed: bool,
 }
 
 fn declare_target(profile: &ExtractedTarget<'_>, declared: &mut Vec<DeclaredTarget>) {
-    if profile.reuse_policy == crate::effects::TargetReusePolicy::AlwaysDeclareNew
-        || !declared
-            .iter()
-            .any(|declared| target_spec_reuses_declared_target(profile.spec, &declared.spec))
+    if matches!(
+        profile.reuse_policy,
+        crate::effects::TargetReusePolicy::AlwaysDeclareNew
+            | crate::effects::TargetReusePolicy::SyntheticPrelude
+    ) || !declared
+        .iter()
+        .any(|declared| target_spec_reuses_declared_target(profile.spec, &declared.spec))
     {
         declared.push(DeclaredTarget {
             spec: profile.spec.clone(),
+            synthetic_prelude: matches!(
+                profile.reuse_policy,
+                crate::effects::TargetReusePolicy::SyntheticPrelude
+            ),
+            synthetic_prelude_consumed: false,
         });
     }
 }
@@ -849,12 +859,27 @@ pub(super) fn target_requirement_reuses_existing(
 
 fn profile_reuses_declared_target(
     profile: &ExtractedTarget<'_>,
-    declared: &[DeclaredTarget],
+    declared: &mut [DeclaredTarget],
 ) -> bool {
-    profile.reuse_policy != crate::effects::TargetReusePolicy::AlwaysDeclareNew
-        && declared
-            .iter()
-            .any(|declared| target_spec_reuses_declared_target(profile.spec, &declared.spec))
+    if profile.reuse_policy == crate::effects::TargetReusePolicy::SyntheticPrelude {
+        return false;
+    }
+
+    for declared in declared {
+        if !target_spec_reuses_declared_target(profile.spec, &declared.spec) {
+            continue;
+        }
+        if profile.reuse_policy == crate::effects::TargetReusePolicy::AlwaysDeclareNew
+            && (!declared.synthetic_prelude || declared.synthetic_prelude_consumed)
+        {
+            continue;
+        }
+        if declared.synthetic_prelude {
+            declared.synthetic_prelude_consumed = true;
+        }
+        return true;
+    }
+    false
 }
 
 pub(super) fn resolve_modal_mode_counts(

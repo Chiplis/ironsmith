@@ -221,6 +221,6 @@ fn returned_collection_with_individual_destinations_keeps_the_plural_target() {
 
     assert_eq!(
         describe_effect_list(&[move_all, attach]),
-        "Return all Auras from your graveyard to the battlefield attached to creatures you control"
+        "Return all Aura cards from your graveyard to the battlefield attached to creatures you control"
     );
 }

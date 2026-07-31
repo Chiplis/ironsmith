@@ -411,6 +411,10 @@ pub(crate) struct SearchLibraryEffectRouting {
     pub(crate) face_down_exile: bool,
     pub(crate) split_battlefield_and_hand: bool,
     pub(crate) has_tapped_modifier: bool,
+    /// Whether the put clause hands the found card to you ("… and put it onto
+    /// the battlefield under your control"). Searching another player's library
+    /// otherwise leaves the card under ITS owner's control.
+    pub(crate) enters_under_your_control: bool,
     pub(crate) library_position_from_top: Option<Value>,
     pub(crate) result_reference_surface: crate::effect::SearchResultReferenceSurface,
 }
@@ -1021,6 +1025,12 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
         && search_library_words_contain_all(&words_all, BATTLEFIELD_HAND_OTHER_ONE_MARKER_WORDS);
     let has_tapped_modifier = search_library_words_have_word(&words_all, "tapped");
 
+    let enters_under_your_control = put_clause_words.as_ref().is_some_and(|words| {
+        words
+            .windows(3)
+            .any(|window| window == ["under", "your", "control"])
+    });
+
     SearchLibraryEffectRouting {
         destination,
         reveal,
@@ -1028,6 +1038,7 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
         face_down_exile,
         split_battlefield_and_hand,
         has_tapped_modifier,
+        enters_under_your_control,
         library_position_from_top: put_clause_words
             .as_ref()
             .and_then(|words| search_library_put_position_from_top_words(words)),
@@ -1036,8 +1047,13 @@ pub(crate) fn derive_search_library_effect_routing_lexed(
             .any(|words| words == ["put", "the", "card"])
         {
             crate::effect::SearchResultReferenceSurface::TheCard
-        } else {
+        } else if words_all
+            .windows(3)
+            .any(|words| words == ["put", "that", "card"])
+        {
             crate::effect::SearchResultReferenceSurface::ThatCard
+        } else {
+            crate::effect::SearchResultReferenceSurface::It
         },
     }
 }
@@ -1838,5 +1854,31 @@ mod tests {
             filter.description(),
             "card that shares a color with a legendary creature you control"
         );
+    }
+
+    #[test]
+    fn search_result_reference_keeps_authored_singular_surface() {
+        for (line, expected) in [
+            (
+                "search your library for a card, put it into your hand",
+                crate::effect::SearchResultReferenceSurface::It,
+            ),
+            (
+                "search your library for a card, put that card into your hand",
+                crate::effect::SearchResultReferenceSurface::ThatCard,
+            ),
+            (
+                "search your library for a card, put the card into your hand",
+                crate::effect::SearchResultReferenceSurface::TheCard,
+            ),
+        ] {
+            let tokens = lex_line(line, 0).expect("search surface should lex");
+            let markers = scan_search_library_clause_markers_lexed(&tokens)
+                .expect("search clauses should route");
+            let routing =
+                derive_search_library_effect_routing_lexed(&tokens, &tokens, markers, false);
+
+            assert_eq!(routing.result_reference_surface, expected, "{line}");
+        }
     }
 }

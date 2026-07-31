@@ -422,6 +422,10 @@ fn try_static_ability_ast_line_rule_indices(
 fn static_ability_rule_head_hints(rule_id: &'static str) -> Vec<StaticAbilityLineHeadHint> {
     match rule_id {
         "parse_characteristic_defining_pt_line" => Vec::new(),
+        "parse_soulbond_shared_line" => vec![
+            StaticAbilityLineHeadHint::Single("as"),
+            StaticAbilityLineHeadHint::Pair("as", "long"),
+        ],
         "parse_reduced_maximum_hand_size_line" => vec![
             StaticAbilityLineHeadHint::Single("your"),
             StaticAbilityLineHeadHint::Single("you"),
@@ -787,6 +791,13 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_granted_keywords_static_line
         ),
+        // The complete animation bundle owns a leading P/T descriptor such
+        // as "is a 4/4 Elemental creature in addition to its other types".
+        // Route it before the broad type/color-addition parser can claim the
+        // tail and reject the numeric descriptor as an unsupported type.
+        multi_static_ability_ast_passthrough_rule!(
+            parse_filter_is_pt_creature_in_addition_and_has_line
+        ),
         multi_static_ability_ast_passthrough_rule!(
             parse_has_base_power_toughness_and_type_color_addition_static_line
         ),
@@ -800,9 +811,6 @@ fn static_ability_ast_line_rules() -> &'static [StaticAbilityLineRuleDef] {
         multi_static_ability_ast_passthrough_rule!(parse_anthem_and_no_defender_line),
         multi_static_ability_ast_passthrough_rule!(
             parse_subject_is_subtype_with_base_pt_and_granted_abilities_line
-        ),
-        multi_static_ability_ast_passthrough_rule!(
-            parse_filter_is_pt_creature_in_addition_and_has_line
         ),
         StaticAbilityLineRuleDef {
             id: stringify!(parse_anthem_and_keyword_line),
@@ -1318,6 +1326,13 @@ fn parse_static_ability_ast_line_early_lexed(
     // "Spells ... cost" clause, so let the typed grant route bind that inner
     // static ability to its affected objects first.
     if contains_token_kind(tokens, TokenKind::Quote) {
+        // A compound animation owns both the leading P/T/type descriptor and
+        // its quoted granted trigger. The broad quoted-grant parser treats
+        // everything before `has` as a filter; on Bello-style text that
+        // misreads `is a 4/4 ... creature` as an unsupported descriptor.
+        if let Some(abilities) = parse_filter_is_pt_creature_in_addition_and_has_line(tokens)? {
+            return Ok(Some(abilities));
+        }
         // Attached combat restrictions can precede the quoted grant. Route
         // that coordinated shape before the broad `has "<ability>"` parser
         // treats the restriction prefix as an anthem subject.
@@ -1389,6 +1404,54 @@ pub(crate) fn parse_static_ability_ast_line_lexed(
 fn parse_static_ability_ast_line_lexed_unstacked(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
+    // Direct lexer callers still carry parenthetical reminder text.  It is not
+    // a second rules sentence, and parsing it independently can turn an
+    // explanatory comma into an unsupported effect clause.  Preserve
+    // parentheses inside a quoted granted ability, but discard a trailing
+    // top-level reminder before static-line dispatch.
+    let mut inside_quote = false;
+    let mut paren_depth = 0usize;
+    let mut open_start = None;
+    let mut trailing_parenthetical = None;
+    for (index, token) in tokens.iter().enumerate() {
+        if token.kind == TokenKind::Quote {
+            inside_quote = !inside_quote;
+            continue;
+        }
+        if inside_quote {
+            continue;
+        }
+        match token.kind {
+            TokenKind::LParen => {
+                if paren_depth == 0 {
+                    open_start = Some(index);
+                }
+                paren_depth = paren_depth.saturating_add(1);
+            }
+            TokenKind::RParen if paren_depth > 0 => {
+                paren_depth -= 1;
+                if paren_depth == 0
+                    && let Some(start) = open_start.take()
+                    && tokens[index + 1..].iter().all(|trailing| {
+                        matches!(
+                            trailing.kind,
+                            TokenKind::Period | TokenKind::Bang | TokenKind::Question
+                        )
+                    })
+                {
+                    trailing_parenthetical = Some(start);
+                }
+            }
+            _ => {}
+        }
+    }
+    if let Some(reminder_start) = trailing_parenthetical {
+        let visible = trim_edge_punctuation(&tokens[..reminder_start]);
+        if !visible.is_empty() {
+            return parse_static_ability_ast_line_lexed_unstacked(&visible);
+        }
+    }
+
     // Bolster and adapt are executable keyword actions, including when they
     // appear after a trigger comma, activation colon, or sentence boundary.
     // Letting the broad keyword-line grammar claim them produces a static AST
@@ -1481,7 +1544,17 @@ fn parse_static_ability_ast_line_lexed_unstacked(
 fn parse_static_ability_ast_line_lexed_single(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    if let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens)
+    let condition_prefix_tokens =
+        crate::runtime_backend::grammar::effects::labeled_dispatch::parse_leading_effect_label_tokens(
+            tokens,
+        )
+        .filter(|shape| {
+            shape.kind
+                == crate::runtime_backend::grammar::effects::labeled_dispatch::LeadingEffectLabelKind::Conditional
+        })
+        .map_or(tokens, |shape| shape.body_tokens);
+
+    if let Some(spec) = split_as_long_as_condition_prefix_lexed(condition_prefix_tokens)
         && crate::runtime_backend::token_word_refs(spec.remainder_tokens)
             == ["it", "must", "be", "blocked", "if", "able"]
         && let Ok(condition) = parse_static_condition_clause(spec.condition_tokens)
@@ -1539,7 +1612,7 @@ fn parse_static_ability_ast_line_lexed_single(
     }
 
     let existing = parse_static_ability_ast_line_lexed_single_without_leading_condition(tokens)?;
-    let Some(spec) = split_as_long_as_condition_prefix_lexed(tokens) else {
+    let Some(spec) = split_as_long_as_condition_prefix_lexed(condition_prefix_tokens) else {
         return Ok(existing);
     };
 
@@ -1600,6 +1673,77 @@ mod conditioned_source_block_requirement_tests {
     use super::*;
 
     #[test]
+    fn quoted_animation_bundle_wins_before_the_broad_quoted_grant_route() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "During your turn, each non-Equipment artifact and non-Aura enchantment you control \
+             with mana value 4 or greater is a 4/4 Elemental creature in addition to its other \
+             types and has indestructible, haste, and \"Whenever this creature deals combat \
+             damage to a player, draw a card.\"",
+            0,
+        )
+        .expect("compound animation should lex");
+
+        let parsed = parse_static_ability_ast_line_lexed(&tokens)
+            .expect("compound animation router should not hard-error")
+            .expect("compound animation router should claim Bello's line");
+
+        assert_eq!(parsed.len(), 6, "{parsed:#?}");
+        assert!(
+            parsed
+                .iter()
+                .any(|ability| matches!(ability, StaticAbilityAst::GrantObjectAbility { .. })),
+            "{parsed:#?}"
+        );
+    }
+
+    #[test]
+    fn soulbond_shared_quoted_trigger_wins_before_generic_conditional_grant() {
+        let tokens = crate::runtime_backend::lexer::lex_line(
+            "As long as this creature is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+            0,
+        )
+        .expect("soulbond shared trigger should lex");
+        let parsed = parse_static_ability_ast_line_lexed(&tokens)
+            .expect("soulbond shared trigger should parse")
+            .expect("soulbond shared trigger should be claimed");
+
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [StaticAbilityAst::SoulbondSharedObjectAbility { .. }]
+            ),
+            "the specialist must preserve the paired two-creature scope: {parsed:#?}"
+        );
+    }
+
+    #[test]
+    fn named_source_soulbond_shared_trigger_keeps_paired_two_creature_scope() {
+        let parsed = crate::runtime_backend::util::with_card_source_reference_context(
+            "Doom Weaver",
+            &[crate::CardType::Creature],
+            &[crate::Subtype::Spider, crate::Subtype::Horror],
+            || {
+                let tokens = crate::runtime_backend::lexer::lex_line(
+                    "As long as Doom Weaver is paired with another creature, each of those creatures has \"When this creature dies, draw cards equal to its power.\"",
+                    0,
+                )
+                .expect("named-source soulbond shared trigger should lex");
+                parse_static_ability_ast_line_lexed(&tokens)
+            },
+        )
+        .expect("named-source soulbond shared trigger should parse")
+        .expect("named-source soulbond shared trigger should be claimed");
+
+        assert!(
+            matches!(
+                parsed.as_slice(),
+                [StaticAbilityAst::SoulbondSharedObjectAbility { .. }]
+            ),
+            "the specialist must preserve the named paired two-creature scope: {parsed:#?}"
+        );
+    }
+
+    #[test]
     fn equipped_named_source_must_be_blocked_is_a_conditioned_static_rule() {
         let tokens = crate::runtime_backend::lexer::lex_line(
             "As long as Probe is equipped, it must be blocked if able.",
@@ -1623,6 +1767,12 @@ fn parse_static_ability_ast_line_lexed_single_without_leading_condition(
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
     if looks_like_trigger_intro_tokens(tokens) || looks_like_trigger_intro_after_label(tokens) {
         return Ok(None);
+    }
+    // Soulbond's paired-creature scope is a complete typed mechanic shape.
+    // Claim it before the broad conditioned-anthem parser can reinterpret
+    // "each of those creatures" as an ordinary tagged-object grant.
+    if let Some(abilities) = parse_soulbond_shared_line(tokens)? {
+        return Ok(Some(abilities));
     }
     if let Some(ability) = parse_double_counters_replacement_line(tokens)? {
         return Ok(Some(vec![StaticAbilityAst::Static(ability)]));

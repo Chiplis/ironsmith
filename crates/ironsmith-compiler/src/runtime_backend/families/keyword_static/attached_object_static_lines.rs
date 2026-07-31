@@ -771,7 +771,6 @@ pub(crate) fn parse_attached_has_keywords_and_is_goaded_line(
 pub(crate) fn parse_attached_restrictions_with_ignore_special_action_line(
     tokens: &[OwnedLexToken],
 ) -> Result<Option<Vec<StaticAbilityAst>>, CardTextError> {
-    let tokens = super::grammar::line_families::parse_visible_line_tokens(tokens);
     let sentences = crate::runtime_backend::lexer::split_lexed_sentences(tokens);
     let [restrictions, special_action] = sentences.as_slice() else {
         return Ok(None);

@@ -292,13 +292,7 @@ fn demonstrative_gain_subject_tail<'a>(words: &'a [&'a str]) -> Option<&'a [&'a 
             ["the", noun]
                 if matches!(
                     *noun,
-                    "card"
-                        | "copy"
-                        | "creature"
-                        | "object"
-                        | "permanent"
-                        | "spell"
-                        | "token"
+                    "card" | "copy" | "creature" | "object" | "permanent" | "spell" | "token"
                 ) =>
             {
                 Some(&words[1..])

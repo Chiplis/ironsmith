@@ -2781,7 +2781,7 @@ mod tests {
         let clauses = semantic_clauses("For each player, Exile card in that player's library.");
         assert_eq!(
             clauses,
-            vec!["Each player exile card in that player's library".to_string()]
+            vec!["Each player exile card in their library".to_string()]
         );
     }
 
@@ -2939,9 +2939,7 @@ mod tests {
         let clauses =
             semantic_clauses("This spell costs {3} less to cast as long as you control an Island.");
         assert!(
-            clauses.contains(
-                &"Spells cost {3} less to cast as long as you control an Island".to_string()
-            ),
+            clauses.contains(&"Spells cost {3} less to cast if you control an Island".to_string()),
             "cost modifier normalization must preserve gating conditions"
         );
     }

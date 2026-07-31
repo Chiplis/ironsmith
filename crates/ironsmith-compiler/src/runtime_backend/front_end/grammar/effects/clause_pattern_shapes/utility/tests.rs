@@ -45,6 +45,15 @@ fn parses_utility_clause_shapes() {
     .unwrap();
     let singular_shape = parse_copy_clause_shape_tokens(&singular_copy).unwrap();
     assert!(singular_shape.tail.retarget_single_target);
+
+    let sentence_separated = lex_line(
+        "copy that spell X times. You may choose new targets for the copies.",
+        0,
+    )
+    .unwrap();
+    let sentence_separated_shape = parse_copy_clause_shape_tokens(&sentence_separated).unwrap();
+    assert_eq!(sentence_separated_shape.tail.retarget_split, Some(4));
+    assert!(sentence_separated_shape.tail.retarget_may);
 }
 
 #[test]

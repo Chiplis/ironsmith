@@ -77,7 +77,10 @@ pub(crate) fn replace_pending_removed_counter_metrics_with_x(effects: &mut [Effe
                 | SubjectVerbActionAst::AddManaAnyOneColor { amount }
                 | SubjectVerbActionAst::AddManaChosenColor { amount, .. }
                 | SubjectVerbActionAst::AddManaFromLandCouldProduce { amount, .. }
-                | SubjectVerbActionAst::AddManaCommanderIdentity { amount } => {
+                | SubjectVerbActionAst::AddManaCommanderIdentity { amount }
+                | SubjectVerbActionAst::PutCounters { count: amount, .. }
+                | SubjectVerbActionAst::PutCounterChoice { count: amount, .. }
+                | SubjectVerbActionAst::PutCountersAll { count: amount, .. } => {
                     replace_value(amount)
                 }
                 _ => {}
@@ -782,13 +785,23 @@ fn default_trigger_last_object_prelude(
     trigger: &TriggerSpec,
     tag: &crate::cards::builders::TagKey,
 ) -> Option<EffectPreludeTag> {
+    let event_participant_filter = |filter: &ObjectFilter| {
+        let mut filter = filter.clone();
+        // The event snapshot is the source of truth for the exact combat
+        // participant. Requiring the object to still advertise a live combat
+        // role while the trigger resolves makes the snapshot tag fail in
+        // synthetic/LKI scenarios and after combat state has advanced.
+        filter.blocking = false;
+        filter.attacking = false;
+        filter
+    };
     match trigger {
         TriggerSpec::WithIntro { trigger, .. } => default_trigger_last_object_prelude(trigger, tag),
         TriggerSpec::ThisBecomesBlockedByObject(filter) => Some(
-            EffectPreludeTag::TriggeringBlockers(tag.clone(), filter.clone()),
+            EffectPreludeTag::TriggeringBlockers(tag.clone(), event_participant_filter(filter)),
         ),
         TriggerSpec::BecomesBlockedByObjectWithLesserPower { blocker, .. } => Some(
-            EffectPreludeTag::TriggeringBlockers(tag.clone(), blocker.clone()),
+            EffectPreludeTag::TriggeringBlockers(tag.clone(), event_participant_filter(blocker)),
         ),
         TriggerSpec::KeywordAction {
             action: crate::events::KeywordActionKind::ManifestDread,
@@ -1041,6 +1054,51 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
             retarget_bare_it_effect_targets_to_source(effect);
         }
     });
+}
+
+fn trigger_provides_stack_object(trigger: &TriggerSpec) -> bool {
+    match trigger {
+        TriggerSpec::SpellCast { .. } | TriggerSpec::AbilityActivated { .. } => true,
+        TriggerSpec::Either(left, right) => {
+            trigger_provides_stack_object(left) || trigger_provides_stack_object(right)
+        }
+        _ => false,
+    }
+}
+
+fn bind_stack_retargets_to_triggering_object(effects: &mut [EffectAst]) {
+    fn visit(effect: &mut EffectAst) {
+        if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok()
+            && let EffectAst::SubjectVerb(subject_verb) = &*effect
+            && let SubjectVerbActionAst::RetargetStackObject { target, .. } = &subject_verb.action
+        {
+            eprintln!("bind-stack-retarget: target={target:?}");
+        }
+        if let EffectAst::SubjectVerb(subject_verb) = effect
+            && let SubjectVerbActionAst::RetargetStackObject { target, .. } =
+                &mut subject_verb.action
+            && matches!(
+                target,
+                TargetAst::Tagged(tag, _)
+                    if tag.as_str() == crate::cards::builders::IT_TAG
+            )
+        {
+            *target = TargetAst::Tagged(crate::tag::TagKey::from("triggering"), None);
+        }
+        crate::runtime_backend::effect_ast_traversal::for_each_nested_effects_mut(
+            effect,
+            true,
+            |nested| {
+                for nested_effect in nested {
+                    visit(nested_effect);
+                }
+            },
+        );
+    }
+
+    for effect in effects {
+        visit(effect);
+    }
 }
 
 fn retarget_phase_step_it_targets_to_source(effects: &mut [EffectAst]) {
@@ -1582,6 +1640,15 @@ pub(crate) fn rewrite_prepare_effects_with_trigger_context_for_lowering(
     let mut normalized = normalize_effects_ast(effects);
     if let Some(trigger) = trigger {
         preserve_copy_reference_kind_from_trigger(&mut normalized, trigger);
+        // A stack retarget can never act on the source permanent, so an
+        // "it"/"that spell" reference inside its clause always means the
+        // triggering stack object — even when an earlier body sentence
+        // re-seeded the object antecedent to the source ("this creature gets
+        // +2/+2 until end of turn. You may choose new targets for that
+        // spell." — Speedball).
+        if trigger_provides_stack_object(trigger) {
+            bind_stack_retargets_to_triggering_object(&mut normalized);
+        }
     }
     if effects_have_creature_death_gate(&normalized) {
         replace_creature_death_event_amounts(&mut normalized);
@@ -1756,6 +1823,11 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
 
     let mut normalized = normalize_effects_ast(effects);
     preserve_copy_reference_kind_from_trigger(&mut normalized, &trigger);
+    // "You may choose new targets for that spell" after a body sentence about
+    // the source must still bind the TRIGGERING stack object (Speedball).
+    if trigger_provides_stack_object(&trigger) {
+        bind_stack_retargets_to_triggering_object(&mut normalized);
+    }
     if let Some(antecedent_tag) = default_trigger_last_object_tag(&trigger) {
         bind_trigger_antecedent_after_top_library_observation(
             &mut normalized,
@@ -3370,6 +3442,76 @@ pub(crate) fn rewrite_validate_iterated_player_bindings_in_lowered_effects(
 mod tests {
     use super::*;
     use crate::runtime_backend::lexer::lex_line;
+
+    #[test]
+    fn dynamic_remove_counter_cost_metrics_bind_counter_followups_to_x() {
+        let query = ironsmith_core::PriorEffectMetricQuery::new(
+            ironsmith_core::EffectMetricSource::AffectedObjects,
+            ironsmith_core::EffectMetric::Count,
+        )
+        .with_action(ironsmith_core::PriorEffectAction::Removed);
+        let mut effects = vec![EffectAst::subject_verb_put_counters(
+            crate::object::CounterType::PlusOnePlusOne,
+            Value::PendingPriorEffectMetric(query)
+                .with_surface_hint(ValueSurfaceHint::CountersRemovedThisWay),
+            TargetAst::Tagged(TagKey::from(IT_TAG), None),
+            None,
+            false,
+        )];
+
+        replace_pending_removed_counter_metrics_with_x(&mut effects);
+
+        let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PutCounters { count, .. },
+            ..
+        }) = &effects[0]
+        else {
+            panic!("expected a typed counter-placement effect");
+        };
+        assert_eq!(count.unhinted(), &Value::X);
+        assert!(count.has_surface_hint(ValueSurfaceHint::CountersRemovedThisWay));
+    }
+
+    #[test]
+    fn triggering_blocker_prelude_uses_event_identity_not_live_blocking_state() {
+        let mut blocker = ObjectFilter::creature();
+        blocker.blocking = true;
+        let prelude = default_trigger_last_object_prelude(
+            &TriggerSpec::ThisBecomesBlockedByObject(blocker),
+            &TagKey::from("blocking"),
+        )
+        .expect("becomes-blocked trigger should capture its blocker");
+
+        let EffectPreludeTag::TriggeringBlockers(tag, filter) = prelude else {
+            panic!("expected blocker prelude, got {prelude:#?}");
+        };
+        assert_eq!(tag.as_str(), "blocking");
+        assert!(!filter.blocking, "{filter:#?}");
+    }
+
+    #[test]
+    fn coordinated_tap_does_not_replace_countered_spell_controller_actor() {
+        let tokens = lex_line(
+            "Counter target spell unless its controller pays {X}. If that player doesn't, they tap all lands with mana abilities they control and lose all unspent mana.",
+            0,
+        )
+        .expect("power-sink probe should lex");
+        let effects =
+            crate::runtime_backend::effect_sentences::parse_effect_sentences_lexed(&tokens)
+                .expect("power-sink probe should parse");
+        let prepared = rewrite_prepare_effects_for_lowering(&effects, ReferenceImports::default())
+            .expect("power-sink probe should prepare");
+        let lowered = materialize_prepared_statement_effects(&prepared)
+            .expect("power-sink probe should lower");
+        let debug = format!("{:#?}", lowered.effects);
+
+        assert!(
+            debug.contains("AliasedControllerOf")
+                && debug.contains("countered_0")
+                && !debug.contains("AliasedControllerOf(Tagged(TagKey(\"tapped_"),
+            "nonpayment actor must remain the countered spell's controller: {debug}"
+        );
+    }
 
     #[test]
     fn flattened_vote_followups_keep_starting_with_controller_order() {

@@ -34,7 +34,7 @@ use super::super::util::{
     parse_target_phrase, remove_first_may_word as remove_first_may_word_tokens,
     remove_through_first_may_word as remove_through_first_may_word_tokens,
 };
-use super::clause_pattern_helpers::parse_keyword_mechanic_clause;
+use super::clause_pattern_helpers::{parse_copy_spell_clause, parse_keyword_mechanic_clause};
 use super::dispatch_inner::parse_subject_verb_extension_sentence;
 use super::lex_chain_helpers::{
     find_verb_lexed, has_authored_comma_then_surface_lexed, has_effect_head_without_verb_lexed,
@@ -91,8 +91,7 @@ fn is_repeatable_optional_payment(effects: &[EffectAst]) -> bool {
     matches!(
         effects,
         [EffectAst::SubjectVerb(SubjectVerbEffectAst {
-            action:
-                SubjectVerbActionAst::PayMana { .. }
+            action: SubjectVerbActionAst::PayMana { .. }
                 | SubjectVerbActionAst::PayEnergy { .. }
                 | SubjectVerbActionAst::PayLife { .. },
             ..
@@ -815,6 +814,9 @@ fn parse_effect_chain_uncoordinated_lexed(
     {
         return Ok(effects);
     }
+    if let Some(effects) = parse_reveal_source_exiled_permanents_sentence_lexed(tokens) {
+        return Ok(effects);
+    }
     // Once the conservative typed splitter has proved a real `, then`
     // boundary, route the complete chain before any prefix-tolerant
     // specialist can claim only its final verb. The inner chain pass retains
@@ -829,10 +831,6 @@ fn parse_effect_chain_uncoordinated_lexed(
     // path strips `may` while probing broader cast-permission surfaces.
     if let Some(spec) = parse_may_cast_it_sentence(tokens) {
         return Ok(vec![build_may_cast_tagged_effect(&spec)]);
-    }
-
-    if let Some(effects) = parse_reveal_source_exiled_permanents_sentence_lexed(tokens) {
-        return Ok(effects);
     }
 
     if let Some(effects) = parse_for_each_exiled_this_way_sentence(tokens)? {
@@ -1028,9 +1026,7 @@ fn parse_effect_chain_uncoordinated_lexed(
             }
             return Ok(effects);
         }
-        if has_any_number_of_times_suffix(&stripped)
-            && is_repeatable_optional_payment(&effects)
-        {
+        if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
             return Ok(vec![EffectAst::RepeatProcess {
                 effects: vec![EffectAst::MayByPlayer { player, effects }],
                 continue_effect_index: 0,
@@ -1052,9 +1048,7 @@ fn parse_effect_chain_uncoordinated_lexed(
             }
             return Ok(effects);
         }
-        if has_any_number_of_times_suffix(&stripped)
-            && is_repeatable_optional_payment(&effects)
-        {
+        if has_any_number_of_times_suffix(&stripped) && is_repeatable_optional_payment(&effects) {
             return Ok(vec![EffectAst::RepeatProcess {
                 effects: vec![EffectAst::May { effects }],
                 continue_effect_index: 0,
@@ -1374,7 +1368,15 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
     // subject/verb registry, whose `draw ... and gain ...` matcher can consume
     // only the first arm and leave the second arm outside the When/If result.
     if let Some(prefix) = split_leading_result_prefix_lexed(tokens) {
-        let body = parse_effect_chain_lexed(prefix.trailing_tokens)?;
+        let body = if let Some(copy_effect) = parse_copy_spell_clause(prefix.trailing_tokens)? {
+            // The copy specialist owns coordinated stack-object sets such as
+            // "copy all spells ..., then copy all other abilities ...".
+            // Splitting its authored `then` first loses the ordinary
+            // coordination surface even though both actions survive.
+            vec![copy_effect]
+        } else {
+            parse_effect_chain_lexed(prefix.trailing_tokens)?
+        };
         let mut effects = vec![match prefix.kind {
             LeadingResultPrefixKind::If => EffectAst::IfResult {
                 predicate: prefix.predicate,

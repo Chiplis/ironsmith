@@ -551,7 +551,10 @@ fn replace_this_spell_self_reference(text: String, subject: &str) -> String {
 }
 
 fn normalize_granted_triggered_ability_surface(surface: String) -> String {
-    let Some((head, tail)) = surface.split_once(": ") else {
+    let Some((head, tail)) = surface
+        .split_once(": ")
+        .or_else(|| surface.split_once(", "))
+    else {
         return surface;
     };
     let lower_head = head.to_ascii_lowercase();
@@ -1138,6 +1141,17 @@ pub(super) fn describe_token_blueprint_with_presentation(
                     keyword_texts.push("decayed".to_string());
                     continue;
                 }
+                if static_ability.id() == crate::static_abilities::StaticAbilityId::KeywordMarker
+                    && !is_keyword_style_line(static_ability.display().as_str())
+                {
+                    extra_ability_texts.push(quote_token_granted_ability_text(
+                        normalize_token_granted_static_ability_text(
+                            static_ability.display().as_str(),
+                        )
+                        .as_str(),
+                    ));
+                    continue;
+                }
                 if has_decayed_marker
                     && static_ability.id() == crate::static_abilities::StaticAbilityId::CantBlock
                 {
@@ -1621,7 +1635,7 @@ pub(super) fn quote_token_granted_ability_text(text: &str) -> String {
 }
 
 fn normalize_quoted_token_ability_surface(text: &str) -> String {
-    let normalized = text
+    let mut normalized = text
         .trim()
         .replace("{t}", "{T}")
         .replace("{q}", "{Q}")
@@ -1642,6 +1656,19 @@ fn normalize_quoted_token_ability_surface(text: &str) -> String {
         let normalized =
             normalize_token_self_reference_in_quoted_ability(&capitalize_first(&normalized));
         return normalize_quoted_token_trigger_surface(&normalized);
+    }
+
+    // A quoted ability beginning with a mana symbol is an activated ability.
+    // Some lowered costs retain the final list comma as their cost/effect
+    // separator; restore the rules-text colon before applying sentence
+    // capitalization. Splitting at the final comma preserves earlier
+    // multi-component costs such as "{T}, Sacrifice this artifact".
+    if !normalized.contains(':')
+        && let Some((cost, body)) = normalized.rsplit_once(", ")
+        && cost.starts_with('{')
+        && !body.is_empty()
+    {
+        normalized = format!("{cost}: {body}");
     }
 
     let mut chars: Vec<char> = normalized.chars().collect();
@@ -1708,7 +1735,15 @@ fn normalize_quoted_token_trigger_surface(text: &str) -> String {
         }
         effect
     };
-    if let Some((trigger, effect)) = text.split_once(": ") {
+    // A quoted token ability can contain an activated ability after the
+    // trigger's effect ("Whenever ..., it gains '{T}: ...'"). Only a colon
+    // in the trigger prefix itself is the legacy separator repaired here.
+    // Nested quotation marks are single quotes after the outer token ability
+    // has been normalized, so guard both quote forms.
+    if let Some((trigger, effect)) = text.split_once(": ")
+        && !trigger.contains('"')
+        && !trigger.contains(" '")
+    {
         return format!("{trigger}, {}", normalize_self_pronoun(trigger, effect));
     }
     if let Some((trigger, effect)) = text.split_once(", ")
@@ -1739,10 +1774,17 @@ pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
     let mut out = String::new();
     let mut in_quote = false;
     let mut token_quote_list_active = false;
+    let mut separate_creature_token_quote = false;
     for part in line.split('"') {
         if in_quote {
             if token_quote_list_active {
-                let mut ability = normalize_token_self_reference_in_quoted_ability(part);
+                let mut ability = normalize_quoted_token_ability_surface(part);
+                if separate_creature_token_quote
+                    && (ability.starts_with("Whenever this token deals ")
+                        || ability.starts_with("When this token deals "))
+                {
+                    ability = ability.replacen("this token deals", "this creature deals", 1);
+                }
                 if token_quoted_ability_needs_terminal_period(&ability) {
                     ability.push('.');
                 }
@@ -1763,9 +1805,13 @@ pub(super) fn normalize_token_quoted_ability_surfaces(line: &str) -> String {
                 || (lower.contains(" token") && (lower.ends_with(" and") || lower.ends_with(',')));
             if begins_token_quote_list {
                 token_quote_list_active = true;
+                separate_creature_token_quote = lower.ends_with("creature token. it has");
             } else if token_quote_list_active {
                 let connector = part.trim().trim_end_matches('.');
                 token_quote_list_active = connector.eq_ignore_ascii_case("and") || connector == ",";
+                if !token_quote_list_active {
+                    separate_creature_token_quote = false;
+                }
             }
             out.push_str(part);
         }

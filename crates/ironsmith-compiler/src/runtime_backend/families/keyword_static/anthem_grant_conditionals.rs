@@ -3546,7 +3546,12 @@ fn attached_combat_restrictions_preserve_quoted_ability_grants() {
             assert_eq!(abilities.len(), 2);
             let debug = format!("{abilities:#?}");
             assert!(debug.contains("AttachedObjectAbilityGrant"), "{debug}");
-            assert!(debug.contains("Hold for Ransom"), "{debug}");
+            assert!(
+                debug.contains("source_surface: Some")
+                    && debug.contains("FullName")
+                    && debug.contains("Hold for Ransom"),
+                "{debug}"
+            );
             assert!(debug.contains("SorcerySpeed"), "{debug}");
         },
     );

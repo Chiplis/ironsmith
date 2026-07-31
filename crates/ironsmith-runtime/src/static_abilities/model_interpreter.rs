@@ -1761,6 +1761,11 @@ impl StaticAbilityModelInterpreter {
             ironsmith_core::StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttacker(
                 amount,
             ) => StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(*amount),
+            ironsmith_core::StaticAbilityPayload::CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker(
+                amount,
+            ) => StaticAbility::cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(
+                *amount,
+            ),
             ironsmith_core::StaticAbilityPayload::CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl => {
                 StaticAbility::cant_attack_you_unless_controller_pays_per_attacker_basic_land_types_among_lands_you_control()
             }
@@ -1848,6 +1853,17 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
     }
 
     fn prefers_card_name_subject(&self) -> bool {
+        // A generic condition wrapper can lower a leaf ability through a
+        // `GrantAbility::source` fallback when that leaf has no native
+        // conditional form. That runtime fallback preserves behavior, but it
+        // does not carry presentation preferences such as an authored
+        // source-name subject. Read that preference from the wrapped typed
+        // model before consulting the executable leaf.
+        if let ironsmith_core::StaticAbilityPayload::Conditional { ability, .. } =
+            &self.model.payload
+        {
+            return StaticAbility::from_model((**ability).clone()).prefers_card_name_subject();
+        }
         self.leaf_static_ability()
             .is_some_and(StaticAbility::prefers_card_name_subject)
     }
@@ -2687,6 +2703,18 @@ impl StaticAbilityKind for StaticAbilityModelInterpreter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn conditional_model_preserves_leaf_card_name_subject_preference() {
+        let named_value = crate::effect::Value::Fixed(3)
+            .with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject);
+        let modeled =
+            CompiledStaticAbility::characteristic_defining_pt(named_value.clone(), named_value)
+                .with_condition(ironsmith_core::Condition::YourTurn);
+        let ability = StaticAbility::from_model(modeled);
+
+        assert!(ability.prefers_card_name_subject());
+    }
 
     #[test]
     fn modeled_vote_modifiers_delegate_leaf_runtime_behavior() {

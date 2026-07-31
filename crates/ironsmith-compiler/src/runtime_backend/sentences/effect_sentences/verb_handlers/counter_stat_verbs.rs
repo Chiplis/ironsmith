@@ -2,7 +2,7 @@ use crate::runtime_backend::grammar::effects::counter_stat_shapes as counter_gra
 
 const COUNTER_TARGET_WORDS: &[&str] = &["target", "targets"];
 const COUNTER_FROM_WORD: &str = "from";
-const COUNTER_AND_OR_WORDS: &[&str] = &["and", "or"];
+const COUNTER_AND_OR_WORDS: &[&str] = &["and", "or", "and/or"];
 const COUNTER_YOU_CONTROL_PREFIXES: &[&[&str]] = &[&["you", "control"], &["you", "controls"]];
 const COUNTER_YOU_DONT_CONTROL_PREFIXES: &[&[&str]] = &[
     &["you", "dont", "control"],
@@ -185,6 +185,7 @@ fn parse_counter_ability_target_phrase(
     }
 
     let mut term_filters: Vec<(ObjectFilter, CounterTargetTerm)> = Vec::new();
+    let mut saw_and_or_connective = false;
     let mut list_end = clause_tokens.len();
     let mut scan = idx;
     while scan < clause_tokens.len() {
@@ -208,6 +209,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         };
         if counter_word_choice(word, COUNTER_AND_OR_WORDS) {
+            saw_and_or_connective |= word == "and/or";
             idx += 1;
             continue;
         }
@@ -267,7 +269,7 @@ fn parse_counter_ability_target_phrase(
             continue;
         }
 
-        if word == COUNTER_SPELL_WORD {
+        if word == COUNTER_SPELL_WORD || word == "spells" {
             term_filters.push((ObjectFilter::spell(), CounterTargetTerm::Spell));
             idx += 1;
             continue;
@@ -454,6 +456,11 @@ fn parse_counter_ability_target_phrase(
     } else {
         let mut any = ObjectFilter::default();
         any.any_of = term_filters.into_iter().map(|(filter, _)| filter).collect();
+        if saw_and_or_connective {
+            any = any.with_union_connective(
+                crate::filter::ObjectFilterUnionConnective::AndOr,
+            );
+        }
         any
     };
 

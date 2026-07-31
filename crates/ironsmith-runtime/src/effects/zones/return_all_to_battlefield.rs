@@ -70,11 +70,13 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
                 .collect(),
         );
         let mut returned_count = 0;
+        let mut returned_ids = Vec::new();
         let mut affected_memory = Vec::new();
         for ((object_id, _, memory), outcome) in entries.into_iter().zip(outcomes) {
             match outcome {
-                BattlefieldEntryOutcome::Moved(_) => {
+                BattlefieldEntryOutcome::Moved(new_id) => {
                     returned_count += 1;
+                    returned_ids.push(new_id);
                     affected_memory.push(memory);
                 }
                 BattlefieldEntryOutcome::Prevented => {
@@ -87,7 +89,7 @@ impl EffectExecutor for ReturnAllToBattlefieldEffect {
             }
         }
 
-        let mut outcome = EffectOutcome::count(returned_count);
+        let mut outcome = EffectOutcome::count(returned_count).with_result_objects(returned_ids);
         if !affected_memory.is_empty() {
             outcome = outcome.with_affected_object_memory(affected_memory);
         }

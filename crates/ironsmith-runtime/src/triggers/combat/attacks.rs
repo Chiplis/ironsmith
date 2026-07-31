@@ -208,8 +208,14 @@ impl AttacksTrigger {
                 }
             }
         };
-        attacked_player
-            .is_some_and(|player| attacked_player_filter.matches_player(player, &ctx.filter_ctx))
+        attacked_player.is_some_and(|player| {
+            crate::filter::player_filter_matches_game(
+                &attacked_player_filter,
+                player,
+                ctx.game,
+                &ctx.filter_ctx,
+            )
+        })
     }
 }
 

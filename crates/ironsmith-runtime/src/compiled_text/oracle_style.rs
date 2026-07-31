@@ -13,5 +13,6 @@ pub fn canonical_compiled_lines(def: &CardDefinition) -> Vec<String> {
             )
         })
         .map(|line| super::normalize_punctuated_card_name_damage_case(line, &def.card.name))
+        .map(|line| super::capitalize_first(&line))
         .collect()
 }

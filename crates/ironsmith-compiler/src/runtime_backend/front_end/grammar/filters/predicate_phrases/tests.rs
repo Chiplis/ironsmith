@@ -390,8 +390,7 @@ fn parse_predicate_demonstrative_permanent_card_strips_article() -> Result<(), C
 }
 
 #[test]
-fn parse_predicate_demonstrative_permanent_spell_keeps_stack_domain()
--> Result<(), CardTextError> {
+fn parse_predicate_demonstrative_permanent_spell_keeps_stack_domain() -> Result<(), CardTextError> {
     let tokens = lex_line("If it's a permanent spell", 0)?;
     let parsed = parse_predicate(&predicate_tokens_after_if(&tokens))?;
     let PredicateAst::ItMatches(filter) = parsed else {

@@ -1383,15 +1383,57 @@ pub(crate) fn collect_activation_restriction_clauses(
     clauses
 }
 
+/// The per-turn activation cap a clause states, if any. Oracle spells the cap
+/// several ways ("Activate no more than twice each turn", "Activate only once
+/// each turn") while the typed condition renders "Activate only up to N times
+/// each turn" — two clauses naming the same cap are one restriction, not two.
+fn activation_limit_per_turn(clause_lower: &str) -> Option<u32> {
+    if !clause_lower.starts_with("activate ") || !clause_lower.contains("each turn") {
+        return None;
+    }
+    if clause_lower.contains(" once each turn") {
+        return Some(1);
+    }
+    if clause_lower.contains(" twice each turn") {
+        return Some(2);
+    }
+    let head = clause_lower.split(" times each turn").next()?;
+    if head.len() == clause_lower.len() {
+        return None;
+    }
+    let word = head.rsplit(' ').next()?;
+    Some(match word {
+        "one" => 1,
+        "two" => 2,
+        "three" => 3,
+        "four" => 4,
+        "five" => 5,
+        "six" => 6,
+        "seven" => 7,
+        "eight" => 8,
+        "nine" => 9,
+        "ten" => 10,
+        other => other.parse::<u32>().ok()?,
+    })
+}
+
 pub(crate) fn push_activation_restriction_clause(clauses: &mut Vec<String>, clause: String) {
     if clause.is_empty() {
         return;
     }
     let clause_lower = clause.to_ascii_lowercase();
+    let clause_limit = activation_limit_per_turn(&clause_lower);
     let mut remove_indices = Vec::new();
     for (idx, existing) in clauses.iter().enumerate() {
         let existing_lower = existing.to_ascii_lowercase();
+        // Two clauses naming the same per-turn cap are one restriction, unless
+        // the incoming one also carries a qualifier the kept one lacks — that
+        // case is the specificity check below.
+        let same_limit = clause_limit.is_some()
+            && activation_limit_per_turn(&existing_lower) == clause_limit
+            && !activation_clause_is_more_specific(&clause_lower, &existing_lower);
         if existing_lower == clause_lower
+            || same_limit
             || activation_clause_is_more_specific(&existing_lower, &clause_lower)
         {
             return;

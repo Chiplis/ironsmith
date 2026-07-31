@@ -427,15 +427,15 @@ pub(crate) fn describe_where_x_basis(value: &Value) -> Option<String> {
         )),
         Value::TotalPower(filter) => Some(format!(
             "the total power of {}",
-            describe_count_filter_value_subject(filter)
+            describe_aggregate_filter_value_subject(filter)
         )),
         Value::TotalToughness(filter) => Some(format!(
             "the total toughness of {}",
-            describe_count_filter_value_subject(filter)
+            describe_aggregate_filter_value_subject(filter)
         )),
         Value::TotalManaValue(filter) => Some(format!(
             "the total mana value of {}",
-            describe_count_filter_value_subject(filter)
+            describe_aggregate_filter_value_subject(filter)
         )),
         Value::LifeTotalDifference(_) => Some(describe_value(value)),
         Value::CountScaled(filter, multiplier) => {
@@ -619,22 +619,34 @@ pub(super) fn describe_clash_repeat_process(
         return None;
     }
 
-    let (clash_index, clash) = repeat
-        .effects
-        .iter()
-        .enumerate()
-        .find_map(|(index, effect)| {
-            let with_id = effect.downcast_ref::<crate::effects::WithIdEffect>()?;
-            (with_id.id == repeat.condition)
-                .then(|| {
-                    with_id
-                        .effect
-                        .downcast_ref::<crate::effects::ClashEffect>()
-                        .map(|clash| (index, clash))
-                })
-                .flatten()
-        })?;
-    if clash_index + 1 != repeat.effects.len() {
+    // Coordinated source clauses remain a singleton SequenceEffect after
+    // lowering. Inspect that authored body without discarding its surface so
+    // the terminal, ID-bearing clash still controls the loop.
+    let body = if let [effect] = repeat.effects.as_slice()
+        && let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && matches!(
+            sequence.surface,
+            ironsmith_core::SequenceSurface::Coordinated
+                | ironsmith_core::SequenceSurface::Sequential
+                | ironsmith_core::SequenceSurface::CommaThen
+        ) {
+        sequence.effects.as_slice()
+    } else {
+        repeat.effects.as_slice()
+    };
+
+    let (clash_index, clash) = body.iter().enumerate().find_map(|(index, effect)| {
+        let with_id = wrapped_with_id(effect)?;
+        (with_id.id == repeat.condition)
+            .then(|| {
+                with_id
+                    .effect
+                    .downcast_ref::<crate::effects::ClashEffect>()
+                    .map(|clash| (index, clash))
+            })
+            .flatten()
+    })?;
+    if clash_index + 1 != body.len() {
         return None;
     }
 
@@ -643,14 +655,14 @@ pub(super) fn describe_clash_repeat_process(
         crate::effects::ClashOpponentMode::TargetOpponent => "Clash with target opponent",
         crate::effects::ClashOpponentMode::DefendingPlayer => "Clash with defending player",
     };
-    let mut setup = describe_effect_list(&repeat.effects[..clash_index]);
+    let mut setup = describe_effect_list(&body[..clash_index]);
     setup = setup.trim().trim_end_matches('.').to_string();
     if setup.is_empty() {
         return Some(format!("{clash_text}. If you win, repeat this process"));
     }
 
     if setup.starts_with("Lose ")
-        && repeat.effects.first().is_some_and(|effect| {
+        && body.first().is_some_and(|effect| {
             unwrap_basic_tag_wrappers(effect)
                 .downcast_ref::<crate::effects::LoseLifeEffect>()
                 .is_some_and(|lose| lose.player == ChooseSpec::Player(PlayerFilter::You))
@@ -666,7 +678,7 @@ pub(super) fn describe_clash_repeat_process(
 }
 
 fn linked_result_actor(effect: &Effect) -> Option<PlayerFilter> {
-    let effect = structural_unwrap_render_wrappers(effect);
+    let effect = linked_result_setup_effect(effect);
     if let Some(discard) = effect.downcast_ref::<crate::effects::DiscardEffect>() {
         return Some(discard.player.clone());
     }
@@ -677,6 +689,12 @@ fn linked_result_actor(effect: &Effect) -> Option<PlayerFilter> {
         return choose_spec_player_filter(&pay.player);
     }
     if let Some(pay) = effect.downcast_ref::<crate::effects::PayLifeEffect>() {
+        return choose_spec_player_filter(&pay.player);
+    }
+    if let Some(pay) = effect.downcast_ref::<crate::effects::PayAnyEnergyEffect>() {
+        return choose_spec_player_filter(&pay.player);
+    }
+    if let Some(pay) = effect.downcast_ref::<crate::effects::PayAnyLifeEffect>() {
         return choose_spec_player_filter(&pay.player);
     }
     if let Some(move_to_zone) = effect.downcast_ref::<crate::effects::MoveToZoneEffect>() {
@@ -702,6 +720,16 @@ fn linked_result_actor(effect: &Effect) -> Option<PlayerFilter> {
     effect
         .downcast_ref::<crate::effects::ExileEffect>()
         .map(|_| PlayerFilter::You)
+}
+
+/// View the executable action behind a result-producing setup while retaining
+/// its typed identity. Sentence lowering can preserve an authored clause as a
+/// singleton sequence; that boundary is presentation metadata, not a distinct
+/// action for an immediately linked `IfEffect` or reflexive trigger.
+fn linked_result_setup_effect(effect: &Effect) -> &Effect {
+    let effect = structural_unwrap_render_wrappers(effect);
+    let effect = unwrap_singleton_sequence_member(effect);
+    structural_unwrap_render_wrappers(effect)
 }
 
 fn target_sacrifice_followup_uses_target_controller(effect: &Effect, followups: &[Effect]) -> bool {
@@ -737,7 +765,7 @@ fn describe_linked_action_result_condition(
     effect: &Effect,
     predicate: &EffectPredicate,
 ) -> Option<String> {
-    let effect = structural_unwrap_render_wrappers(effect);
+    let effect = linked_result_setup_effect(effect);
     if let Some(unless_pays) = effect.downcast_ref::<crate::effects::UnlessPaysEffect>() {
         let who = linked_result_player_pronoun(&unless_pays.player);
         return match predicate {
@@ -756,6 +784,12 @@ fn describe_linked_action_result_condition(
         .is_some()
         || effect
             .downcast_ref::<crate::effects::PayLifeEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::PayAnyEnergyEffect>()
+            .is_some()
+        || effect
+            .downcast_ref::<crate::effects::PayAnyLifeEffect>()
             .is_some()
     {
         return match predicate {
@@ -874,6 +908,10 @@ fn describe_unless_payer_tap_controlled_set_and_empty_mana(
     {
         return None;
     }
+    let payer_result_tag = with_id
+        .effect
+        .downcast_ref::<crate::effects::TaggedEffect>()
+        .map(|tagged| &tagged.tag);
     let unless_pays = structural_unwrap_render_wrappers(&with_id.effect)
         .downcast_ref::<crate::effects::UnlessPaysEffect>()?;
     if !matches!(
@@ -904,8 +942,9 @@ fn describe_unless_payer_tap_controlled_set_and_empty_mana(
     let empty = unwrap_basic_tag_wrappers(empty_effect)
         .downcast_ref::<crate::effects::EmptyManaPoolEffect>()?;
 
-    let Some(PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(_))) =
-        capture.filter.controller.as_ref()
+    let Some(
+        controller @ PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(actor_tag)),
+    ) = capture.filter.controller.as_ref()
     else {
         return None;
     };
@@ -913,11 +952,8 @@ fn describe_unless_payer_tap_controlled_set_and_empty_mana(
         return None;
     };
     if tap_filter != &capture.filter
-        || !matches!(
-            &empty.player,
-            PlayerFilter::AliasedControllerOf(crate::filter::ObjectRef::Tagged(tag))
-                if tag == &capture.tag
-        )
+        || &empty.player != controller
+        || payer_result_tag.is_some_and(|payer_tag| payer_tag != actor_tag)
     {
         return None;
     }
@@ -935,6 +971,10 @@ pub(crate) fn describe_with_id_if_clause(
     with_id: &crate::effects::WithIdEffect,
     if_effect: &crate::effects::IfEffect,
 ) -> Option<String> {
+    if if_effect.condition != with_id.id {
+        return None;
+    }
+
     if let Some(compact) = describe_declined_may_mill_then_damage(with_id, if_effect) {
         return Some(compact);
     }
@@ -1006,7 +1046,9 @@ pub(crate) fn describe_with_id_if_clause(
         && matches!(if_effect.predicate, EffectPredicate::Happened)
     {
         "If the player does".to_string()
-    } else if let Some(may) = with_id.effect.downcast_ref::<crate::effects::MayEffect>() {
+    } else if let Some(may) =
+        linked_result_setup_effect(&with_id.effect).downcast_ref::<crate::effects::MayEffect>()
+    {
         if let Some(condition) = describe_may_have_source_deal_damage_condition(may, if_effect) {
             condition
         } else {
@@ -1682,7 +1724,7 @@ fn describe_coin_flip_outcome_branch(effects: &[Effect]) -> Option<String> {
         .or_else(|| describe_tagged_counter_spell_branch(effects))
 }
 
-fn wrapped_with_id(effect: &Effect) -> Option<&crate::effects::WithIdEffect> {
+pub(super) fn wrapped_with_id(effect: &Effect) -> Option<&crate::effects::WithIdEffect> {
     if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
         return Some(with_id);
     }
@@ -1691,6 +1733,11 @@ fn wrapped_with_id(effect: &Effect) -> Option<&crate::effects::WithIdEffect> {
     }
     if let Some(tag_all) = effect.downcast_ref::<crate::effects::TagAllEffect>() {
         return wrapped_with_id(&tag_all.effect);
+    }
+    if let Some(sequence) = effect.downcast_ref::<crate::effects::SequenceEffect>()
+        && let [only] = sequence.effects.as_slice()
+    {
+        return wrapped_with_id(only);
     }
     None
 }
@@ -1769,6 +1816,13 @@ pub(super) fn describe_may_choose_tagged_subset_then_phase_out(
         .downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
     let phase_out = unwrap_basic_tag_wrappers(phase_out_effect)
         .downcast_ref::<crate::effects::PhaseOutEffect>()?;
+    let mut tagged_source_filter = choose.filter.clone();
+    if tagged_source_filter.zone == choose.zone {
+        // `ChooseObjectsEffect` may retain the same zone both on the choice
+        // and its filter. It is presentation-neutral for this exact tagged-set
+        // check.
+        tagged_source_filter.zone = None;
+    }
     if choose.count != ChoiceCount::any_number()
         || choose.count_value.is_some()
         || choose.aggregate_constraint.is_some()
@@ -1778,7 +1832,7 @@ pub(super) fn describe_may_choose_tagged_subset_then_phase_out(
         || choose.top_only
         || choose.bottom_only
         || choose.replace_tagged_objects
-        || !filter_is_exactly_one_tagged_object(&choose.filter)
+        || !filter_is_exactly_one_tagged_object(&tagged_source_filter)
         || phase_out.duration != crate::effects::PhaseOutDuration::UntilNextUntap
         || phase_out.source_surface.is_some()
         || !choose_spec_is_tagged_object(&phase_out.spec, &choose.tag)
@@ -2685,11 +2739,44 @@ pub(crate) fn describe_with_id_then_reflexive_trigger(
                     .expect("guarded excess-damage target");
                 format!("When excess damage is dealt to {target} this way")
             }
+            // A repeated optional payment counts its iterations; oracle names
+            // the action ("When you pay this cost one or more times"), not the
+            // renderer's loop counter.
+            EffectPredicate::Value(ironsmith_core::Comparison::GreaterThan(0))
+                if repeat_process_repeats_a_payment(&with_id.effect) =>
+            {
+                "When you pay this cost one or more times".to_string()
+            }
             _ => format!("When {}", describe_effect_predicate(&reflexive.predicate)),
         }
     };
 
     Some(format!("{setup}. {condition}, {triggered}"))
+}
+
+/// Whether an effect is a repeat loop whose body is an optional mana payment —
+/// the "you may pay {cost} any number of times" shape.
+fn repeat_process_repeats_a_payment(effect: &Effect) -> bool {
+    fn body_is_optional_payment(effect: &Effect) -> bool {
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return body_is_optional_payment(&with_id.effect);
+        }
+        if let Some(may) = effect.downcast_ref::<crate::effects::MayEffect>() {
+            return may.effects.iter().all(body_is_optional_payment);
+        }
+        effect
+            .downcast_ref::<crate::effects::PayManaEffect>()
+            .is_some()
+    }
+
+    if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+        return repeat_process_repeats_a_payment(&with_id.effect);
+    }
+    effect
+        .downcast_ref::<crate::effects::RepeatProcessEffect>()
+        .is_some_and(|repeat| {
+            !repeat.effects.is_empty() && repeat.effects.iter().all(body_is_optional_payment)
+        })
 }
 
 pub(super) fn describe_exile_play_then_reflexive_trigger(
@@ -2909,7 +2996,25 @@ pub(super) fn describe_delirium_countered_spell_same_name_search(
         return None;
     }
 
-    let [choose_effect, for_each_effect, shuffle_effect] = conditional.if_true.as_slice() else {
+    // Source-sentence lowering preserves the coordinated search, exile, and
+    // shuffle clause in a singleton sequence. Inspect that structural wrapper
+    // without weakening any of the tag, zone, owner, or cardinality checks
+    // below; older callers may still provide the three effects directly.
+    let branch = match conditional.if_true.as_slice() {
+        [effect]
+            if effect
+                .downcast_ref::<crate::effects::SequenceEffect>()
+                .is_some_and(|sequence| {
+                    sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+                }) =>
+        {
+            &effect
+                .downcast_ref::<crate::effects::SequenceEffect>()?
+                .effects
+        }
+        effects => effects,
+    };
+    let [choose_effect, for_each_effect, shuffle_effect] = branch else {
         return None;
     };
     let choose = choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()?;
@@ -3232,7 +3337,19 @@ pub(crate) fn describe_search_choose_for_each(
     };
     let selection_text = title_case_named_card_selection(&selection_text);
     let pronoun = if choose.count.max == Some(1) {
-        "it"
+        choose
+            .search_result_reference_surface
+            .map(ironsmith_core::SearchResultReferenceSurface::as_str)
+            .unwrap_or("it")
+    } else if choose
+        .count_value
+        .as_ref()
+        .is_some_and(|value| value.has_surface_hint(ValueSurfaceHint::Difference))
+    {
+        // "A number of ... cards less than or equal to the difference"
+        // introduces a named collection, so its move refers back to "those
+        // cards"; ordinary plural searches retain the shorter "them".
+        "those cards"
     } else {
         "them"
     };
@@ -3919,6 +4036,149 @@ pub(super) fn describe_search_face_down_exile_shuffle_conditional_cast_else_hand
     ))
 }
 
+/// Render the same linked search/cast/fallback pipeline when sentence
+/// preservation keeps the bargain gate, mana-value gate, and not-cast
+/// fallback as separate conditionals. The executable lowering deliberately
+/// uses the source-exiled tag for last-known-information checks, while the
+/// searched-object and sentence-helper tags preserve the authored references.
+pub(crate) fn describe_search_face_down_exile_shuffle_split_bargain_cast_else_hand(
+    choose: &crate::effects::ChooseObjectsEffect,
+    exile: &crate::effects::ExileEffect,
+    shuffle: &crate::effects::ShuffleLibraryEffect,
+    bargain_gate: &crate::effects::ConditionalEffect,
+    fallback_gate: &crate::effects::ConditionalEffect,
+) -> Option<String> {
+    fn unwrap_effect(effect: &Effect) -> &Effect {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>() {
+            return unwrap_effect(tagged.effect.as_ref());
+        }
+        if let Some(with_id) = effect.downcast_ref::<crate::effects::WithIdEffect>() {
+            return unwrap_effect(with_id.effect.as_ref());
+        }
+        effect
+    }
+
+    fn mana_value_limit(condition: &Condition) -> Option<(i32, &TagKey)> {
+        let Condition::ValueComparison {
+            left,
+            operator,
+            right,
+        } = condition
+        else {
+            return None;
+        };
+        if !matches!(
+            operator,
+            crate::effect::ValueComparisonOperator::LessThanOrEqual
+        ) {
+            return None;
+        }
+        let Value::ManaValueOf(spec) = left else {
+            return None;
+        };
+        let ChooseSpec::Tagged(tag) = spec.as_ref() else {
+            return None;
+        };
+        let Value::Fixed(limit) = right else {
+            return None;
+        };
+        Some((*limit, tag))
+    }
+
+    fn tag_is_linked_exiled_object(
+        tag: &TagKey,
+        choose: &crate::effects::ChooseObjectsEffect,
+    ) -> bool {
+        tag == &choose.tag
+            || tag.as_str() == crate::tag::SOURCE_EXILED_TAG
+            || crate::cards::is_sentence_helper_tag(tag.as_str(), "exiled")
+    }
+
+    if !choose.is_search
+        || choose.count.max != Some(1)
+        || choose_search_zones(choose) != Some(vec![Zone::Library])
+        || !exile.face_down
+        || !exile_uses_chosen_tag(&exile.spec, choose.tag.as_str())
+        || shuffle.player != choose.chooser
+        || !bargain_gate.if_false.is_empty()
+    {
+        return None;
+    }
+    let Condition::ThisSpellPaidLabel(label) = &bargain_gate.condition else {
+        return None;
+    };
+    if !label.display_label().eq_ignore_ascii_case("bargain") {
+        return None;
+    }
+
+    let [mana_gate_effect] = bargain_gate.if_true.as_slice() else {
+        return None;
+    };
+    let mana_gate =
+        unwrap_effect(mana_gate_effect).downcast_ref::<crate::effects::ConditionalEffect>()?;
+    if !mana_gate.if_false.is_empty() {
+        return None;
+    }
+    let (limit, mana_value_tag) = mana_value_limit(&mana_gate.condition)?;
+    if !tag_is_linked_exiled_object(mana_value_tag, choose) {
+        return None;
+    }
+
+    let [may_cast_effect] = mana_gate.if_true.as_slice() else {
+        return None;
+    };
+    let may_cast = unwrap_effect(may_cast_effect).downcast_ref::<crate::effects::MayEffect>()?;
+    if may_cast
+        .decider
+        .as_ref()
+        .is_some_and(|decider| decider != &PlayerFilter::You)
+    {
+        return None;
+    }
+    let [cast_effect] = may_cast.effects.as_slice() else {
+        return None;
+    };
+    let cast = unwrap_effect(cast_effect).downcast_ref::<crate::effects::CastTaggedEffect>()?;
+    if !tag_is_linked_exiled_object(&cast.tag, choose)
+        || cast.player != PlayerFilter::You
+        || cast.allow_land
+        || !cast.without_paying_mana_cost
+    {
+        return None;
+    }
+
+    let Condition::Not(not_cast_condition) = &fallback_gate.condition else {
+        return None;
+    };
+    let Condition::TaggedObjectMatchedLastKnown(fallback_tag, cast_filter) =
+        not_cast_condition.as_ref()
+    else {
+        return None;
+    };
+    if !tag_is_linked_exiled_object(fallback_tag, choose)
+        || cast_filter.union_surface.prior_effect_action()
+            != Some(ironsmith_core::PriorEffectAction::Cast)
+        || !fallback_gate.if_false.is_empty()
+    {
+        return None;
+    }
+    let [move_effect] = fallback_gate.if_true.as_slice() else {
+        return None;
+    };
+    let move_to_hand =
+        unwrap_effect(move_effect).downcast_ref::<crate::effects::MoveToZoneEffect>()?;
+    if move_to_hand.zone != Zone::Hand
+        || !choose_spec_has_tagged_constraint(&move_to_hand.target, fallback_tag)
+    {
+        return None;
+    }
+
+    let search_clause = describe_search_choose_then_exile(choose, None, exile, Some(shuffle))?;
+    Some(format!(
+        "{search_clause}. If this spell was bargained, you may cast the exiled card without paying its mana cost if that spell's mana value is {limit} or less. Put it into your hand if it wasn't cast this way"
+    ))
+}
+
 pub(crate) fn describe_search_choose_then_exile_and_cast(
     choose: &crate::effects::ChooseObjectsEffect,
     move_effect: &Effect,
@@ -4386,10 +4646,29 @@ pub(super) fn describe_choose_type_then_phase_out(
     ))
 }
 
-pub(super) fn describe_damaged_player_gain_control_then_rewards(
+pub(in crate::compiled_text) fn describe_damaged_player_gain_control_then_rewards(
     control_effect: &Effect,
     reward_effect: &Effect,
 ) -> Option<String> {
+    fn flatten_comma_then<'a>(effect: &'a Effect, flattened: &mut Vec<&'a Effect>) {
+        let unwrapped = if let Some(with_id) =
+            effect.downcast_ref::<crate::effects::WithIdEffect>()
+        {
+            &with_id.effect
+        } else {
+            effect
+        };
+        if let Some(sequence) = unwrapped.downcast_ref::<crate::effects::SequenceEffect>()
+            && sequence.surface == ironsmith_core::SequenceSurface::CommaThen
+        {
+            for nested in &sequence.effects {
+                flatten_comma_then(nested, flattened);
+            }
+        } else {
+            flattened.push(effect);
+        }
+    }
+
     let with_id = control_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
     let apply = with_id
         .effect
@@ -4418,7 +4697,11 @@ pub(super) fn describe_damaged_player_gain_control_then_rewards(
         return None;
     }
 
-    let [draw_effect, create_effect, lose_life_effect] = if_effect.then.as_slice() else {
+    let mut reward_effects = Vec::new();
+    for effect in &if_effect.then {
+        flatten_comma_then(effect, &mut reward_effects);
+    }
+    let [draw_effect, create_effect, lose_life_effect] = reward_effects.as_slice() else {
         return None;
     };
     let draw = draw_cards_view(draw_effect)?;
@@ -5636,6 +5919,55 @@ mod alternative_result_condition_tests {
             ),
             "If you win the flip, you draw a card. If you lose the flip, you draw two cards"
         );
+    }
+
+    #[test]
+    fn singleton_sequence_optional_energy_payment_keeps_its_linked_result_surface() {
+        let payment = Effect::new(crate::effects::SequenceEffect::new(vec![
+            Effect::may_single(Effect::new(crate::effects::PayAnyEnergyEffect::new(
+                ChooseSpec::Player(PlayerFilter::You),
+                1,
+            ))),
+        ]));
+        let rendered = describe_effect_list(&[
+            Effect::with_id(7, payment),
+            Effect::if_then(
+                EffectId(7),
+                EffectPredicate::Happened,
+                vec![Effect::draw(1)],
+            ),
+        ]);
+
+        assert_eq!(
+            rendered,
+            "You may pay one or more {E}. If you do, you draw a card"
+        );
+    }
+
+    #[test]
+    fn optional_energy_result_requires_the_exact_effect_id() {
+        let setup = Effect::with_id(
+            7,
+            Effect::new(crate::effects::SequenceEffect::new(vec![
+                Effect::may_single(Effect::new(crate::effects::PayAnyEnergyEffect::new(
+                    ChooseSpec::Player(PlayerFilter::You),
+                    1,
+                ))),
+            ])),
+        );
+        let branch = Effect::if_then(
+            EffectId(8),
+            EffectPredicate::Happened,
+            vec![Effect::draw(1)],
+        );
+        let setup = setup
+            .downcast_ref::<crate::effects::WithIdEffect>()
+            .expect("typed setup wrapper");
+        let branch = branch
+            .downcast_ref::<crate::effects::IfEffect>()
+            .expect("typed result branch");
+
+        assert_eq!(describe_with_id_if_clause(setup, branch), None);
     }
 
     #[test]

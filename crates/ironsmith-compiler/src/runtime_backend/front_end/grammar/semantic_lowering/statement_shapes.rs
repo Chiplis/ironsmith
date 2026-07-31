@@ -69,6 +69,7 @@ pub(crate) enum StatementEffectPreference {
     LeadingEffectVerb,
     UnlessSearch,
     TargetBecomes,
+    ConditionalPriorResult,
     ConditionalInstead,
     TargetedTemporaryModifier,
     CantCastNextTurn,
@@ -366,6 +367,26 @@ pub(crate) fn parse_statement_effect_preference_tokens(
         && any_word_is_present(&words, &["become", "becomes"])
     {
         Some(StatementEffectPreference::TargetBecomes)
+    } else if phrase_is_prefix(&words, &["if"])
+        && any_phrase_is_present(
+            &words,
+            &[
+                &["that", "card"],
+                &["that", "creature"],
+                &["that", "object"],
+                &["that", "permanent"],
+                &["those", "cards"],
+                &["those", "creatures"],
+                &["those", "objects"],
+                &["those", "permanents"],
+            ],
+        )
+    {
+        // On a resolving spell, an explicit demonstrative points back to an
+        // object or set produced by the preceding instruction. Some of these
+        // clauses also form valid battlefield static abilities in isolation,
+        // so keep the prior-result surface typed as an effect preference.
+        Some(StatementEffectPreference::ConditionalPriorResult)
     } else if word_is_present(&words, "if") && word_is_present(&words, "instead") {
         Some(StatementEffectPreference::ConditionalInstead)
     } else if phrase_is_present(&words, &["until", "end", "of", "turn"])
@@ -647,6 +668,30 @@ mod tests {
             parse_statement_effect_preference_tokens(&effect),
             Some(StatementEffectPreference::TargetedTemporaryModifier)
         );
+
+        for text in [
+            "If X is 6 or more, those permanents are 4/4 creatures in addition to their other types.",
+            "If there are two or more instant and/or sorcery cards in your graveyard, that creature enters with two additional +1/+1 counters on it.",
+        ] {
+            let effect = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_statement_effect_preference_tokens(&effect),
+                Some(StatementEffectPreference::ConditionalPriorResult),
+                "{text}"
+            );
+        }
+
+        for text in [
+            "If you control a Plains, creatures you control get +1/+1.",
+            "If this creature entered this turn, it has haste.",
+        ] {
+            let static_ability = lex_line(text, 0).unwrap();
+            assert_eq!(
+                parse_statement_effect_preference_tokens(&static_ability),
+                None,
+                "{text}"
+            );
+        }
     }
 
     #[test]

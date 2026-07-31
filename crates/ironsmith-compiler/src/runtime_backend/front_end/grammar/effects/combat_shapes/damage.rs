@@ -554,7 +554,11 @@ fn normalize_damage_target_tokens(
     {
         target_tokens = &target_tokens[..where_idx];
     }
-    Ok(trim_lexed_commas(target_tokens))
+    target_tokens = trim_lexed_commas(target_tokens);
+    while target_tokens.last().is_some_and(|token| token.is_period()) {
+        target_tokens = trim_lexed_commas(&target_tokens[..target_tokens.len() - 1]);
+    }
+    Ok(target_tokens)
 }
 
 pub(crate) fn parse_combat_damage_target_shape_lexed(
@@ -759,6 +763,14 @@ mod tests {
         let shape = parse_combat_damage_head_shape_lexed(&tokens);
         assert!(shape.direct_hand_size_each_opponent);
         assert!(!shape.divided);
+
+        let tokens = lex_line("2 damage to each other player.", 0).unwrap();
+        assert!(matches!(
+            parse_combat_damage_target_shape_lexed(&tokens, 1),
+            Ok(CombatDamageTargetShape::PlayerGroup(
+                CombatPlayerDamageTargetShape::EachOtherPlayer
+            ))
+        ));
 
         let tokens = lex_line("each other opponent", 0).unwrap();
         assert_eq!(

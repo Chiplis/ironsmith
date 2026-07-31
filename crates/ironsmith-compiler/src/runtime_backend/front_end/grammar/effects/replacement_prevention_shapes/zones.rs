@@ -129,27 +129,23 @@ pub(crate) fn parse_split_all_shape(tokens: &[OwnedLexToken]) -> Option<SplitAll
         let (_, rest) = primitives::parse_prefix(tokens, primitives::phrase(&["exile", "all"]))?;
         (SplitAllVerbShape::Exile, rest)
     };
-    let connective = if primitives::split_lexed_once_on_separator(body, || {
-        primitives::kw("and").void()
-    })
-    .is_some()
-    {
-        SplitAllConnectiveShape::And
-    } else {
-        let disjuncts = primitives::split_lexed_slices_on_or(body);
-        if disjuncts.len() < 2
-            || disjuncts.iter().skip(1).any(|segment| {
-                primitives::parse_prefix(
-                    trim_lexed_commas(segment),
-                    primitives::kw("all"),
-                )
-                .is_none()
-            })
+    let connective =
+        if primitives::split_lexed_once_on_separator(body, || primitives::kw("and").void())
+            .is_some()
         {
-            return None;
-        }
-        SplitAllConnectiveShape::Or
-    };
+            SplitAllConnectiveShape::And
+        } else {
+            let disjuncts = primitives::split_lexed_slices_on_or(body);
+            if disjuncts.len() < 2
+                || disjuncts.iter().skip(1).any(|segment| {
+                    primitives::parse_prefix(trim_lexed_commas(segment), primitives::kw("all"))
+                        .is_none()
+                })
+            {
+                return None;
+            }
+            SplitAllConnectiveShape::Or
+        };
     if marker_anywhere(tokens, primitives::kw("except"))
         || (verb == SplitAllVerbShape::Exile && is_temporary_exile(tokens))
         || is_multi_zone_card_exile(tokens)
@@ -286,8 +282,7 @@ mod tests {
         let split = parse_split_all_shape(&split).unwrap();
         assert_eq!(split.connective, SplitAllConnectiveShape::And);
         assert_eq!(split.filter_tokens.len(), 2);
-        let alternative =
-            lex_line("Destroy all lands or all creatures.", 0).unwrap();
+        let alternative = lex_line("Destroy all lands or all creatures.", 0).unwrap();
         let alternative = parse_split_all_shape(&alternative).unwrap();
         assert_eq!(alternative.connective, SplitAllConnectiveShape::Or);
         assert_eq!(alternative.filter_tokens.len(), 2);

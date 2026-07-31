@@ -1139,11 +1139,7 @@ pub(crate) fn parse_sentence_exile_it_next_end_step(
             }
             filter.set_plural_object_noun_surface(true);
         }
-        TargetAst::Object(
-            filter,
-            None,
-            object_clause.span(),
-        )
+        TargetAst::Object(filter, None, object_clause.span())
     };
     Ok(Some(vec![EffectAst::DelayedUntilNextEndStep {
         player: if shape.your_end_step {

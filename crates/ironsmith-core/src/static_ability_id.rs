@@ -101,6 +101,7 @@ pub enum StaticAbilityId {
     CantAttackUnlessControllerCastNonCreatureSpellThisTurn,
     CantAttackUnlessCondition,
     CantAttackYouUnlessControllerPaysPerAttacker,
+    CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker,
     CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl,
     BlockCost,
     CantBlock,
@@ -404,6 +405,7 @@ impl StaticAbilityId {
             | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
             | CantAttackUnlessCondition
             | CantAttackYouUnlessControllerPaysPerAttacker
+            | CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker
             | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
             | BlockCost
             | CantBlock
@@ -745,6 +747,7 @@ impl StaticAbilityId {
                 | CantAttackUnlessControllerCastNonCreatureSpellThisTurn
                 | CantAttackUnlessCondition
                 | CantAttackYouUnlessControllerPaysPerAttacker
+                | CantAttackYouOrPlaneswalkersUnlessControllerPaysPerAttacker
                 | CantAttackYouUnlessControllerPaysPerAttackerBasicLandTypesAmongLandsYouControl
                 | BlockCost
                 | CantBlock

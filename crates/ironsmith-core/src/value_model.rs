@@ -161,6 +161,11 @@ pub enum ValueSurfaceHint {
     /// presentation provenance only, distinct from the ordinary "their"
     /// surface for the same resolved player.
     ThatPlayerPossessive,
+    /// Preserve an authored object pronoun ("them") for the recipient of a
+    /// damage instruction. The typed damage target still identifies the
+    /// player; this only distinguishes that surface from "that player" when
+    /// both lower to the same iterated-player target.
+    DamageRecipientPronoun,
     /// Preserve an authored ability noun in an object-count predicate, such
     /// as "cards with a cycling ability". The filter's typed ability marker
     /// remains the source of the actual constraint.
@@ -268,6 +273,10 @@ pub enum ValueSurfaceHint {
     /// Preserve an explicit reference to damage dealt when the runtime value
     /// is supplied by the triggering event's generic numeric payload.
     DamageDealt,
+    /// Preserve the authored count basis for a grouped combat-damage trigger:
+    /// "the number of opponents dealt damage this way." The runtime value is
+    /// still supplied by the trigger's generic numeric payload.
+    OpponentsDealtDamageThisWay,
     AllCardsInHand,
     PermanentsSacrificedThisWay,
     /// Preserve a counter-removal result reference which intentionally omits
@@ -786,11 +795,18 @@ pub enum Restriction {
         attackers: ObjectFilter,
         player: PlayerFilter,
     },
+    /// "can't attack you" — bans attacking the player directly while leaving
+    /// their planeswalkers and battles attackable (CR 508.1 target choice).
+    AttackPlayer {
+        attackers: ObjectFilter,
+        player: PlayerFilter,
+    },
     /// A resolving effect's temporary tax on attacking its controller or a
     /// planeswalker that player controls. Unlike a battlefield static
     /// ability, this restriction remains active for its stated duration if
-    /// the source leaves the battlefield.
-    AttackYouUnlessControllerPaysPerAttacker(u32),
+    /// the source leaves the battlefield. The bool records whether the
+    /// authored text extends the tax to "or planeswalkers you control".
+    AttackYouUnlessControllerPaysPerAttacker(u32, bool),
     AttackAlone(ObjectFilter),
     Block(ObjectFilter),
     BlockSpecificAttacker {
@@ -1123,8 +1139,15 @@ impl Restriction {
         Self::AttackPlayerOrPlaneswalkersControlledBy { attackers, player }
     }
 
-    pub fn attack_you_unless_controller_pays_per_attacker(generic_mana: u32) -> Self {
-        Self::AttackYouUnlessControllerPaysPerAttacker(generic_mana)
+    pub fn attack_player(attackers: ObjectFilter, player: PlayerFilter) -> Self {
+        Self::AttackPlayer { attackers, player }
+    }
+
+    pub fn attack_you_unless_controller_pays_per_attacker(
+        generic_mana: u32,
+        covers_planeswalkers: bool,
+    ) -> Self {
+        Self::AttackYouUnlessControllerPaysPerAttacker(generic_mana, covers_planeswalkers)
     }
 
     pub fn attack_alone(filter: ObjectFilter) -> Self {

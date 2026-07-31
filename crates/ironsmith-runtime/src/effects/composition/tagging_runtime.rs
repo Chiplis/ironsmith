@@ -126,6 +126,30 @@ pub(crate) fn apply_tagged_runtime_state(
     outcome: &EffectOutcome,
     state: TaggedRuntimeState,
 ) {
+    // An explicit object payload or ResultObjects fact is a result-object
+    // contract: the inner effect is returning the identities that subsequent
+    // effects should use. This is distinct from affected-object facts and
+    // memory, which may be LKI for actions such as destroy. Prefer only this
+    // explicit contract before the pre-effect zone-change fallback so tagged
+    // moves follow the new object created by rule 400.7 without changing
+    // destroy-then-controller semantics.
+    if let Some(result_ids) = outcome
+        .explicit_objects()
+        .or_else(|| outcome.result_objects())
+    {
+        let snapshots = result_ids
+            .iter()
+            .filter_map(|id| {
+                game.object(*id)
+                    .map(|object| ObjectSnapshot::from_object(object, game))
+            })
+            .collect::<Vec<_>>();
+        if !snapshots.is_empty() {
+            ctx.set_tagged_objects(tag, snapshots);
+            return;
+        }
+    }
+
     // Zone changes create a new object, but later references such as "that
     // permanent's controller" use the characteristics of the object as it
     // last existed in the old zone. Keep that LKI snapshot when the stable
@@ -227,6 +251,9 @@ fn outcome_object_candidates(outcome: &EffectOutcome) -> Vec<crate::ids::ObjectI
     let mut ids = Vec::new();
     if let Some(objects) = outcome.objects() {
         ids.extend(objects.iter().copied());
+    }
+    if let Some(results) = outcome.result_objects() {
+        ids.extend(results.iter().copied());
     }
     if let Some(affected) = outcome.affected_objects() {
         ids.extend(affected.iter().copied());
@@ -467,6 +494,43 @@ mod tests {
 
         let tagged = ctx.get_tagged("tagged").expect("tagged object");
         assert_eq!(tagged.object_id, creature);
+    }
+
+    #[test]
+    fn test_explicit_result_object_overrides_zone_change_lki_fallback() {
+        let mut game = setup_game();
+        let alice = PlayerId::from_index(0);
+        let creature = create_creature(&mut game, alice);
+        let source = game.new_object_id();
+        let pre_move_snapshot =
+            ObjectSnapshot::from_object(game.object(creature).expect("creature"), &game);
+        let mut ctx = ExecutionContext::new_default(source, alice)
+            .with_targets(vec![ResolvedTarget::Object(creature)]);
+
+        let runtime = capture_tagged_runtime_state(
+            &game,
+            &Effect::new(crate::effects::MoveToZoneEffect::new(
+                crate::target::ChooseSpec::SpecificObject(creature),
+                Zone::Graveyard,
+                false,
+            )),
+            &ctx,
+        );
+        let graveyard_id = game
+            .move_object_by_effect(creature, Zone::Graveyard)
+            .expect("creature should move");
+        let outcome = EffectOutcome::count(1)
+            .with_result_objects(vec![graveyard_id])
+            .with_affected_objects(vec![graveyard_id])
+            .with_affected_object_memory(vec![crate::effect::OutcomeObjectMemory::from_snapshot(
+                &pre_move_snapshot,
+            )]);
+
+        apply_tagged_runtime_state(&game, &mut ctx, TagKey::new("moved"), &outcome, runtime);
+
+        let tagged = ctx.get_tagged("moved").expect("moved result object");
+        assert_eq!(tagged.object_id, graveyard_id);
+        assert_eq!(tagged.zone, Zone::Graveyard);
     }
 
     #[test]

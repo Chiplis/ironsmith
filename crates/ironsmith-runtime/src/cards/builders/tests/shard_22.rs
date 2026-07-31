@@ -27,6 +27,25 @@ use super::*;
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn alien_invasion_preserves_source_counter_count_and_created_token_target() {
+    fn find_plus_one_counter_effect(effect: &Effect) -> Option<crate::effects::PutCountersEffect> {
+        if let Some(put) = effect.downcast_ref::<crate::effects::PutCountersEffect>()
+            && put.counter_type == CounterType::PlusOnePlusOne
+        {
+            return Some(put.clone());
+        }
+        if let Some(tagged) = effect.downcast_ref::<TaggedEffect>() {
+            return find_plus_one_counter_effect(&tagged.effect);
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = find_plus_one_counter_effect(child);
+            }
+        });
+        found
+    }
+
     let def = parse_oracle_card_definition("Alien Invasion");
     let triggered = def
         .abilities
@@ -53,17 +72,7 @@ pub(super) fn alien_invasion_preserves_source_counter_count_and_created_token_ta
 
     let plus_one = effects
         .iter()
-        .filter_map(|effect| {
-            effect
-                .downcast_ref::<crate::effects::PutCountersEffect>()
-                .or_else(|| {
-                    effect
-                        .downcast_ref::<TaggedEffect>()?
-                        .effect
-                        .downcast_ref::<crate::effects::PutCountersEffect>()
-                })
-        })
-        .find(|put| put.counter_type == CounterType::PlusOnePlusOne)
+        .find_map(|effect| find_plus_one_counter_effect(effect))
         .expect("Alien Invasion should put +1/+1 counters on the created token");
     assert!(
         matches!(plus_one.target.unhinted(), ChooseSpec::Tagged(tag) if tag == created_tag),
@@ -705,10 +714,14 @@ pub(super) fn villainous_wealth_strict_parser_and_compiled_text_regression() {
     let rendered = canonical_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
+    // Oracle states the permission collectively, in its own sentence. The clause
+    // used to render per-card ("for each nonland card ... you may cast that card"),
+    // which also stranded the outer permission as "You may For each ...".
     assert!(
-        rendered.contains("exile the top x cards of target opponent's library")
-            && rendered.contains("for each nonland card with mana value x or less exiled this way")
-            && rendered.contains("you may cast that card without paying its mana cost"),
+        rendered.contains("target opponent exiles the top x cards of their library")
+            && rendered.contains(
+                "you may cast any number of spells with mana value x or less from among them without paying their mana costs"
+            ),
         "expected Villainous Wealth compiled text to preserve the capped any-number free-cast clause, got {rendered}"
     );
 }
@@ -798,7 +811,7 @@ pub(super) fn minds_dilation_strict_parser_and_compiled_text_regression() {
     let rendered_lower = rendered.to_ascii_lowercase();
     assert!(
         rendered_lower.contains("whenever an opponent casts their first spell each turn")
-            && rendered_lower.contains("exile the top card of their library")
+            && rendered_lower.contains("that player exiles the top card of their library")
             && rendered_lower.contains("if a nonland card was exiled this way")
             && rendered_lower.contains("you may cast that card without paying its mana cost"),
         "expected Mind's Dilation compiled text to preserve the triggering-player nonland free-cast clause, got {rendered}"
@@ -2430,7 +2443,15 @@ pub(super) fn union_of_the_third_path_compiles_with_draw_then_gain_life() {
     // Verify the spell effect has both DrawCards and GainLife effects.
     let spell = def.spell_effect.as_ref().expect("should have spell effect");
     assert!(!spell.is_empty(), "spell should have at least one segment");
-    let effects = &spell.segments[0].default_effects;
+    let top_level_effects = &spell.segments[0].default_effects;
+    let effects = match top_level_effects.as_slice() {
+        [effect] => effect
+            .downcast_ref::<crate::effects::SequenceEffect>()
+            .map_or(top_level_effects.as_slice(), |sequence| {
+                sequence.effects.as_slice()
+            }),
+        _ => top_level_effects.as_slice(),
+    };
     assert_eq!(
         effects.len(),
         2,

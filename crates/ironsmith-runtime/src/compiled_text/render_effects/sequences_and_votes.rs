@@ -189,14 +189,21 @@ pub(in crate::compiled_text) fn describe_discard_hand_add_mana_draw_sequence(
         return None;
     }
 
-    if !matches!(
-        &mana.amount,
+    let mana_counts_discarded_cards = match mana.amount.unhinted() {
         Value::EffectMetric {
             effect_id,
             source: crate::effect::EffectMetricSource::Outcome,
             metric: crate::effect::EffectMetric::Count,
-        } if *effect_id == discard_with_id.id
-    ) {
+        } => *effect_id == discard_with_id.id,
+        Value::PriorEffectMetric { effect_id, query } => {
+            *effect_id == discard_with_id.id
+                && query.source == crate::effect::EffectMetricSource::AffectedObjects
+                && query.metric == crate::effect::EffectMetric::Count
+                && query.action == Some(crate::effect::PriorEffectAction::Discarded)
+        }
+        _ => false,
+    };
+    if !mana_counts_discarded_cards {
         return None;
     }
     let Value::EffectValueOffset(draw_effect_id, draw_offset) = &draw.count else {
@@ -978,6 +985,69 @@ pub(super) fn describe_for_players_may_discard_then_draw_if_discarded(
     ))
 }
 
+/// "Each player may draw a card, then each player who drew a card this way
+/// gains N life." — the draw/gain-life sibling of the discard/draw shape.
+/// The lowering nests the whole program inside the per-player iteration:
+/// ForPlayers[May[Sequence[WithId(Draw), If(Happened)[GainLife]]]].
+pub(super) fn describe_for_players_may_draw_then_gain_if_drew(
+    effects: &[Effect],
+) -> Option<String> {
+    let [for_players_effect] = effects else {
+        return None;
+    };
+    let for_players = structural_unwrap_render_wrappers(for_players_effect)
+        .downcast_ref::<crate::effects::ForPlayersEffect>()?;
+    if for_players.starting_with_controller {
+        return None;
+    }
+    let subject = describe_for_players_subject(&for_players.filter)?;
+    let [may_effect] = for_players.effects.as_slice() else {
+        return None;
+    };
+    let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
+    if may
+        .decider
+        .as_ref()
+        .is_some_and(|decider| *decider != PlayerFilter::IteratedPlayer)
+    {
+        return None;
+    }
+    let [sequence_effect] = may.effects.as_slice() else {
+        return None;
+    };
+    let sequence = sequence_effect.downcast_ref::<crate::effects::SequenceEffect>()?;
+    let [draw_effect, gain_if_drew_effect] = sequence.effects.as_slice() else {
+        return None;
+    };
+    let draw_with_id = draw_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+    let draw = draw_with_id
+        .effect
+        .downcast_ref::<crate::effects::DrawCardsEffect>()?;
+    if draw.count != Value::Fixed(1) || draw.player != PlayerFilter::IteratedPlayer {
+        return None;
+    }
+    let gain_if_drew = gain_if_drew_effect.downcast_ref::<crate::effects::IfEffect>()?;
+    if gain_if_drew.condition != draw_with_id.id
+        || gain_if_drew.predicate != EffectPredicate::Happened
+        || !gain_if_drew.else_.is_empty()
+    {
+        return None;
+    }
+    let [gain_effect] = gain_if_drew.then.as_slice() else {
+        return None;
+    };
+    let gain = gain_effect.downcast_ref::<crate::effects::GainLifeEffect>()?;
+    if gain.player != ChooseSpec::Player(PlayerFilter::IteratedPlayer) {
+        return None;
+    }
+    let Value::Fixed(amount) = gain.amount else {
+        return None;
+    };
+    Some(format!(
+        "{subject} may draw a card, then each player who drew a card this way gains {amount} life"
+    ))
+}
+
 pub(super) fn describe_look_reorder_then_may_shuffle(effects: &[Effect]) -> Option<String> {
     let [look_effect, reorder_effect, may_effect] = effects else {
         return None;
@@ -1249,7 +1319,16 @@ pub(super) fn describe_for_players_may_happened_sequence(
         }
         [may_effect] => {
             let may = may_effect.downcast_ref::<crate::effects::MayEffect>()?;
-            let [with_id_effect, if_effect] = may.effects.as_slice() else {
+            // The pair may sit directly in the optional block or inside one
+            // authored comma-then sequence ("may draw a card, then ...").
+            let inner: &[Effect] = match may.effects.as_slice() {
+                [single] => single
+                    .downcast_ref::<crate::effects::SequenceEffect>()
+                    .map(|sequence| sequence.effects.as_slice())
+                    .unwrap_or(std::slice::from_ref(single)),
+                other => other,
+            };
+            let [with_id_effect, if_effect] = inner else {
                 return None;
             };
             let with_id = with_id_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
@@ -1626,7 +1705,8 @@ pub(super) fn describe_choose_phase_then_skip_chosen_this_turn(
         return None;
     }
 
-    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
+    let conditional = structural_unwrap_render_wrappers(conditional_effect)
+        .downcast_ref::<crate::effects::ConditionalEffect>()?;
     let crate::effect::Condition::SourceChosenOption(draw_option) = &conditional.condition else {
         return None;
     };
@@ -3195,22 +3275,57 @@ pub(super) fn is_you_and_target_opponent_participants(
 ) -> bool {
     matches!(
         choice.participants.as_slice(),
-        [PlayerFilter::You, PlayerFilter::Target(inner)] if **inner == PlayerFilter::Opponent
+        [
+            PlayerFilter::You,
+            PlayerFilter::Target(inner) | PlayerFilter::AliasedTarget(inner)
+        ] if **inner == PlayerFilter::Opponent
     )
 }
 
-pub(super) fn describe_secret_choice_match_sequence(effects: &[Effect]) -> Option<String> {
-    let [choice_effect, conditional_effect] = effects else {
-        return None;
+pub(in crate::compiled_text) fn describe_secret_choice_match_sequence(
+    effects: &[Effect],
+) -> Option<String> {
+    let (choice_effect, conditional, if_false) = match effects {
+        [choice_effect, conditional_effect] => {
+            let conditional = structural_unwrap_render_wrappers(conditional_effect)
+                .downcast_ref::<crate::effects::ConditionalEffect>()?;
+            (choice_effect, conditional, conditional.if_false.as_slice())
+        }
+        [choice_effect, success_effect, fallback_effect] => {
+            // Authored "otherwise" branches can lower as a successful
+            // conditional result carrying an ID followed by a DidNotHappen
+            // fallback. Preserve the sentence only when that result link is
+            // exact; an unrelated fallback must remain a separate effect.
+            let success_with_id =
+                success_effect.downcast_ref::<crate::effects::WithIdEffect>()?;
+            let conditional = structural_unwrap_render_wrappers(&success_with_id.effect)
+                .downcast_ref::<crate::effects::ConditionalEffect>()?;
+            let fallback = structural_unwrap_render_wrappers(fallback_effect)
+                .downcast_ref::<crate::effects::IfEffect>()?;
+            if !conditional.if_false.is_empty()
+                || fallback.condition != success_with_id.id
+                || fallback.predicate != EffectPredicate::DidNotHappen
+                || fallback.then.is_empty()
+                || !fallback.else_.is_empty()
+            {
+                return None;
+            }
+            (choice_effect, conditional, fallback.then.as_slice())
+        }
+        _ => return None,
     };
-    let choice = choice_effect.downcast_ref::<crate::effects::SecretChoiceEffect>()?;
+    // Result annotation can assign an ID to the secret-choice producer so
+    // later predicates can refer to it. The ID wrapper is semantic metadata,
+    // not a different choice shape, and must not hide the producer from this
+    // structural sentence renderer.
+    let choice = structural_unwrap_render_wrappers(choice_effect)
+        .downcast_ref::<crate::effects::SecretChoiceEffect>()?;
     if !is_you_and_target_opponent_participants(choice) {
         return None;
     }
-    let conditional = conditional_effect.downcast_ref::<crate::effects::ConditionalEffect>()?;
     if !matches!(conditional.condition, Condition::SecretChoicesMatch)
         || conditional.if_true.is_empty()
-        || conditional.if_false.is_empty()
+        || if_false.is_empty()
     {
         return None;
     }
@@ -3222,8 +3337,8 @@ pub(super) fn describe_secret_choice_match_sequence(effects: &[Effect]) -> Optio
         .trim()
         .trim_end_matches('.')
         .to_string();
-    let if_false = describe_effect_clause_list(&conditional.if_false)
-        .unwrap_or_else(|| describe_effect_list(&conditional.if_false))
+    let if_false = describe_effect_clause_list(if_false)
+        .unwrap_or_else(|| describe_effect_list(if_false))
         .trim()
         .trim_end_matches('.')
         .to_string();
@@ -3253,7 +3368,7 @@ pub(super) fn describe_sacrifice_then_put_source_exiled_into_hands(
         return None;
     };
     let sacrifice = sacrifice_effect.downcast_ref::<crate::effects::SacrificeTargetEffect>()?;
-    if !matches!(sacrifice.target, ChooseSpec::Source) {
+    if !matches!(sacrifice.target.base(), ChooseSpec::Source) {
         return None;
     }
     let move_to_zone = unwrap_basic_tag_wrappers(move_effect)
@@ -4107,10 +4222,23 @@ fn describe_may_causative_source_damage(may: &crate::effects::MayEffect) -> Opti
     } else {
         describe_damage_target(&damage.target)
     };
+    // This formatter renders the amount itself, so it needs the same
+    // "damage … equal to" rule the main damage clause applies — otherwise a
+    // characteristic or count basis becomes an inline determiner ("deal the
+    // exiled card's mana value damage to it").
+    let amount_text = describe_value(&damage.amount);
+    if value_prefers_equal_to(&damage.amount)
+        || power_damage_prefers_equal_to(&damage.amount)
+        || (!value_prefers_where_x(&damage.amount) && count_damage_prefers_equal_to(&damage.amount))
+    {
+        return Some(format!(
+            "{} this source deal damage to {target} equal to {amount_text}",
+            may_causative_prefix(decider)
+        ));
+    }
     Some(format!(
-        "{} this source deal {} damage to {target}",
-        may_causative_prefix(decider),
-        describe_value(&damage.amount)
+        "{} this source deal {amount_text} damage to {target}",
+        may_causative_prefix(decider)
     ))
 }
 
@@ -4147,7 +4275,21 @@ fn describe_may_causative_grant_all(may: &crate::effects::MayEffect) -> Option<S
         {
             return None;
         }
-        let grant = describe_apply_continuous_effect(apply)?;
+        let mut grant = describe_apply_continuous_effect(apply)?;
+        if let crate::continuous::EffectTarget::Filter(filter) = &apply.target
+            && filter.card_types.as_slice() == [CardType::Creature]
+            && filter.explicit_card_type_noun() != Some(CardType::Creature)
+            && let [subtype] = filter.subtypes.as_slice()
+        {
+            // In a causative clause the creature type is itself the plural
+            // subject ("have Allies you control gain ..."), rather than an
+            // attributive modifier on "creatures" — unless the authored text
+            // spelled the noun out ("have Ally creatures you control gain ...").
+            let attributive = format!("{subtype} creatures");
+            if let Some(rest) = grant.strip_prefix(&attributive) {
+                grant = format!("{}{}", pluralize_word(&subtype.to_string()), rest);
+            }
+        }
         return Some(format!("{} {grant}", may_causative_prefix(decider)));
     }
 
@@ -4180,15 +4322,12 @@ fn describe_may_causative_grant_all(may: &crate::effects::MayEffect) -> Option<S
     ))
 }
 
-fn describe_may_causative_become_color_choice(
-    may: &crate::effects::MayEffect,
-) -> Option<String> {
+fn describe_may_causative_become_color_choice(may: &crate::effects::MayEffect) -> Option<String> {
     let decider = may.decider.as_ref().unwrap_or(&PlayerFilter::You);
     let [effect] = may.effects.as_slice() else {
         return None;
     };
-    unwrap_basic_tag_wrappers(effect)
-        .downcast_ref::<crate::effects::BecomeColorChoiceEffect>()?;
+    unwrap_basic_tag_wrappers(effect).downcast_ref::<crate::effects::BecomeColorChoiceEffect>()?;
     let rendered = describe_effect(effect);
     let (subject, predicate) = rendered.split_once(" becomes ")?;
     Some(format!(
@@ -4271,9 +4410,7 @@ mod may_grant_all_causative_tests {
 
         assert_eq!(
             describe_typed_may_causative(&may).as_deref(),
-            Some(
-                "You may have this creature become the color or colors of your choice"
-            )
+            Some("You may have this creature become the color or colors of your choice")
         );
     }
 }

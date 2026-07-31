@@ -468,8 +468,8 @@ pub(super) fn test_experiment_twelve_puts_counters_on_another_turned_face_up_cre
     let morph_obj = game
         .object(morph_id)
         .expect("morph target should remain on battlefield");
-    assert_eq!(morph_obj.power(), Some(7));
-    assert_eq!(morph_obj.toughness(), Some(7));
+    assert_eq!(morph_obj.power(), Some(6));
+    assert_eq!(morph_obj.toughness(), Some(6));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]

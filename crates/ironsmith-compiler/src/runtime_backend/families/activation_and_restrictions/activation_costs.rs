@@ -658,9 +658,13 @@ pub(crate) fn parse_cant_clause(
     }
 
     if let Some(fact) = cant_shapes::parse_per_attacker_cant_tax_tokens(tokens) {
-        return Ok(Some(
-            StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(fact.amount),
-        ));
+        return Ok(Some(if fact.covers_planeswalkers {
+            StaticAbility::cant_attack_you_or_planeswalkers_unless_controller_pays_per_attacker(
+                fact.amount,
+            )
+        } else {
+            StaticAbility::cant_attack_you_unless_controller_pays_per_attacker(fact.amount)
+        }));
     }
 
     if let Some(ability) = attack_unless_static_ability(tokens) {

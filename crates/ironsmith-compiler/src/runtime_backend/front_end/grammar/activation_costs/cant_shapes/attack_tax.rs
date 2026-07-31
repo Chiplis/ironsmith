@@ -10,6 +10,9 @@ use super::super::super::{leaf, primitives};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PerAttackerCantTaxFact {
     pub(crate) amount: u32,
+    /// Oracle's planeswalker-inclusive wording. It selects both the restriction
+    /// surface and the shorter "for each of those creatures" payment phrasing.
+    pub(crate) covers_planeswalkers: bool,
 }
 
 pub(crate) fn parse_per_attacker_cant_tax_tokens(
@@ -31,7 +34,7 @@ fn parse_per_attacker_cant_tax_lexed(input: &mut LexStream<'_>) -> WResult<PerAt
         primitives::kw("cannot"),
     ))
     .parse_next(input)?;
-    alt((
+    let covers_planeswalkers = alt((
         primitives::phrase(&[
             "attack",
             "you",
@@ -43,8 +46,10 @@ fn parse_per_attacker_cant_tax_lexed(input: &mut LexStream<'_>) -> WResult<PerAt
             "their",
             "controller",
             "pays",
-        ]),
-        primitives::phrase(&["attack", "you", "unless", "their", "controller", "pays"]),
+        ])
+        .map(|_| true),
+        primitives::phrase(&["attack", "you", "unless", "their", "controller", "pays"])
+            .map(|_| false),
     ))
     .parse_next(input)?;
     let amount = parse_generic_mana_amount.parse_next(input)?;
@@ -59,7 +64,10 @@ fn parse_per_attacker_cant_tax_lexed(input: &mut LexStream<'_>) -> WResult<PerAt
     ))
     .parse_next(input)?;
     primitives::sentence_end().parse_next(input)?;
-    Ok(PerAttackerCantTaxFact { amount })
+    Ok(PerAttackerCantTaxFact {
+        amount,
+        covers_planeswalkers,
+    })
 }
 
 fn parse_generic_mana_amount(input: &mut LexStream<'_>) -> WResult<u32> {
@@ -92,24 +100,30 @@ mod tests {
 
     #[test]
     fn parses_typed_per_attacker_tax() {
-        for (raw, amount) in [
+        for (raw, amount, covers_planeswalkers) in [
             (
                 "Creatures can't attack you unless their controller pays {2} for each creature they control that's attacking you.",
                 2,
+                false,
             ),
             (
                 "Creatures cannot attack you unless their controller pays 1 for each creature they control thats attacking you",
                 1,
+                false,
             ),
             (
                 "Creatures can't attack you or planeswalkers you control unless their controller pays {2} for each of those creatures.",
                 2,
+                true,
             ),
         ] {
             let tokens = lex_line(raw, 0).unwrap();
             assert_eq!(
                 parse_per_attacker_cant_tax_tokens(&tokens),
-                Some(PerAttackerCantTaxFact { amount })
+                Some(PerAttackerCantTaxFact {
+                    amount,
+                    covers_planeswalkers,
+                })
             );
         }
     }

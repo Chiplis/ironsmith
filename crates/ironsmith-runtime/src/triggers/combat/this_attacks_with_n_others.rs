@@ -355,17 +355,16 @@ mod tests {
 
     #[test]
     fn filtered_attack_count_can_preserve_omitted_other_word() {
-        let trigger =
-            ThisAttacksWithNOthersTrigger::with_display_subject_filter_and_other_surface(
-                2,
-                Some("this creature".to_string()),
-                Some(
-                    ObjectFilter::creature()
-                        .with_subtype(Subtype::Zombie)
-                        .in_zone(Zone::Battlefield),
-                ),
-                false,
-            );
+        let trigger = ThisAttacksWithNOthersTrigger::with_display_subject_filter_and_other_surface(
+            2,
+            Some("this creature".to_string()),
+            Some(
+                ObjectFilter::creature()
+                    .with_subtype(Subtype::Zombie)
+                    .in_zone(Zone::Battlefield),
+            ),
+            false,
+        );
 
         assert_eq!(
             trigger.display(),

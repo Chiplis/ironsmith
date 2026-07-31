@@ -175,6 +175,7 @@ fn is_reserved_short_alias(alias: &str) -> bool {
             | "from"
             | "until"
             | "during"
+            | "turn"
             | "without"
             | "with"
             | "first"
@@ -347,6 +348,10 @@ mod tests {
         assert_eq!(
             parse_short_self_reference_name("Exiled Flashback Return Variant"),
             "Exiled Flashback Return Variant"
+        );
+        assert_eq!(
+            parse_short_self_reference_name("Turn Static Boundary Variant"),
+            "Turn Static Boundary Variant"
         );
         assert_eq!(parse_short_self_reference_name("Ajani Vengeant"), "Ajani");
 

@@ -64,6 +64,15 @@ pub enum TargetReusePolicy {
     ReuseCompatiblePrevious,
     /// Always declare a new target slot even if the spec matches an earlier one.
     AlwaysDeclareNew,
+    /// Declare a synthetic target prelude now, but let exactly one later
+    /// target-bearing effect consume that declaration.
+    ///
+    /// Lowering uses these preludes when Oracle names a target through a
+    /// grammatical subject before the executable effect. The following effect
+    /// may itself require a fresh tagged target in other contexts, so this
+    /// one-shot bridge keeps the wrapper policy honest without duplicating the
+    /// authored target.
+    SyntheticPrelude,
 }
 
 /// Target selection metadata for a single effect.
@@ -776,16 +785,28 @@ mod tests {
     }
 
     #[test]
-    fn target_only_profiles_force_new_target_slots() {
-        let effect = crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(
+    fn target_only_profiles_distinguish_synthetic_and_authored_declarations() {
+        let synthetic = crate::effect::Effect::new(crate::effects::TargetOnlyEffect::new(
             crate::target::ChooseSpec::AnyTarget,
         ));
-        let profile = effect
+        let synthetic_profile = synthetic
             .target_selection_profile()
             .expect("target-only effect should expose target profile");
+        assert_eq!(
+            synthetic_profile.reuse_policy,
+            TargetReusePolicy::SyntheticPrelude
+        );
 
-        assert_eq!(profile.spec, &crate::target::ChooseSpec::AnyTarget);
-        assert_eq!(profile.reuse_policy, TargetReusePolicy::AlwaysDeclareNew);
+        let authored = crate::effect::Effect::new(crate::effects::TargetOnlyEffect::explicit(
+            crate::target::ChooseSpec::AnyTarget,
+        ));
+        let authored_profile = authored
+            .target_selection_profile()
+            .expect("authored target-only effect should expose target profile");
+        assert_eq!(
+            authored_profile.reuse_policy,
+            TargetReusePolicy::AlwaysDeclareNew
+        );
     }
 
     #[test]

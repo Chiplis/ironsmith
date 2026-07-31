@@ -11,6 +11,7 @@ use crate::continuous::{
 use crate::effect::Value;
 use crate::game_state::GameState;
 use crate::ids::{ObjectId, PlayerId};
+use crate::target::ChooseSpec;
 
 /// Characteristic-defining ability for power/toughness.
 ///
@@ -50,7 +51,7 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
         let describe_characteristic_value = |value: &Value| {
             describe_value(value).replace(" counters on this source", " counters on it")
         };
-        if self.power == self.toughness {
+        if self.power.unhinted() == self.toughness.unhinted() {
             format!(
                 "This creature's power and toughness are each equal to {}",
                 describe_characteristic_value(&self.power)
@@ -61,12 +62,12 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
                 describe_characteristic_value(&self.power),
                 offset
             )
-        } else if matches!(self.power, Value::SourcePower) {
+        } else if is_own_power(&self.power) {
             format!(
                 "This creature's toughness is equal to {}",
                 describe_characteristic_value(&self.toughness)
             )
-        } else if matches!(self.toughness, Value::SourceToughness) {
+        } else if is_own_toughness(&self.toughness) {
             format!(
                 "This creature's power is equal to {}",
                 describe_characteristic_value(&self.power)
@@ -102,13 +103,35 @@ impl StaticAbilityKind for CharacteristicDefiningPT {
     }
 }
 
+/// The source's own power, in either the authored (`SourcePower`) or lowered
+/// (`PowerOf(Source)`) spelling — lowering rewrites the former into the latter,
+/// so a display that only matches one form falls through to the generic
+/// two-clause phrasing and prints a tautological "power is this power" half.
+fn is_own_power(value: &Value) -> bool {
+    match value.unhinted() {
+        Value::SourcePower => true,
+        Value::PowerOf(spec) => matches!(spec.unhinted(), ChooseSpec::Source),
+        _ => false,
+    }
+}
+
+/// The source's own toughness — see [`is_own_power`].
+fn is_own_toughness(value: &Value) -> bool {
+    match value.unhinted() {
+        Value::SourceToughness => true,
+        Value::ToughnessOf(spec) => matches!(spec.unhinted(), ChooseSpec::Source),
+        _ => false,
+    }
+}
+
 fn toughness_is_power_plus_fixed(power: &Value, toughness: &Value) -> Option<i32> {
-    match toughness {
-        Value::Add(left, right) if **left == *power => match right.as_ref() {
+    let power = power.unhinted();
+    match toughness.unhinted() {
+        Value::Add(left, right) if left.unhinted() == power => match right.unhinted() {
             Value::Fixed(offset) if *offset > 0 => Some(*offset),
             _ => None,
         },
-        Value::Add(left, right) if **right == *power => match left.as_ref() {
+        Value::Add(left, right) if right.unhinted() == power => match left.unhinted() {
             Value::Fixed(offset) if *offset > 0 => Some(*offset),
             _ => None,
         },
@@ -130,8 +153,8 @@ mod tests {
 
     #[test]
     fn named_source_surface_prefers_the_card_name_subject() {
-        let value = Value::Fixed(3)
-            .with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject);
+        let value =
+            Value::Fixed(3).with_surface_hint(ironsmith_core::ValueSurfaceHint::SourceNameSubject);
         let cdp = CharacteristicDefiningPT::new(value.clone(), value);
 
         assert!(cdp.prefers_card_name_subject());

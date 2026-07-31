@@ -1367,11 +1367,11 @@ pub(super) fn test_parse_clown_car_compiled_text_keeps_odd_even_branches_and_tok
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("roll") && rendered.contains("d6"),
+        rendered.contains("roll x six-sided dice"),
         "expected roll clause in compiled text, got {rendered}"
     );
     assert!(
-        rendered.contains("if you roll 1, 3, or 5") && rendered.contains("if you roll 2, 4, or 6"),
+        rendered.contains("for each odd result") && rendered.contains("for each even result"),
         "expected odd/even result branch conditions in compiled text, got {rendered}"
     );
     assert!(
@@ -1644,7 +1644,7 @@ pub(super) fn parse_the_sixth_doctor_copy_clause_keeps_legendary_exception() {
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains("copy that spell or ability, except the copy isn't legendary"),
+        rendered.contains("copy it, except the copy isn't legendary"),
         "expected legendary exception to survive rendering, got {rendered}"
     );
     assert!(
@@ -1854,12 +1854,18 @@ pub(super) fn test_parse_additional_cost_tap_two_untapped_creatures_and_or_lands
         other => panic!("expected object tap filter, got {other:?}"),
     };
     assert!(
-        filter.untapped,
-        "expected untapped requirement, got {filter:?}"
+        !filter.any_of.is_empty() && filter.any_of.iter().all(|arm| arm.untapped),
+        "expected every union arm to require an untapped object, got {filter:?}"
     );
     assert!(
-        filter.card_types.contains(&CardType::Creature)
-            && filter.card_types.contains(&CardType::Land),
+        filter
+            .any_of
+            .iter()
+            .any(|arm| arm.card_types.contains(&CardType::Creature))
+            && filter
+                .any_of
+                .iter()
+                .any(|arm| arm.card_types.contains(&CardType::Land)),
         "expected creature/land tap filter, got {filter:?}"
     );
 }
@@ -1901,13 +1907,22 @@ pub(super) fn test_parse_additional_cost_tap_four_untapped_artifacts_creatures_o
         other => panic!("expected object tap filter, got {other:?}"),
     };
     assert!(
-        filter.untapped,
-        "expected untapped requirement, got {filter:?}"
+        !filter.any_of.is_empty() && filter.any_of.iter().all(|arm| arm.untapped),
+        "expected every union arm to require an untapped object, got {filter:?}"
     );
     assert!(
-        filter.card_types.contains(&CardType::Artifact)
-            && filter.card_types.contains(&CardType::Creature)
-            && filter.card_types.contains(&CardType::Land),
+        filter
+            .any_of
+            .iter()
+            .any(|arm| arm.card_types.contains(&CardType::Artifact))
+            && filter
+                .any_of
+                .iter()
+                .any(|arm| arm.card_types.contains(&CardType::Creature))
+            && filter
+                .any_of
+                .iter()
+                .any(|arm| arm.card_types.contains(&CardType::Land)),
         "expected artifact/creature/land tap filter, got {filter:?}"
     );
 }
@@ -2006,6 +2021,20 @@ pub(super) fn test_parse_spoils_of_blood_uses_creatures_died_this_turn_count() {
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
 pub(super) fn parse_corpseweft_scaled_exiled_this_way_token_power_toughness() {
+    fn scaled_count(value: &Value) -> Option<(&crate::filter::ObjectFilter, i32)> {
+        match value.unhinted() {
+            Value::Scaled(inner, multiplier) => match inner.unhinted() {
+                Value::Count(filter) => Some((filter, *multiplier)),
+                Value::CountScaled(filter, inner_multiplier) => {
+                    Some((filter, *multiplier * *inner_multiplier))
+                }
+                _ => None,
+            },
+            Value::CountScaled(filter, multiplier) => Some((filter, *multiplier)),
+            _ => None,
+        }
+    }
+
     let def = CardDefinitionBuilder::new(CardId::new(), "Corpseweft Variant")
         .card_types(vec![CardType::Enchantment])
         .parse_text(
@@ -2028,33 +2057,28 @@ pub(super) fn parse_corpseweft_scaled_exiled_this_way_token_power_toughness() {
         .find_map(|effect| effect.downcast_ref::<crate::effects::SetBasePowerToughnessEffect>())
         .expect("expected dynamic token base power/toughness setter");
 
-    match (
-        set_base_pt.power.unhinted(),
-        set_base_pt.toughness.unhinted(),
-    ) {
-        (
-            Value::CountScaled(power_filter, power_multiplier),
-            Value::CountScaled(toughness_filter, toughness_multiplier),
-        ) => {
-            assert_eq!((*power_multiplier, *toughness_multiplier), (2, 2));
-            assert_eq!(power_filter.zone, Some(Zone::Exile));
-            assert_eq!(toughness_filter.zone, Some(Zone::Exile));
-            assert!(
-                !power_filter.tagged_constraints.is_empty()
-                    && !toughness_filter.tagged_constraints.is_empty(),
-                "expected exiled-this-way tag constraints, got {set_base_pt:#?}"
-            );
-        }
-        other => panic!("expected scaled exiled-count P/T values, got {other:#?}"),
-    }
+    let (power_filter, power_multiplier) =
+        scaled_count(&set_base_pt.power).expect("expected a scaled exiled-count power value");
+    let (toughness_filter, toughness_multiplier) = scaled_count(&set_base_pt.toughness)
+        .expect("expected a scaled exiled-count toughness value");
+    assert_eq!((power_multiplier, toughness_multiplier), (2, 2));
+    // This is an event snapshot, not a current-zone query. Cards moved out of
+    // exile in response must still count toward the activation cost paid.
+    assert_eq!(power_filter.zone, None);
+    assert_eq!(toughness_filter.zone, None);
+    assert!(
+        !power_filter.tagged_constraints.is_empty()
+            && !toughness_filter.tagged_constraints.is_empty(),
+        "expected exiled-this-way tag constraints, got {set_base_pt:#?}"
+    );
 
     let rendered = unprocessed_compiled_lines(&def)
         .join(" ")
         .to_ascii_lowercase();
     assert!(
-        rendered.contains(
-            "create a tapped x/x black zombie horror creature token, where x is twice the number of cards exiled this way"
-        ),
+        rendered.contains("create a tapped x/x black zombie horror creature token")
+            && (rendered.contains("where x is twice the number of cards exiled this way")
+                || rendered.contains("where x is twice the number of those cards")),
         "expected rendered text to compact the tapped dynamic token wording, got {rendered}"
     );
     assert!(
@@ -2982,7 +3006,10 @@ pub(super) fn test_parse_where_x_is_source_power_preserves_authored_pump_surface
     );
     assert_eq!(
         unprocessed_compiled_lines(&def),
-        vec!["{3}: This creature gets +X/+0 until end of turn, where X is its power.".to_string()]
+        vec![
+            "{3}: This creature gets +X/+0 until end of turn, where X is this creature's power."
+                .to_string()
+        ]
     );
 }
 

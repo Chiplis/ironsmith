@@ -271,6 +271,13 @@
         })
         .collect::<Vec<_>>();
 
+    if visible_effects.len() == 2
+        && let Some(compact) =
+            describe_damaged_player_gain_control_then_rewards(visible_effects[0], visible_effects[1])
+    {
+        return compact;
+    }
+
     if let Some(compact) = describe_choose_each_basic_land_type_then_destroy(&visible_effects) {
         return compact;
     }

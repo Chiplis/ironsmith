@@ -272,6 +272,11 @@ pub enum ExecutionFact {
     Impossible,
     Replaced,
     ChosenObjects(Vec<ObjectId>),
+    /// Current object identities explicitly produced by the effect.
+    ///
+    /// Unlike affected-object memory, these IDs refer to the post-effect
+    /// objects that downstream effects should act on.
+    ResultObjects(Vec<ObjectId>),
     AffectedObjects(Vec<ObjectId>),
     ChosenObjectMemory(Vec<OutcomeObjectMemory>),
     AffectedObjectMemory(Vec<OutcomeObjectMemory>),
@@ -430,6 +435,7 @@ impl EffectOutcome {
     pub(crate) fn merge_execution_facts(facts: Vec<ExecutionFact>) -> Vec<ExecutionFact> {
         let mut other = Vec::new();
         let mut chosen_objects = Vec::new();
+        let mut result_objects = Vec::new();
         let mut affected_objects = Vec::new();
         let mut chosen_memory = Vec::new();
         let mut affected_memory = Vec::new();
@@ -439,6 +445,7 @@ impl EffectOutcome {
         for fact in facts {
             match fact {
                 ExecutionFact::ChosenObjects(ids) => chosen_objects.extend(ids),
+                ExecutionFact::ResultObjects(ids) => result_objects.extend(ids),
                 ExecutionFact::AffectedObjects(ids) => affected_objects.extend(ids),
                 ExecutionFact::ChosenObjectMemory(memory) => chosen_memory.extend(memory),
                 ExecutionFact::AffectedObjectMemory(memory) => affected_memory.extend(memory),
@@ -452,6 +459,9 @@ impl EffectOutcome {
 
         if !chosen_objects.is_empty() {
             other.push(ExecutionFact::ChosenObjects(chosen_objects));
+        }
+        if !result_objects.is_empty() {
+            other.push(ExecutionFact::ResultObjects(result_objects));
         }
         if !affected_objects.is_empty() {
             other.push(ExecutionFact::AffectedObjects(affected_objects));
@@ -607,6 +617,18 @@ impl EffectOutcome {
         }
     }
 
+    /// Record current object identities explicitly produced by the effect.
+    ///
+    /// Use this when the compatibility payload must remain a count or another
+    /// value, but follow-up effects need the post-effect object IDs.
+    pub fn with_result_objects(self, objects: Vec<ObjectId>) -> Self {
+        if objects.is_empty() {
+            self
+        } else {
+            self.with_execution_fact(ExecutionFact::ResultObjects(objects))
+        }
+    }
+
     /// Record affected object ids and their current object memory in one step.
     ///
     /// Effects that move objects out of their old zone should capture explicit
@@ -730,6 +752,14 @@ impl EffectOutcome {
         })
     }
 
+    /// Access current object identities explicitly produced by the effect.
+    pub fn result_objects(&self) -> Option<&[ObjectId]> {
+        self.execution_facts.iter().find_map(|fact| match fact {
+            ExecutionFact::ResultObjects(ids) => Some(ids.as_slice()),
+            _ => None,
+        })
+    }
+
     /// Access object IDs captured as affected objects.
     pub fn affected_objects(&self) -> Option<&[ObjectId]> {
         self.execution_facts.iter().find_map(|fact| match fact {
@@ -782,6 +812,7 @@ impl EffectOutcome {
     /// the compatibility summary directly.
     pub fn output_objects(&self) -> &[ObjectId] {
         self.explicit_objects()
+            .or_else(|| self.result_objects())
             .or_else(|| self.chosen_objects())
             .or_else(|| self.affected_objects())
             .unwrap_or(&[])
@@ -906,6 +937,24 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
             Self::Succeeded => outcome.status.is_success(),
             Self::Failed => outcome.status.is_failure(),
             Self::Happened => {
+                // Sequential wrappers retain events from steps that happened
+                // before their terminal action. An explicit terminal failure
+                // must win over those earlier events when a follow-up asks
+                // whether the wrapped action happened ("if you do").
+                if outcome.status.is_failure()
+                    || outcome.has_execution_fact(|fact| {
+                        matches!(
+                            fact,
+                            ExecutionFact::Declined
+                                | ExecutionFact::TargetInvalid
+                                | ExecutionFact::Prevented
+                                | ExecutionFact::Protected
+                                | ExecutionFact::Impossible
+                        )
+                    })
+                {
+                    return false;
+                }
                 if outcome
                     .execution_facts
                     .iter()
@@ -923,18 +972,6 @@ impl EffectPredicateRuntimeExt for EffectPredicate {
                 }
                 if !outcome.events.is_empty() {
                     return true;
-                }
-                if outcome.has_execution_fact(|fact| {
-                    matches!(
-                        fact,
-                        ExecutionFact::Declined
-                            | ExecutionFact::TargetInvalid
-                            | ExecutionFact::Prevented
-                            | ExecutionFact::Protected
-                            | ExecutionFact::Impossible
-                    )
-                }) {
-                    return false;
                 }
                 outcome.status == OutcomeStatus::Replaced
                     || (outcome.status == OutcomeStatus::Succeeded
@@ -1289,7 +1326,29 @@ impl RestrictionExt for Restriction {
                     }
                 }
             }
-            Restriction::AttackYouUnlessControllerPaysPerAttacker(_) => {
+            Restriction::AttackPlayer { attackers, player } => {
+                let banned_players = game
+                    .players
+                    .iter()
+                    .filter(|player_state| {
+                        player_state.is_in_game()
+                            && player_matches_restriction_filter(player_state.id, player)
+                    })
+                    .map(|player_state| player_state.id)
+                    .collect::<Vec<_>>();
+                if banned_players.is_empty() {
+                    return;
+                }
+
+                for &obj_id in &game.battlefield {
+                    if let Some(obj) = game.object(obj_id)
+                        && attackers.matches(obj, &ctx, game)
+                    {
+                        tracker.add_cant_attack_players(obj_id, banned_players.iter().copied());
+                    }
+                }
+            }
+            Restriction::AttackYouUnlessControllerPaysPerAttacker(..) => {
                 // The payment exception is evaluated during attacker
                 // declaration. It must not be flattened into an unconditional
                 // `cant_attack` entry in the derived restriction tracker.
@@ -4783,6 +4842,24 @@ mod tests {
     }
 
     #[test]
+    fn test_predicate_terminal_decline_wins_over_events_from_earlier_steps() {
+        let outcome = EffectOutcome::with_details(
+            OutcomeStatus::Declined,
+            OutcomeValue::None,
+            vec![crate::events::RawEvent::new_with_provenance(
+                crate::events::TapEvent {
+                    permanent: ObjectId::from_raw(1),
+                },
+                crate::provenance::ProvNodeId::default(),
+            )],
+            vec![ExecutionFact::Declined],
+        );
+
+        assert!(!EffectPredicate::Happened.evaluate_outcome(&outcome));
+        assert!(EffectPredicate::DidNotHappen.evaluate_outcome(&outcome));
+    }
+
+    #[test]
     fn dealt_damage_to_player_predicate_checks_damage_events() {
         let source = ObjectId::from_raw(1);
         let player = PlayerId::from_index(1);
@@ -4883,13 +4960,26 @@ mod tests {
         let summary = EffectOutcome::with_objects(vec![ObjectId::from_raw(1)]);
         assert_eq!(summary.output_objects(), &[ObjectId::from_raw(1)]);
 
+        let result = EffectOutcome::count(1).with_result_objects(vec![ObjectId::from_raw(2)]);
+        assert_eq!(result.output_objects(), &[ObjectId::from_raw(2)]);
+
         let chosen = EffectOutcome::resolved()
-            .with_execution_fact(ExecutionFact::ChosenObjects(vec![ObjectId::from_raw(2)]));
-        assert_eq!(chosen.output_objects(), &[ObjectId::from_raw(2)]);
+            .with_execution_fact(ExecutionFact::ChosenObjects(vec![ObjectId::from_raw(3)]));
+        assert_eq!(chosen.output_objects(), &[ObjectId::from_raw(3)]);
 
         let affected = EffectOutcome::resolved()
-            .with_execution_fact(ExecutionFact::AffectedObjects(vec![ObjectId::from_raw(3)]));
-        assert_eq!(affected.first_output_object(), Some(ObjectId::from_raw(3)));
+            .with_execution_fact(ExecutionFact::AffectedObjects(vec![ObjectId::from_raw(4)]));
+        assert_eq!(affected.first_output_object(), Some(ObjectId::from_raw(4)));
+
+        let aggregate = EffectOutcome::aggregate_summing_counts([
+            EffectOutcome::count(1).with_result_objects(vec![ObjectId::from_raw(5)]),
+            EffectOutcome::count(1).with_result_objects(vec![ObjectId::from_raw(6)]),
+        ]);
+        assert_eq!(aggregate.value, OutcomeValue::Count(2));
+        assert_eq!(
+            aggregate.result_objects(),
+            Some([ObjectId::from_raw(5), ObjectId::from_raw(6)].as_slice())
+        );
     }
 
     #[test]

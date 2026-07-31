@@ -146,10 +146,16 @@ impl ChooseSpec {
     }
 
     pub fn target(inner: ChooseSpec) -> Self {
-        if inner.is_target() {
-            inner
-        } else {
-            Self::Target(Box::new(inner))
+        match inner {
+            // Presentation metadata describes the chosen object, not the
+            // target wrapper. Keep it discoverable at the outside just as
+            // `with_count` does when adding another semantic wrapper.
+            Self::SurfaceHinted { spec, hints } => Self::SurfaceHinted {
+                spec: Box::new(Self::target(*spec)),
+                hints,
+            },
+            inner if inner.is_target() => inner,
+            inner => Self::Target(Box::new(inner)),
         }
     }
 

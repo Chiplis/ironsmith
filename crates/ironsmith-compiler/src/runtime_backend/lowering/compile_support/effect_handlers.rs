@@ -148,9 +148,14 @@ pub(crate) fn compile_delayed_trigger_spec(
                 target: target.clone(),
             })
         }
-        TriggerSpec::DealsCombatDamageToPlayer { source, player }
-        | TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => Ok(
+        TriggerSpec::DealsCombatDamageToPlayer { source, player } => Ok(
             ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
+                source: source.clone(),
+                player: player.clone(),
+            },
+        ),
+        TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => Ok(
+            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
                 source: source.clone(),
                 player: player.clone(),
             },
@@ -876,12 +881,48 @@ pub(super) fn try_compile_timing_and_control_effect(
                         (vec![effect], choices)
                     }
                 }
+                TriggerSpec::DealsCombatDamageTo { source, target } => {
+                    let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
+                    let resolved_target = resolve_it_tag(target, &current_reference_env(ctx))?;
+                    if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
+                        let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
+                            watched_tag.clone().into(),
+                            ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
+                                source: crate::target::ObjectFilter::source(),
+                                target: resolved_target,
+                            },
+                            delayed_effects,
+                            *one_shot,
+                            Vec::new(),
+                            PlayerFilter::You,
+                        )
+                        .with_target_filter(resolved_source)
+                        .until_end_of_turn();
+                        (vec![Effect::new(delayed)], choices)
+                    } else {
+                        let effect = Effect::new(
+                            crate::effects::ScheduleDelayedTriggerEffect::new(
+                                ironsmith_core::DelayedTriggerSpec::DealsCombatDamageTo {
+                                    source: resolved_source,
+                                    target: resolved_target,
+                                },
+                                delayed_effects,
+                                *one_shot,
+                                Vec::new(),
+                                PlayerFilter::You,
+                            )
+                            .until_end_of_turn(),
+                        );
+                        (vec![effect], choices)
+                    }
+                }
                 TriggerSpec::DealsCombatDamageToPlayerOneOrMore { source, player } => {
                     let resolved_source = resolve_it_tag(source, &current_reference_env(ctx))?;
-                    let trigger = ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayer {
-                        source: resolved_source.clone(),
-                        player: player.clone(),
-                    };
+                    let trigger =
+                        ironsmith_core::DelayedTriggerSpec::DealsCombatDamageToPlayerOneOrMore {
+                            source: resolved_source.clone(),
+                            player: player.clone(),
+                        };
                     if let Some(watched_tag) = watch_tag_from_filter(&resolved_source) {
                         let delayed = crate::effects::ScheduleDelayedTriggerEffect::from_tag(
                             watched_tag.clone().into(),

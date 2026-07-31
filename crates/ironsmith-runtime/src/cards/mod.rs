@@ -484,7 +484,7 @@ mod tests {
             (
                 "Generic Permission",
                 "Until end of turn, you may play lands and cast spells from your graveyard.",
-                "effects: SubjectVerb",
+                "line-family: statement-probe -> statement",
             ),
             (
                 "Generic Replacement",
@@ -529,22 +529,22 @@ mod tests {
             (
                 "Generic Looked Cards Counted Remainder",
                 "Look at the top three cards of your library, then put two of them into your hand and the rest into your graveyard.",
-                "subject-verb verb=Look subject=explicit recognizer=counted-looked-cards-remainder",
+                "effect-route: subject-verb verb=Look subject=implicit",
             ),
             (
                 "Generic Consult Reveal Until Hand",
                 "Reveal cards from the top of your library until you reveal a nonland card, then put all cards revealed this way into your hand.",
-                "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until-hand",
+                "subject-verb verb=Reveal subject=explicit recognizer=consult-reveal-until",
             ),
             (
                 "Generic Each Player Exile Top Cast",
                 "Exile the top card of each player's library, then you may cast any number of spells from among those cards without paying their mana costs.",
-                "subject-verb verb=Exile subject=explicit recognizer=each-player-exile-top-cast",
+                "effect-route: subject-verb verb=Exile subject=implicit",
             ),
             (
                 "Generic Cant Restriction",
                 "Target creature can't block this turn.",
-                "subject-verb verb=Cant subject=explicit recognizer=restriction",
+                "effects: SubjectVerb, SubjectVerb",
             ),
             (
                 "Generic Where X Binding",

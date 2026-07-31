@@ -583,22 +583,51 @@ pub(super) fn cryptic_coat_cloaks_then_attaches_to_the_cloaked_card() {
         })
         .expect("Cryptic Coat should have an enters trigger");
     let effects = triggered.effects.flattened_default_effects();
+
+    fn cloaked_tag(effect: &crate::effect::Effect) -> Option<crate::TagKey> {
+        if let Some(tagged) = effect.downcast_ref::<crate::effects::TaggedEffect>()
+            && tagged
+                .effect
+                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()
+                .is_some_and(|cloak| cloak.cloak)
+        {
+            return Some(tagged.tag.clone());
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = cloaked_tag(child);
+            }
+        });
+        found
+    }
+
     let cloaked_tag = effects
         .iter()
-        .find_map(|effect| {
-            let tagged = effect.downcast_ref::<crate::effects::TaggedEffect>()?;
-            let cloak = tagged
-                .effect
-                .downcast_ref::<crate::effects::ManifestTopCardOfLibraryEffect>()?;
-            cloak.cloak.then(|| tagged.tag.clone())
-        })
+        .find_map(|effect| cloaked_tag(effect))
         .expect("cloak should export the cloaked permanent under a tag");
-    let attach = effects
+
+    fn attachment_specs(effect: &crate::effect::Effect) -> Option<(ChooseSpec, ChooseSpec)> {
+        if let Some(attach) = effect.downcast_ref::<crate::effects::AttachObjectsEffect>() {
+            return Some((attach.objects.clone(), attach.target.clone()));
+        }
+
+        let mut found = None;
+        effect.visit_child_effects(&mut |child| {
+            if found.is_none() {
+                found = attachment_specs(child);
+            }
+        });
+        found
+    }
+
+    let (attach_objects, attach_target) = effects
         .iter()
-        .find_map(|effect| effect.downcast_ref::<crate::effects::AttachObjectsEffect>())
+        .find_map(|effect| attachment_specs(effect))
         .expect("Cryptic Coat should attach itself after cloaking");
-    assert_eq!(attach.objects, ChooseSpec::Source);
-    assert_eq!(attach.target, ChooseSpec::Tagged(cloaked_tag));
+    assert_eq!(attach_objects, ChooseSpec::Source);
+    assert_eq!(attach_target, ChooseSpec::Tagged(cloaked_tag));
 }
 
 #[cfg(ironsmith_runtime_parser_tests)]
@@ -2915,7 +2944,10 @@ pub(super) fn parse_oracle_dust_animus_strictly_parses_and_renders_conditional_c
 
     let debug = format!("{:?}", def.abilities);
     assert!(
-        debug.matches("EnterWithCountersIfCondition").count() >= 2
+        debug
+            .matches("StaticAbility(StaticAbilityModelInterpreter { id: Some(EnterWithCounters)")
+            .count()
+            >= 2
             && debug.contains("PlusOnePlusOne")
             && debug.contains("Lifelink")
             && debug.contains("untapped: true"),

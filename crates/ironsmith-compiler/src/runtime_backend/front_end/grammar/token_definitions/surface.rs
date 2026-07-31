@@ -558,7 +558,13 @@ pub(crate) fn parse_token_definition_shape_tokens(
     }
 
     let subtypes = creature_subtypes(&words);
-    let subtype_fallback = subtypes.first().map(|subtype| format!("{subtype:?}"));
+    let subtype_fallback = (!subtypes.is_empty()).then(|| {
+        subtypes
+            .iter()
+            .map(|subtype| format!("{subtype:?}"))
+            .collect::<Vec<_>>()
+            .join(" ")
+    });
     // Named legendary token syntax can put the name before the descriptive
     // article ("Zabu, a legendary ... token") rather than after `named`.
     // Reuse the same typed leading-name parse that chooses the token's runtime
@@ -665,6 +671,7 @@ mod tests {
             vec![CardType::Artifact, CardType::Creature]
         );
         assert_eq!(creature.subtypes, vec![Subtype::Zombie, Subtype::Employee]);
+        assert_eq!(creature.name, "Zombie Employee");
         assert_eq!(creature.colors, ColorSet::BLACK);
         assert_eq!(creature.keywords, vec![TokenKeywordShape::Flying]);
     }

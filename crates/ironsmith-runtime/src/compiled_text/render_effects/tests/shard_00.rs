@@ -2068,6 +2068,124 @@ pub(super) fn repeat_effects_uses_typed_for_each_count_surfaces() {
 }
 
 #[test]
+pub(super) fn disjoint_zone_count_union_preserves_repeated_each_surface() {
+    let suspended = ObjectFilter::default()
+        .in_zone(Zone::Exile)
+        .owned_by(PlayerFilter::You)
+        .with_alternative_cast(crate::filter::AlternativeCastKind::Suspend);
+    let timed_permanent = ObjectFilter::default()
+        .in_zone(Zone::Battlefield)
+        .you_control()
+        .other()
+        .with_counter_type(CounterType::Time);
+    let mut union = ObjectFilter::default();
+    union.any_of = vec![suspended, timed_permanent];
+    let count = Value::Count(union).with_surface_hint(ValueSurfaceHint::ForEach);
+
+    assert_eq!(
+        describe_create_for_each_count(&count).as_deref(),
+        Some(
+            "suspended card you own and each other permanent you control with a time counter on it"
+        )
+    );
+}
+
+#[test]
+pub(super) fn same_zone_count_union_does_not_invent_repeated_each_surface() {
+    let mut union = ObjectFilter::default();
+    union.any_of = vec![
+        ObjectFilter::artifact().in_zone(Zone::Battlefield),
+        ObjectFilter::enchantment().in_zone(Zone::Battlefield),
+    ];
+    let count = Value::Count(union).with_surface_hint(ValueSurfaceHint::ForEach);
+
+    let rendered = describe_create_for_each_count(&count).expect("typed count surface");
+    assert!(!rendered.contains(" and each "), "{rendered}");
+}
+
+#[test]
+pub(super) fn consult_match_counter_basis_precedes_target_fallback() {
+    let consult_match =
+        ChooseSpec::Tagged(TagKey::from("__sentence_helper_consult_match_l0_s0_e0"));
+    let target_creature = ChooseSpec::target(ChooseSpec::Object(ObjectFilter::creature()));
+
+    assert_eq!(
+        describe_dynamic_counter_basis(&consult_match, "mana value"),
+        "the mana value of that card"
+    );
+    assert_eq!(
+        describe_dynamic_counter_basis(&target_creature, "mana value"),
+        "that creature's mana value"
+    );
+}
+
+fn delirium_countered_spell_search_conditional(
+    search_owner: PlayerFilter,
+) -> crate::effects::ConditionalEffect {
+    let countered = TagKey::from("countered_0");
+    let searched = TagKey::from("searched_multi_zone");
+    let mut filter = ObjectFilter::default().owned_by(search_owner.clone());
+    filter.tagged_constraints.push(TaggedObjectConstraint {
+        tag: countered,
+        relation: TaggedOpbjectRelation::SameNameAsTagged,
+    });
+    let choose = Effect::new(
+        crate::effects::ChooseObjectsEffect::new(
+            filter,
+            ChoiceCount::any_number(),
+            PlayerFilter::You,
+            searched.clone(),
+        )
+        .in_zones(vec![Zone::Graveyard, Zone::Hand, Zone::Library])
+        .as_optional_search(),
+    );
+    let exile = Effect::new(crate::effects::ForEachTaggedEffect::new(
+        searched.clone(),
+        vec![Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Tagged(searched),
+            Zone::Exile,
+            false,
+        ))],
+    ));
+    let shuffle = Effect::new(crate::effects::ShuffleLibraryEffect::new(search_owner));
+    let sequence = Effect::new(crate::effects::SequenceEffect::comma_then(vec![
+        choose, exile, shuffle,
+    ]));
+
+    crate::effects::ConditionalEffect::new(
+        Condition::PlayerHasCardTypesInGraveyardOrMore {
+            player: PlayerFilter::You,
+            count: 4,
+        },
+        vec![sequence],
+        vec![],
+    )
+}
+
+#[test]
+pub(super) fn delirium_same_name_search_unwraps_coordinated_branch_sequence() {
+    let conditional = delirium_countered_spell_search_conditional(PlayerFilter::ControllerOf(
+        crate::filter::ObjectRef::Target,
+    ));
+
+    assert_eq!(
+        describe_delirium_countered_spell_same_name_search(&conditional).as_deref(),
+        Some(concat!(
+            "Delirium — If there are four or more card types among cards in your graveyard, ",
+            "search the graveyard, hand, and library of that spell's controller for any number ",
+            "of cards with the same name as that spell, exile those cards, then that player shuffles"
+        ))
+    );
+}
+
+#[test]
+pub(super) fn delirium_countered_spell_search_rejects_unrelated_search_owner() {
+    let conditional = delirium_countered_spell_search_conditional(PlayerFilter::You);
+
+    assert!(describe_delirium_countered_spell_same_name_search(&conditional).is_none());
+}
+
+#[test]
 pub(super) fn fixed_draw_then_equal_to_named_graveyard_count_keeps_sequence_and_scope() {
     let your_graveyard_count = Value::Count(
         ObjectFilter::default()
@@ -2846,7 +2964,7 @@ pub(super) fn describe_effect_list_compacts_inline_each_player_search_then_shuff
 
     assert_eq!(
         describe_effect_list(&effects),
-        "Each player searches their library for up to 2 basic land cards, puts them onto the battlefield, then shuffles"
+        "Each player searches their library for up to two basic land cards, puts them onto the battlefield, then shuffles"
     );
 }
 
@@ -3382,10 +3500,57 @@ pub(super) fn each_player_upkeep_contextualizes_active_player_antecedents_only()
     assert_eq!(
         rewrite_each_upkeep_active_player_reference(
             &each_upkeep,
+            "Tap an untapped artifact, creature, or land that player controls for each fade counter on this artifact"
+                .to_string(),
+        ),
+        "That player taps an untapped artifact, creature, or land they control for each fade counter on this artifact"
+    );
+    assert_eq!(
+        rewrite_each_upkeep_active_player_reference(
+            &each_upkeep,
             "The active player may pay 2 life. If that player doesn't, that player returns a permanent they control"
                 .to_string(),
         ),
         "That player may pay 2 life. If they don't, they return a permanent they control"
+    );
+    assert_eq!(
+        rewrite_each_upkeep_active_player_reference(
+            &each_upkeep,
+            "that player returns a permanent that player controls to its owner's hand unless they pay 2 life"
+                .to_string(),
+        ),
+        "that player returns a permanent they control to its owner's hand unless they pay 2 life"
+    );
+
+    let each_upkeep_damage = |amount| crate::ability::TriggeredAbility {
+        trigger: crate::triggers::Trigger::beginning_of_upkeep(PlayerFilter::Any),
+        effects: crate::resolution::ResolutionProgram::from_effects(vec![Effect::new(
+            crate::effects::DealDamageEffect::new(
+                amount,
+                ChooseSpec::Player(PlayerFilter::IteratedPlayer),
+            ),
+        )]),
+        choices: Vec::new(),
+        intervening_if: None,
+        presentation_label: None,
+    };
+    let that_player_damage = each_upkeep_damage(Value::Fixed(2));
+    assert_eq!(
+        rewrite_each_upkeep_active_player_reference(
+            &that_player_damage,
+            "this enchantment deals 2 damage to that player".to_string(),
+        ),
+        "this enchantment deals 2 damage to that player"
+    );
+    let them_damage = each_upkeep_damage(
+        Value::Fixed(1).with_surface_hint(ironsmith_core::ValueSurfaceHint::DamageRecipientPronoun),
+    );
+    assert_eq!(
+        rewrite_each_upkeep_active_player_reference(
+            &them_damage,
+            "this enchantment deals 1 damage to that player".to_string(),
+        ),
+        "this enchantment deals 1 damage to them"
     );
 
     let your_upkeep = triggered(PlayerFilter::You);
@@ -3511,7 +3676,7 @@ pub(super) fn unowned_count_damage_keeps_where_x_surface() {
 
     assert_eq!(
         describe_effect(&effect),
-        "Deal X damage to that player, where X is the number of lands"
+        "Deal X damage to that player, where X is the number of lands on the battlefield"
     );
 }
 
@@ -4550,7 +4715,9 @@ pub(super) fn each_player_exile_sacrifice_return_uses_exact_exiled_result() {
     let exiled_filter = ObjectFilter::artifact()
         .in_zone(Zone::Graveyard)
         .owned_by(PlayerFilter::IteratedPlayer);
-    let exile = Effect::new(crate::effects::ExileEffect::all(exiled_filter)).tag(tag.clone());
+    let exile = Effect::new(crate::effects::ExileEffect::all(exiled_filter))
+        .tag(tag.clone())
+        .tag(TagKey::from("implicit_exile_0"));
 
     let sacrificed_filter = ObjectFilter::artifact()
         .in_zone(Zone::Battlefield)
@@ -4567,11 +4734,102 @@ pub(super) fn each_player_exile_sacrifice_return_uses_exact_exiled_result() {
         PlayerFilter::IteratedPlayer,
     ))
     .tag(TagKey::from("moved_1"));
-    let per_player = Effect::for_players(PlayerFilter::Any, vec![exile, sacrifice, returned]);
+    let unlinked_return = Effect::new(crate::effects::PutOntoBattlefieldEffect::new(
+        ChooseSpec::Tagged(TagKey::from("unrelated_exile_result")),
+        false,
+        PlayerFilter::IteratedPlayer,
+    ));
+    let unlinked = Effect::for_players(
+        PlayerFilter::Any,
+        vec![exile.clone(), sacrifice.clone(), unlinked_return],
+    );
+    assert_ne!(
+        describe_effect_list(&[unlinked]),
+        "Each player exiles all artifact cards from their graveyard, then sacrifices all artifacts they control, then puts all cards they exiled this way onto the battlefield",
+        "an unrelated return tag must not claim the per-player exile result",
+    );
+
+    let per_player = Effect::for_players(
+        PlayerFilter::Any,
+        vec![Effect::new(crate::effects::SequenceEffect::comma_then(
+            vec![exile, sacrifice, returned],
+        ))],
+    );
 
     assert_eq!(
         describe_effect_list(&[per_player]),
         "Each player exiles all artifact cards from their graveyard, then sacrifices all artifacts they control, then puts all cards they exiled this way onto the battlefield"
+    );
+}
+
+#[test]
+pub(super) fn warp_world_surface_requires_a_type_union_not_an_all_types_intersection() {
+    fn warp_world_shape(match_filter: ObjectFilter) -> Effect {
+        let revealed = TagKey::from("__each_player_revealed_this_way");
+        let shuffled = ObjectFilter::permanent_card()
+            .in_zone(Zone::Battlefield)
+            .owned_by(PlayerFilter::IteratedPlayer);
+        let shuffle = Effect::with_id(
+            41,
+            Effect::new(crate::effects::ShuffleObjectsIntoLibraryEffect::new(
+                ChooseSpec::All(shuffled),
+                PlayerFilter::IteratedPlayer,
+            )),
+        );
+        let reveal = Effect::new(crate::effects::LookAtTopCardsEffect::revealing(
+            PlayerFilter::IteratedPlayer,
+            Value::EffectMetric {
+                effect_id: crate::effect::EffectId(41),
+                source: crate::effect::EffectMetricSource::Outcome,
+                metric: crate::effect::EffectMetric::Count,
+            },
+            revealed.clone(),
+        ));
+        let put_permanent = Effect::new(
+            crate::effects::MoveToZoneEffect::new(ChooseSpec::Iterated, Zone::Battlefield, false)
+                .under_owner_control(),
+        );
+        let put_back = Effect::new(crate::effects::MoveToZoneEffect::new(
+            ChooseSpec::Iterated,
+            Zone::Library,
+            false,
+        ));
+        let distribute = Effect::new(crate::effects::ForEachTaggedEffect::new(
+            revealed,
+            vec![Effect::conditional(
+                Condition::TaggedObjectMatches(TagKey::from("__it__"), match_filter),
+                vec![put_permanent],
+                vec![put_back],
+            )],
+        ));
+        Effect::for_players(PlayerFilter::Any, vec![shuffle, reveal, distribute])
+    }
+
+    let expected = "Each player shuffles all permanents they own into their library, then reveals that many cards from the top of their library. Each player puts all artifact, creature, and land cards revealed this way onto the battlefield, then does the same for enchantment cards, then puts all cards revealed this way that weren't put onto the battlefield on the bottom of their library";
+    let union = ObjectFilter {
+        card_types: vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Land,
+            CardType::Enchantment,
+        ],
+        ..ObjectFilter::default()
+    };
+    assert_eq!(describe_effect(&warp_world_shape(union)), expected);
+
+    let intersection = ObjectFilter {
+        all_card_types: vec![
+            CardType::Artifact,
+            CardType::Creature,
+            CardType::Land,
+            CardType::Enchantment,
+        ],
+        ..ObjectFilter::default()
+    };
+    assert_ne!(
+        describe_effect(&warp_world_shape(intersection)),
+        expected,
+        "a genuine all-types constraint must not acquire Warp World's staged union surface",
     );
 }
 
@@ -5891,6 +6149,59 @@ pub(super) fn iterated_shared_card_type_choice_keeps_controller_before_relation(
 }
 
 #[test]
+pub(super) fn iterated_choice_deduplicates_only_identical_tag_alias_surfaces() {
+    let chosen_tag = TagKey::from("__it__");
+    let mut filter = ObjectFilter::permanent()
+        .controlled_by(PlayerFilter::IteratedPlayer)
+        .in_zone(Zone::Battlefield)
+        .match_tagged(
+            TagKey::from("sacrificed_0"),
+            TaggedOpbjectRelation::SharesCardType,
+        );
+    // The cost and result aliases identify the same sacrificed object but
+    // must remain distinct in the executable filter.
+    filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from("sacrifice_cost_0"),
+            relation: TaggedOpbjectRelation::SharesCardType,
+        });
+    // A genuinely different relation must not be removed with the duplicate
+    // card-type surface.
+    filter
+        .tagged_constraints
+        .push(crate::filter::TaggedObjectConstraint {
+            tag: TagKey::from("sacrificed_0"),
+            relation: TaggedOpbjectRelation::SharesColorWithTagged,
+        });
+    let choose = crate::effects::ChooseObjectsEffect::new(
+        filter,
+        ChoiceCount::exactly(1),
+        PlayerFilter::IteratedPlayer,
+        chosen_tag.clone(),
+    )
+    .in_zone(Zone::Battlefield);
+    assert_eq!(choose.filter.tagged_constraints.len(), 3);
+
+    let sacrifice = Effect::new(crate::effects::SacrificeTargetEffect::new(
+        ChooseSpec::Tagged(chosen_tag),
+    ));
+    let for_players = crate::effects::ForPlayersEffect::new(
+        PlayerFilter::Opponent,
+        vec![Effect::new(crate::effects::SequenceEffect::coordinated(
+            vec![Effect::new(choose), sacrifice],
+        ))],
+    );
+
+    assert_eq!(
+        describe_for_players_choose_then_sacrifice(&for_players).as_deref(),
+        Some(
+            "Each opponent sacrifices a permanent of their choice that shares a card type with the sacrificed permanent that shares a color with it"
+        )
+    );
+}
+
+#[test]
 pub(super) fn iterated_shared_card_type_player_sacrifice_compacts_to_direct_choice() {
     let chosen_tag = TagKey::from("__sentence_helper_sacrificed_l0_s0_e0");
     let choose = crate::effects::ChooseObjectsEffect::new(
@@ -6032,11 +6343,18 @@ pub(super) fn qualified_counted_choice_complement_keeps_one_player_relative_clau
         vec![choose, sacrifice],
         Vec::new(),
     ));
-    let effects = vec![Effect::for_players(PlayerFilter::Any, vec![conditional])];
+    let for_players = Effect::for_players(PlayerFilter::Any, vec![conditional]);
+    let expected = "Each player who controls six or more lands chooses five lands they control and sacrifices the rest";
 
     assert_eq!(
-        describe_effect_list(&effects),
-        "Each player who controls six or more lands chooses five lands they control and sacrifices the rest"
+        describe_effect(&for_players),
+        expected,
+        "single-effect dispatch must preserve the coordinated qualified action"
+    );
+    assert_eq!(
+        describe_effect_list(&[for_players]),
+        expected,
+        "effect-list dispatch must preserve the coordinated qualified action"
     );
 }
 

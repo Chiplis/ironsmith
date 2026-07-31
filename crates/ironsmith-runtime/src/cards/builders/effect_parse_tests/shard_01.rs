@@ -1186,10 +1186,10 @@ fn parse_choose_land_of_each_basic_land_type_then_destroy() {
         })
         .expect("expected triggered ability");
     let effects = &triggered.effects.segments[0].default_effects;
-    let choices = effects
-        .iter()
-        .filter_map(|effect| effect.downcast_ref::<crate::effects::ChooseObjectsEffect>())
-        .collect::<Vec<_>>();
+    let mut choices = Vec::new();
+    visit_nested_effects::<crate::effects::ChooseObjectsEffect>(effects, |choice| {
+        choices.push(choice.filter.clone());
+    });
     assert_eq!(choices.len(), 5, "expected five basic-land-type choices");
     for subtype in [
         Subtype::Plains,
@@ -1199,10 +1199,8 @@ fn parse_choose_land_of_each_basic_land_type_then_destroy() {
         Subtype::Forest,
     ] {
         assert!(
-            choices
-                .iter()
-                .any(|choose| choose.filter.subtypes == vec![subtype]
-                    && choose.filter.controller == Some(PlayerFilter::Any)),
+            choices.iter().any(|filter| filter.subtypes == vec![subtype]
+                && filter.controller == Some(PlayerFilter::Any)),
             "expected unrestricted land choice for {subtype:?}, got {choices:#?}"
         );
     }
@@ -1360,7 +1358,7 @@ fn parse_supports_most_common_color_constraint_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_rejects_power_vs_count_conditional_clause() {
+fn parse_power_vs_count_conditional_clause() {
     let result = CardDefinitionBuilder::new(CardId::new(), "Unified Strike Variant")
             .parse_text(
                 "Exile target attacking creature if its power is less than or equal to the number of Soldiers on the battlefield.",
@@ -1369,7 +1367,7 @@ fn parse_rejects_power_vs_count_conditional_clause() {
     let debug = format!("{def:#?}");
     assert!(
         debug.contains("ConditionalEffect")
-            && debug.contains("left: SourcePower")
+            && debug.contains("left: PowerOf")
             && debug.contains("right: Count")
             && debug.contains("Soldier"),
         "expected a typed power-vs-count condition, got {debug}"
@@ -2508,14 +2506,19 @@ fn parse_rejects_same_name_as_another_in_hand_clause() {
 
 #[cfg(ironsmith_runtime_parser_tests)]
 #[test]
-fn parse_rejects_for_each_mana_from_spent_clause() {
-    let result = CardDefinitionBuilder::new(CardId::new(), "Cataclysmic Prospecting Variant")
+fn parse_for_each_mana_from_spent_clause() {
+    let def = CardDefinitionBuilder::new(CardId::new(), "Cataclysmic Prospecting Variant")
         .parse_text(
             "For each mana from a Desert spent to cast this spell, create a tapped Treasure token.",
-        );
+        )
+        .expect("spent-mana repeat should parse structurally");
+    let debug = format!("{:#?}", def.spell_effect);
     assert!(
-        result.is_err(),
-        "unsupported for-each-mana-from-spent clause should fail parse instead of iterating over spells"
+        debug.contains("RepeatEffectsEffect")
+            && debug.contains("ManaFromSourceSpentToCastThisSpell")
+            && debug.contains("Desert")
+            && debug.contains("CreateTokenEffect"),
+        "expected a typed spent-mana repeat count and token payload, got {debug}"
     );
 }
 
@@ -3077,7 +3080,7 @@ fn parse_detain_each_nonland_permanent_from_text() {
     let rendered = crate::compiled_text::unprocessed_compiled_lines(&def).join(" ");
     assert!(
         rendered.contains(
-            "Detain all nonland permanents with mana value 4 or less your opponents control"
+            "Detain all nonland permanents your opponents control with mana value 4 or less."
         ),
         "expected detain each rendering, got {rendered}"
     );
