@@ -400,11 +400,31 @@ pub(super) fn parse_static_line_cst(
     {
         return Ok(None);
     }
-    let make_static = |chosen_option: Option<ChosenOptionContext>| StaticLineCst {
-        info: line.info.clone(),
-        parse_tokens: parse_tokens.clone(),
-        chosen_option,
-        parsed: None,
+    // Preprocessing strips an ability-word label ("Threshold — ") from
+    // line.tokens; recover it from the source tokens so conditional statics
+    // keep their authored label (Mystic Visionary family).
+    let presentation = super::activated_presentation_from_preprocessed_line(line);
+    let make_static = |chosen_option: Option<ChosenOptionContext>| {
+        let mut static_line = StaticLineCst {
+            info: line.info.clone(),
+            parse_tokens: parse_tokens.clone(),
+            chosen_option,
+            parsed: None,
+        };
+        if static_line
+            .info
+            .semantic_facts
+            .static_ability
+            .presentation_label
+            .is_none()
+        {
+            static_line
+                .info
+                .semantic_facts
+                .static_ability
+                .presentation_label = presentation.clone();
+        }
+        static_line
     };
     let lexed = &parse_tokens;
     if super::super::families::keyword_static::parse_double_counters_replacement_line(lexed)?

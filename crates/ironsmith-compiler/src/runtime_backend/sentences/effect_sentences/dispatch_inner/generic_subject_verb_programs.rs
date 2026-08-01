@@ -2158,12 +2158,26 @@ pub(super) fn parse_generic_consult_reveal_until_battlefield_bottom_subject_verb
         battlefield_tapped,
         None,
     ));
+    // Honor the authored remainder wording: bare "the rest" (Kethek) vs
+    // "the rest of the revealed cards" (Fathom Trawl).
+    let followup_words = crate::runtime_backend::token_word_refs(&followup_tokens);
+    let bare_rest = followup_words
+        .windows(2)
+        .any(|window| window == ["the", "rest"])
+        && !followup_words
+            .windows(3)
+            .any(|window| window == ["rest", "of", "the"]);
     effects.push(
-        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library(
+        EffectAst::subject_verb_put_tagged_remainder_on_bottom_of_library_with_surface(
             parts.all_tag,
             Some(parts.match_tag),
             order,
             parts.player,
+            if bare_rest {
+                ironsmith_core::LibraryRemainderSurface::RestBare
+            } else {
+                ironsmith_core::LibraryRemainderSurface::Rest
+            },
         ),
     );
     Ok(Some(effects))

@@ -1783,6 +1783,30 @@ pub(crate) fn describe_choose_selection(choose: &crate::effects::ChooseObjectsEf
         return format!("the top {noun}");
     }
 
+    // A bare choice from an earlier revealed/looked set back-references it
+    // ("You choose two of those cards" — Bamboozle), not the tag surface
+    // ("two permanents revealed this way").
+    if let Some(exact) = choose_exact_count(choose)
+        && exact >= 1
+        && let [constraint] = choose.filter.tagged_constraints.as_slice()
+        && constraint.relation == crate::filter::TaggedOpbjectRelation::IsTaggedObject
+        && (crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "revealed")
+            || crate::cards::is_sentence_helper_tag(constraint.tag.as_str(), "looked"))
+        && {
+            let mut bare = choose.filter.clone();
+            bare.tagged_constraints.clear();
+            bare.zone = None;
+            bare.owner = None;
+            bare.controller = None;
+            bare.union_surface = Default::default();
+            bare.set_explicit_card_noun(false);
+            bare == crate::target::ObjectFilter::default()
+        }
+    {
+        let count_text = number_word(exact as i32).unwrap_or_else(|| exact.to_string());
+        return format!("{count_text} of those cards");
+    }
+
     // Source-object choices are an implementation detail used to make costs
     // executable. Oracle refers to that object demonstratively ("this"), not
     // as an ordinary filtered selection such as "a this you control".
@@ -3378,6 +3402,36 @@ pub(crate) fn describe_choose_then_move_to_hand(
     Some(format!(
         "{chooser} {choose_verb} {chosen} and {put_verb} {moved_ref} into its owner's hand"
     ))
+}
+
+pub(crate) fn describe_choose_then_move_to_graveyard(
+    choose: &crate::effects::ChooseObjectsEffect,
+    move_to_zone: &crate::effects::MoveToZoneEffect,
+) -> Option<String> {
+    if move_to_zone.zone != Zone::Graveyard
+        || !matches!(
+            move_to_zone.target.base(),
+            ChooseSpec::Tagged(tag) if tag == &choose.tag
+        )
+    {
+        return None;
+    }
+
+    let chooser = describe_player_filter(&choose.chooser);
+    let chosen = describe_choose_selection(choose);
+    let move_text = describe_effect(&Effect::new(move_to_zone.clone()));
+    if chooser == "you" {
+        let action = move_text
+            .strip_prefix("You ")
+            .or_else(|| move_text.strip_prefix("you "))
+            .unwrap_or(&move_text);
+        return Some(format!(
+            "You choose {chosen} and {}",
+            lowercase_first(action)
+        ));
+    }
+
+    None
 }
 
 pub(crate) fn describe_choose_then_move_to_library(

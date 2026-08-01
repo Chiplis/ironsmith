@@ -677,7 +677,14 @@ pub(crate) fn parse_reveal(
         )));
     }
 
-    let player = counter_grammar::parse_top_library_owner(tokens).unwrap_or(player);
+    let player = match counter_grammar::parse_top_library_owner(tokens) {
+        // "of their library" / "of that player's library" back-references the
+        // clause's own explicit subject; keep it ("Target player reveals the
+        // top four cards of their library" — Bamboozle).
+        Some(PlayerAst::That) if !matches!(player, PlayerAst::Implicit) => player,
+        Some(owner) => owner,
+        None => player,
+    };
 
     if counter_grammar::parse_prefix(&words, THAT_MANY_TOP_CARDS_PREFIXES).is_some() {
         return Ok(EffectAst::subject_verb_reveal_top_cards(

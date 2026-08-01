@@ -126,6 +126,19 @@ fn prefix_attraction_visit_surface(def: &CardDefinition, mut lines: Vec<String>)
 
 /// Render a single ability using the same surface renderer as compiled oracle text.
 pub fn ability_surface_text(ability: &Ability) -> String {
+    // An authored ability-word label retained on a conditional static
+    // ("Threshold — This creature has flying as long as ...") prefixes the
+    // rendered body regardless of the payload shape.
+    if let AbilityKind::Static(static_ability) = &ability.kind
+        && let Some(model) = static_ability.compiled_model()
+        && let Some(label) = model.label.strip_prefix(
+            ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX,
+        )
+    {
+        let label = label.to_string();
+        let body = self::render_effects::describe_inline_ability(ability);
+        return format!("{label} — {body}");
+    }
     if let Some(keyword) = self::render_effects::describe_keyword_ability(ability) {
         return keyword;
     }

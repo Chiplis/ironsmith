@@ -1998,6 +1998,9 @@ pub(crate) fn describe_choose_spec(spec: &ChooseSpec) -> String {
             if tag.as_str() == crate::tag::SOURCE_EXILED_TAG {
                 return "the exiled card".to_string();
             }
+            if tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG {
+                return "the exiled card".to_string();
+            }
             if tag.as_str() == "rest" {
                 return "the rest".to_string();
             }
@@ -5316,6 +5319,10 @@ pub(crate) fn describe_value(value: &Value) -> String {
                 "that card's mana value".to_string()
             } else if let ChooseSpec::Tagged(tag) = spec.base()
                 && tag.as_str().starts_with("exile_cost_")
+            {
+                "the exiled card's mana value".to_string()
+            } else if let ChooseSpec::Tagged(tag) = spec.base()
+                && tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG
             {
                 "the exiled card's mana value".to_string()
             } else {

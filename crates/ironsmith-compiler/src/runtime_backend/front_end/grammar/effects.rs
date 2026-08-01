@@ -591,8 +591,12 @@ pub(crate) fn prepare_cant_sentence_restriction_clause_lexed(
     }
     if clause_tokens
         .first()
-        .is_some_and(|token| token_is_any_word(token, &["if"]))
+        .is_some_and(|token| token_is_any_word(token, &["if", "when", "whenever"]))
     {
+        // A leading result/trigger intro owns the sentence ("When you discard
+        // a creature card this way, target creature you control can't be
+        // blocked this turn." — Evie Frye); the bare restriction rule must
+        // not reinterpret the intro words as a subject filter.
         return Ok(None);
     }
 

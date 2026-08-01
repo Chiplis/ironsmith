@@ -769,7 +769,23 @@ fn pre_rule_copy_and_cast_followups(
     }
 
     if let Some(spec) = parse_may_cast_it_sentence(sentence_tokens) {
-        state.effects.push(build_may_cast_tagged_effect(&spec));
+        let mut cast = build_may_cast_tagged_effect(&spec);
+        if spec.as_copy
+            && let Some(delayed_effects) = state
+                .effects
+                .last_mut()
+                .and_then(trailing_delayed_trigger_effects_mut)
+        {
+            if delayed_effects
+                .iter()
+                .any(effect_references_prior_exiled_card)
+            {
+                bind_cast_tag_to_prior_exiled_card(&mut cast);
+            }
+            delayed_effects.push(cast);
+        } else {
+            state.effects.push(cast);
+        }
         return Ok(Some(PreParseFollowupResult::Handled {
             consumed_sentences: 1,
             route: None,
@@ -2415,6 +2431,113 @@ fn post_rule_reflexive_object_followup(
     }))
 }
 
+fn effect_references_prior_exiled_card(effect: &EffectAst) -> bool {
+    if matches!(
+        effect,
+        EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::CopySpell {
+                target: TargetAst::Tagged(tag, _),
+                ..
+            },
+            ..
+        }) if tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG
+    ) {
+        return true;
+    }
+
+    let mut found = false;
+    for_each_nested_effects(effect, true, |nested| {
+        if !found {
+            found = nested.iter().any(effect_references_prior_exiled_card);
+        }
+    });
+    found
+}
+
+fn bind_cast_tag_to_prior_exiled_card(effect: &mut EffectAst) {
+    if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+        action:
+            SubjectVerbActionAst::CastTagged {
+                tag, as_copy: true, ..
+            },
+        ..
+    }) = effect
+        && tag.as_str() == IT_TAG
+    {
+        *tag = TagKey::from(crate::tag::PRIOR_EXILED_CARD_TAG);
+        return;
+    }
+    for_each_nested_effects_mut(effect, true, |nested| {
+        for effect in nested {
+            bind_cast_tag_to_prior_exiled_card(effect);
+        }
+    });
+}
+
+fn tag_latest_prior_exile(effects: &mut [EffectAst]) -> bool {
+    let Some(exile_idx) = effects.iter().rposition(|effect| {
+        matches!(
+            effect,
+            EffectAst::SubjectVerb(SubjectVerbEffectAst {
+                action: SubjectVerbActionAst::Exile { .. },
+                ..
+            })
+        )
+    }) else {
+        return false;
+    };
+    let prior = effects[exile_idx].clone();
+    effects[exile_idx] = EffectAst::TagAffected {
+        effect: Box::new(prior),
+        tag: TagKey::from(crate::tag::PRIOR_EXILED_CARD_TAG),
+    };
+    for effect in &mut effects[exile_idx + 1..] {
+        if let EffectAst::SubjectVerb(SubjectVerbEffectAst {
+            action: SubjectVerbActionAst::PumpAll { power, .. },
+            ..
+        }) = effect
+        {
+            bind_prior_exiled_mana_value(power);
+        }
+    }
+    true
+}
+
+fn bind_prior_exiled_mana_value(value: &mut Value) {
+    match value {
+        Value::SurfaceHinted { value, .. } => bind_prior_exiled_mana_value(value),
+        Value::ManaValueOf(spec) if matches!(spec.base(), ChooseSpec::Tagged(tag) if tag.as_str() == IT_TAG) =>
+        {
+            **spec = ChooseSpec::Tagged(TagKey::from(crate::tag::PRIOR_EXILED_CARD_TAG));
+        }
+        _ => {}
+    }
+}
+
+/// Keep an authored "the exiled card" reference tied to the exact object
+/// moved by the latest prior exile, even when the reference occurs inside a
+/// delayed trigger whose ordinary `it` antecedent is the triggering object.
+fn post_rule_prior_exiled_card_reference(
+    state: &mut SentenceDispatchState<'_>,
+    _sentences: &[SentenceInput],
+    _sentence_idx: usize,
+    _sentence_tokens: &[OwnedLexToken],
+    sentence_effects: &mut Vec<EffectAst>,
+) -> Result<Option<PostParseFollowupResult>, CardTextError> {
+    if !sentence_effects
+        .iter()
+        .any(effect_references_prior_exiled_card)
+    {
+        return Ok(None);
+    }
+    if !tag_latest_prior_exile(&mut state.effects) {
+        return Err(CardTextError::InvariantViolation(
+            "an explicit exiled-card reference has no prior exile effect".to_string(),
+        ));
+    }
+    Ok(None)
+}
+
 fn post_rule_delayed_trigger_result_followup(
     state: &mut SentenceDispatchState<'_>,
     _sentences: &[SentenceInput],
@@ -2651,6 +2774,12 @@ const POST_PARSE_SUBJECT_VERB_FOLLOWUP_RULES: &[SubjectVerbPostParseRuleDef] = &
         run: post_rule_hand_reveal_choice_discard_followup,
     },
     SubjectVerbPostParseRuleDef {
+        id: "prior-exiled-card-reference",
+        priority: 26,
+        heads: &[],
+        run: post_rule_prior_exiled_card_reference,
+    },
+    SubjectVerbPostParseRuleDef {
         id: "reflexive-object-followup",
         priority: 27,
         heads: &[],
@@ -2738,6 +2867,52 @@ mod copy_cast_followup_tests {
     use super::*;
 
     #[test]
+    fn delayed_copy_of_prior_exiled_card_keeps_cast_inside_trigger() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Exile target instant or sorcery card from your graveyard. Creatures you control get +X/+0 until end of turn, where X is that card's mana value. Whenever a creature you control deals combat damage to a player this turn, copy the exiled card. You may cast the copy without paying its mana cost.",
+            0,
+        )
+        .expect("Surge to Victory text should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("Surge to Victory text should parse");
+
+        assert_eq!(
+            parsed.len(),
+            3,
+            "cast follow-up escaped delayed trigger: {parsed:#?}"
+        );
+        let EffectAst::DelayedTriggerThisTurn { effects, .. } = &parsed[2] else {
+            panic!("expected delayed combat-damage trigger: {parsed:#?}");
+        };
+        assert!(
+            format!("{effects:#?}").contains("CastTagged"),
+            "copy cast should remain inside delayed trigger: {parsed:#?}"
+        );
+
+        let definition = crate::CardDefinitionBuilder::new(crate::CardId::new(), "Surge Shape")
+            .card_types(vec![crate::CardType::Sorcery])
+            .parse_text(
+                "Exile target instant or sorcery card from your graveyard. Creatures you control get +X/+0 until end of turn, where X is that card's mana value. Whenever a creature you control deals combat damage to a player this turn, copy the exiled card. You may cast the copy without paying its mana cost.",
+            )
+            .expect("Surge to Victory shape should compile");
+        let debug = format!("{definition:#?}");
+        let cast = debug
+            .split_once("CastTaggedEffect")
+            .map(|(_, tail)| &tail[..tail.len().min(500)])
+            .expect("delayed trigger should contain a tagged cast");
+        assert!(cast.contains(crate::tag::PRIOR_EXILED_CARD_TAG), "{debug}");
+        assert!(!cast.contains("triggering"), "{debug}");
+        let mana_value = debug
+            .split_once("ManaValueOf")
+            .map(|(_, tail)| &tail[..tail.len().min(500)])
+            .expect("pump should contain a mana-value reference");
+        assert!(
+            mana_value.contains(crate::tag::PRIOR_EXILED_CARD_TAG),
+            "pump should use the exiled card's mana value: {debug}"
+        );
+    }
+
+    #[test]
     fn immediate_exiled_card_cast_keeps_its_may_scope() {
         let lexed = crate::runtime_backend::lex_line("You may cast the exiled card.", 0)
             .expect("optional tagged cast should lex");
@@ -2781,6 +2956,24 @@ mod copy_cast_followup_tests {
             cast_debug.contains("without_paying_mana_cost: true"),
             "{debug}"
         );
+    }
+}
+
+#[cfg(test)]
+mod revealed_hand_actor_tests {
+    use super::*;
+
+    #[test]
+    fn dependent_exile_keeps_the_revealing_player_as_actor() {
+        let lexed = crate::runtime_backend::lex_line(
+            "Target opponent reveals X cards from their hand, where X is the number of Goblins you control. You choose one of those cards. That player exiles it.",
+            0,
+        )
+        .expect("dependent hand reveal should lex");
+        let parsed =
+            parse_effect_sentences_lexed(&lexed).expect("dependent hand reveal should parse");
+        let debug = format!("{parsed:#?}");
+        assert!(debug.contains("player: That"), "{debug}");
     }
 }
 

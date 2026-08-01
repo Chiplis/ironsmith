@@ -2853,9 +2853,29 @@ pub(super) fn compile_subject_verb_middle(
             require_change,
         } => {
             let refs = current_reference_env(ctx);
+            if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+                eprintln!(
+                    "retarget-lowering: bare_it={} source_antecedent={} last_tag={:?}",
+                    retarget_target_is_bare_it(target),
+                    refs.has_source_object_antecedent(),
+                    refs.known_last_object_tag()
+                );
+            }
             let (spec, mut choices) =
                 if retarget_target_is_bare_it(target) && refs.has_source_object_antecedent() {
-                    (ChooseSpec::Source, Vec::new())
+                    // A body sentence about the source can re-seed the object
+                    // antecedent ("this creature gets +2/+2 ... choose new
+                    // targets for that spell"), but a stack retarget inside a
+                    // trigger that provides a stack object still means the
+                    // TRIGGERING spell or ability, never the source permanent.
+                    if refs
+                        .known_last_object_tag()
+                        .is_some_and(|tag| tag.as_str() == "triggering")
+                    {
+                        (ChooseSpec::Tagged(crate::tag::TagKey::from("triggering")), Vec::new())
+                    } else {
+                        (ChooseSpec::Source, Vec::new())
+                    }
                 } else {
                     resolve_target_spec_with_choices(target, &refs)?
                 };

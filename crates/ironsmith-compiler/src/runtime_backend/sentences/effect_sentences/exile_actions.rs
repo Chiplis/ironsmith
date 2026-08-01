@@ -90,6 +90,15 @@ fn parse_exile_card_from_their_hand_or_permanent_they_control(
 
 pub(crate) use effect_grammar::ParsedExileOwnerPrefix as ParsedOwnerPrefix;
 
+fn with_exile_actor(mut effect: EffectAst, subject: Option<SubjectAst>) -> EffectAst {
+    if let Some(SubjectAst::Player(player)) = subject
+        && let EffectAst::SubjectVerb(subject_verb) = &mut effect
+    {
+        subject_verb.subject.player = player;
+    }
+    effect
+}
+
 fn strip_source_top_only_prefix(tokens: &[OwnedLexToken]) -> (&[OwnedLexToken], bool) {
     use winnow::Parser as _;
 
@@ -359,7 +368,7 @@ pub(crate) fn parse_exile(
         let plural_surface = cca_shapes::is_plural_tagged_object_reference(target_tokens);
         return Ok(EffectAst::TrailingIf {
             predicate: spec.predicate,
-            effects: vec![
+            effects: vec![with_exile_actor(
                 if until_source_leaves {
                     EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
                 } else {
@@ -367,7 +376,8 @@ pub(crate) fn parse_exile(
                         .with_source_top_only(source_top_only)
                 }
                 .with_move_to_zone_plural_surface_if(plural_surface),
-            ],
+                subject,
+            )],
         });
     } else if grammar::contains_word(tokens, "if") {
         return Err(CardTextError::ParseError(format!(
@@ -385,12 +395,15 @@ pub(crate) fn parse_exile(
     let mut target = parse_target_phrase(target_tokens)?;
     apply_exile_subject_hand_owner_context(&mut target, subject);
     let plural_surface = cca_shapes::is_plural_tagged_object_reference(target_tokens);
-    Ok(if until_source_leaves {
-        EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
-    } else {
-        EffectAst::subject_verb_exile(target, face_down).with_source_top_only(source_top_only)
-    }
-    .with_move_to_zone_plural_surface_if(plural_surface))
+    Ok(with_exile_actor(
+        if until_source_leaves {
+            EffectAst::subject_verb_exile_until_source_leaves(target, face_down)
+        } else {
+            EffectAst::subject_verb_exile(target, face_down).with_source_top_only(source_top_only)
+        }
+        .with_move_to_zone_plural_surface_if(plural_surface),
+        subject,
+    ))
 }
 
 fn parse_attached_object_exile_bundle(

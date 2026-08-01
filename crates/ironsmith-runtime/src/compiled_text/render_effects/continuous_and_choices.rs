@@ -674,7 +674,8 @@ pub(super) fn describe_look_at_top_then_put_any_matching_to_zone_rest_bottom(
         }
     };
     let remainder_clause = match rest.surface {
-        ironsmith_core::LibraryRemainderSurface::Rest => {
+        ironsmith_core::LibraryRemainderSurface::Rest
+        | ironsmith_core::LibraryRemainderSurface::RestBare => {
             format!("Put the rest on the bottom of {owner} library{order_text}")
         }
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
@@ -2164,7 +2165,8 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_bottom(
         crate::effects::consult_helpers::LibraryBottomOrder::ChooserChooses => " in any order",
     };
     let remainder_clause = match remainder.surface {
-        ironsmith_core::LibraryRemainderSurface::Rest => {
+        ironsmith_core::LibraryRemainderSurface::Rest
+        | ironsmith_core::LibraryRemainderSurface::RestBare => {
             format!("{remainder_opener} the rest on the bottom of {owner} library{order_text}")
         }
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {

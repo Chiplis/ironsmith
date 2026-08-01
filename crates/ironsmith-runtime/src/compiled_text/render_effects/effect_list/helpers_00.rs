@@ -2254,6 +2254,9 @@ pub(crate) fn describe_copy_then_may_cast_copy(effects: &[&Effect]) -> Option<St
         ChooseSpec::Tagged(tag) if tag.as_str().starts_with("exiled_") => {
             "the exiled card".to_string()
         }
+        ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG => {
+            "the exiled card".to_string()
+        }
         _ => describe_choose_spec(&copy_spell.target),
     };
     let mut cast_text = "You may cast the copy".to_string();

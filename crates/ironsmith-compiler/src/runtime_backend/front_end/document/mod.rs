@@ -4550,6 +4550,9 @@ fn try_parse_labeled_line_dispatch(
             static_line.chosen_option =
                 document_grammar::parse_chosen_option_context_tokens(label_tokens);
         }
+        if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+            eprintln!("labeled-static-dispatch: presentation={presentation:?}");
+        }
         static_line
             .info
             .semantic_facts
@@ -4649,7 +4652,11 @@ fn apply_labeled_statement_surface_facts(
             .statement
             .as_transforms_effect_program = Some(as_transforms);
     }
-    statement.info.semantic_facts.statement.presentation_label = presentation;
+    statement.info.semantic_facts.statement.presentation_label = presentation.clone();
+    // Static lines carry the same authored ability word ("Threshold — This
+    // creature has flying as long as ..."), and the static-ability compile
+    // reads its own facts slot (Mystic Visionary family).
+    statement.info.semantic_facts.static_ability.presentation_label = presentation;
 }
 
 fn try_parse_triggered_line_dispatch(

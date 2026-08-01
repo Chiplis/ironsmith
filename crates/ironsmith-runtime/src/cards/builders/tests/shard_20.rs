@@ -3039,7 +3039,7 @@ pub(super) fn parse_oracle_kethek_keeps_revealed_hit_and_remainder_in_one_clause
 
     assert_eq!(
         rendered,
-        "At the beginning of your end step, you may sacrifice another creature. If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value than it. Put it onto the battlefield, then put the rest of the revealed cards on the bottom of your library in a random order.",
+        "At the beginning of your end step, you may sacrifice another creature. If you do, reveal cards from the top of your library until you reveal a nonlegendary creature card with lesser mana value. Put it onto the battlefield, then put the rest on the bottom of your library in a random order.",
         "Kethek should render the consult match and remainder without exposing the per-object loop"
     );
 }

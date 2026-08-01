@@ -19,6 +19,15 @@
             }
             return format!("Then {}", lowercase_first(body));
         }
+        if let [choose_effect, move_effect] = sequence.effects.as_slice()
+            && let Some(choose) = structural_unwrap_render_wrappers(choose_effect)
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(move_to_zone) = structural_unwrap_render_wrappers(move_effect)
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(compact) = describe_choose_then_move_to_graveyard(choose, move_to_zone)
+        {
+            return compact;
+        }
         if let [choose_effect, for_each_effect] = sequence.effects.as_slice()
             && let Some(choose) =
                 choose_effect.downcast_ref::<crate::effects::ChooseObjectsEffect>()
@@ -972,6 +981,22 @@
                 reveal_clause
             ));
         }
+        if choose.reveal
+            && choose_primary_zone(choose) == Some(Zone::Hand)
+            && choose.filter.tagged_constraints.is_empty()
+        {
+            let choice_text = if let Some((selection, where_clause)) = choice_text.split_once(", where ") {
+                format!("{selection} from their hand, where {where_clause}")
+            } else {
+                format!("{choice_text} from their hand")
+            };
+            return capitalize_first(&format!(
+                "{} {} {}",
+                chooser,
+                player_verb(&chooser, "reveal", "reveals"),
+                choice_text
+            ));
+        }
         let zone_location = |zone| match zone {
             Zone::Battlefield => ("on the battlefield", "battlefield"),
             Zone::Hand => ("in a hand", "hand"),
@@ -1342,9 +1367,13 @@
         {
             target
         } else if move_to_zone.library_order.is_some()
-            && matches!(move_to_zone.target.base(), ChooseSpec::Tagged(_))
+            && let ChooseSpec::Tagged(tag) = move_to_zone.target.base()
         {
-            "those cards".to_string()
+            if tag.as_str() == "rest" {
+                "the rest".to_string()
+            } else {
+                "those cards".to_string()
+            }
         } else {
             describe_choose_spec(&move_to_zone.target)
         };
@@ -1984,6 +2013,19 @@
                     .map(|card_type| pluralize_noun_phrase(card_type.name()))
                     .collect::<Vec<_>>();
                 return format!("Destroy all {}", join_with_and(&plurals));
+            }
+            if remainder.noncommander {
+                remainder.noncommander = false;
+                if remainder == ObjectFilter::default() {
+                    let plurals = card_types
+                        .iter()
+                        .map(|card_type| pluralize_noun_phrase(card_type.name()))
+                        .collect::<Vec<_>>();
+                    return format!(
+                        "Destroy all {} except for commanders",
+                        join_with_and(&plurals)
+                    );
+                }
             }
         }
         if let ChooseSpec::All(filter) = destroy.spec.unhinted()
@@ -5407,6 +5449,9 @@
                 describe_effect_predicate(&repeat.predicate)
             );
         }
+        if repeat.predicate == EffectPredicate::Happened {
+            return format!("{body}. If you do, repeat this process");
+        }
         return format!("{body}. Repeat this process");
     }
     if let Some(prompt) = effect.downcast_ref::<crate::effects::RepeatProcessPromptEffect>() {
@@ -6032,9 +6077,15 @@
             let tag = cast_tagged.tag.as_str();
             let sentence_helper_copy = crate::cards::is_sentence_helper_tag(tag, "exiled")
                 || crate::cards::is_sentence_helper_tag(tag, "revealed")
-                || crate::cards::is_sentence_helper_tag(tag, "chosen");
+                || crate::cards::is_sentence_helper_tag(tag, "chosen")
+                || tag == crate::tag::PRIOR_EXILED_CARD_TAG;
             if sentence_helper_copy && cast_tagged.cost_reduction.is_none() {
-                let mut text = "Copy it. You may cast the copy".to_string();
+                let copied = if tag == crate::tag::PRIOR_EXILED_CARD_TAG {
+                    "the exiled card"
+                } else {
+                    "it"
+                };
+                let mut text = format!("Copy {copied}. You may cast the copy");
                 if cast_tagged.without_paying_mana_cost {
                     text.push_str(" without paying its mana cost");
                 }

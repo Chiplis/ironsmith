@@ -2135,11 +2135,29 @@ pub(super) fn describe_typed_coordinated_result_branch(effects: &[Effect]) -> Op
     {
         return Some(compact);
     }
+    // A result branch can hold the whole consult program ("If you do, reveal
+    // cards from the top of your library until you reveal X, put it onto the
+    // battlefield, then put the rest on the bottom ..." — Kethek); the
+    // compact one-sentence surface must win over the generic clause split.
+    {
+        let refs: Vec<&Effect> = sequence.effects.iter().collect();
+        if let Some(compact) = describe_consult_reveal_move_matches_then_bottom(&refs) {
+            return Some(compact);
+        }
+    }
     describe_typed_coordinated_clause_fallback(&sequence.effects)
 }
 
 pub(super) fn describe_result_branch_effect_list(effects: &[Effect]) -> String {
     describe_typed_coordinated_result_branch(effects)
+        .or_else(|| {
+            // A flat consult program in the result branch keeps oracle's
+            // one-sentence surface ("If you do, reveal ... until you reveal
+            // X, put it onto the battlefield, then put the rest ..." —
+            // Kethek).
+            let refs: Vec<&Effect> = effects.iter().collect();
+            describe_consult_reveal_move_matches_then_bottom(&refs)
+        })
         .unwrap_or_else(|| describe_effect_list(effects))
 }
 

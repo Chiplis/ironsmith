@@ -3458,6 +3458,9 @@ pub enum LibraryBottomOrder {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LibraryRemainderSurface {
     Rest,
+    /// Authored bare "the rest" ("then put the rest on the bottom of your
+    /// library in a random order").
+    RestBare,
     /// "the rest of the cards revealed this way"
     RestOfCardsRevealedThisWay,
     /// "the cards you revealed this way"

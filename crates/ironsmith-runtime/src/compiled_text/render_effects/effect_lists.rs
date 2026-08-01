@@ -12206,6 +12206,17 @@ pub(crate) fn describe_effect_clause_list(effects: &[Effect]) -> Option<String> 
                 .downcast_ref::<crate::effects::ChooseObjectsEffect>()
             && let Some(move_to_zone) = structural_unwrap_render_wrappers(&effects[effect_idx + 1])
                 .downcast_ref::<crate::effects::MoveToZoneEffect>()
+            && let Some(joint) = describe_choose_then_move_to_graveyard(choose, move_to_zone)
+        {
+            parts.push(lowercase_first(joint.trim_end_matches('.')));
+            effect_idx += 2;
+            continue;
+        }
+        if effect_idx + 1 < effects.len()
+            && let Some(choose) = structural_unwrap_render_wrappers(effect)
+                .downcast_ref::<crate::effects::ChooseObjectsEffect>()
+            && let Some(move_to_zone) = structural_unwrap_render_wrappers(&effects[effect_idx + 1])
+                .downcast_ref::<crate::effects::MoveToZoneEffect>()
             && let Some(joint) = describe_choose_then_move_to_battlefield(choose, move_to_zone)
         {
             let joint = joint

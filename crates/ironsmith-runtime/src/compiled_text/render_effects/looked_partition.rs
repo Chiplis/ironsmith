@@ -2044,7 +2044,8 @@ pub(super) fn describe_look_at_top_choose_battlefield_rest_graveyard(
         describe_battlefield_entry_state_for_looked_move(move_to_zone)
     );
     let remainder = match remainder_surface {
-        ironsmith_core::LibraryRemainderSurface::Rest => "Put the rest into your graveyard",
+        ironsmith_core::LibraryRemainderSurface::Rest
+        | ironsmith_core::LibraryRemainderSurface::RestBare => "Put the rest into your graveyard",
         ironsmith_core::LibraryRemainderSurface::RestOfCardsRevealedThisWay => {
             "Then put the rest of the cards revealed this way into your graveyard"
         }

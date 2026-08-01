@@ -170,11 +170,15 @@ fn copy_target_reference<'a>(input: &mut LexStream<'a>) -> WResult<CopyTargetSha
                 primitives::kw("it").void(),
                 primitives::kw("that").void(),
                 primitives::phrase(&["that", "card"]),
-                primitives::phrase(&["the", "exiled", "card"]),
             )),
             primitives::sentence_end(),
         )
             .value(CopyTargetShape::TaggedIt),
+        (
+            primitives::phrase(&["the", "exiled", "card"]),
+            primitives::sentence_end(),
+        )
+            .value(CopyTargetShape::PriorExiledCard),
     ))
     .parse_next(input)
 }

@@ -49,6 +49,7 @@ pub(crate) enum CopyTargetShape<'a> {
     Triggering,
     TriggeringSource,
     TaggedIt,
+    PriorExiledCard,
     Explicit(&'a [OwnedLexToken]),
 }
 

@@ -1375,7 +1375,16 @@ fn parse_effect_chain_with_subject_verb_primitives_lexed_unstacked(
             // coordination surface even though both actions survive.
             vec![copy_effect]
         } else {
-            parse_effect_chain_lexed(prefix.trailing_tokens)?
+            match parse_effect_chain_lexed(prefix.trailing_tokens) {
+                Ok(effects) => effects,
+                // Restriction bodies ("target creature you control can't be
+                // blocked this turn" — Evie Frye) parse as a single clause,
+                // not an effect chain.
+                Err(chain_error) => match parse_effect_clause_lexed(prefix.trailing_tokens) {
+                    Ok(effect) => vec![effect],
+                    Err(_) => return Err(chain_error),
+                },
+            }
         };
         let mut effects = vec![match prefix.kind {
             LeadingResultPrefixKind::If => EffectAst::IfResult {

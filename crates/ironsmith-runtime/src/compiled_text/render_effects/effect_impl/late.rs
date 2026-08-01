@@ -1174,7 +1174,14 @@
             }
         };
         let pronoun = if player == "you" { "you" } else { "they" };
-        let selection = describe_single_search_filter_in_zone(&consult.filter, Zone::Library);
+        let mut selection = describe_single_search_filter_in_zone(&consult.filter, Zone::Library);
+        // Oracle elides the comparandum inside a consult stop condition
+        // ("until you reveal a nonlegendary creature card with lesser mana
+        // value, ..." — Kethek); the explicit "than it" only appears outside
+        // consults.
+        if let Some(head) = selection.strip_suffix(" with lesser mana value than it") {
+            selection = format!("{head} with lesser mana value");
+        }
         let stop_text = describe_consult_stop_text(
             &selection,
             &consult.stop_rule,
@@ -1204,6 +1211,7 @@
             ironsmith_core::LibraryRemainderSurface::RevealedCardsNotPutOntoBattlefield => {
                 "Put all cards revealed this way that weren't put onto the battlefield"
             }
+            ironsmith_core::LibraryRemainderSurface::RestBare => "Put the rest",
             ironsmith_core::LibraryRemainderSurface::Rest => {
                 if remainder.keep_tagged.is_some()
                     && crate::cards::is_sentence_helper_tag(remainder.tag.as_str(), "revealed")
@@ -1708,6 +1716,14 @@
         return describe_copy_spell_for_each_target(copy_for_each);
     }
     if let Some(copy_spell) = effect.downcast_ref::<crate::effects::CopySpellEffect>() {
+        if copy_spell.count == Value::Fixed(1)
+            && matches!(
+                &copy_spell.target,
+                ChooseSpec::Tagged(tag) if tag.as_str() == crate::tag::PRIOR_EXILED_CARD_TAG
+            )
+        {
+            return "Copy the exiled card".to_string();
+        }
         if matches!(copy_spell.target, ChooseSpec::Source) {
             if matches!(
                 copy_spell.count,
@@ -1850,7 +1866,13 @@
         return format!("Multiply the value of X by {}", scale_x.multiplier);
     }
     if let Some(retarget) = effect.downcast_ref::<crate::effects::RetargetStackObjectEffect>() {
-        let target_text = describe_choose_spec(&retarget.target);
+        let target_text = match retarget.target.base() {
+            // The triggering stack object reads as "that spell" in a
+            // retargeting clause ("You may choose new targets for that
+            // spell." — Speedball).
+            ChooseSpec::Tagged(tag) if tag.as_str() == "triggering" => "that spell".to_string(),
+            _ => describe_choose_spec(&retarget.target),
+        };
         let mut base = match &retarget.mode {
             crate::effects::RetargetMode::All => {
                 if retarget.require_change {
@@ -2917,6 +2939,9 @@
             );
         }
         let mut delayed_text = lowercase_first(&describe_effect_list(&schedule.effects));
+        delayed_text = delayed_text
+            .trim_start_matches(|character: char| character.is_whitespace() || character == '.')
+            .to_string();
         {
             // When the delayed effects are target declarations followed by a
             // tagged-target subject/verb pair ("choose target creature you
@@ -4823,11 +4848,19 @@
             .count
             .has_surface_hint(ValueSurfaceHint::CardsRevealedThisWay)
         {
-            Some("card revealed this way".to_string())
+            describe_create_for_each_count(&repeat.count)
+                .or_else(|| Some("card revealed this way".to_string()))
         } else {
             None
         };
         if let Some(basis) = affected_card_basis {
+            if repeat
+                .count
+                .has_surface_hint(ValueSurfaceHint::CardsRevealedThisWay)
+                && repeat.count.has_surface_hint(ValueSurfaceHint::ForEach)
+            {
+                return format!("For each {basis}, {repeated}");
+            }
             return format!("{repeated} for each {basis}");
         }
         let mana_symbol_group = if repeat.count.has_surface_hint(ValueSurfaceHint::ForEach) {

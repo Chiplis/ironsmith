@@ -1230,13 +1230,29 @@ fn compile_static_ability_with_zones(
     mut ability: crate::static_abilities::StaticAbility,
     facts: &crate::runtime_backend::shared_types::StaticLineSemanticFacts,
 ) -> Ability {
-    if matches!(
+    let conditional_shape = matches!(
         ability.payload,
         crate::static_abilities::StaticAbilityPayload::Conditional { .. }
-    ) && let Some(label) = facts
-        .presentation_label
-        .as_ref()
-        .and_then(crate::ability::PresentationLabel::display_prefix)
+    ) || matches!(
+        &ability.payload,
+        crate::static_abilities::StaticAbilityPayload::GrantObjectAbilityForFilter(grant)
+            if grant.condition.is_some()
+    );
+    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+        eprintln!(
+            "static-label: conditional_shape={} label={:?}",
+            conditional_shape,
+            facts
+                .presentation_label
+                .as_ref()
+                .and_then(crate::ability::PresentationLabel::display_prefix)
+        );
+    }
+    if conditional_shape
+        && let Some(label) = facts
+            .presentation_label
+            .as_ref()
+            .and_then(crate::ability::PresentationLabel::display_prefix)
     {
         // Keep the authored ability word separate from the explicit
         // condition. This marker changes only compiled-text presentation;

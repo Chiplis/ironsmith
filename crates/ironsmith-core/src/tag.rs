@@ -9,6 +9,9 @@ use std::fmt;
 /// Runtime tag for cards linked as "exiled with this source object".
 pub const SOURCE_EXILED_TAG: &str = "__source_exiled__";
 
+/// Runtime tag for a card explicitly referenced later as "the exiled card".
+pub const PRIOR_EXILED_CARD_TAG: &str = "__prior_exiled_card__";
+
 /// Object set produced by reveal-hand effects in the current resolution.
 ///
 /// Keeping this in the shared model lets compiler reference analysis and

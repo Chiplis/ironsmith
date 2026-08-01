@@ -145,6 +145,21 @@ fn describe_labeled_static_bundle(abilities: &[Ability], subject: &str) -> Optio
     let AbilityKind::Static(first) = &abilities.first()?.kind else {
         return None;
     };
+    // A retained ability-word label on a non-Conditional payload (a grant
+    // that carries its own condition — "Threshold — This creature has flying
+    // as long as ...") prefixes the ordinary single-ability render.
+    if first.labeled_static_condition().is_none()
+        && let Some(label) = first.compiled_model().and_then(|model| {
+            model.label.strip_prefix(
+                ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX,
+            )
+        })
+    {
+        return Some((
+            format!("{label} — {}", render_labeled_static_body(first, subject)),
+            1,
+        ));
+    }
     let (label, first_inner, condition) = first.labeled_static_condition()?;
     if let Some(label) = label.strip_prefix(
         ironsmith_core::static_ability_model::EXPLICIT_STATIC_PRESENTATION_LABEL_PREFIX,

@@ -1058,7 +1058,16 @@ fn retarget_bare_it_effect_targets_to_source(effect: &mut EffectAst) {
 
 fn trigger_provides_stack_object(trigger: &TriggerSpec) -> bool {
     match trigger {
+        TriggerSpec::WithIntro { trigger, .. } => trigger_provides_stack_object(trigger),
         TriggerSpec::SpellCast { .. } | TriggerSpec::AbilityActivated { .. } => true,
+        // Becomes-targeted triggers record the TARGETING spell or ability as
+        // the triggering event object ("counter that spell", "choose new
+        // targets for that spell").
+        TriggerSpec::ThisBecomesTargeted
+        | TriggerSpec::BecomesTargeted(_)
+        | TriggerSpec::ThisBecomesTargetedBySpell(_)
+        | TriggerSpec::ThisBecomesTargetedByStackObject(_)
+        | TriggerSpec::BecomesTargetedByStackObject { .. } => true,
         TriggerSpec::Either(left, right) => {
             trigger_provides_stack_object(left) || trigger_provides_stack_object(right)
         }
@@ -1822,6 +1831,15 @@ pub(crate) fn rewrite_prepare_triggered_effects_for_lowering(
     ensure_concrete_trigger_spec(&trigger)?;
 
     let mut normalized = normalize_effects_ast(effects);
+    if std::env::var("IRONSMITH_CHOICE_TRACE").is_ok() {
+        let variant = format!("{trigger:?}");
+        eprintln!(
+            "prepare-triggered: trigger_stack={} effects={} variant={}",
+            trigger_provides_stack_object(&trigger),
+            normalized.len(),
+            &variant[..variant.len().min(120)]
+        );
+    }
     preserve_copy_reference_kind_from_trigger(&mut normalized, &trigger);
     // "You may choose new targets for that spell" after a body sentence about
     // the source must still bind the TRIGGERING stack object (Speedball).

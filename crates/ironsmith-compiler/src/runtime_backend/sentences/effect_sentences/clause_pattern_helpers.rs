@@ -238,6 +238,10 @@ pub(crate) fn parse_copy_spell_clause(
             clause_shapes::CopyTargetShape::TaggedIt => {
                 Some(TargetAst::Tagged(TagKey::from(IT_TAG), None))
             }
+            clause_shapes::CopyTargetShape::PriorExiledCard => Some(TargetAst::Tagged(
+                TagKey::from(crate::tag::PRIOR_EXILED_CARD_TAG),
+                None,
+            )),
             clause_shapes::CopyTargetShape::Explicit(_) => None,
         }
     }

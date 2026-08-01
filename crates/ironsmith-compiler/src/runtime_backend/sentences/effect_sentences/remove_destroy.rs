@@ -500,6 +500,11 @@ pub(crate) fn apply_except_filter_exclusions(base: &mut ObjectFilter, exception:
             base.excluded_subtypes.push(subtype);
         }
     }
+    // "except for commanders" (Slash the Ranks) — previously dropped
+    // silently, which destroyed commanders at runtime.
+    if exception.is_commander {
+        base.noncommander = true;
+    }
 }
 
 #[cfg(test)]

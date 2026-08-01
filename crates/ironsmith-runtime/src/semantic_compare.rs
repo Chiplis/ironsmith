@@ -1684,6 +1684,19 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "and this creature deals 1 damage to you",
             "and it deals 1 damage to you",
         ),
+        // Ent's Fury (unique): the pump and the fight share one authored
+        // sentence; the renderer splits them with a repeated subject.
+        (
+            "until end of turn and fights target creature you don't control",
+            "until end of turn. That creature fights target creature you don't control",
+        ),
+        // Kethek alone comma-joins the consult hit to the battlefield move;
+        // the other 21 consult-battlefield cards (and the renderer) use a
+        // sentence boundary there.
+        (
+            "with lesser mana value, put it onto the battlefield",
+            "with lesser mana value. Put it onto the battlefield",
+        ),
         // Destroyed creatures die; oracle's "died this way" tally after a
         // destroy-all is the renderer's "destroyed this way" (Reign of
         // Terror). Scoped by the life-loss prefix so Hellfire's authored
@@ -1793,19 +1806,6 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
             "Change a target of the copy to that creature",
             "The copy targets that creature",
         ),
-        // Opponent-reveal-X choose-and-exile (Taster of Wares class).
-        (
-            "You choose a revealed this way card. Exile it",
-            "You choose one of those cards. That player exiles it",
-        ),
-        (
-            "If an instant or sorcery card was exiled this way, you may cast that card",
-            "If an instant or sorcery card is exiled this way, you may cast it",
-        ),
-        (
-            "target opponent chooses X cards, where X is",
-            "target opponent reveals X cards from their hand, where X is",
-        ),
         // Saga-face exile-and-return riders: the render says "the exiled
         // card" where oracle uses the pronoun, joins with a comma where
         // oracle starts a sentence, and spells the source as "this Saga".
@@ -1830,15 +1830,6 @@ fn normalize_anaphoric_object_surfaces(text: &str) -> String {
         (
             ". Then if it's a permanent card, you may put it onto the battlefield",
             ". If it's a permanent card, you may put it onto the battlefield",
-        ),
-        (
-            "you may put it onto the battlefield. Repeat this process",
-            "you may put it onto the battlefield. If you do, repeat this process",
-        ),
-        // The delayed copy-then-cast trigger re-emits the copy sentence.
-        (
-            "copy that spell. Copy it. You may cast the copy",
-            "copy the exiled card. You may cast the copy",
         ),
         // Imprint-style copy programs lower as choose+cast-as-copy; the
         // render surfaces the intermediate steps oracle folds into "copy".
